@@ -1,6 +1,7 @@
 //! The file system calls of the state directory: the trust checks, the
 //! atomic write, new private files, removal and the sweep.
 
+use super::switches::{ReadStep, Switches};
 use super::{StateError, Untrusted};
 use crate::secret::{is_hex, with_bytes};
 use secrecy::SecretString;
@@ -116,10 +117,11 @@ pub(super) fn open_checked(
     path: &Path,
     user: u32,
     max: u64,
+    switches: &Switches,
 ) -> Result<Opened, StateError> {
     let mut attempt = 1;
     loop {
-        match open_once(dir, path, user, max) {
+        match open_once(dir, path, user, max, switches) {
             Err(StateError::Untrusted {
                 reason: Untrusted::Replaced,
                 ..
@@ -129,7 +131,17 @@ pub(super) fn open_checked(
     }
 }
 
-fn open_once(dir: &Path, path: &Path, user: u32, max: u64) -> Result<Opened, StateError> {
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the state module owns the server file; this open only reads"
+)]
+fn open_once(
+    dir: &Path,
+    path: &Path,
+    user: u32,
+    max: u64,
+    switches: &Switches,
+) -> Result<Opened, StateError> {
     let Some(dir_metadata) =
         missing_is_none(std::fs::symlink_metadata(dir)).map_err(|source| io_error(dir, source))?
     else {
@@ -142,10 +154,17 @@ fn open_once(dir: &Path, path: &Path, user: u32, max: u64) -> Result<Opened, Sta
         return Ok(Opened::Missing);
     };
     file_trusted(path, &link, user)?;
-    let Some(file) = missing_is_none(File::open(path)).map_err(|source| io_error(path, source))?
-    else {
+    switches.at(ReadStep::Checked, path);
+    // O_NONBLOCK keeps a FIFO put in place of the file from blocking the
+    // open; the checks after the open then refuse it as not a regular file.
+    let opening = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path);
+    let Some(file) = missing_is_none(opening).map_err(|source| io_error(path, source))? else {
         return Ok(Opened::Missing);
     };
+    switches.at(ReadStep::Opened, path);
     let opened = file.metadata().map_err(|source| io_error(path, source))?;
     if opened.dev() != link.dev() || opened.ino() != link.ino() {
         return Err(untrusted(path, Untrusted::Replaced));
@@ -159,27 +178,25 @@ fn open_once(dir: &Path, path: &Path, user: u32, max: u64) -> Result<Opened, Sta
 }
 
 /// Creates `path`, which must not exist, with mode 0600, writes `contents`
-/// and syncs it.
+/// and syncs it. When a step after the create fails, it removes the file
+/// it created; a file that was already at `path` is never removed.
 #[expect(
     clippy::disallowed_methods,
     reason = "the state module is the crate's atomic writer (DUR-1)"
 )]
-fn create_private(path: &Path, contents: &SecretString) -> io::Result<()> {
+pub(super) fn write_new(path: &Path, contents: &SecretString) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(path)?;
-    // The mode given to open is reduced by the umask, so it is set again.
-    file.set_permissions(Permissions::from_mode(0o600))?;
-    with_bytes(contents, |bytes| file.write_all(bytes))?;
-    file.sync_all()
-}
-
-/// Writes a new private file at `path`.
-pub(super) fn write_new(path: &Path, contents: &SecretString) -> io::Result<()> {
-    create_private(path, contents).inspect_err(|_| {
-        // A file left half written holds part of a secret; removing it is
+    let written = file
+        // The mode given to open is reduced by the umask, so it is set again.
+        .set_permissions(Permissions::from_mode(0o600))
+        .and_then(|()| with_bytes(contents, |bytes| file.write_all(bytes)))
+        .and_then(|()| file.sync_all());
+    written.inspect_err(|_| {
+        // A file left half written holds part of a secret. Removing it is
         // tried once, and the sweep removes it otherwise.
         let _ = remove_if_present(path);
     })

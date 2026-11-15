@@ -2,12 +2,16 @@
 //! port of one server.
 
 use crate::secret::{NoRandomness, is_hex, random_hex};
+use std::fmt;
 
 /// The host name and port that one server answers on. A new server makes a
 /// new name, so a browser keeps its cookie apart from every other local
 /// server: browsers send a cookie for a host to every port of that host,
 /// and the name is what differs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Its `Debug` output hides the name, because a process that learns it can
+/// have a browser visit that name on its own port and receive the cookie.
+#[derive(Clone, PartialEq, Eq)]
 pub struct LaunchHost {
     name: String,
     port: u16,
@@ -54,5 +58,15 @@ impl LaunchHost {
     #[must_use]
     pub fn origin(&self) -> String {
         format!("http://{}", self.authority())
+    }
+}
+
+impl fmt::Debug for LaunchHost {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LaunchHost")
+            .field("name", &"h-<hidden>.localhost")
+            .field("port", &self.port)
+            .finish()
     }
 }

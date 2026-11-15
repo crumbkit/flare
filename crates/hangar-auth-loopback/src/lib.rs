@@ -92,9 +92,11 @@ mod state;
 
 pub use codes::{CodeError, LaunchCode, ReturnPath, ReturnPathError, SignInError, SignedIn};
 pub use host::LaunchHost;
-pub use loopback::{Loopback, StartError};
+pub use loopback::{KeepOpenerError, Loopback, StartError};
 pub use principal::{Served, local_principal};
 pub use probe::{Nonce, NonceError};
 pub use record::ServerRecord;
 pub use request::{Checked, Refusal};
+#[cfg(feature = "testing")]
+pub use state::ReadStep;
 pub use state::{StateDir, StateError, Untrusted, state_home};

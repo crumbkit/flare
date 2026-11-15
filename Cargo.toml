@@ -24,6 +24,9 @@ hangar-core = { path = "crates/hangar-core", version = "0.1.0" }
 # The method and header types of a request, which hangar-auth-loopback checks
 # before a route runs; reqwest and hyper already bring it in.
 http = "1.5.0"
+# The O_NONBLOCK flag for opening hangar-auth-loopback's server file, so a
+# FIFO in its place cannot block the open; tokio and mio already bring it in.
+libc = "0.2.191"
 # Verifies the RS256 signature of an OpenID Connect ID token.
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
 # The HTTPS client for an OpenID provider's discovery, token and key set

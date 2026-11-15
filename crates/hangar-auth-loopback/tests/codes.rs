@@ -11,7 +11,9 @@
 pub mod fixture;
 
 use fixture::{PORT, loopback};
-use hangar_auth_loopback::{CodeError, LaunchCode, Loopback, ReturnPath, SignInError};
+use hangar_auth_loopback::{
+    CodeError, KeepOpenerError, LaunchCode, Loopback, ReturnPath, SignInError,
+};
 use hangar_core::contract::block_on;
 use hangar_core::{AuthError, Authenticator as _, Credential};
 use secrecy::ExposeSecret as _;
@@ -309,7 +311,7 @@ fn a_kept_opener_comes_back_with_sign_in() {
     let now = Instant::now();
     let code = issue(&loopback, now);
     let opener = PathBuf::from("/state/open-0123456789abcdef.html");
-    loopback.keep_opener(&code, opener.clone());
+    loopback.keep_opener(&code, opener.clone()).unwrap();
     let signed_in = loopback.sign_in(&text(&code), now).unwrap();
     assert_eq!(signed_in.opener(), Some(opener.as_path()));
 }
@@ -320,12 +322,71 @@ fn expire_returns_the_openers_of_expired_codes_once() {
     let now = Instant::now();
     let old = issue(&loopback, now);
     let fresh = issue(&loopback, now + Duration::from_secs(30));
-    loopback.keep_opener(&old, PathBuf::from("/state/open-old.html"));
-    loopback.keep_opener(&fresh, PathBuf::from("/state/open-fresh.html"));
+    loopback
+        .keep_opener(&old, PathBuf::from("/state/open-old.html"))
+        .unwrap();
+    loopback
+        .keep_opener(&fresh, PathBuf::from("/state/open-fresh.html"))
+        .unwrap();
     let later = now + Duration::from_secs(61);
     assert_eq!(
         loopback.expire(later),
         vec![PathBuf::from("/state/open-old.html")]
     );
     assert!(loopback.expire(later).is_empty());
+}
+
+#[test]
+fn an_opener_kept_after_sign_in_comes_back_from_expire() {
+    let loopback = loopback();
+    let now = Instant::now();
+    let code = issue(&loopback, now);
+    loopback.sign_in(&text(&code), now).unwrap();
+    loopback
+        .keep_opener(&code, PathBuf::from("/state/open-late.html"))
+        .unwrap();
+    assert_eq!(
+        loopback.expire(now + Duration::from_secs(61)),
+        vec![PathBuf::from("/state/open-late.html")]
+    );
+}
+
+#[test]
+fn keep_opener_reports_a_code_the_server_has_forgotten() {
+    let loopback = loopback();
+    let now = Instant::now();
+    let code = issue(&loopback, now);
+    let _openers = loopback.expire(now + Duration::from_secs(10 * 60 + 1));
+    assert_eq!(
+        loopback
+            .keep_opener(&code, PathBuf::from("/state/open-x.html"))
+            .unwrap_err(),
+        KeepOpenerError::UnknownCode
+    );
+}
+
+#[test]
+fn the_opener_of_a_code_that_issue_code_forgets_comes_back_from_the_next_expire() {
+    let loopback = loopback();
+    let now = Instant::now();
+    let old = issue(&loopback, now);
+    loopback
+        .keep_opener(&old, PathBuf::from("/state/open-old.html"))
+        .unwrap();
+    let later = now + Duration::from_secs(10 * 60 + 1);
+    issue(&loopback, later);
+    assert_eq!(
+        loopback.expire(later),
+        vec![PathBuf::from("/state/open-old.html")]
+    );
+}
+
+#[test]
+fn the_debug_output_hides_the_launch_host_name() {
+    let loopback = loopback();
+    let record = loopback.server_record();
+    let name = loopback.launch_host().name().to_owned();
+    let shown = format!("{loopback:?} {record:?} {:?}", loopback.launch_host());
+    assert!(!shown.contains(&name), "{name} appears in {shown}");
+    assert!(shown.contains(&PORT.to_string()), "{shown}");
 }

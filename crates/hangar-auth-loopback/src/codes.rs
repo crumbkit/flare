@@ -197,6 +197,9 @@ impl Code {
 pub(crate) struct Table {
     codes: Vec<Code>,
     sessions: VecDeque<[u8; 32]>,
+    /// The openers of codes that `issue` forgot, kept for the next
+    /// `expire`.
+    forgotten_openers: Vec<PathBuf>,
 }
 
 impl Table {
@@ -210,7 +213,7 @@ impl Table {
         target: ReturnPath,
         now: Instant,
     ) -> Result<LaunchCode, CodeError> {
-        self.codes.retain(|code| !code.forgotten(now));
+        self.forget(now);
         let outstanding = self
             .codes
             .iter()
@@ -231,15 +234,24 @@ impl Table {
     }
 
     /// Ties an opener file to a code, so `sign_in` or `expire` hands it back
-    /// for removal.
-    pub(crate) fn keep_opener(&mut self, code: &LaunchCode, opener: PathBuf) {
-        if let Some(entry) = self
+    /// for removal. Returns `false` when the table no longer holds the code.
+    pub(crate) fn keep_opener(&mut self, code: &LaunchCode, opener: PathBuf) -> bool {
+        let entry = self
             .codes
             .iter_mut()
-            .find(|entry| entry.digest == code.digest)
-        {
-            entry.opener = Some(opener);
-        }
+            .find(|entry| entry.digest == code.digest);
+        entry.map(|entry| entry.opener = Some(opener)).is_some()
+    }
+
+    /// Forgets codes made more than 10 minutes before `now`, and keeps
+    /// their openers for the next `expire`.
+    fn forget(&mut self, now: Instant) {
+        let (forgotten, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.codes)
+            .into_iter()
+            .partition(|code| code.forgotten(now));
+        self.codes = kept;
+        self.forgotten_openers
+            .extend(forgotten.into_iter().filter_map(|code| code.opener));
     }
 
     /// Uses `code` and stores `session` as a live session, in one step.
@@ -283,15 +295,18 @@ impl Table {
         })
     }
 
-    /// Hands back the openers of codes that expired unused, once each, and
-    /// forgets codes made more than 10 minutes ago.
+    /// Hands back, once each, the openers still held by codes made more
+    /// than 60 seconds before `now`, used or not, and the openers of codes
+    /// that `issue` forgot. Then it forgets codes made more than 10
+    /// minutes before `now`.
     pub(crate) fn expire(&mut self, now: Instant) -> Vec<PathBuf> {
-        let openers = self
-            .codes
-            .iter_mut()
-            .filter(|code| code.expired(now))
-            .filter_map(|code| code.opener.take())
-            .collect();
+        let mut openers: Vec<PathBuf> = std::mem::take(&mut self.forgotten_openers);
+        openers.extend(
+            self.codes
+                .iter_mut()
+                .filter(|code| code.expired(now))
+                .filter_map(|code| code.opener.take()),
+        );
         self.codes.retain(|code| !code.forgotten(now));
         openers
     }

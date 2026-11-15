@@ -244,8 +244,10 @@ name = "hangar-auth-loopback"
 version = "0.1.0"
 dependencies = [
  "aws-lc-rs",
+ "hangar-auth-loopback",
  "hangar-core",
  "http",
+ "libc",
  "secrecy",
  "serde",
  "serde_json",

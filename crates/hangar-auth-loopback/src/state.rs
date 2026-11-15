@@ -4,10 +4,11 @@
 //! `state/files.rs` are the crate's only file system code (BASE-5, DUR-1).
 
 mod files;
+mod switches;
 
 use crate::record::{ServerRecord, Unreadable};
 use crate::secret::{hex, random_hex, sha256};
-use files::{Opened, check_dir, open_checked, remove_if_present, sweep, user, write_new};
+use files::{Opened, check_dir, open_checked, remove_if_present, sweep, write_new};
 use secrecy::SecretString;
 use std::ffi::OsStr;
 use std::fmt;
@@ -16,6 +17,8 @@ use std::os::unix::ffi::OsStrExt as _;
 use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+pub use switches::ReadStep;
+use switches::Switches;
 
 /// The server file's name.
 const SERVER_FILE: &str = "server.json";
@@ -50,6 +53,7 @@ fn absolute(value: Option<&OsStr>) -> Option<&Path> {
 #[derive(Debug, Clone)]
 pub struct StateDir {
     dir: PathBuf,
+    switches: Switches,
 }
 
 impl StateDir {
@@ -62,6 +66,7 @@ impl StateDir {
         let key = digest.get(..32).unwrap_or(&digest);
         Self {
             dir: state_home.join("hangar").join("loopback").join(key),
+            switches: Switches::default(),
         }
     }
 
@@ -95,7 +100,10 @@ impl StateDir {
             }
             _ => {}
         }
-        let user = user().map_err(|source| io_error(&self.dir, source))?;
+        let user = self
+            .switches
+            .user()
+            .map_err(|source| io_error(&self.dir, source))?;
         check_dir(&self.dir, user)?;
         sweep(&self.dir, now);
         Ok(())
@@ -112,7 +120,10 @@ impl StateDir {
     /// [`StateError::Io`] when a step fails. `server.json` is then
     /// unchanged, or wholly replaced if only the directory sync failed.
     pub fn write_server(&self, record: &ServerRecord) -> Result<(), StateError> {
-        let user = user().map_err(|source| io_error(&self.dir, source))?;
+        let user = self
+            .switches
+            .user()
+            .map_err(|source| io_error(&self.dir, source))?;
         check_dir(&self.dir, user)?;
         let suffix = random_hex(8).map_err(|_| StateError::Random)?;
         let temporary = self.dir.join(format!("{SERVER_FILE}.{suffix}.tmp"));
@@ -132,9 +143,12 @@ impl StateDir {
     /// [`StateError::Malformed`] for a file that is not a record, and
     /// [`StateError::Io`] when a read fails.
     pub fn read_server(&self) -> Result<Option<ServerRecord>, StateError> {
-        let user = user().map_err(|source| io_error(&self.dir, source))?;
+        let user = self
+            .switches
+            .user()
+            .map_err(|source| io_error(&self.dir, source))?;
         let path = self.dir.join(SERVER_FILE);
-        let bytes = match open_checked(&self.dir, &path, user, MAX_SERVER_FILE)? {
+        let bytes = match open_checked(&self.dir, &path, user, MAX_SERVER_FILE, &self.switches)? {
             Opened::Missing => return Ok(None),
             Opened::Read(bytes) => bytes,
         };
@@ -178,7 +192,10 @@ impl StateDir {
     /// [`StateError::Random`] without random bytes and [`StateError::Io`]
     /// when the write fails.
     pub fn write_opener(&self, page: &SecretString) -> Result<PathBuf, StateError> {
-        let user = user().map_err(|source| io_error(&self.dir, source))?;
+        let user = self
+            .switches
+            .user()
+            .map_err(|source| io_error(&self.dir, source))?;
         check_dir(&self.dir, user)?;
         let suffix = random_hex(8).map_err(|_| StateError::Random)?;
         let opener = self.dir.join(format!("open-{suffix}.html"));

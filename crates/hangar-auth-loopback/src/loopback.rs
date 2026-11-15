@@ -26,6 +26,19 @@ pub enum StartError {
     Random,
 }
 
+/// Why an opener was not tied to its code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum KeepOpenerError {
+    /// The server has forgotten the code, 10 minutes after making it. The
+    /// caller removes the opener itself.
+    #[error("the launch code is no longer known; remove its opener now")]
+    UnknownCode,
+    /// The server's state is unusable after a panic.
+    #[error("the server cannot keep openers")]
+    Unavailable,
+}
+
 /// The sign-in state of one `hangar serve` process. Clones share it.
 #[derive(Clone)]
 pub struct Loopback(Arc<Inner>);
@@ -107,9 +120,21 @@ impl Loopback {
 
     /// Ties the opener written for `code` to it, so [`SignedIn::opener`]
     /// and [`expire`](Self::expire) hand it back for removal.
-    pub fn keep_opener(&self, code: &LaunchCode, opener: PathBuf) {
-        if let Some(mut table) = self.table() {
-            table.keep_opener(code, opener);
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeepOpenerError::UnknownCode`] when the server has
+    /// forgotten the code, and [`KeepOpenerError::Unavailable`] after a
+    /// panic poisoned the table. The opener is then the caller's to remove.
+    pub fn keep_opener(&self, code: &LaunchCode, opener: PathBuf) -> Result<(), KeepOpenerError> {
+        let kept = self
+            .table()
+            .ok_or(KeepOpenerError::Unavailable)?
+            .keep_opener(code, opener);
+        if kept {
+            Ok(())
+        } else {
+            Err(KeepOpenerError::UnknownCode)
         }
     }
 
@@ -149,8 +174,11 @@ impl Loopback {
             .sign_in(code, session, now)
     }
 
-    /// Hands back the openers of codes that expired unused, for removal,
-    /// and forgets codes made more than 10 minutes before `now`.
+    /// Hands back, once each and for removal, the openers still held by
+    /// codes made more than 60 seconds before `now`, used or not, and the
+    /// openers of codes that `issue_code` forgot. Then it forgets codes made
+    /// more than 10 minutes before `now`. After a panic poisoned the table
+    /// it returns nothing.
     #[must_use = "each opener returned holds a dead code and is the caller's to remove"]
     pub fn expire(&self, now: Instant) -> Vec<PathBuf> {
         self.table()
