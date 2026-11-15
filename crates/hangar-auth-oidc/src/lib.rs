@@ -122,7 +122,7 @@ mod secret;
 mod session;
 mod token;
 
-pub use allow::{AllowEntry, AllowList, Email, Reach};
+pub use allow::{Admit, AllowEntry, AllowList, DomainRule, Email, Reach, WorkspaceDomain};
 pub use authenticator::OidcAuthenticator;
 #[cfg(feature = "testing")]
 pub use clock::TestClock;

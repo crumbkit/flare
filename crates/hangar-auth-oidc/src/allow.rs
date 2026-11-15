@@ -153,5 +153,56 @@ impl fmt::Debug for AllowList {
     }
 }
 
+/// A DNS name, held lower-cased. (Stub: not checked yet.)
+#[derive(Clone, PartialEq, Eq)]
+pub struct WorkspaceDomain(String);
+
+impl TryFrom<&str> for WorkspaceDomain {
+    type Error = ConfigError;
+
+    fn try_from(text: &str) -> Result<Self, ConfigError> {
+        Ok(Self(text.to_owned()))
+    }
+}
+
+impl WorkspaceDomain {
+    /// The domain in lower case.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for WorkspaceDomain {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// Every verified account of one domain. (Stub.)
+#[derive(Debug, Clone)]
+pub struct DomainRule {
+    domain: WorkspaceDomain,
+    reach: Reach,
+}
+
+impl DomainRule {
+    /// The rule.
+    #[must_use]
+    pub fn new(domain: WorkspaceDomain, reach: Reach) -> Self {
+        Self { domain, reach }
+    }
+}
+
+/// Who may sign in.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum Admit {
+    /// The listed emails.
+    Emails(AllowList),
+    /// Every verified account of one domain.
+    Domain(DomainRule),
+}
+
 #[cfg(test)]
 mod tests;

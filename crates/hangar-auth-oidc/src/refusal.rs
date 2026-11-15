@@ -162,6 +162,12 @@ pub enum SignInRefusal {
     /// The system's random number generator failed.
     #[error("no random bytes were available")]
     NoRandomness,
+    /// Stub.
+    #[error("stub")]
+    NoHostedDomain,
+    /// Stub.
+    #[error("stub")]
+    OtherHostedDomain,
 }
 
 impl SignInRefusal {

@@ -151,11 +151,10 @@ impl<C: Clock> OidcAuthenticator<C> {
             now,
         };
         let email = token::check(&id_token, &key, &expected)?;
-        let entry = self
-            .config
-            .allow
-            .by_email(&email)
-            .ok_or(SignInRefusal::NotAllowed)?;
+        let crate::allow::Admit::Emails(allow) = &self.config.admit else {
+            return Err(SignInRefusal::NotAllowed);
+        };
+        let entry = allow.by_email(&email).ok_or(SignInRefusal::NotAllowed)?;
         let principal = Principal::new(entry.principal().clone());
         lock(&self.sessions).create(
             principal,
@@ -194,11 +193,12 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
         _access: Access,
         resource: &Resource,
     ) -> Result<Decision, AuthError> {
-        let reaches = self
-            .config
-            .allow
-            .by_principal(principal.id())
-            .is_some_and(|entry| entry.reach().reaches(resource));
+        let reaches = match &self.config.admit {
+            crate::allow::Admit::Emails(allow) => allow
+                .by_principal(principal.id())
+                .is_some_and(|entry| entry.reach().reaches(resource)),
+            crate::allow::Admit::Domain(_) => false,
+        };
         Ok(if reaches {
             Decision::Allowed
         } else {

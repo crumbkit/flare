@@ -1,7 +1,7 @@
 //! What the authenticator is configured with: the issuer, the client, the
 //! redirect URI and the allow-list.
 
-use crate::allow::AllowList;
+use crate::allow::Admit;
 use std::net::IpAddr;
 use std::time::Duration;
 use url::{Host, Url};
@@ -31,6 +31,9 @@ pub enum ConfigError {
     /// The allow-list names one principal twice.
     #[error("the allow-list names one principal twice")]
     DuplicatePrincipal,
+    /// The domain is not a DNS name.
+    #[error("the domain is not a DNS name")]
+    Domain,
     /// The return-to value is longer than 2,048 bytes.
     #[error("the return-to value is longer than 2,048 bytes")]
     ReturnTo,
@@ -186,7 +189,7 @@ pub struct OidcConfig {
     pub(crate) issuer: IssuerUrl,
     pub(crate) client_id: ClientId,
     pub(crate) redirect_uri: RedirectUri,
-    pub(crate) allow: AllowList,
+    pub(crate) admit: Admit,
     pub(crate) session_lifetime: Duration,
     pub(crate) deadlines: Deadlines,
 }
@@ -200,13 +203,13 @@ impl OidcConfig {
         issuer: IssuerUrl,
         client_id: ClientId,
         redirect_uri: RedirectUri,
-        allow: AllowList,
+        admit: Admit,
     ) -> Self {
         Self {
             issuer,
             client_id,
             redirect_uri,
-            allow,
+            admit,
             session_lifetime: Duration::from_secs(12 * 60 * 60),
             deadlines: Deadlines {
                 connect: Duration::from_secs(5),

@@ -9,7 +9,7 @@
 //! name. It prints nothing. When it cannot start, `main` returns the error.
 
 use hangar_auth_oidc::{
-    AllowEntry, AllowList, ClientId, Email, IssuerUrl, KeptState, KeychainSecret,
+    Admit, AllowEntry, AllowList, ClientId, Email, IssuerUrl, KeptState, KeychainSecret,
     OidcAuthenticator, OidcConfig, Reach, RedirectUri, ReturnTo,
 };
 use hangar_core::PrincipalId;
@@ -68,7 +68,7 @@ fn config(arguments: &[String]) -> Result<OidcConfig, StartError> {
         ClientId::try_from(client_id.as_str()).map_err(StartError::Config)?,
         RedirectUri::try_from("http://localhost:8740/auth/oidc/callback")
             .map_err(StartError::Config)?,
-        allow,
+        Admit::Emails(allow),
     ))
 }
 
