@@ -2,7 +2,7 @@
 
 use crate::apply::{Conflict, same};
 use crate::body::Fields;
-use crate::form::{FormTarget, LocalPath, hidden_inputs};
+use crate::form::{self, FormTarget, LocalPath, MAX_VALUE_BYTES, PostBudget, hidden_inputs};
 use crate::html::{Builder, Html};
 use crate::values;
 use serde_json::Value;
@@ -84,11 +84,35 @@ pub fn conflict_view(conflict: &Conflict, target: &FormTarget, discard: &LocalPa
         } else {
             now.clone()
         };
-        base.insert(
-            field.name.as_str().to_owned(),
-            now.clone().unwrap_or(Value::Null),
-        );
-        merged.push((field, value));
+        merged.push((field, value, changed, now));
+    }
+    // The form carries each changed field, and each unchanged field whose
+    // newer value an edit form would draw a control for and that fits in
+    // the post. A field it leaves out stays as it is now.
+    let mut budget = PostBudget::new(
+        target.token(),
+        &conflict.newer,
+        target.binding(),
+        &edit.slot,
+    );
+    let mut posted = Vec::new();
+    for pass_changed in [true, false] {
+        for (field, value, changed, now) in &merged {
+            if *changed != pass_changed {
+                continue;
+            }
+            let text = values::control_text(value.as_ref());
+            let loaded = Option::clone(now).unwrap_or(Value::Null);
+            let drawable = values::fits(&field.kind, now.as_ref())
+                && form::size(now.as_ref()) <= MAX_VALUE_BYTES;
+            // A changed field is carried even when it no longer fits, so
+            // the edit is never dropped.
+            let fits = (*changed || drawable) && budget.take(&field.name, &text, &loaded);
+            if *changed || fits {
+                base.insert(field.name.as_str().to_owned(), loaded);
+                posted.push((field.name.clone(), text));
+            }
+        }
     }
     builder.element(
         "div",
@@ -106,12 +130,11 @@ pub fn conflict_view(conflict: &Conflict, target: &FormTarget, discard: &LocalPa
         ],
     );
     hidden_inputs(&mut builder, target, &conflict.newer, &edit.slot, &base);
-    for (field, value) in &merged {
-        let input = format!("f.{}", field.name);
-        let text = values::control_text(value.as_ref());
+    for (name, text) in &posted {
+        let input = format!("f.{name}");
         builder.open(
             "input",
-            &[("type", "hidden"), ("name", &input), ("value", &text)],
+            &[("type", "hidden"), ("name", &input), ("value", text)],
         );
     }
     builder.element(
@@ -120,7 +143,7 @@ pub fn conflict_view(conflict: &Conflict, target: &FormTarget, discard: &LocalPa
         &format!("Save your edit onto the {noun} as it is now?"),
     );
     builder.open("dl", &[]);
-    for (field, value) in &merged {
+    for (field, value, ..) in &merged {
         builder.element("dt", &[], &field.label);
         builder.element("dd", &[], &values::shown(value.as_ref()));
     }

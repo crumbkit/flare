@@ -1,7 +1,10 @@
 //! The edit form that hangar draws under a page for one filled slot
 //! (decision 13ee).
 
+mod budget;
 mod controls;
+
+pub(crate) use budget::{PostBudget, encoded};
 
 use crate::body::{self, Fields};
 use crate::html::{Builder, Html};
@@ -195,6 +198,8 @@ pub fn edit_form(
         Notice::Refused { post, .. } => Some(post),
         _ => None,
     };
+    let based_on = refused.map_or_else(|| record.blob(), FormPost::based_on);
+    let mut budget = PostBudget::new(target.token(), based_on, target.binding(), slot.name());
     let mut rows = Vec::new();
     let mut base = Fields::new();
     for field in editable {
@@ -227,6 +232,13 @@ pub fn edit_form(
                 values::control_text(value),
             ),
         };
+        if !budget.take(field, &text, &loaded) {
+            rows.push(Row::ReadOnly {
+                label,
+                value: values::shown(value),
+            });
+            continue;
+        }
         base.insert(field.as_str().to_owned(), loaded);
         let spec = schema.spec(field);
         rows.push(Row::Control(Control {
@@ -238,8 +250,11 @@ pub fn edit_form(
             text,
         }));
     }
-    let untouched = fields.keys().any(|key| !base.contains_key(key));
-    let based_on = refused.map_or_else(|| record.blob(), FormPost::based_on);
+    let untouched: Vec<FieldName> = fields
+        .keys()
+        .filter(|key| !base.contains_key(key.as_str()))
+        .filter_map(|key| FieldName::try_from(key.as_str()).ok())
+        .collect();
     let mut builder = Builder::default();
     builder.open(
         "form",
@@ -266,22 +281,42 @@ pub fn edit_form(
     }
     builder.close("div");
     builder.open("div", &[("class", "go")]);
-    let mut hint = if written.is_empty() {
+    let hint = if written.is_empty() {
         format!("This page lets you edit no field of this {noun}.")
     } else {
         builder.element("button", &[("class", "btn"), ("type", "submit")], "Save");
         format!(
-            "Save writes {} to this {noun}, if nobody has changed it since you opened this form.",
-            values::joined(&written)
+            "Save writes {} to this one {noun}, if nobody has changed it since you opened this form.{}",
+            values::joined(&written),
+            not_edited(schema, &untouched)
         )
     };
-    if untouched {
-        hint.push_str(" Fields this page does not edit stay as they are.");
-    }
     builder.element("span", &[("class", "hint")], &hint);
     builder.close("div");
     builder.close("form");
     Ok(builder.finish())
+}
+
+/// The hint's sentence about the fields the form does not edit: it names
+/// the prose fields among `untouched`, such as "the body", and otherwise
+/// speaks of the other fields. It is empty when `untouched` is.
+fn not_edited(schema: &Schema, untouched: &[FieldName]) -> String {
+    if untouched.is_empty() {
+        return String::new();
+    }
+    let prose: Vec<String> = untouched
+        .iter()
+        .filter(|field| schema.field(field) == FieldKind::Prose)
+        .map(|field| values::label(schema, field))
+        .collect();
+    if prose.is_empty() {
+        " This page does not let you edit the other fields.".to_owned()
+    } else {
+        format!(
+            " This page does not let you edit the {}.",
+            values::joined(&prose)
+        )
+    }
 }
 
 /// One row of the form.
@@ -292,7 +327,7 @@ enum Row {
 }
 
 /// The size of a value as JSON text, in bytes.
-fn size(value: Option<&Value>) -> usize {
+pub(crate) fn size(value: Option<&Value>) -> usize {
     value.map_or(0, |value| match value {
         Value::String(text) => text.len(),
         other => other.to_string().len(),

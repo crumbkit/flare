@@ -74,6 +74,35 @@ fn a_mustache_tag_in_an_svg_animation_value_is_refused_because_it_can_set_a_link
 }
 
 #[test]
+fn a_mustache_tag_in_an_svg_attribute_that_takes_url_or_in_attributionsrc_is_refused() {
+    for attribute in [
+        "fill",
+        "stroke",
+        "filter",
+        "clip-path",
+        "mask",
+        "marker-start",
+        "marker-mid",
+        "marker-end",
+        "cursor",
+    ] {
+        refused(
+            &format!("<svg><rect {attribute}=\"{{{{v}}}}\"/></svg>"),
+            FlawKind::TagInUrlOrStyle {
+                attribute: attribute.to_owned(),
+            },
+        );
+        admitted(&format!("<svg><rect {attribute}=\"none\"/></svg>"));
+    }
+    refused(
+        "<img attributionsrc=\"{{v}}\" alt=\"\">",
+        FlawKind::TagInUrlOrStyle {
+            attribute: "attributionsrc".to_owned(),
+        },
+    );
+}
+
+#[test]
 fn a_mustache_tag_in_another_double_quoted_attribute_is_admitted() {
     admitted("<p title=\"{{v}}\" class=\"card {{status}}\" data-x=\"{{a.b}}\">{{v}}</p>");
     admitted("<svg viewBox=\"0 0 10 10\"><text x=\"1\" aria-label=\"{{v}}\">{{v}}</text></svg>");

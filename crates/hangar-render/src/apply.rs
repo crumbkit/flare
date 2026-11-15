@@ -1,5 +1,7 @@
 //! An edit applied to the record as the server reads it now.
 
+mod splice;
+
 use crate::body;
 use crate::post::{Edit, EditField, newlines};
 use hangar_core::{BindingName, Blob, Principal, Record, RecordBody, RecordPath, WriteProvenance};
@@ -37,7 +39,8 @@ impl RecordWrite {
         &self.path
     }
 
-    /// The new body, as pretty-printed JSON.
+    /// The new body: the record's text with the changed fields written in
+    /// and every other byte as it was.
     #[must_use]
     pub fn body(&self) -> &RecordBody {
         &self.body
@@ -130,7 +133,7 @@ impl Edit {
                 path: record.path().clone(),
             });
         }
-        let mut fields = body::fields(record.body()).ok_or_else(|| ApplyError::NotAnObject {
+        let fields = body::fields(record.body()).ok_or_else(|| ApplyError::NotAnObject {
             path: record.path().clone(),
         })?;
         let changed: Vec<&EditField> = self
@@ -159,13 +162,20 @@ impl Edit {
                 newer: record.blob().clone(),
             }));
         }
-        for field in changed {
-            match &field.entered {
-                Some(value) => fields.insert(field.name.as_str().to_owned(), value.clone()),
-                None => fields.remove(field.name.as_str()),
-            };
-        }
-        let text = format!("{:#}", Value::Object(fields));
+        let changes: Vec<(&str, Option<String>)> = changed
+            .iter()
+            .map(|field| {
+                (
+                    field.name.as_str(),
+                    field.entered.as_ref().map(Value::to_string),
+                )
+            })
+            .collect();
+        let text = splice::splice(record.body().as_str(), &changes).ok_or_else(|| {
+            ApplyError::NotAnObject {
+                path: record.path().clone(),
+            }
+        })?;
         let body = RecordBody::try_from(text.as_str()).map_err(|_| ApplyError::TooLarge)?;
         Ok(Outcome::Write(RecordWrite {
             path: record.path().clone(),

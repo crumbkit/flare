@@ -23,6 +23,11 @@ impl FormToken {
         self.0.expose_secret().is_empty()
     }
 
+    /// The bytes the token takes in a form's post.
+    pub(crate) fn encoded_len(&self) -> usize {
+        crate::form::encoded(self.0.expose_secret())
+    }
+
     /// Writes the hidden input that carries the token.
     pub(crate) fn hidden_input(&self, builder: &mut Builder) {
         builder.open(

@@ -13,6 +13,12 @@ const NEWER: &str = r#"{"title": "Artifact server", "status": "done", "body": "P
 const EDITABLE: &[&str] = &["title", "status"];
 
 fn conflict(title: &str, newer: &str) -> Conflict {
+    conflict_on("f.title", title, newer)
+}
+
+/// The conflict of an edit that sets `field` to `value` with the record
+/// `newer`.
+fn conflict_on(field: &str, value: &str, newer: &str) -> Conflict {
     let html = edit_form(
         &slot("task", EDITABLE, None),
         &record("/tasks/a.md", '1', BODY),
@@ -21,7 +27,7 @@ fn conflict(title: &str, newer: &str) -> Conflict {
         Notice::Fresh,
     )
     .unwrap();
-    let edit = FormPost::from_pairs(with(submit(html.as_str()), "f.title", title))
+    let edit = FormPost::from_pairs(with(submit(html.as_str()), field, value))
         .unwrap()
         .into_edit(&slot("task", EDITABLE, None), &task_schema())
         .unwrap();
@@ -125,4 +131,39 @@ fn every_value_in_the_view_is_escaped() {
     let text = text_of(&html);
     assert!(text.contains("<script>alert(1)</script>"));
     assert!(text.contains("<b>done</b>"));
+}
+
+/// The body that "Save my edit" writes onto `newer`.
+fn saved_from_view(conflict: &Conflict, newer: &str) -> Value {
+    let edit = FormPost::from_pairs(submit(&view(conflict)))
+        .unwrap()
+        .into_edit(&slot("task", EDITABLE, None), &task_schema())
+        .unwrap();
+    let Outcome::Write(write) = edit.apply(&record("/tasks/a.md", '2', newer)).unwrap() else {
+        panic!("expected a write");
+    };
+    serde_json::from_str(write.body().as_str()).unwrap()
+}
+
+#[test]
+fn an_unchanged_field_whose_newer_value_no_control_edits_stays_as_it_is_now() {
+    let newer = r#"{"title": "Artifact server", "status": 5, "body": "Prose"}"#;
+    let conflict = conflict("hangar: share pages", newer);
+    assert_eq!(
+        saved_from_view(&conflict, newer),
+        json!({"title": "hangar: share pages", "status": 5, "body": "Prose"})
+    );
+}
+
+#[test]
+fn an_unchanged_field_whose_newer_value_is_over_the_size_limit_stays_as_it_is_now() {
+    let long = "x".repeat(crate::form::MAX_VALUE_BYTES + 1);
+    let newer = json!({"title": long, "status": "open", "body": "Prose"}).to_string();
+    let conflict = conflict_on("f.status", "done", &newer);
+    let html = view(&conflict);
+    assert!(text_of(&html).contains(&long));
+    assert_eq!(
+        saved_from_view(&conflict, &newer),
+        json!({"title": long, "status": "done", "body": "Prose"})
+    );
 }

@@ -62,9 +62,77 @@ fn a_changed_field_is_written_and_every_other_field_stays_as_it_was_parsed() {
     assert_eq!(write.path().as_str(), "/tasks/a.md");
     assert_eq!(write.based_on(), &blob('1'));
     assert_eq!(write.through().as_str(), "hangar-plan");
-    assert!(
-        write.body().as_str().contains("\n  \"title\""),
-        "pretty-printed"
+}
+
+/// A body whose untouched fields a parse and a rewrite would change: keys
+/// out of order, an integer beyond u64, numbers in exponent and trailing
+/// zero spellings, an escaped string and uneven spacing.
+const ODD: &str = "{\n  \"$type\": \"tasks/task/v2\",\n  \"zeta\":   123456789012345678901234567890,\n  \"title\": \"Ship it\",\n  \"e\": 1e2,\n  \"status\" : \"open\",\n  \"weight\": 1.50,\n  \"esc\": \"\\u00e9\\/\",\n  \"notes\": \"keep\",\n  \"alpha\": {\"b\": 1, \"a\": [1.0, 2]}\n}\n";
+
+/// The write that setting `field` to `value` in `ODD` makes.
+fn odd_write(field: &str, value: &str) -> String {
+    let editable = &["title", "notes", "body"];
+    let html = edit_form(
+        &slot("task", editable, None),
+        &record("/tasks/a.md", '1', ODD),
+        &task_schema(),
+        &target("tok-1"),
+        Notice::Fresh,
+    )
+    .unwrap();
+    let edit = FormPost::from_pairs(with(submit(html.as_str()), field, value))
+        .unwrap()
+        .into_edit(&slot("task", editable, None), &task_schema())
+        .unwrap();
+    write(edit.apply(&record("/tasks/a.md", '1', ODD)).unwrap())
+        .body()
+        .as_str()
+        .to_owned()
+}
+
+#[test]
+fn a_save_keeps_every_byte_of_the_fields_the_person_did_not_touch() {
+    assert_eq!(
+        odd_write("f.title", "Ship it \"today\""),
+        ODD.replace("\"Ship it\"", "\"Ship it \\\"today\\\"\"")
+    );
+}
+
+#[test]
+fn an_emptied_field_is_removed_and_every_other_byte_stays() {
+    assert_eq!(
+        odd_write("f.notes", ""),
+        ODD.replace(",\n  \"notes\": \"keep\"", "")
+    );
+}
+
+#[test]
+fn a_field_the_record_lacks_is_added_after_the_others_and_every_other_byte_stays() {
+    assert_eq!(
+        odd_write("f.body", "New prose"),
+        ODD.replace("[1.0, 2]}\n}", "[1.0, 2]},\n  \"body\": \"New prose\"\n}")
+    );
+}
+
+#[test]
+fn removing_the_last_field_keeps_the_others_and_their_separators() {
+    let body = r#"{"title": "Ship it", "status": "open", "notes": "keep"}"#;
+    let html = edit_form(
+        &slot("task", &["notes"], None),
+        &record("/tasks/a.md", '1', body),
+        &task_schema(),
+        &target("tok-1"),
+        Notice::Fresh,
+    )
+    .unwrap();
+    let edit = FormPost::from_pairs(with(submit(html.as_str()), "f.notes", ""))
+        .unwrap()
+        .into_edit(&slot("task", &["notes"], None), &task_schema())
+        .unwrap();
+    let written = write(edit.apply(&record("/tasks/a.md", '1', body)).unwrap());
+    assert_eq!(
+        written.body().as_str(),
+        r#"{"title": "Ship it", "status": "open"}"#
     );
 }
 

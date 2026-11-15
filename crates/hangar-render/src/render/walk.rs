@@ -1,16 +1,29 @@
-//! The worst-case output size of a template over its data, and the refusal
-//! of a variable tag that names a list or an object.
+//! The worst-case output size of a template over its data, the record data
+//! mustache2 copies while it renders, and the refusal of a variable tag that
+//! names a list or an object.
 
-use super::{MAX_OUTPUT_BYTES, RenderError};
+use super::{MAX_COPIED_BYTES, MAX_OUTPUT_BYTES, RenderError};
 use crate::check::{Node, line_and_column};
 use mustache2::Data;
 
-/// The bytes counted so far. Each node visited counts at least one byte, so
-/// a template whose sections loop over long lists with little in them is
-/// bounded by its visits as well as by its output.
+/// What one value counts toward the copy budget, on top of the length of
+/// its text and of its key in a map. A copy allocates for each string and
+/// moves each value, so a list of many short values costs more than its
+/// text.
+const VALUE_COPY_BYTES: usize = 32;
+
+/// The bytes counted so far, for output and for copies.
+///
+/// Each node visited counts at least one output byte, so a template whose
+/// sections loop over long lists with little in them is bounded by its
+/// visits as well as by its output. mustache2 copies the whole list each
+/// time it enters a section over a list, the element each time it pushes
+/// one, and the value each time a section pushes a map or another truthy
+/// value, so each of those counts the copied value's size.
 #[derive(Debug, Default)]
 struct Budget {
     used: usize,
+    copied: usize,
 }
 
 impl Budget {
@@ -23,6 +36,44 @@ impl Budget {
         }
         Ok(())
     }
+
+    /// Counts one copy of `value`. The count stops as soon as it passes the
+    /// budget, so measuring a large value costs no more than the budget.
+    fn copy(&mut self, value: &Data) -> Result<(), RenderError> {
+        let left = MAX_COPIED_BYTES.saturating_sub(self.copied);
+        self.copied = self.copied.saturating_add(copy_size(value, left));
+        if self.copied > MAX_COPIED_BYTES {
+            return Err(RenderError::TooCostly {
+                max: MAX_COPIED_BYTES,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// The bytes a copy of `value` counts, or a number over `limit` once the
+/// count passes it.
+fn copy_size(value: &Data, limit: usize) -> usize {
+    let mut size = 0_usize;
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        size = size.saturating_add(VALUE_COPY_BYTES);
+        match value {
+            Data::String(text) => size = size.saturating_add(text.len()),
+            Data::List(items) => pending.extend(items),
+            Data::Map(map) => {
+                for (key, item) in map {
+                    size = size.saturating_add(key.len());
+                    pending.push(item);
+                }
+            }
+            _ => {}
+        }
+        if size > limit {
+            break;
+        }
+    }
+    size
 }
 
 /// Walks the template's tags against `data` with the context stack that
@@ -30,11 +81,13 @@ impl Budget {
 ///
 /// A section over a list visits each element, a section over another truthy
 /// value pushes it, and an inverted section pushes nothing. The walk stops
-/// as soon as the bound passes 4 MiB.
+/// as soon as the bound passes 4 MiB, or the record data mustache2 would
+/// copy passes 64 MiB.
 ///
 /// # Errors
 ///
-/// Returns [`RenderError::TooLarge`] when the bound passes 4 MiB and
+/// Returns [`RenderError::TooLarge`] when the bound passes 4 MiB,
+/// [`RenderError::TooCostly`] when the copies pass 64 MiB, and
 /// [`RenderError::NotText`] when a variable tag resolves to a list or an
 /// object.
 pub(crate) fn worst_case(text: &str, nodes: &[Node], data: &Data) -> Result<usize, RenderError> {
@@ -71,15 +124,18 @@ fn walk(
                     continue;
                 }
                 match value {
-                    Some(Data::List(items)) => {
+                    Some(list @ Data::List(items)) => {
+                        budget.copy(list)?;
                         for item in items {
                             budget.add(0)?;
+                            budget.copy(item)?;
                             stack.push(item);
                             walk(text, children, stack, budget)?;
                             stack.pop();
                         }
                     }
                     Some(value) if value.is_truthy() => {
+                        budget.copy(value)?;
                         stack.push(value);
                         walk(text, children, stack, budget)?;
                         stack.pop();

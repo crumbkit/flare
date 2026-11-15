@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::check::template;
+use crate::check_page;
 use crate::test_support::{
     Tok, html_page, markdown_page, record, slot, slot_name, start_tags, text_of, tokens,
 };
@@ -199,8 +200,64 @@ fn nested_sections_over_long_lists_with_empty_bodies_are_refused_quickly() {
     let close = "{{/task.a}}".repeat(8);
     assert!(matches!(
         render(&format!("{open}{close}"), &body),
-        Err(RenderError::TooLarge { .. })
+        Err(RenderError::TooLarge { .. } | RenderError::TooCostly { .. })
     ));
+}
+
+/// Renders `template` with the slots `a` and `b` filled with `a` and `b`.
+fn render_two(template: &str, a: &str, b: &str) -> Result<String, RenderError> {
+    render_page(
+        &html_page(template, vec![slot("a", &[], None), slot("b", &[], None)]),
+        &[
+            (slot_name("a"), record("/tasks/a.md", '1', a)),
+            (slot_name("b"), record("/tasks/b.md", '2', b)),
+        ],
+    )
+    .map(PageDocument::into_string)
+}
+
+#[test]
+fn a_section_that_copies_a_large_record_on_each_pass_of_a_long_loop_is_refused_quickly() {
+    // mustache2 copies the value a section pushes, and the list a section
+    // walks, each time it enters the section. Here each of the 500,000
+    // passes over a.items would copy all of b, which is near 1 MiB.
+    let a = format!(r#"{{"items": [{}0]}}"#, "0,".repeat(499_999));
+    let b = format!(r#"{{"l": [{}"a"]}}"#, "\"a\",".repeat(249_999));
+    assert!(a.len() < 1024 * 1024 && b.len() < 1024 * 1024);
+    let template = "{{#a.items}}{{#b}}{{/b}}{{/a.items}}";
+    assert!(
+        check_page(&html_page(
+            template,
+            vec![slot("a", &[], None), slot("b", &[], None)]
+        ))
+        .is_ok()
+    );
+    assert!(matches!(
+        render_two(template, &a, &b),
+        Err(RenderError::TooCostly {
+            max: MAX_COPIED_BYTES
+        })
+    ));
+}
+
+#[test]
+fn a_loop_over_a_long_list_of_numbers_in_one_record_is_admitted() {
+    let a = format!(r#"{{"items": [{}0]}}"#, "7,".repeat(99_999));
+    let document = render_two("<p>{{#a.items}}{{.}} {{/a.items}}</p>", &a, "{}").unwrap();
+    let body = &document[document.find("<body>").unwrap()..];
+    assert_eq!(body.matches("7 ").count(), 99_999);
+}
+
+#[test]
+fn a_nested_loop_over_tasks_and_their_tags_is_admitted() {
+    let tasks: Vec<String> = (0..200)
+        .map(|index| format!(r#"{{"title": "Task {index}", "tags": ["home", "garden", "tools", "weekend", "later"]}}"#))
+        .collect();
+    let a = format!(r#"{{"items": [{}]}}"#, tasks.join(","));
+    let template = "<ul>{{#a.items}}<li>{{title}}{{#tags}} <b>{{.}}</b>{{/tags}}{{#a}}{{/a}}</li>{{/a.items}}</ul>";
+    let document = render_two(template, &a, "{}").unwrap();
+    assert_eq!(document.matches("<li>").count(), 200);
+    assert_eq!(document.matches("<b>garden</b>").count(), 200);
 }
 
 #[test]

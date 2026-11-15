@@ -122,7 +122,7 @@ fn a_text_field_whose_value_holds_a_newline_gets_a_textarea_that_keeps_a_leading
     assert_eq!(control(&html, "f.title").0, "textarea");
     let pairs = submit(&html);
     let title = pairs.iter().find(|(name, _)| name == "f.title").unwrap();
-    assert_eq!(title.1, "\nLine one\nLine two");
+    assert_eq!(title.1, "\r\nLine one\r\nLine two");
 }
 
 #[test]
@@ -184,6 +184,94 @@ fn an_unsupported_or_oversized_field_shows_its_value_as_read_only_text() {
     assert_eq!(base, serde_json::json!({"status": "open"}));
 }
 
+/// The schema, slot and record of a task with 32 text fields `f0` to
+/// `f31`, each holding `value`, with `f0` to `f9` as prose.
+fn wide(value: &str) -> (Schema, hangar_core::Slot, hangar_core::Record) {
+    let names: Vec<String> = (0..MAX_FIELDS).map(|index| format!("f{index}")).collect();
+    let properties: serde_json::Map<String, serde_json::Value> = names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            let spec = if index < 10 {
+                serde_json::json!({"type": "string", "x-board-prose": true})
+            } else {
+                serde_json::json!({"type": "string"})
+            };
+            (name.clone(), spec)
+        })
+        .collect();
+    let schema =
+        Schema::parse(&serde_json::json!({"type": "object", "properties": properties}).to_string())
+            .unwrap();
+    let body: serde_json::Map<String, serde_json::Value> = names
+        .iter()
+        .map(|name| (name.clone(), serde_json::json!(value)))
+        .collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    (
+        schema,
+        slot("task", &names, None),
+        record(
+            "/tasks/a.md",
+            '1',
+            &serde_json::Value::Object(body).to_string(),
+        ),
+    )
+}
+
+#[test]
+fn the_largest_form_posts_within_the_servers_one_mib_body_limit() {
+    // Each record stays under Board's 1 MiB record limit: a control
+    // character, a line break and a quote take more than one byte in JSON.
+    let cases = [
+        "\u{65e5}".repeat(5000),
+        "\u{1}".repeat(5000),
+        "\n".repeat(15_000),
+        "\"".repeat(15_000),
+        "x".repeat(MAX_VALUE_BYTES),
+    ];
+    for value in cases {
+        assert!(value.len() <= MAX_VALUE_BYTES);
+        let (schema, slot, record) = wide(&value);
+        let html = edit_form(&slot, &record, &schema, &target("tok-1"), Notice::Fresh)
+            .unwrap()
+            .into_string();
+        let pairs = submit(&html);
+        let length = crate::test_support::urlencoded_len(&pairs);
+        assert!(length <= 1024 * 1024, "{length}");
+        let drawn = control_names(&html)
+            .iter()
+            .filter(|name| name.starts_with("f."))
+            .count();
+        assert!(drawn >= 1, "{drawn}");
+        assert_eq!(
+            text_of(&html)
+                .matches("This field cannot be edited here")
+                .count(),
+            MAX_FIELDS - drawn
+        );
+        assert!(
+            FormPost::from_pairs(pairs)
+                .unwrap()
+                .into_edit(&slot, &schema)
+                .is_ok()
+        );
+    }
+}
+
+#[test]
+fn a_form_of_32_short_fields_draws_every_field() {
+    let (schema, slot, record) = wide("short value");
+    let html = edit_form(&slot, &record, &schema, &target("tok-1"), Notice::Fresh)
+        .unwrap()
+        .into_string();
+    let drawn = control_names(&html)
+        .iter()
+        .filter(|name| name.starts_with("f."))
+        .count();
+    assert_eq!(drawn, MAX_FIELDS);
+}
+
 #[test]
 fn a_field_whose_value_has_the_wrong_type_for_its_schema_is_read_only() {
     let html = form(&["title", "status"], r#"{"title": 7, "status": "open"}"#);
@@ -241,11 +329,27 @@ fn the_hint_names_the_fields_a_save_writes_and_says_since_you_opened_this_form()
     assert!(text.contains("Edit this task"), "{text}");
     assert!(
         text.contains(
-            "Save writes Title and Status to this task, if nobody has changed it since you opened this form."
+            "Save writes Title and Status to this one task, if nobody has changed it since you opened this form. This page does not let you edit the body."
         ),
         "{text}"
     );
-    assert!(text.contains("Fields this page does not edit stay as they are."));
+}
+
+#[test]
+fn the_hint_names_no_field_when_the_page_edits_every_prose_field() {
+    let text = text_of(&form(&["title", "status", "body"], BODY));
+    assert!(
+        text.contains(
+            "Save writes Title, Status and body to this one task, if nobody has changed it since you opened this form. This page does not let you edit the other fields."
+        ),
+        "{text}"
+    );
+    let text = text_of(&form(
+        &["title", "status"],
+        r#"{"title": "Ship it", "status": "open"}"#,
+    ));
+    assert!(text.contains("since you opened this form."), "{text}");
+    assert!(!text.contains("This page does not let you edit"), "{text}");
 }
 
 #[test]

@@ -135,7 +135,11 @@ impl FormPost {
             } else {
                 MAX_VALUE_BYTES
             };
-            if count >= MAX_PAIRS || value.len() > limit {
+            // A browser posts each line break as CRLF, and the form drew the
+            // value with LF line endings, so the limit counts a CRLF as one
+            // byte.
+            let length = value.len().saturating_sub(value.matches("\r\n").count());
+            if count >= MAX_PAIRS || length > limit {
                 return Err(PostError::TooLarge);
             }
             if let Some(index) = HIDDEN.iter().position(|name| *name == key) {
@@ -286,6 +290,7 @@ impl FormPost {
             })?;
             fields.push(EditField {
                 name: field.clone(),
+                kind,
                 label,
                 base: Some(base.clone()).filter(|value| !value.is_null()),
                 entered,
@@ -318,6 +323,7 @@ pub struct Edit {
 #[derive(Debug, Clone)]
 pub(crate) struct EditField {
     pub(crate) name: FieldName,
+    pub(crate) kind: FieldKind,
     pub(crate) label: String,
     pub(crate) base: Option<Value>,
     pub(crate) entered: Option<Value>,

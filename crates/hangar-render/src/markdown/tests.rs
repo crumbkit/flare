@@ -138,3 +138,11 @@ fn a_link_title_is_escaped_into_its_attribute() {
     assert_eq!(anchors.len(), 1, "{html}");
     assert_eq!(anchors[0].1.len(), 2, "{html}");
 }
+
+#[test]
+fn an_email_autolink_links_to_its_mailto_address() {
+    assert_eq!(
+        hrefs("<someone@example.com>"),
+        vec!["mailto:someone@example.com".to_owned()]
+    );
+}

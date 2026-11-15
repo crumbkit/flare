@@ -5,3 +5,7 @@
 [profile.default]
 fail-fast = false
 retries = 0
+# A test that runs past 30 seconds is reported as slow, and one that runs
+# past 60 seconds is stopped and fails, so a test that never finishes is
+# named in the output long before CI's 10-minute job timeout.
+slow-timeout = { period = "30s", terminate-after = 2 }

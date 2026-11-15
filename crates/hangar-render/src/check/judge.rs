@@ -6,7 +6,9 @@ use super::{FlawKind, Found, Place, Site, TagKind};
 /// Attributes whose value is a URL or a style, which a record value may not
 /// choose (threat 9). SVG animation's `to`, `from`, `values`, `by` and
 /// `attributeName` are listed too, because `<set attributeName="href">` sets
-/// a link's target from them.
+/// a link's target from them. The SVG presentation attributes that take
+/// `url()` are listed, and so is `attributionsrc`, whose URL a browser
+/// fetches.
 const URL_OR_STYLE: &[&str] = &[
     "href",
     "src",
@@ -25,6 +27,16 @@ const URL_OR_STYLE: &[&str] = &[
     "values",
     "by",
     "attributename",
+    "fill",
+    "stroke",
+    "filter",
+    "clip-path",
+    "mask",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    "cursor",
+    "attributionsrc",
 ];
 
 /// The flaw of each tag that sits where a record value could change the

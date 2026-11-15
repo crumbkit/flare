@@ -212,8 +212,46 @@ pub(crate) fn text_of(html: &str) -> String {
 
 /// The pairs a browser would post from the first form in `html`, with no
 /// field changed: each named input's value (a checkbox only when checked),
-/// each textarea's text and each select's selected option.
+/// each textarea's text and each select's selected option. As a browser
+/// does, it turns every LF and lone CR in a value into CRLF.
 pub(crate) fn submit(html: &str) -> Vec<(String, String)> {
+    drawn_pairs(html)
+        .into_iter()
+        .map(|(name, value)| (name, crlf(&value)))
+        .collect()
+}
+
+/// `text` with each LF, CR and CRLF line break made CRLF.
+pub(crate) fn crlf(text: &str) -> String {
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "\r\n")
+}
+
+/// The bytes of `pairs` as an `application/x-www-form-urlencoded` body:
+/// `*`, `-`, `.`, `_`, ASCII letters and digits stay one byte, a space
+/// becomes `+`, and every other byte becomes `%XX`.
+pub(crate) fn urlencoded_len(pairs: &[(String, String)]) -> usize {
+    let encoded = |text: &str| -> usize {
+        text.bytes()
+            .map(|byte| {
+                if byte.is_ascii_alphanumeric() || b"*-._ ".contains(&byte) {
+                    1
+                } else {
+                    3
+                }
+            })
+            .sum()
+    };
+    let joins = pairs.len().saturating_sub(1);
+    pairs
+        .iter()
+        .map(|(name, value)| encoded(name) + 1 + encoded(value))
+        .sum::<usize>()
+        + joins
+}
+
+fn drawn_pairs(html: &str) -> Vec<(String, String)> {
     let mut pairs = Vec::new();
     let mut open: Option<(String, String)> = None;
     let mut select: Option<String> = None;

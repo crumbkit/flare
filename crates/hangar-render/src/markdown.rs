@@ -4,7 +4,7 @@
 //! first would let a record value add Markdown links.
 
 use crate::html::escape_into;
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 
 /// Renders Markdown into HTML. Raw HTML shows as escaped text, a link keeps
 /// its target only for `http`, `https`, `mailto` and relative targets, and an
@@ -153,8 +153,18 @@ impl Writer {
             Tag::Superscript => self.out.push_str("<sup>"),
             Tag::Subscript => self.out.push_str("<sub>"),
             Tag::Link {
-                dest_url, title, ..
+                link_type,
+                dest_url,
+                title,
+                ..
             } => {
+                // An email autolink such as <someone@example.com> gives its
+                // address with no scheme.
+                let dest_url = if link_type == LinkType::Email {
+                    format!("mailto:{dest_url}").into()
+                } else {
+                    dest_url
+                };
                 let keep = self.image.is_none() && link_allowed(&dest_url);
                 if keep {
                     self.out.push_str("<a href=\"");

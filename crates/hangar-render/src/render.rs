@@ -16,6 +16,12 @@ use std::borrow::Cow;
 /// sections and the data's lists, and for a Markdown page's HTML.
 pub(crate) const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 
+/// The most record data, in bytes, that mustache2 may copy while it renders
+/// one page. A value counts its text and 32 bytes more, so one copy of a
+/// record of 1 MiB counts from about 1 MiB to about 16 MiB. Rendering that
+/// copies just under 64 MiB took about 100 milliseconds in a release build.
+pub(crate) const MAX_COPIED_BYTES: usize = 64 * 1024 * 1024;
+
 /// A whole HTML document for the sandboxed frame: the stylesheet in a
 /// `<style>` element, then the page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +64,13 @@ pub enum RenderError {
         /// The largest output in bytes.
         max: usize,
     },
+    /// Rendering would copy more than 64 MiB of record data, because
+    /// sections push large values inside long loops.
+    #[error("rendering the page would copy more than {max} bytes of record data")]
+    TooCostly {
+        /// The most record data in bytes that rendering may copy.
+        max: usize,
+    },
     /// A variable tag names a list or an object, which Mustache would write
     /// without escaping.
     #[error(
@@ -91,7 +104,8 @@ pub enum RenderError {
 /// [`RenderError::Misfit`] for a fill of an undeclared slot or of the wrong
 /// type, [`RenderError::NotAnObject`] for a body that is not one JSON
 /// object, [`RenderError::TooLarge`] when the output could exceed 4 MiB,
-/// [`RenderError::NotText`] for a variable tag that names a list or an
+/// [`RenderError::TooCostly`] when rendering would copy more than 64 MiB of
+/// record data, [`RenderError::NotText`] for a variable tag that names a list or an
 /// object, and [`RenderError::Mustache`] when mustache2 refuses the
 /// template.
 pub fn render_page(page: &Page, fills: &[(SlotName, Record)]) -> Result<PageDocument, RenderError> {

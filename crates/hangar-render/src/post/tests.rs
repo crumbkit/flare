@@ -134,6 +134,53 @@ fn a_post_larger_than_any_form_is_refused() {
     );
 }
 
+/// The pairs a browser posts from the form drawn for a record whose body
+/// field holds `prose`.
+fn drawn_with_prose(prose: &str) -> Vec<(String, String)> {
+    let body = serde_json::json!({"title": "Ship it", "status": "open", "body": prose}).to_string();
+    let html = edit_form(
+        &slot("task", &["title", "body"], None),
+        &record("/tasks/a.md", '1', &body),
+        &task_schema(),
+        &target("tok-1"),
+        Notice::Fresh,
+    )
+    .unwrap();
+    submit(html.as_str())
+}
+
+#[test]
+fn a_textarea_at_the_size_limit_posts_back_although_the_browser_sends_crlf() {
+    let line = "x".repeat(12) + "\n";
+    let mut prose = line.repeat(crate::form::MAX_VALUE_BYTES / line.len());
+    prose.push_str(&"y".repeat(crate::form::MAX_VALUE_BYTES - prose.len()));
+    assert_eq!(prose.len(), crate::form::MAX_VALUE_BYTES);
+    let pairs = with(drawn_with_prose(&prose), "f.title", "Ship it today");
+    let posted = &pairs.iter().find(|(key, _)| key == "f.body").unwrap().1;
+    assert!(posted.len() > crate::form::MAX_VALUE_BYTES);
+    let edit = FormPost::from_pairs(pairs)
+        .unwrap()
+        .into_edit(&slot("task", &["title", "body"], None), &task_schema())
+        .unwrap();
+    assert_eq!(
+        edit.fields
+            .iter()
+            .find(|field| field.name.as_str() == "body")
+            .unwrap()
+            .entered,
+        Some(Value::String(prose))
+    );
+}
+
+#[test]
+fn an_entry_over_the_size_limit_with_lf_line_endings_is_refused() {
+    let over = crate::test_support::crlf(&("x\n".repeat(crate::form::MAX_VALUE_BYTES / 2) + "y"));
+    assert_eq!(
+        FormPost::from_pairs(with(drawn(), "f.title", &over)).unwrap_err(),
+        PostError::TooLarge
+    );
+}
+
 #[test]
 fn a_post_for_another_slot_is_refused() {
     let result = FormPost::from_pairs(with(drawn(), "slot", "other"))
