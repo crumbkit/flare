@@ -252,6 +252,51 @@ impl BoardStore {
     }
 }
 
+impl BoardStore {
+    /// Checks that the board program can read a record's history at a
+    /// commit, which every page read needs. It runs one `board log --at`
+    /// and changes nothing.
+    ///
+    /// `board --version` prints a commit hash, which has no order, so the
+    /// check asks for the capability: a program that refuses `--at` as a
+    /// usage error is older than crumbkit/board e4ee3333. Any other answer
+    /// that is a board report, a refusal included, shows that the program
+    /// read the option.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProgramError::TooOld`] when the program answers
+    /// `board::cli::usage`, and [`ProgramError::Unavailable`] when it does
+    /// not run, runs past its deadline or prints no board report.
+    pub async fn check_program(&self) -> Result<(), ProgramError> {
+        match self
+            .board
+            .log("/.board", Some("HEAD"), process::Rows::Newest)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(report::Failure::Board(failure)) if failure.code == "board::cli::usage" => {
+                Err(ProgramError::TooOld)
+            }
+            Err(report::Failure::Board(_)) => Ok(()),
+            Err(report::Failure::Child(_)) => Err(ProgramError::Unavailable),
+        }
+    }
+}
+
+/// Why [`BoardStore::check_program`] refused the board program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum ProgramError {
+    /// The program has no `board log --at`.
+    #[error("the board program has no `log --at`; hangar needs crumbkit/board e4ee3333 or later")]
+    TooOld,
+    /// The program did not run, ran past its deadline or printed no board
+    /// report.
+    #[error("the board program did not answer")]
+    Unavailable,
+}
+
 impl RecordStore for BoardStore {
     async fn read(&self, path: &RecordPath) -> Result<Record, ReadError> {
         records::read(&self.board, path).await
