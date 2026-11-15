@@ -123,8 +123,8 @@ async fn two_entry_authenticator(fake: &Fake) -> OidcAuthenticator<TestClock> {
         &secret(),
         TestClock::new(),
     )
-        .await
-        .unwrap()
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -185,9 +185,15 @@ async fn authorize_allows_a_domain_principal_only_while_a_session_of_it_is_live(
     fake.set_hd(Some(json!(DOMAIN)));
     let (authenticator, clock) = connect_domain(&fake).await;
     let ada = principal(EMAIL);
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Denied);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
     let signed_in = sign_in(&authenticator, &fake).await.unwrap();
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Allowed);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Allowed
+    );
     for access in [Access::Read, Access::Write] {
         assert_eq!(
             authenticator.authorize(&ada, access, &page(HOME)).await,
@@ -200,13 +206,22 @@ async fn authorize_allows_a_domain_principal_only_while_a_session_of_it_is_live(
         Decision::Denied
     );
     authenticator.sign_out(signed_in.session());
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Denied);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
 
     assert!(sign_in(&authenticator, &fake).await.is_ok());
     clock.advance(Duration::from_secs(12 * 60 * 60 - 1));
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Allowed);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Allowed
+    );
     clock.advance(Duration::from_secs(1));
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Denied);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
 }
 
 #[tokio::test]
@@ -218,9 +233,15 @@ async fn a_domain_principal_with_two_sessions_stays_allowed_after_one_signs_out(
     let first = sign_in(&authenticator, &fake).await.unwrap();
     let second = sign_in(&authenticator, &fake).await.unwrap();
     authenticator.sign_out(first.session());
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Allowed);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Allowed
+    );
     authenticator.sign_out(second.session());
-    assert_eq!(ask(&authenticator, &ada, &page(HOME)).await, Decision::Denied);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
 }
 
 #[tokio::test]

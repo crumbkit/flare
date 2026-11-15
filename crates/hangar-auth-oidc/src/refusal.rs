@@ -153,8 +153,9 @@ pub enum SignInRefusal {
     /// The ID token has no email, or does not mark it verified.
     #[error("the account's email is missing or not verified")]
     EmailUnverified,
-    /// The email is not on the allow-list.
-    #[error("the account is not on the allow-list")]
+    /// The email is not on the allow-list, or under
+    /// [`Admit::Domain`](crate::Admit::Domain) it cannot be a principal id.
+    #[error("the account is not allowed to sign in")]
     NotAllowed,
     /// 1,024 sessions are live.
     #[error("too many sessions are live")]
@@ -162,11 +163,14 @@ pub enum SignInRefusal {
     /// The system's random number generator failed.
     #[error("no random bytes were available")]
     NoRandomness,
-    /// Stub.
-    #[error("stub")]
+    /// Under [`Admit::Domain`](crate::Admit::Domain), the ID token has no
+    /// `hd` claim, as for a personal Google account, even one whose email
+    /// ends in the configured domain.
+    #[error("the account belongs to no Google Workspace organisation")]
     NoHostedDomain,
-    /// Stub.
-    #[error("stub")]
+    /// Under [`Admit::Domain`](crate::Admit::Domain), the ID token's `hd`
+    /// claim is not a string equal to the configured domain.
+    #[error("the account belongs to another Google Workspace organisation")]
     OtherHostedDomain,
 }
 

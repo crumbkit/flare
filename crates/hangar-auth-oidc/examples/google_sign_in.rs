@@ -1,16 +1,17 @@
 //! Signs one person in with a Google account, for the manual check in the
 //! crate's README.
 //!
-//! Run it as `google_sign_in <client id> <allowed email>`. It reads the
-//! client secret from the Keychain item of the service `hangar-oidc-google`,
+//! Run it as `google_sign_in <client id> <allowed email>`, or as
+//! `google_sign_in <client id> --domain <domain>` to admit every verified
+//! account of one Google Workspace domain. It reads the client secret from the Keychain item of the service `hangar-oidc-google`,
 //! listens on 127.0.0.1:8740 and [::1]:8740, and serves two routes:
 //! `/auth/oidc/start` redirects to Google, and `/auth/oidc/callback`
 //! answers with one line, the principal that signed in or the refusal's
 //! name. It prints nothing. When it cannot start, `main` returns the error.
 
 use hangar_auth_oidc::{
-    Admit, AllowEntry, AllowList, ClientId, Email, IssuerUrl, KeptState, KeychainSecret,
-    OidcAuthenticator, OidcConfig, Reach, RedirectUri, ReturnTo,
+    Admit, AllowEntry, AllowList, ClientId, DomainRule, Email, IssuerUrl, KeptState,
+    KeychainSecret, OidcAuthenticator, OidcConfig, Reach, RedirectUri, ReturnTo, WorkspaceDomain,
 };
 use hangar_core::PrincipalId;
 use http_body_util::Full;
@@ -28,7 +29,8 @@ const COOKIE_NAME: &str = "hangar_oidc_state";
 /// Why the example could not start. `main` returns it, and the Rust runtime
 /// prints its `Debug` output, which says what failed in a sentence.
 enum StartError {
-    /// The arguments are not a client ID and one email.
+    /// The arguments are not a client ID and one email or `--domain` and a
+    /// domain.
     Usage,
     /// A value in the configuration was refused.
     Config(hangar_auth_oidc::ConfigError),
@@ -43,7 +45,8 @@ enum StartError {
 impl std::fmt::Debug for StartError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Usage => formatter.write_str("usage: google_sign_in <client id> <allowed email>"),
+            Self::Usage => formatter
+                .write_str("usage: google_sign_in <client id> <allowed email | --domain <domain>>"),
             Self::Config(error) => write!(formatter, "the configuration was refused: {error}"),
             Self::Secret(error) => write!(formatter, "the client secret was refused: {error}"),
             Self::Connect(error) => write!(formatter, "the provider could not be used: {error}"),
@@ -52,23 +55,40 @@ impl std::fmt::Debug for StartError {
     }
 }
 
+/// The rule of who may sign in: one email, which signs in as the principal
+/// `owner`, or every account of one domain, each of which signs in as its
+/// email.
+fn admit(rule: &[String]) -> Result<Admit, StartError> {
+    match rule {
+        [flag, domain] if flag == "--domain" => {
+            let domain = WorkspaceDomain::try_from(domain.as_str()).map_err(StartError::Config)?;
+            Ok(Admit::Domain(DomainRule::new(domain, Reach::Everything)))
+        }
+        [email] => {
+            let principal = PrincipalId::try_from("owner").map_err(|_| StartError::Usage)?;
+            let allow = AllowList::new(vec![AllowEntry::new(
+                Email::try_from(email.as_str()).map_err(StartError::Config)?,
+                principal,
+                Reach::Everything,
+            )])
+            .map_err(StartError::Config)?;
+            Ok(Admit::Emails(allow))
+        }
+        _ => Err(StartError::Usage),
+    }
+}
+
 fn config(arguments: &[String]) -> Result<OidcConfig, StartError> {
-    let [_, client_id, email] = arguments else {
+    let [_, client_id, rule @ ..] = arguments else {
         return Err(StartError::Usage);
     };
-    let principal = PrincipalId::try_from("owner").map_err(|_| StartError::Usage)?;
-    let allow = AllowList::new(vec![AllowEntry::new(
-        Email::try_from(email.as_str()).map_err(StartError::Config)?,
-        principal,
-        Reach::Everything,
-    )])
-    .map_err(StartError::Config)?;
+    let admit = admit(rule)?;
     Ok(OidcConfig::new(
         IssuerUrl::try_from("https://accounts.google.com").map_err(StartError::Config)?,
         ClientId::try_from(client_id.as_str()).map_err(StartError::Config)?,
         RedirectUri::try_from("http://localhost:8740/auth/oidc/callback")
             .map_err(StartError::Config)?,
-        Admit::Emails(allow),
+        admit,
     ))
 }
 

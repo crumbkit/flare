@@ -1,6 +1,7 @@
 //! [`OidcAuthenticator`]: connect, start and complete a sign-in, sign out,
 //! and the [`Authenticator`] implementation.
 
+use crate::allow::Admit;
 use crate::clock::{Clock, SystemClock};
 use crate::config::OidcConfig;
 use crate::flow::{
@@ -150,12 +151,12 @@ impl<C: Clock> OidcAuthenticator<C> {
             nonce: &pending.nonce,
             now,
         };
-        let email = token::check(&id_token, &key, &expected)?;
-        let crate::allow::Admit::Emails(allow) = &self.config.admit else {
-            return Err(SignInRefusal::NotAllowed);
-        };
-        let entry = allow.by_email(&email).ok_or(SignInRefusal::NotAllowed)?;
-        let principal = Principal::new(entry.principal().clone());
+        let verified = token::check(&id_token, &key, &expected)?;
+        let principal = self
+            .config
+            .admit
+            .principal(&verified.email, verified.hd.as_ref())?;
+        let principal = Principal::new(principal);
         lock(&self.sessions).create(
             principal,
             pending.return_to,
@@ -185,8 +186,11 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
             .ok_or(AuthError::Rejected)
     }
 
-    /// Allows a principal on the allow-list the resources its reach names,
-    /// for read and for write, and denies everything else.
+    /// Allows a principal the resources its reach names, for read and for
+    /// write, and denies everything else. Under [`Admit::Emails`] the
+    /// principal must be on the allow-list. Under [`Admit::Domain`] it must
+    /// hold a live session of this authenticator, and the rule's reach
+    /// applies. Makes no request.
     async fn authorize(
         &self,
         principal: &Principal,
@@ -194,10 +198,13 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
         resource: &Resource,
     ) -> Result<Decision, AuthError> {
         let reaches = match &self.config.admit {
-            crate::allow::Admit::Emails(allow) => allow
+            Admit::Emails(allow) => allow
                 .by_principal(principal.id())
                 .is_some_and(|entry| entry.reach().reaches(resource)),
-            crate::allow::Admit::Domain(_) => false,
+            Admit::Domain(rule) => {
+                lock(&self.sessions).holds(principal.id(), self.clock.now())
+                    && rule.reach().reaches(resource)
+            }
         };
         Ok(if reaches {
             Decision::Allowed

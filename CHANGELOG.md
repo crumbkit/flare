@@ -16,3 +16,15 @@ This file records the notable changes to hangar. The format follows
   Google. It runs the authorisation code flow with PKCE, verifies the RS256
   ID token, admits only verified emails on its allow-list, keeps sessions in
   memory and reads the client secret from the macOS Keychain.
+- `hangar-auth-oidc` can admit every verified account of one Google
+  Workspace domain with `Admit::Domain`. The signed `hd` claim of the ID
+  token decides membership, and the email's domain does not. A sign-in
+  without `hd` is refused as `NoHostedDomain`, and one with another `hd` as
+  `OtherHostedDomain`. Each admitted account signs in as its email, and
+  `authorize` allows it while one of its sessions is live.
+
+### Changed
+
+- `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
+  an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its
+  behaviour.

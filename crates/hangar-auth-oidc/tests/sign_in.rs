@@ -16,8 +16,8 @@ use fake_provider::{
     config_with, connect, now_seconds, return_to, secret, sign_in,
 };
 use hangar_auth_oidc::{
-    Admit, AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal, TestClock,
-    TokenFault,
+    Admit, AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal,
+    TestClock, TokenFault,
 };
 use hangar_core::{Authenticator, PrincipalId};
 use serde_json::json;

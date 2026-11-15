@@ -8,7 +8,7 @@
 //! to and the state for the server to keep in a cookie.
 //! [`OidcAuthenticator::complete`] takes the callback's query and the kept
 //! state, exchanges the code with PKCE, verifies the ID token, checks the
-//! email against the allow-list and creates a session. The crate holds no
+//! account against the configured [`Admit`] rule and creates a session. The crate holds no
 //! HTTP routes, cookies or pages; the server that hosts it does.
 //!
 //! The crate accepts only ID tokens signed with RS256, asks for no refresh token
@@ -30,8 +30,41 @@
 //!    with 60 seconds of leeway.
 //! 5. `nonce` equals the pending sign-in's nonce.
 //! 6. `email` is present and `email_verified` is the JSON boolean `true`.
-//! 7. The email is ASCII, and lower-cased it is on the allow-list, whose
-//!    entry gives the principal.
+//! 7. Under [`Admit::Emails`], the email is ASCII, and lower-cased it is on
+//!    the allow-list, whose entry gives the principal. The `hd` claim is
+//!    ignored.
+//! 8. Under [`Admit::Domain`], in place of step 7: the ID token has an `hd`
+//!    claim ([`SignInRefusal::NoHostedDomain`] when it has none); `hd` is a
+//!    JSON string equal to the configured domain without regard to ASCII
+//!    letter case, as a whole string with nothing trimmed and no subdomain,
+//!    parent domain or suffix matching
+//!    ([`SignInRefusal::OtherHostedDomain`] otherwise); and the email is
+//!    ASCII, so that lower-cased it is the principal id
+//!    ([`SignInRefusal::NotAllowed`] otherwise).
+//!
+//! # Admitting a Google Workspace domain
+//!
+//! [`Admit::Domain`] admits every verified account of one Google Workspace
+//! domain. Only the `hd` claim of the signed ID token decides, because
+//! Google sets it to the domain of the account's organisation and leaves it
+//! out for a personal account. The email's own domain is never compared: a
+//! personal account can have an email that ends in the domain, and an
+//! organisation's account can have an email in a secondary domain.
+//!
+//! The authorisation URL from `start` carries `hd=<domain>`, so Google
+//! offers that organisation's accounts. A person can change that parameter,
+//! so it admits nobody, and an `hd` in the callback query is ignored.
+//!
+//! `hd` is a Google claim, and the crate does not check that the issuer is
+//! Google: with another issuer, [`Admit::Domain`] trusts that issuer's `hd`.
+//! Use it with the Google issuer. A session of an account that leaves the
+//! organisation lasts until it expires.
+//!
+//! A domain principal is on no list, so [`hangar_core::Authenticator::authorize`]
+//! allows it exactly while at least one of its sessions is live, and the
+//! rule's [`Reach`] covers the resource. It checks each session's expiry
+//! under the session lock, so a session that has expired but is not yet
+//! removed authorises nobody.
 //!
 //! # Limits
 //!
@@ -74,13 +107,21 @@
 //!
 //! | State | Event | Guard | Next state |
 //! | --- | --- | --- | --- |
-//! | absent | `complete` succeeds | every check passed, and fewer than 1,024 sessions are live after expired ones are removed | live |
+//! | absent | `complete` succeeds under [`Admit::Emails`] | every ID token check passed, the email is verified and on the allow-list, and fewer than 1,024 sessions are live after expired ones are removed | live |
+//! | absent | `complete` succeeds under [`Admit::Domain`] | every ID token check passed, the email is verified, the signed `hd` claim is a string equal to the configured domain without regard to ASCII letter case, the lower-cased email is a valid principal id, and fewer than 1,024 sessions are live after expired ones are removed | live |
+//! | absent | `complete` under [`Admit::Domain`] with no `hd`, another `hd` or an unverified email | none | absent; the sign-in is refused |
 //! | live | `authenticate` | the expiry is in the future | live |
 //! | live | `authenticate` after the expiry | none | expired (removed) |
 //! | live | `sign_out` | none | signed out (removed) |
 //!
 //! No event extends a session. The secret is returned once, in
 //! [`SignedIn`], and the crate keeps only its hash.
+//!
+//! Under [`Admit::Domain`], a session exists only for an email that the
+//! provider's signed ID token marks verified and whose signed `hd` claim
+//! equals the configured domain. An email that ends in the domain is never
+//! admitted for that reason, and the `hd` of the authorisation request or
+//! of the callback query never takes part in the decision.
 //!
 //! # Key set
 //!
@@ -107,7 +148,8 @@
 //! the body of the POST to the token endpoint. [`KeychainSecret`] reads it
 //! from the macOS Keychain, and [`FixedSecret`] holds one the caller has.
 //! No `Debug` or `Display` output of the crate carries a secret, code,
-//! token or email.
+//! token, email or `hd` value. [`SignedIn`]'s `Debug` output hides the
+//! principal, which under [`Admit::Domain`] is the person's email.
 
 mod allow;
 mod authenticator;

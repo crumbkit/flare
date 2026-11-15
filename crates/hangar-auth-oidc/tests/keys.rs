@@ -12,8 +12,8 @@
 pub mod fake_provider;
 
 use fake_provider::{
-    DOMAIN, Fake, Forge, KeysReply, assert_refused, config, connect, connect_domain,
-    domain_config, one_key_set, secret, sign_in,
+    DOMAIN, Fake, Forge, KeysReply, assert_refused, config, connect, connect_domain, domain_config,
+    one_key_set, secret, sign_in,
 };
 use hangar_auth_oidc::{ConnectError, OidcAuthenticator, SignInRefusal};
 use serde_json::json;

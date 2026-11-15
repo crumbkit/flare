@@ -12,8 +12,8 @@ pub mod fake_provider;
 
 use fake_provider::{CLIENT_ID, Fake, REDIRECT, allow_list, config, domain_config, secret};
 use hangar_auth_oidc::{
-    Admit, ClientId, ConfigError, ConnectError, IssuerUrl, MetadataFault, OidcAuthenticator, OidcConfig,
-    RedirectUri, SecretError,
+    Admit, ClientId, ConfigError, ConnectError, IssuerUrl, MetadataFault, OidcAuthenticator,
+    OidcConfig, RedirectUri, SecretError,
 };
 use serde_json::{Map, Value, json};
 

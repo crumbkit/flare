@@ -83,7 +83,13 @@ fn a_workspace_domain_is_admitted_in_lower_case_whatever_case_it_is_written_in()
     }
     let longest_label = format!("{}.com", "a".repeat(63));
     assert!(WorkspaceDomain::try_from(longest_label.as_str()).is_ok());
-    let longest_name = format!("{}.{}.{}.{}", "a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(61));
+    let longest_name = format!(
+        "{}.{}.{}.{}",
+        "a".repeat(63),
+        "b".repeat(63),
+        "c".repeat(63),
+        "d".repeat(61)
+    );
     assert_eq!(longest_name.len(), 253);
     assert!(WorkspaceDomain::try_from(longest_name.as_str()).is_ok());
 }
@@ -91,7 +97,13 @@ fn a_workspace_domain_is_admitted_in_lower_case_whatever_case_it_is_written_in()
 #[test]
 fn a_workspace_domain_that_is_not_a_dns_name_of_two_labels_is_refused() {
     let long_label = format!("{}.com", "a".repeat(64));
-    let long_name = format!("{}.{}.{}.{}", "a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(62));
+    let long_name = format!(
+        "{}.{}.{}.{}",
+        "a".repeat(63),
+        "b".repeat(63),
+        "c".repeat(63),
+        "d".repeat(62)
+    );
     assert_eq!(long_name.len(), 254);
     for text in [
         "",

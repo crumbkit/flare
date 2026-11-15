@@ -188,7 +188,12 @@ async fn the_authorisation_url_carries_the_domain_as_hd_only_under_the_domain_ru
 
 #[tokio::test]
 async fn under_the_allow_list_hd_is_ignored_and_an_unlisted_email_is_refused_as_not_allowed() {
-    for hd in [None, Some(json!(DOMAIN)), Some(json!("other.org")), Some(json!(42))] {
+    for hd in [
+        None,
+        Some(json!(DOMAIN)),
+        Some(json!("other.org")),
+        Some(json!(42)),
+    ] {
         let fake = Fake::start().await;
         fake.set_hd(hd.clone());
         let (authenticator, _clock) = connect(&fake).await;
