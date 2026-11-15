@@ -121,6 +121,11 @@ jobs:
       # cargo-hack is in the install-action tool list above.
       - name: features
         run: cargo hack clippy --locked --workspace --each-feature --all-targets
+      # With --all-targets, a crate's dev-dependency on itself can turn a
+      # feature on for the library build too, so the libraries are also
+      # checked alone with each feature.
+      - name: library features
+        run: cargo hack clippy --locked --workspace --each-feature --lib
 
   advisories:
     if: github.event_name != 'pull_request'
