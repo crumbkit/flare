@@ -11,7 +11,7 @@ mod flawed_stores;
 use fixed_authenticator::FixedAuthenticator;
 use flawed_stores::{
     AcceptsEveryCredential, AllowsEverything, Flaw, FlawedPageStore, IgnoresExpectedBlob,
-    PrefixedVersions,
+    PrefixedVersions, ReadAllFindsNothing,
 };
 use hangar_core::contract::authenticator::{self, AuthFixture};
 use hangar_core::contract::block_on;
@@ -336,4 +336,29 @@ fn an_authenticator_that_accepts_every_credential_fails_the_rejection_clause() {
     ))
     .unwrap_err();
     assert_eq!(violation.clause(), Clause::RejectedCredentialIsRejected);
+}
+
+#[test]
+fn a_record_store_whose_read_all_finds_nothing_fails_the_read_all_clause() {
+    let fixture = RecordFixture::standard().unwrap();
+    let store = ReadAllFindsNothing(seeded_records(fixture.seeds()));
+    let violation = block_on(record_store::read_all_answers_each_path_as_read_does(
+        &store, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::ReadAllAnswersEachPathAsReadDoes);
+}
+
+#[test]
+fn a_page_store_that_reads_fill_by_fill_fails_the_one_state_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::ReadsFillByFill, &fixture);
+    let violation = block_on(page_store::a_two_fill_binding_is_checked_against_one_state(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        violation.clause(),
+        Clause::ATwoFillBindingIsCheckedAgainstOneState
+    );
 }

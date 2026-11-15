@@ -1,0 +1,21 @@
+[package]
+name = "hangar-board"
+description = "hangar's page and record stores, kept in a board through the board command"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+crumbkit-process.workspace = true
+hangar-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hangar-core = { workspace = true, features = ["testing"] }
+
+[lints]
+workspace = true

@@ -3,13 +3,15 @@
 //! The suite calls `save_binding` and `move_binding` with a [`RecordStore`]
 //! that the caller seeds with the fixture's records. This module holds the
 //! fixture, the helpers and the clauses about pages. The submodules hold the
-//! clauses about bindings, about moving them, about concurrent calls and about
-//! the rules that guard a move, and this module re-exports their functions.
+//! clauses about bindings, about moving them, about concurrent calls, about
+//! the rules that guard a move and about reading the fills at one state, and
+//! this module re-exports their functions.
 
 mod bindings;
 mod guards;
 mod moves;
 mod races;
+mod snapshot;
 
 pub use bindings::{
     a_binding_round_trips, a_misfit_is_refused_on_save,
@@ -28,6 +30,7 @@ pub use races::{
     concurrent_moves_from_one_pin_give_one_moved, concurrent_publishes_get_two_versions,
     concurrent_saves_of_one_name_give_one_name_taken,
 };
+pub use snapshot::a_two_fill_binding_is_checked_against_one_state;
 
 use super::{Clause, SeedRecord, Violation, ensure, fixture, seed, unexpected};
 use crate::{
@@ -59,11 +62,22 @@ impl PageFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
+        Self::with_bodies("title: first\n", "title: second\n", "text: a note\n")
+    }
+
+    /// The standard fixture with the seeded bodies of `/tasks/a`, `/tasks/b`
+    /// and `/notes/n` in a store's own form. The paths and types stay the
+    /// standard ones.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] when a body is over 1 MiB.
+    pub fn with_bodies(task_a: &str, task_b: &str, note: &str) -> Result<Self, Violation> {
         Ok(Self {
             seeds: vec![
-                seed(TASK_A, TASK_TYPE, "title: first\n")?,
-                seed("/tasks/b", TASK_TYPE, "title: second\n")?,
-                seed(NOTE, NOTE_TYPE, "text: a note\n")?,
+                seed(TASK_A, TASK_TYPE, task_a)?,
+                seed("/tasks/b", TASK_TYPE, task_b)?,
+                seed(NOTE, NOTE_TYPE, note)?,
             ],
             principal: Principal::new(fixture(PrincipalId::try_from("contract-suite"))?),
         })

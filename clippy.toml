@@ -1,6 +1,7 @@
 # hangar reads no environment variable and sleeps nowhere, so no module owns
 # those calls and each reason says what to do instead. Starting a process is
-# owned by crates/hangar-auth-oidc/src/keychain.rs (PROC-1). When a later
+# owned by crates/hangar-auth-oidc/src/keychain.rs and
+# crates/hangar-board/src/process.rs (PROC-1). When a later
 # crate needs one of these calls, that crate names its owning module in the
 # reason of the entry (BASE-5). The durable-state entries (DUR-1, DUR-2)
 # come from the durable-state profile. hangar-auth-loopback's
@@ -44,21 +45,22 @@ disallowed-methods = [
     # BASE-11
     { path = "std::thread::sleep", reason = "wait for an observable signal, or sleep in the clock owner" },
     { path = "tokio::time::sleep", reason = "wait for an observable signal, or sleep in the clock owner", allow-invalid = true },
-    # PROC-1: the process module is crates/hangar-auth-oidc/src/keychain.rs.
-    { path = "std::process::Command::new", reason = "start processes through the process module, keychain.rs" },
-    { path = "std::process::Command::spawn", reason = "start processes through the process module, keychain.rs" },
-    { path = "std::process::Command::status", reason = "start processes through the process module, keychain.rs" },
-    { path = "std::process::Command::output", reason = "start processes through the process module, keychain.rs" },
-    { path = "std::os::unix::process::CommandExt::exec", reason = "replacing this process bypasses the process module, keychain.rs" },
-    { path = "tokio::process::Command::new", reason = "start processes through the process module, keychain.rs", allow-invalid = true },
-    { path = "tokio::process::Command::spawn", reason = "start processes through the process module, keychain.rs", allow-invalid = true },
-    { path = "tokio::process::Command::status", reason = "start processes through the process module, keychain.rs", allow-invalid = true },
-    { path = "tokio::process::Command::output", reason = "start processes through the process module, keychain.rs", allow-invalid = true },
+    # PROC-1: the process modules are crates/hangar-auth-oidc/src/keychain.rs
+    # and crates/hangar-board/src/process.rs.
+    { path = "std::process::Command::new", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board" },
+    { path = "std::process::Command::spawn", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board" },
+    { path = "std::process::Command::status", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board" },
+    { path = "std::process::Command::output", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board" },
+    { path = "std::os::unix::process::CommandExt::exec", reason = "replacing this process bypasses the crate's process module: keychain.rs or process.rs" },
+    { path = "tokio::process::Command::new", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
+    { path = "tokio::process::Command::spawn", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
+    { path = "tokio::process::Command::status", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
+    { path = "tokio::process::Command::output", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
 ]
 
 disallowed-types = [
     # PROC-1
-    { path = "std::process::Child", reason = "let the process module, keychain.rs, hold the child, which owns its deadline and cleanup" },
+    { path = "std::process::Child", reason = "let the crate's process module, keychain.rs or hangar-board's process.rs, hold the child, which owns its deadline and cleanup" },
 ]
 
 # BASE-7: hangar's only error crate is thiserror, which has no untyped-error
