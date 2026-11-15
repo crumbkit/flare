@@ -14,8 +14,9 @@ use aws_lc_rs::{digest, hmac};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hangar_auth_oidc::{
-    AllowEntry, AllowList, ClientId, Email, FixedSecret, IssuerUrl, KeptState, OidcAuthenticator,
-    OidcConfig, Reach, RedirectUri, ReturnTo, SignInRefusal, SignedIn, TestClock,
+    Admit, AllowEntry, AllowList, ClientId, DomainRule, Email, FixedSecret, IssuerUrl, KeptState,
+    OidcAuthenticator, OidcConfig, Reach, RedirectUri, ReturnTo, SignInRefusal, SignedIn,
+    TestClock, WorkspaceDomain,
 };
 use hangar_core::{PageName, PrincipalId, Resource};
 use http_body_util::{BodyExt as _, Full};
@@ -44,6 +45,8 @@ pub const EMAIL: &str = "ada@example.com";
 pub const PRINCIPAL: &str = "ada";
 /// The page that the allow-listed person may reach.
 pub const HOME: &str = "home";
+/// The Google Workspace domain of the tests' domain rule.
+pub const DOMAIN: &str = "example.com";
 
 /// What the token endpoint replies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +123,7 @@ struct State {
     token_reply: TokenReply,
     forge: Forge,
     email: String,
+    hd: Option<Value>,
     claims_edit: Option<ClaimsEdit>,
     grants: HashMap<String, Grant>,
     redeemed: HashSet<String>,
@@ -185,6 +189,7 @@ impl Fake {
             token_reply: TokenReply::Normal,
             forge: Forge::None,
             email: EMAIL.to_owned(),
+            hd: None,
             claims_edit: None,
             grants: HashMap::new(),
             redeemed: HashSet::new(),
@@ -232,6 +237,12 @@ impl Fake {
     /// Sets the email of every later ID token.
     pub fn set_email(&self, email: &str) {
         self.with(|state| state.email = email.to_owned());
+    }
+
+    /// Sets the `hd` claim of every later ID token: `None` leaves the claim
+    /// out, and `Some` sets it to any JSON value, a string or not.
+    pub fn set_hd(&self, hd: Option<Value>) {
+        self.with(|state| state.hd = hd);
     }
 
     /// Sets how the fake signs later ID tokens.
@@ -480,6 +491,9 @@ fn mint(state: &State, nonce: &str) -> String {
     claims.insert("email".into(), json!(state.email));
     claims.insert("email_verified".into(), json!(true));
     claims.insert("nonce".into(), json!(nonce));
+    if let Some(hd) = &state.hd {
+        claims.insert("hd".into(), hd.clone());
+    }
     claims.insert("iat".into(), json!(now));
     // Two days ahead, so a test that moves its clock by hours still holds a
     // token that has not expired.
@@ -541,18 +555,32 @@ pub fn allow_list() -> AllowList {
     .expect("an allow-list")
 }
 
-/// A config for the fake, with a two second request deadline.
-pub fn config(fake: &Fake) -> OidcConfig {
-    config_with(fake, allow_list())
+/// The domain rule of the tests: every verified account of [`DOMAIN`],
+/// reaching the page [`HOME`] only.
+pub fn domain_rule() -> Admit {
+    let home = Resource::Page(PageName::try_from(HOME).expect("a page name"));
+    let domain = WorkspaceDomain::try_from(DOMAIN).expect("a domain");
+    Admit::Domain(DomainRule::new(domain, Reach::Only(vec![home])))
 }
 
-/// A config for the fake with another allow-list.
-pub fn config_with(fake: &Fake, allow: AllowList) -> OidcConfig {
+/// A config for the fake that admits the allow-list, with a two second
+/// request deadline.
+pub fn config(fake: &Fake) -> OidcConfig {
+    config_with(fake, Admit::Emails(allow_list()))
+}
+
+/// A config for the fake that admits the domain rule.
+pub fn domain_config(fake: &Fake) -> OidcConfig {
+    config_with(fake, domain_rule())
+}
+
+/// A config for the fake with another rule of who may sign in.
+pub fn config_with(fake: &Fake, admit: Admit) -> OidcConfig {
     OidcConfig::new(
         IssuerUrl::loopback_http(fake.issuer()).expect("a loopback issuer"),
         ClientId::try_from(CLIENT_ID).expect("a client id"),
         RedirectUri::try_from(REDIRECT).expect("a redirect URI"),
-        allow,
+        admit,
     )
     .with_request_deadline(Duration::from_secs(2))
 }
@@ -567,6 +595,17 @@ pub async fn connect(fake: &Fake) -> (OidcAuthenticator<TestClock>, TestClock) {
     let clock = TestClock::new();
     let authenticator =
         OidcAuthenticator::connect_with_clock(config(fake), &secret(), clock.clone())
+            .await
+            .expect("connect succeeds against the fake");
+    (authenticator, clock)
+}
+
+/// Connects an authenticator with a test clock and the domain rule to the
+/// fake.
+pub async fn connect_domain(fake: &Fake) -> (OidcAuthenticator<TestClock>, TestClock) {
+    let clock = TestClock::new();
+    let authenticator =
+        OidcAuthenticator::connect_with_clock(domain_config(fake), &secret(), clock.clone())
             .await
             .expect("connect succeeds against the fake");
     (authenticator, clock)

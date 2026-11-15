@@ -10,9 +10,9 @@
 )]
 pub mod fake_provider;
 
-use fake_provider::{CLIENT_ID, Fake, REDIRECT, allow_list, config, secret};
+use fake_provider::{CLIENT_ID, Fake, REDIRECT, allow_list, config, domain_config, secret};
 use hangar_auth_oidc::{
-    ClientId, ConfigError, ConnectError, IssuerUrl, MetadataFault, OidcAuthenticator, OidcConfig,
+    Admit, ClientId, ConfigError, ConnectError, IssuerUrl, MetadataFault, OidcAuthenticator, OidcConfig,
     RedirectUri, SecretError,
 };
 use serde_json::{Map, Value, json};
@@ -56,6 +56,29 @@ async fn metadata_without_a_token_endpoint_is_a_permanent_fault_found_before_the
             .is_ok()
     );
     assert_eq!(fake.key_set_requests(), 1);
+}
+
+#[tokio::test]
+async fn under_the_domain_rule_metadata_without_a_token_endpoint_still_fails_connect_as_that_fault()
+{
+    let fake = Fake::start().await;
+    fake.edit_metadata(|metadata| {
+        metadata.remove("token_endpoint");
+    });
+    let result = OidcAuthenticator::connect(domain_config(&fake), &secret())
+        .await
+        .map(|_| ());
+    assert_eq!(
+        result,
+        Err(ConnectError::Metadata(MetadataFault::NoTokenEndpoint))
+    );
+    assert_ne!(result, Err(ConnectError::Unreachable));
+    let fake = Fake::start().await;
+    assert!(
+        OidcAuthenticator::connect(domain_config(&fake), &secret())
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -128,7 +151,7 @@ async fn a_discovery_endpoint_that_is_down_fails_connect_as_unreachable() {
         IssuerUrl::loopback_http(&issuer).unwrap(),
         ClientId::try_from(CLIENT_ID).unwrap(),
         RedirectUri::try_from(REDIRECT).unwrap(),
-        allow_list(),
+        Admit::Emails(allow_list()),
     );
     assert_eq!(
         OidcAuthenticator::connect(down, &secret())
@@ -229,7 +252,7 @@ async fn connect_to(issuer: &str) -> Result<(), ConnectError> {
         IssuerUrl::loopback_http(issuer).unwrap(),
         ClientId::try_from(CLIENT_ID).unwrap(),
         RedirectUri::try_from(REDIRECT).unwrap(),
-        allow_list(),
+        Admit::Emails(allow_list()),
     );
     OidcAuthenticator::connect(config, &secret())
         .await

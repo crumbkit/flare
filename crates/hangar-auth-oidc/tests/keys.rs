@@ -12,11 +12,27 @@
 pub mod fake_provider;
 
 use fake_provider::{
-    Fake, Forge, KeysReply, assert_refused, config, connect, one_key_set, secret, sign_in,
+    DOMAIN, Fake, Forge, KeysReply, assert_refused, config, connect, connect_domain,
+    domain_config, one_key_set, secret, sign_in,
 };
 use hangar_auth_oidc::{ConnectError, OidcAuthenticator, SignInRefusal};
 use serde_json::json;
 use std::time::Duration;
+
+fn unusable_key_sets() -> [KeysReply; 4] {
+    [
+        KeysReply::Empty,
+        KeysReply::Json(one_key_set(|key| {
+            key.insert("alg".into(), json!("RS512"));
+        })),
+        KeysReply::Json(one_key_set(|key| {
+            key.insert("use".into(), json!("enc"));
+        })),
+        KeysReply::Json(
+            json!({ "keys": [{ "kty": "EC", "crv": "P-256", "kid": "ec", "x": "AA", "y": "AA" }] }),
+        ),
+    ]
+}
 
 async fn connect_with_keys(reply: KeysReply) -> Result<(), ConnectError> {
     let fake = Fake::start().await;
@@ -123,4 +139,35 @@ async fn a_failed_fetch_of_a_stale_key_set_gives_provider_unavailable() {
     );
     fake.keys_reply(KeysReply::Normal);
     assert!(sign_in(&authenticator, &fake).await.is_ok());
+}
+
+#[tokio::test]
+async fn under_the_domain_rule_an_unusable_key_set_fails_connect_and_is_never_cached() {
+    for reply in unusable_key_sets() {
+        let fake = Fake::start().await;
+        fake.keys_reply(reply);
+        assert_eq!(
+            OidcAuthenticator::connect(domain_config(&fake), &secret())
+                .await
+                .map(|_| ()),
+            Err(ConnectError::Keys)
+        );
+    }
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, clock) = connect_domain(&fake).await;
+    for reply in unusable_key_sets() {
+        fake.keys_reply(reply);
+        fake.new_unpublished_key();
+        fake.forge(Forge::UnpublishedKey);
+        assert_refused(
+            sign_in(&authenticator, &fake).await,
+            &SignInRefusal::ProviderMisbehaved,
+        );
+        // The admitted case: a token signed by the key cached before, with
+        // the matching hd, is still accepted.
+        fake.forge(Forge::None);
+        assert!(sign_in(&authenticator, &fake).await.is_ok());
+        clock.advance(Duration::from_secs(60));
+    }
 }
