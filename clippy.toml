@@ -2,7 +2,11 @@
 # those calls and each reason says what to do instead. Starting a process is
 # owned by crates/hangar-auth-oidc/src/keychain.rs (PROC-1). When a later
 # crate needs one of these calls, that crate names its owning module in the
-# reason of the entry (BASE-5).
+# reason of the entry (BASE-5). The durable-state entries (DUR-1, DUR-2)
+# come from the durable-state profile. hangar-auth-loopback's
+# state/files.rs is the atomic writer and the only library module that
+# suppresses them; tests that write fixture files suppress them too, each
+# with its reason.
 
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
@@ -14,6 +18,18 @@ too-many-lines-threshold = 150 # BASE-10
 max-fn-params-bools = 3 # BASE-16
 
 disallowed-methods = [
+    # DUR-1: the atomic writer is crates/hangar-auth-loopback/src/state/files.rs.
+    { path = "std::fs::write", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::copy", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::rename", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::File::create", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::OpenOptions::new", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
+    # DUR-2: hangar takes no file lock. A crate that needs one names its lock
+    # module, which owns the deadline, in these reasons.
+    { path = "std::fs::File::lock", reason = "hangar takes no file lock; add a lock module that owns the deadline" },
+    { path = "std::fs::File::try_lock", reason = "hangar takes no file lock; add a lock module that owns the deadline" },
+    { path = "std::fs::File::lock_shared", reason = "hangar takes no file lock; add a lock module that owns the deadline" },
+    { path = "std::fs::File::try_lock_shared", reason = "hangar takes no file lock; add a lock module that owns the deadline" },
     # BASE-6
     { path = "std::env::var", reason = "read the environment snapshot" },
     { path = "std::env::var_os", reason = "read the environment snapshot" },

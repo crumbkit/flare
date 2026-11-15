@@ -8,6 +8,7 @@ hangar is under construction.
 | --- | --- |
 | `hangar-core` | The validated types, the `Authenticator`, `PageStore` and `RecordStore` traits, in-memory stores, and the contract suites that every implementation of a trait runs. |
 | `hangar-auth-oidc` | An `Authenticator` that signs people in with an OpenID Connect provider such as Google, with PKCE, a checked ID token and an allow-list of emails. |
+| `hangar-auth-loopback` | An `Authenticator` for the person who runs a local server: a bearer token in a private server file, one-use launch codes, a session cookie on a per-launch `h-<32 hex>.localhost` name, and the Host and Origin checks for every request. |
 
 See [AGENTS.md](AGENTS.md) for how to work on the repository. hangar is
 licensed under MIT or Apache-2.0, at your option.

@@ -2,8 +2,9 @@
 
 hangar serves agent-written pages from a board and works on board records
 through them. It is a Cargo workspace. `crates/hangar-core` holds the types
-and traits that every other hangar crate codes against, and
-`crates/hangar-auth-oidc` signs people in with an OpenID Connect provider.
+and traits that every other hangar crate codes against.
+`crates/hangar-auth-oidc` signs people in with an OpenID Connect provider,
+and `crates/hangar-auth-loopback` signs in the person who runs a local server.
 The rules are the Rust standards that [rust-standards.toml](rust-standards.toml)
 adopts. A change is ready when the pull-request lane passes. The commands of the pull-request lane are the steps of the `lane` job in
 [.github/workflows/ci.yml](.github/workflows/ci.yml). Run them with

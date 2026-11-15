@@ -2,6 +2,9 @@
 # `lanes` decision in rust-standards.toml records both (BASE-25). The lane has
 # no macOS job: the one macOS-only path, hangar-auth-oidc's KeychainSecret,
 # runs /usr/bin/security, and its tests run a fake program on Linux.
+# hangar-auth-loopback's POSIX file checks behave differently on macOS; the
+# Linux job runs their tests through a testing hook, and the hangar-gates
+# suite on a Mac is their macOS check, as the lanes decision says.
 name: CI
 
 on:
@@ -71,7 +74,8 @@ jobs:
         run: cargo doc --locked --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
-      # hangar-core and hangar-auth-oidc are libraries, so LIB-5 applies.
+      # hangar-core, hangar-auth-oidc and hangar-auth-loopback are libraries,
+      # so LIB-5 applies.
       # cargo-hack is in the install-action tool list above.
       - name: features
         run: cargo hack clippy --locked --workspace --each-feature --all-targets

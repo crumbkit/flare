@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/hangar-auth-oidc", "crates/hangar-core"]
+members = ["crates/hangar-auth-loopback", "crates/hangar-auth-oidc", "crates/hangar-core"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,13 +12,21 @@ repository = "https://github.com/crumbkit/hangar"
 rust-version = "1.99.1"
 
 [workspace.dependencies]
-# Random bytes, SHA-256 and constant-time comparison for hangar-auth-oidc;
-# jsonwebtoken's aws_lc_rs backend already brings it in.
+# Random bytes, SHA-256 and constant-time comparison for hangar-auth-oidc
+# and hangar-auth-loopback; jsonwebtoken's aws_lc_rs backend already brings
+# it in.
 aws-lc-rs = "1.19.0"
 # base64url for the state, nonce, PKCE verifier and session secrets.
 base64 = "0.23.1"
-# The types and traits that hangar-auth-oidc implements.
+# The types and traits that hangar-auth-oidc and hangar-auth-loopback
+# implement.
 hangar-core = { path = "crates/hangar-core", version = "0.1.0" }
+# The method and header types of a request, which hangar-auth-loopback checks
+# before a route runs; reqwest and hyper already bring it in.
+http = "1.5.0"
+# The O_NONBLOCK flag for opening hangar-auth-loopback's server file, so a
+# FIFO in its place cannot block the open; tokio and mio already bring it in.
+libc = "0.2.191"
 # Verifies the RS256 signature of an OpenID Connect ID token.
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
 # The HTTPS client for an OpenID provider's discovery, token and key set
@@ -26,7 +34,8 @@ jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form"] }
 # BASE-24: a credential is held in a type whose Debug prints a placeholder.
 secrecy = "0.10.3"
-# Reads the provider's metadata, token reply, key set and ID token claims.
+# Reads the provider's metadata, token reply, key set and ID token claims,
+# and hangar-auth-loopback's server file.
 serde = { version = "1.0.229", features = ["derive"] }
 # Parses the JSON that serde's derived types read.
 serde_json = "1.0.154"
