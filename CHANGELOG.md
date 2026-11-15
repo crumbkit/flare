@@ -16,9 +16,21 @@ This file records the notable changes to hangar. The format follows
   Google. It runs the authorisation code flow with PKCE, verifies the RS256
   ID token, admits only verified emails on its allow-list, keeps sessions in
   memory and reads the client secret from the macOS Keychain.
+- `hangar-auth-oidc` can admit every verified account of one Google
+  Workspace domain with `Admit::Domain`. The signed `hd` claim of the ID
+  token decides membership, and the email's domain does not. A sign-in
+  without `hd` is refused as `NoHostedDomain`, and one with another `hd` as
+  `OtherHostedDomain`. Each admitted account signs in as its email, and
+  `authorize` allows it while one of its sessions is live.
 - `hangar-auth-loopback` signs in the person who runs a local hangar server.
   Each server gets a random `h-<32 hex>.localhost` host name and a bearer
   token, which it writes to a private server file. A one-use launch code,
   valid for 60 seconds, sets a host-only session cookie. Every request is
   checked for a loopback peer, the exact Host and, when it changes
   something, the server's own Origin.
+
+### Changed
+
+- `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
+  an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its
+  behaviour.
