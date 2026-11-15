@@ -14,6 +14,10 @@ const SERVICE: &str = "hangar-oidc-test";
 
 /// Writes a script named `name` with `body` after its shebang line into a
 /// directory of its own, and returns the script's path and the directory.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test writes its fake program directly, outside the atomic writer"
+)]
 fn script(name: &str, body: &str) -> (PathBuf, PathBuf) {
     let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("keychain-{name}"));
     let _ = fs::remove_dir_all(&directory);

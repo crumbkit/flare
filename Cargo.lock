@@ -240,6 +240,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hangar-auth-loopback"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "hangar-core",
+ "http",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "hangar-auth-oidc"
 version = "0.1.0"
 dependencies = [
