@@ -98,12 +98,18 @@ fn empty_output_is_refused() {
 }
 
 #[test]
-fn output_over_4_kib_is_refused_and_4_kib_is_admitted() {
-    let long = "x".repeat(4097);
-    let (program, _) = script("long", &format!("printf '{long}'"));
+fn output_over_4_kib_is_refused_the_child_is_reaped_and_4_kib_is_admitted() {
+    // yes writes without end, so the child is still running when the
+    // reader passes 4 KiB.
+    let (program, directory) = script("long", "echo $$ > DIR/pid\nexec /usr/bin/yes");
     assert_eq!(
         read(program, Duration::from_secs(10)),
         Err(SecretError::TooLong)
+    );
+    let pid = fs::read_to_string(directory.join("pid")).unwrap();
+    assert!(
+        !process_exists(pid.trim()),
+        "process {pid} is still running"
     );
     let fits = "x".repeat(4096);
     let (program, _) = script("fits", &format!("printf '{fits}'"));

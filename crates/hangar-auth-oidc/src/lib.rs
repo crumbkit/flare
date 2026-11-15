@@ -21,15 +21,17 @@
 //! 1. The header's `alg` is RS256. Any other value, `none` and HS256
 //!    included, is refused before a key is looked up.
 //! 2. The header's `kid` names a key in the cached key set. For an unknown
-//!    `kid` the key set is fetched again, at most once every 60 seconds.
+//!    `kid` the key set is fetched again, at most once every 60 seconds. A
+//!    sign-in that needs a fetch while another is fetching waits for it.
 //! 3. The RS256 signature verifies with that key.
-//! 4. `iss` equals the configured issuer, `aud` is the client ID alone,
+//! 4. `iss` equals the configured issuer (for `https://accounts.google.com`,
+//!    `accounts.google.com` too, as Google documents), `aud` is the client ID alone,
 //!    `azp` equals the client ID when present, and `exp` is in the future
 //!    with 60 seconds of leeway.
 //! 5. `nonce` equals the pending sign-in's nonce.
 //! 6. `email` is present and `email_verified` is the JSON boolean `true`.
-//! 7. The lower-cased email is on the allow-list, whose entry gives the
-//!    principal.
+//! 7. The email is ASCII, and lower-cased it is on the allow-list, whose
+//!    entry gives the principal.
 //!
 //! # Limits
 //!

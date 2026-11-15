@@ -53,18 +53,49 @@ async fn an_empty_or_unusable_key_set_at_connect_fails_and_one_rsa_signing_key_i
 }
 
 #[tokio::test]
-async fn a_refresh_that_returns_an_empty_key_set_leaves_the_cached_keys_in_place() {
+async fn a_refresh_that_returns_an_unusable_key_set_leaves_the_cached_keys_in_place() {
+    let fake = Fake::start().await;
+    let (authenticator, clock) = connect(&fake).await;
+    let unusable = [
+        KeysReply::Empty,
+        KeysReply::Json(one_key_set(|key| {
+            key.insert("alg".into(), json!("RS512"));
+        })),
+        KeysReply::Json(one_key_set(|key| {
+            key.insert("use".into(), json!("enc"));
+        })),
+        KeysReply::Json(
+            json!({ "keys": [{ "kty": "EC", "crv": "P-256", "kid": "ec", "x": "AA", "y": "AA" }] }),
+        ),
+    ];
+    for reply in unusable {
+        fake.keys_reply(reply);
+        fake.new_unpublished_key();
+        fake.forge(Forge::UnpublishedKey);
+        assert_refused(
+            sign_in(&authenticator, &fake).await,
+            &SignInRefusal::ProviderMisbehaved,
+        );
+        // The admitted case: the key the cache held before still verifies.
+        fake.forge(Forge::None);
+        assert!(sign_in(&authenticator, &fake).await.is_ok());
+        clock.advance(Duration::from_secs(60));
+    }
+}
+
+#[tokio::test]
+async fn two_sign_ins_that_present_a_rotated_key_together_both_succeed_with_one_fetch() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    fake.keys_reply(KeysReply::Empty);
-    fake.new_unpublished_key();
-    fake.forge(Forge::UnpublishedKey);
-    assert_refused(
-        sign_in(&authenticator, &fake).await,
-        &SignInRefusal::ProviderMisbehaved,
+    let before = fake.key_set_requests();
+    fake.rotate_key();
+    let (first, second) = tokio::join!(
+        sign_in(&authenticator, &fake),
+        sign_in(&authenticator, &fake)
     );
-    fake.forge(Forge::None);
-    assert!(sign_in(&authenticator, &fake).await.is_ok());
+    assert!(first.is_ok(), "{first:?}");
+    assert!(second.is_ok(), "{second:?}");
+    assert_eq!(fake.key_set_requests(), before + 1);
 }
 
 #[tokio::test]

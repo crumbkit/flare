@@ -35,8 +35,8 @@ thiserror = "2.0.21"
 # Builds the authorisation URL and parses the callback query.
 url = "2.5.8"
 
-# Test-only: the fake OpenID provider in hangar-auth-oidc's tests is an HTTP
-# server on a Tokio runtime.
+# hangar-auth-oidc serialises its key set refreshes with tokio's async mutex,
+# and its fake OpenID provider in tests is an HTTP server on a Tokio runtime.
 tokio = "1.54.1"
 # Test-only: the fake provider's HTTP/1 server.
 hyper = "1.12.0"

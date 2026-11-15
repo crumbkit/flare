@@ -56,3 +56,18 @@ fn a_reach_of_only_some_resources_reaches_those_and_no_other() {
     assert!(!only.reaches(&other));
     assert!(Reach::Everything.reaches(&other));
 }
+
+#[test]
+fn an_email_with_a_non_ascii_character_is_refused_and_ascii_capitals_are_lowered() {
+    for text in [
+        "\u{212A}ate@example.com",
+        "kate@\u{212A}.example.com",
+        "j\u{00F6}rg@example.com",
+    ] {
+        assert_eq!(Email::try_from(text), Err(ConfigError::Email), "{text:?}");
+    }
+    assert_eq!(
+        Email::try_from("KATE@Example.com").unwrap().as_str(),
+        "kate@example.com"
+    );
+}

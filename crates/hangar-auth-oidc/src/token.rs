@@ -58,6 +58,9 @@ pub(crate) async fn redeem(
                 .map(SecretString::from)
                 .ok_or(SignInRefusal::ProviderMisbehaved)
         }
+        // 408 and 429 say the provider is busy or slow, so the same
+        // sign-in may succeed later.
+        408 | 429 => Err(SignInRefusal::ProviderUnavailable),
         400..=499 => Err(SignInRefusal::CodeRejected),
         _ => Err(SignInRefusal::ProviderUnavailable),
     }
@@ -108,6 +111,16 @@ pub(crate) struct Expected<'a> {
     pub(crate) now: SystemTime,
 }
 
+/// Google's issuer, whose ID tokens may name it without the scheme.
+const GOOGLE_ISSUER: &str = "https://accounts.google.com";
+
+/// Whether a token's `iss` names the configured issuer. It must equal it,
+/// except that Google documents `accounts.google.com` as a second form of
+/// `https://accounts.google.com`.
+fn issuer_matches(configured: &str, iss: &str) -> bool {
+    iss == configured || (configured == GOOGLE_ISSUER && iss == "accounts.google.com")
+}
+
 fn audience_is(aud: Option<&Value>, client_id: &str) -> bool {
     match aud {
         Some(Value::String(aud)) => aud == client_id,
@@ -144,7 +157,8 @@ pub(crate) fn check(
     let reject = SignInRefusal::TokenRejected;
     let claims = verify_signature(token, key).map_err(reject)?;
     let config = expected.config;
-    if claims.iss.as_deref() != Some(config.issuer.as_str()) {
+    let iss = claims.iss.unwrap_or_default();
+    if !issuer_matches(config.issuer.as_str(), &iss) {
         return Err(reject(TokenFault::Issuer));
     }
     let client_id = config.client_id.as_str();
@@ -172,3 +186,6 @@ pub(crate) fn check(
         .ok_or(SignInRefusal::EmailUnverified)?;
     Email::try_from(email.as_str()).map_err(|_| SignInRefusal::NotAllowed)
 }
+
+#[cfg(test)]
+mod tests;

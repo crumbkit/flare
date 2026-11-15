@@ -17,6 +17,9 @@ secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# One sign-in at a time fetches the key set again, and the others wait for
+# it; reqwest already brings tokio in.
+tokio = { workspace = true, features = ["sync"] }
 url.workspace = true
 
 [features]

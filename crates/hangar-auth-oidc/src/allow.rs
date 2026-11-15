@@ -6,11 +6,11 @@ use hangar_core::{PrincipalId, Resource};
 use std::collections::HashSet;
 use std::fmt;
 
-/// An email address, in lower case.
+/// An email address of ASCII characters, in lower case.
 ///
 /// Shortcut: the parser checks only that the address has one `@` between a
-/// non-empty local part and a non-empty domain, at most 254 bytes and no
-/// whitespace or control character. It does not check RFC 5321 syntax,
+/// non-empty local part and a non-empty domain, at most 254 bytes and only
+/// visible ASCII characters. It does not check RFC 5321 syntax,
 /// because the provider has verified the address and the crate only
 /// compares it with the allow-list. Its `Debug` output hides the address.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -26,13 +26,14 @@ impl TryFrom<&str> for Email {
         else {
             return Err(ConfigError::Email);
         };
-        let clean = !text
-            .chars()
-            .any(|character| character.is_whitespace() || character.is_control());
+        // Only ASCII is admitted: Unicode lower-casing maps some other
+        // characters onto ASCII letters, such as U+212A KELVIN SIGN onto k,
+        // which would let one address match another's allow-list entry.
+        let clean = text.bytes().all(|byte| byte.is_ascii_graphic());
         if local.is_empty() || domain.is_empty() || text.len() > 254 || !clean {
             return Err(ConfigError::Email);
         }
-        Ok(Self(text.to_lowercase()))
+        Ok(Self(text.to_ascii_lowercase()))
     }
 }
 

@@ -13,9 +13,12 @@ pub mod fake_provider;
 
 use fake_provider::{
     CLIENT_ID, CLIENT_SECRET, EMAIL, Fake, Forge, PRINCIPAL, REDIRECT, TokenReply, assert_refused,
-    connect, now_seconds, return_to, sign_in,
+    config_with, connect, now_seconds, return_to, secret, sign_in,
 };
-use hangar_auth_oidc::{KeptState, SignInRefusal, TokenFault};
+use hangar_auth_oidc::{
+    AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal, TestClock,
+    TokenFault,
+};
 use hangar_core::{Authenticator, PrincipalId};
 use serde_json::json;
 use std::collections::HashMap;
@@ -342,10 +345,16 @@ async fn a_provider_error_callback_is_refused_without_a_token_request() {
 }
 
 #[tokio::test]
-async fn a_token_endpoint_that_fails_or_stalls_gives_provider_unavailable() {
+async fn a_token_endpoint_that_fails_times_out_rate_limits_or_stalls_gives_provider_unavailable() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    for reply in [TokenReply::Status(500), TokenReply::Stall] {
+    for reply in [
+        TokenReply::Status(500),
+        TokenReply::Status(503),
+        TokenReply::Status(408),
+        TokenReply::Status(429),
+        TokenReply::Stall,
+    ] {
         fake.token_reply(reply);
         let refusal = sign_in(&authenticator, &fake).await.unwrap_err();
         assert_eq!(refusal, SignInRefusal::ProviderUnavailable);
@@ -449,4 +458,30 @@ async fn the_provider_receives_the_verifier_and_the_client_secret_only_in_the_to
             }
         }
     }
+}
+
+#[tokio::test]
+async fn an_email_with_a_non_ascii_letter_that_lower_cases_to_an_allowed_one_is_refused() {
+    let fake = Fake::start().await;
+    let allow = AllowList::new(vec![AllowEntry::new(
+        Email::try_from("kate@example.com").unwrap(),
+        PrincipalId::try_from("kate").unwrap(),
+        Reach::Everything,
+    )])
+    .unwrap();
+    let authenticator = OidcAuthenticator::connect_with_clock(
+        config_with(&fake, allow),
+        &secret(),
+        TestClock::new(),
+    )
+    .await
+    .unwrap();
+    // U+212A KELVIN SIGN lower-cases to an ASCII k under Unicode rules.
+    fake.set_email("\u{212A}ate@example.com");
+    assert_refused(
+        sign_in(&authenticator, &fake).await,
+        &SignInRefusal::NotAllowed,
+    );
+    fake.set_email("KATE@example.com");
+    assert!(sign_in(&authenticator, &fake).await.is_ok());
 }

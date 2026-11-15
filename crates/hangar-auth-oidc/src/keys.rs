@@ -78,20 +78,57 @@ struct Cached {
 
 /// The last checked key set. A fetched set replaces it only once it is
 /// checked, so the cache always holds a usable set.
-pub(crate) struct KeyCache(Mutex<Cached>);
+///
+/// One sign-in at a time fetches the set again. A sign-in that needs a fetch
+/// while another one is fetching waits for that fetch and then looks its key
+/// id up again, so two sign-ins that present a newly rotated key together
+/// both find it after one fetch.
+pub(crate) struct KeyCache {
+    cached: Mutex<Cached>,
+    refreshing: tokio::sync::Mutex<()>,
+}
+
+/// What a lookup in the cache found.
+enum Lookup {
+    /// The key, in a set under one hour old.
+    Found(DecodingKey),
+    /// The cache must fetch the set again first.
+    Refresh,
+    /// The key id is unknown, and the last fetch was under 60 seconds ago.
+    Unknown,
+}
 
 impl KeyCache {
     /// A cache holding `keys`, fetched at `now`.
     pub(crate) fn new(keys: KeySet, now: SystemTime) -> Self {
-        Self(Mutex::new(Cached {
-            keys,
-            fetched: now,
-            last_attempt: None,
-        }))
+        Self {
+            cached: Mutex::new(Cached {
+                keys,
+                fetched: now,
+                last_attempt: None,
+            }),
+            refreshing: tokio::sync::Mutex::new(()),
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Cached> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        self.cached.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn look_up(&self, kid: &str, now: SystemTime) -> Lookup {
+        let cached = self.lock();
+        let stale = has_passed(cached.fetched, KEY_SET_LIFETIME, now);
+        match cached.keys.0.get(kid) {
+            Some(key) if !stale => Lookup::Found(key.clone()),
+            _ if stale => Lookup::Refresh,
+            _ if cached
+                .last_attempt
+                .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now)) =>
+            {
+                Lookup::Refresh
+            }
+            _ => Lookup::Unknown,
+        }
     }
 
     /// The key for `kid`. A key set older than one hour is fetched again
@@ -103,25 +140,14 @@ impl KeyCache {
         provider: &Provider,
         now: SystemTime,
     ) -> Result<DecodingKey, KeyError> {
-        let (stale, found, may_refresh) = {
-            let mut cached = self.lock();
-            let stale = has_passed(cached.fetched, KEY_SET_LIFETIME, now);
-            let found = cached.keys.0.get(kid).cloned();
-            let may_refresh = stale
-                || (found.is_none()
-                    && cached
-                        .last_attempt
-                        .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now)));
-            if may_refresh {
-                cached.last_attempt = Some(now);
-            }
-            (stale, found, may_refresh)
-        };
-        if let (false, Some(key)) = (stale, found) {
+        if let Lookup::Found(key) = self.look_up(kid, now) {
             return Ok(key);
         }
-        if !may_refresh {
-            return Err(KeyError::Unknown);
+        let _refreshing = self.refreshing.lock().await;
+        match self.look_up(kid, now) {
+            Lookup::Found(key) => return Ok(key),
+            Lookup::Unknown => return Err(KeyError::Unknown),
+            Lookup::Refresh => self.lock().last_attempt = Some(now),
         }
         let body = provider
             .fetch_keys()

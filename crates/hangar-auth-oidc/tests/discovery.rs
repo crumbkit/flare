@@ -34,16 +34,28 @@ async fn connect_succeeds_against_a_correct_provider() {
 }
 
 #[tokio::test]
-async fn metadata_without_a_token_endpoint_is_a_permanent_metadata_fault() {
-    let result = connect_after(|metadata| {
+async fn metadata_without_a_token_endpoint_is_a_permanent_fault_found_before_the_key_set_fetch() {
+    let fake = Fake::start().await;
+    fake.edit_metadata(|metadata| {
         metadata.remove("token_endpoint");
-    })
-    .await;
+    });
+    let result = OidcAuthenticator::connect(config(&fake), &secret())
+        .await
+        .map(|_| ());
     assert_eq!(
         result,
         Err(ConnectError::Metadata(MetadataFault::NoTokenEndpoint))
     );
     assert_ne!(result, Err(ConnectError::Unreachable));
+    assert_eq!(fake.key_set_requests(), 0);
+    // The admitted case: with a token endpoint, connect fetches the key set.
+    let fake = Fake::start().await;
+    assert!(
+        OidcAuthenticator::connect(config(&fake), &secret())
+            .await
+            .is_ok()
+    );
+    assert_eq!(fake.key_set_requests(), 1);
 }
 
 #[tokio::test]
@@ -184,5 +196,55 @@ async fn a_discovery_reply_over_64_kib_fails_connect_as_unreachable() {
         })
         .await,
         Ok(())
+    );
+}
+
+/// Serves one HTTP/1.1 reply on a new port of 127.0.0.1, with a chunked body
+/// and no Content-Length, from a thread, and returns the port's URL.
+fn chunked_server(body: Vec<u8>) -> String {
+    use std::io::{Read as _, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let Ok((mut stream, _)) = listener.accept() else {
+            return;
+        };
+        let mut request = [0_u8; 4096];
+        let _ = stream.read(&mut request);
+        let _ = stream.write_all(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+        );
+        for chunk in body.chunks(8 * 1024) {
+            let _ = stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes());
+            let _ = stream.write_all(chunk);
+            let _ = stream.write_all(b"\r\n");
+        }
+        let _ = stream.write_all(b"0\r\n\r\n");
+    });
+    issuer
+}
+
+async fn connect_to(issuer: &str) -> Result<(), ConnectError> {
+    let config = OidcConfig::new(
+        IssuerUrl::loopback_http(issuer).unwrap(),
+        ClientId::try_from(CLIENT_ID).unwrap(),
+        RedirectUri::try_from(REDIRECT).unwrap(),
+        allow_list(),
+    );
+    OidcAuthenticator::connect(config, &secret())
+        .await
+        .map(|_| ())
+}
+
+#[tokio::test]
+async fn a_streamed_discovery_reply_over_64_kib_without_a_length_fails_connect_as_unreachable() {
+    let issuer = chunked_server(vec![b' '; 65 * 1024]);
+    assert_eq!(connect_to(&issuer).await, Err(ConnectError::Unreachable));
+    // The admitted case: a streamed reply under the limit is read whole, and
+    // its content is then judged, here as metadata that is not JSON.
+    let issuer = chunked_server(vec![b'x'; 60 * 1024]);
+    assert_eq!(
+        connect_to(&issuer).await,
+        Err(ConnectError::Metadata(MetadataFault::Malformed))
     );
 }
