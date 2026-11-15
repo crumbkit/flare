@@ -102,8 +102,9 @@ fn at_returns_a_commit_that_changed_the_page() {
 }
 
 #[test]
-fn a_board_that_does_not_commit_its_puts_cannot_publish() {
+fn a_board_that_stops_committing_its_puts_after_open_cannot_publish() {
     let board = ScratchBoard::new();
+    let store = board.store();
     #[expect(
         clippy::disallowed_methods,
         reason = "the test writes its board's configuration"
@@ -113,7 +114,6 @@ fn a_board_that_does_not_commit_its_puts_cannot_publish() {
         r#"{"$type":"board/config/v1","commit_on_put":false}"#,
     )
     .unwrap();
-    let store = board.store();
     let answer = block_on(store.publish(page(ContentFormat::Html, "one"), original()));
     assert_eq!(answer, Err(PageStoreError::Unavailable));
 }
@@ -171,4 +171,39 @@ fn read_all_answers_as_read_does_when_no_commit_lands() {
     let together = block_on(store.read_all(&paths));
     let alone: Vec<_> = paths.iter().map(|at| block_on(store.read(at))).collect();
     assert_eq!(together, alone);
+}
+
+#[test]
+fn versions_answers_unavailable_when_the_log_stops_early() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, ContentFormat::Html, "one");
+    let real = board.program().display().to_string();
+    let stopping = board.script(
+        "stopping-board",
+        &format!(
+            r#"case "$*" in
+  *"log --json --all"*)
+    printf '%s\n' '{{"schema":"board/log-report/v2","data":[],"truncated":true,"summary":{{"complete":false}}}}'
+    exit 0;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    );
+    let stopped = board.store_with(&stopping, Limits::default());
+    assert_eq!(
+        block_on(stopped.versions(&home())),
+        Err(PageStoreError::Unavailable)
+    );
+}
+
+#[test]
+fn bindings_of_a_page_that_does_not_exist_is_not_found() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    assert_eq!(
+        block_on(store.bindings_of(&home())),
+        Err(PageStoreError::NotFound)
+    );
 }

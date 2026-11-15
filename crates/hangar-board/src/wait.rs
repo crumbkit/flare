@@ -12,6 +12,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::task::{Context, Poll, Waker};
+use std::time::Instant;
 
 /// The state a thread and the future it completes share.
 struct Slot<T> {
@@ -89,7 +90,8 @@ impl<T> Future for OnThread<T> {
 }
 
 /// A counting gate: at most `places` holders at once. A thread that wants a
-/// place waits on a condition variable until one is free.
+/// place waits on a condition variable until one is free or its deadline
+/// passes.
 #[derive(Debug)]
 pub(crate) struct Gate {
     places: usize,
@@ -112,17 +114,23 @@ impl Gate {
         }
     }
 
-    /// Waits for a free place and takes it.
-    pub(crate) fn enter(&self) -> Place<'_> {
+    /// Waits until `deadline` for a free place and takes it, or answers
+    /// `None` when no place freed in time.
+    pub(crate) fn enter_within(&self, deadline: Instant) -> Option<Place<'_>> {
         let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
         while *held >= self.places {
+            let left = deadline.checked_duration_since(Instant::now())?;
+            if left.is_zero() {
+                return None;
+            }
             held = self
                 .freed
-                .wait(held)
-                .unwrap_or_else(PoisonError::into_inner);
+                .wait_timeout(held, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
         }
         *held = held.saturating_add(1);
-        Place { gate: self }
+        Some(Place { gate: self })
     }
 }
 

@@ -50,6 +50,55 @@ pub fn board_program() -> PathBuf {
         )
 }
 
+/// The board program the tests run, once it has `board log --at`.
+///
+/// # Panics
+///
+/// Panics with what to do when the board program found is older than
+/// crumbkit/board e4ee3333.
+pub fn checked_board_program() -> PathBuf {
+    let program = board_program();
+    if let Err(text) = check_board(&program) {
+        panic!("{text}");
+    }
+    program
+}
+
+/// Answers `Ok` when `program` has `board log --at`, which crumbkit/board
+/// e4ee3333 added with `board get --at`.
+///
+/// # Errors
+///
+/// Returns what to do when `program` does not run or its `log` has no
+/// `--at`.
+pub fn check_board(program: &Path) -> Result<(), String> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test asks the board program for its usage"
+    )]
+    let help = Command::new(program)
+        .args(["log", "--help"])
+        .env_clear()
+        .env("PATH", search_path())
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| {
+            format!(
+                "the board program {} did not run: {error}",
+                program.display()
+            )
+        })?;
+    let usage = String::from_utf8_lossy(&help.stdout);
+    if help.status.success() && usage.contains("--at") {
+        return Ok(());
+    }
+    Err(format!(
+        "the board program {} has no `board log --at`, so it is older than crumbkit/board \
+         e4ee3333; set HANGAR_TEST_BOARD to the absolute path of a newer build",
+        program.display()
+    ))
+}
+
 /// The `PATH` that the children get, which must hold `git`.
 pub fn search_path() -> OsString {
     #[expect(
@@ -79,6 +128,15 @@ impl ScratchBoard {
 
     /// A new board with `.board/board.json` and no commit.
     pub fn empty() -> Self {
+        let board = Self::directory_only();
+        board.git(&["init", "-q", "-b", "main"]);
+        let init = board.board(&["init", "--json"], "");
+        assert!(init.status.success(), "board init failed: {init:?}");
+        board
+    }
+
+    /// A new scratch directory with an empty `board` and `state` in it.
+    fn directory_only() -> Self {
         let name = format!(
             "hb-{}-{}",
             std::process::id(),
@@ -88,14 +146,10 @@ impl ScratchBoard {
         std::fs::create_dir_all(directory.join("board")).unwrap();
         std::fs::create_dir_all(directory.join("state")).unwrap();
         let directory = std::fs::canonicalize(directory).unwrap();
-        let board = Self {
+        Self {
             directory,
-            program: board_program(),
-        };
-        board.git(&["init", "-q", "-b", "main"]);
-        let init = board.board(&["init", "--json"], "");
-        assert!(init.status.success(), "board init failed: {init:?}");
-        board
+            program: checked_board_program(),
+        }
     }
 
     /// The board's working tree.
@@ -171,6 +225,50 @@ impl ScratchBoard {
     pub fn seed_text(&self, path: &str, text: &str) {
         let line = serde_json::json!({"path": path, "expect": "none", "text": text});
         self.batch(&[line.to_string()]);
+    }
+
+    /// Commits everything in the working tree, `.board/board.json`
+    /// included, which `board init` leaves uncommitted.
+    pub fn commit_all(&self, message: &str) {
+        self.git(&["add", "-A"]);
+        self.git(&["commit", "-q", "-m", message]);
+    }
+
+    /// Adds `count` commits on `main` that change no file, with
+    /// `git fast-import`.
+    pub fn filler(&self, count: usize) {
+        let mut stream = String::from("reset refs/heads/main\nfrom refs/heads/main^0\n");
+        for index in 0..count {
+            let message = format!("filler {index}");
+            stream.push_str(&format!(
+                "commit refs/heads/main\ncommitter seed <seed@example.invalid> 1700000000 +0000\ndata {}\n{message}\n",
+                message.len()
+            ));
+            if index == 0 {
+                stream.push_str("from refs/heads/main^0\n");
+            }
+        }
+        let output = self.run(
+            Path::new("git"),
+            &["fast-import", "--quiet", "--force"],
+            &stream,
+        );
+        assert!(output.status.success(), "fast-import failed: {output:?}");
+        self.git(&["reset", "-q"]);
+    }
+
+    /// A shallow clone of this board's `main` with `depth` commits, in a
+    /// scratch directory of its own.
+    pub fn shallow_clone(&self, depth: usize) -> Self {
+        let clone = Self::directory_only();
+        let source = format!("file://{}", self.root().display());
+        let target = clone.root().display().to_string();
+        std::fs::remove_dir(clone.root()).unwrap();
+        let depth = depth.to_string();
+        self.git(&[
+            "clone", "-q", "--depth", &depth, "--branch", "main", &source, &target,
+        ]);
+        clone
     }
 
     /// The number of commits on HEAD.

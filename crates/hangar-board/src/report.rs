@@ -151,12 +151,26 @@ pub(crate) struct LogRow {
     pub(crate) blob: Option<String>,
 }
 
-/// `board/log-report/v2`.
+/// The `summary` of `board/log-report/v2`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub(crate) struct LogSummary {
+    /// Whether the walk saw every commit it needed: false when it stopped
+    /// after 100,000 commits or reached a shallow clone's boundary. A
+    /// report without it counts as incomplete.
+    #[serde(default)]
+    pub(crate) complete: bool,
+}
+
+/// `board/log-report/v2`. `truncated` is true whenever older rows may
+/// exist, including when the row limit was reached, so it does not say
+/// whether the rows listed are exact; `summary.complete` does.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub(crate) struct LogReport {
     pub(crate) data: Vec<LogRow>,
     #[serde(default)]
     pub(crate) truncated: bool,
+    #[serde(default)]
+    pub(crate) summary: LogSummary,
 }
 
 /// One entry that `board ls` listed.
@@ -188,13 +202,28 @@ pub(crate) struct PutReport {
     pub(crate) data: PutData,
 }
 
+/// What one board child printed on standard output, and its exit code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Ran {
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) code: i32,
+}
+
 /// Parses a child's standard output as the report of `schema`, or as the
-/// failure the board answered.
-pub(crate) fn parse<T: DeserializeOwned>(stdout: &[u8], schema: &str) -> Result<T, Failure> {
-    let value: Value = serde_json::from_slice(stdout)
+/// failure the board answered. The exit code must agree with the report:
+/// a failure report comes with a code other than 0, and any other report
+/// with 0, or with 1 when it lists failures, as a `board get` that missed
+/// some paths does. A disagreement is a [`Failure::Child`].
+pub(crate) fn parse<T: DeserializeOwned>(ran: &Ran, schema: &str) -> Result<T, Failure> {
+    let value: Value = serde_json::from_slice(&ran.stdout)
         .map_err(|_| Failure::Child(format!("the answer to a {schema} read is not JSON")))?;
     let named = value.get("schema").and_then(Value::as_str);
     if named == Some("board/failure/v1") {
+        if ran.code == 0 {
+            return Err(Failure::Child(
+                "board printed a failure report and exited with status 0".into(),
+            ));
+        }
         let failure = BoardFailure::deserialize(&value)
             .map_err(|_| Failure::Child("a board failure report does not parse".into()))?;
         return Err(Failure::Board(failure));
@@ -202,6 +231,16 @@ pub(crate) fn parse<T: DeserializeOwned>(stdout: &[u8], schema: &str) -> Result<
     if named != Some(schema) {
         return Err(Failure::Child(format!(
             "expected a {schema} report and got {named:?}"
+        )));
+    }
+    let lists_failures = value
+        .get("failures")
+        .and_then(Value::as_array)
+        .is_some_and(|failures| !failures.is_empty());
+    if !(ran.code == 0 || (ran.code == 1 && lists_failures)) {
+        return Err(Failure::Child(format!(
+            "board printed a {schema} report and exited with status {}",
+            ran.code
         )));
     }
     T::deserialize(&value).map_err(|_| Failure::Child(format!("a {schema} report does not parse")))

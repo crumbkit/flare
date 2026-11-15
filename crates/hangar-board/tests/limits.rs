@@ -207,3 +207,63 @@ exec "{real}" "$@"
         [Err(ReadError::Unavailable)]
     );
 }
+
+/// Writes `text` as the board's `.board/board.json`.
+fn configure(board: &ScratchBoard, text: &str) {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test writes its board's configuration"
+    )]
+    std::fs::write(board.root().join(".board/board.json"), text).unwrap();
+}
+
+#[test]
+fn open_refuses_a_board_whose_puts_are_not_committed_and_writes_nothing() {
+    let board = seeded_task();
+    configure(
+        &board,
+        r#"{"$type":"board/config/v1","commit_on_put":false}"#,
+    );
+    let before = board.git(&["status", "--porcelain", "--untracked-files=all"]);
+    let refused = BoardStore::open(config(board.root(), board.program().to_path_buf(), &board));
+    let after = board.git(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(
+        matches!(refused, Err(OpenError::CommitsOff(_))),
+        "{refused:?}"
+    );
+    assert_eq!(before, after);
+}
+
+#[test]
+fn open_accepts_a_board_that_says_it_commits_its_puts() {
+    let board = seeded_task();
+    configure(
+        &board,
+        r#"{"$type":"board/config/v1","commit_on_put":true}"#,
+    );
+    assert!(BoardStore::open(config(board.root(), board.program().to_path_buf(), &board)).is_ok());
+}
+
+#[test]
+fn open_refuses_a_board_whose_configuration_does_not_parse() {
+    let board = seeded_task();
+    configure(&board, "{not json");
+    let refused = BoardStore::open(config(board.root(), board.program().to_path_buf(), &board));
+    assert!(
+        matches!(refused, Err(OpenError::UnreadableConfig(_))),
+        "{refused:?}"
+    );
+}
+
+#[test]
+fn a_board_program_without_log_at_is_refused_with_what_to_do() {
+    let board = ScratchBoard::new();
+    let old = board.script(
+        "old-board",
+        "printf '%s\\n' 'Usage: board log [OPTIONS] [PATH]' '  --limit <N>'\n",
+    );
+    let text = scratch::check_board(&old).unwrap_err();
+    assert!(text.contains("log --at"), "{text}");
+    assert!(text.contains("HANGAR_TEST_BOARD"), "{text}");
+    assert!(scratch::check_board(board.program()).is_ok());
+}

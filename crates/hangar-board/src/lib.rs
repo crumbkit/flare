@@ -27,7 +27,8 @@ use std::time::Duration;
 #[non_exhaustive]
 pub struct Limits {
     /// The most board children that run at once. A call that needs another
-    /// waits until one ends. The default is 4.
+    /// waits until one ends, for at most `child_deadline`, and then answers
+    /// `Unavailable`. The default is 4.
     pub children: usize,
     /// How long one child may run before the store stops it and answers
     /// `Unavailable`. The default is 10 seconds.
@@ -146,6 +147,34 @@ pub enum OpenError {
     /// The limits allow no child at all.
     #[error("the limits allow no board child to run")]
     NoChildren,
+    /// The board's `.board/board.json` sets `commit_on_put` to false. Each
+    /// put on such a board writes files and makes no commit, and every blob
+    /// and version the store hands out is a commit.
+    #[error("{} sets commit_on_put to false, so its puts make no commit", .0.display())]
+    CommitsOff(PathBuf),
+    /// The board's `.board/board.json` could not be read or is not a JSON
+    /// object.
+    #[error("{} could not be read as a JSON object", .0.display())]
+    UnreadableConfig(PathBuf),
+}
+
+/// Checks the board's `.board/board.json`: it must be a JSON object whose
+/// `commit_on_put`, when present, is not false. Board treats an absent
+/// `commit_on_put` as true.
+fn check_config(root: &std::path::Path) -> Result<(), OpenError> {
+    let path = root.join(".board/board.json");
+    if !path.is_file() {
+        return Err(OpenError::NotABoard(root.to_path_buf()));
+    }
+    let unreadable = || OpenError::UnreadableConfig(path.clone());
+    let bytes = std::fs::read(&path).map_err(|_| unreadable())?;
+    let Ok(serde_json::Value::Object(config)) = serde_json::from_slice(&bytes) else {
+        return Err(unreadable());
+    };
+    match config.get("commit_on_put") {
+        Some(serde_json::Value::Bool(false)) => Err(OpenError::CommitsOff(path)),
+        _ => Ok(()),
+    }
 }
 
 /// The page and record stores of one board.
@@ -164,13 +193,17 @@ impl BoardStore {
     /// # Errors
     ///
     /// Returns [`OpenError::NotABoard`] when the root holds no
-    /// `.board/board.json`, [`OpenError::RelativeProgram`] when the board
-    /// program is not an absolute path and [`OpenError::NoChildren`] when
-    /// the limits allow no child.
+    /// `.board/board.json`, [`OpenError::UnreadableConfig`] when that file
+    /// is not a JSON object, [`OpenError::CommitsOff`] when it sets
+    /// `commit_on_put` to false, [`OpenError::RelativeProgram`] when the
+    /// board program is not an absolute path and [`OpenError::NoChildren`]
+    /// when the limits allow no child.
+    ///
+    /// A board whose configuration changes to `commit_on_put` false after
+    /// it opens still answers `Unavailable` to each write, and the put has
+    /// then left its files uncommitted.
     pub fn open(config: BoardConfig) -> Result<Self, OpenError> {
-        if !config.root.join(".board/board.json").is_file() {
-            return Err(OpenError::NotABoard(config.root));
-        }
+        check_config(&config.root)?;
         if !config.program.is_absolute() {
             return Err(OpenError::RelativeProgram(config.program));
         }

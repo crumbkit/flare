@@ -207,6 +207,13 @@ async fn at_commit(
             let blob = row.commit.clone();
             current(path, entry, &blob).map(|found| found.record)
         }
+        // The walk stopped after 100,000 commits before it reached the
+        // record's last change. `read` then answers the Git blob id of the
+        // bytes, so `read_all` answers it too.
+        None if !log.summary.complete => {
+            let blob = entry.blob.clone();
+            current(path, entry, &blob).map(|found| found.record)
+        }
         _ => Err(ReadError::Unavailable),
     }
 }

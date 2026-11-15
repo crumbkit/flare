@@ -1,13 +1,14 @@
-use super::{Board, Rows};
+use super::{Board, Rows, ended};
 use crate::Limits;
-use crate::report::Failure;
+use crate::report::{Failure, Got};
 use crate::wait::Gate;
+use crumbkit_process::{Outcome, Status};
 use hangar_core::contract::block_on;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -86,7 +87,7 @@ fn a_child_that_prints_past_the_output_limit_fails_as_a_child_failure() {
 #[test]
 fn the_child_gets_only_the_configured_environment_and_the_paths_after_a_separator() {
     let (board, directory) = scripted(
-        "printf '{\"schema\":\"board/ls-report/v2\",\"data\":[{\"kind\":\"record\",\"logical\":\"%s|%s|%s|%s\"}]}' \"$*\" \"$HOME\" \"$GIT_COMMITTER_EMAIL\" \"${USER:-unset}\"\n",
+        "printf '{\"schema\":\"board/ls-report/v2\",\"data\":[{\"kind\":\"record\",\"logical\":\"%s|%s|%s|%s|%s\"}]}' \"$*\" \"$HOME\" \"$GIT_COMMITTER_EMAIL\" \"${GIT_CONFIG_NOSYSTEM:-unset}\" \"${USER:-unset}\"\n",
         Limits::default(),
     );
     let answer = block_on(board.ls("/tasks")).unwrap().unwrap();
@@ -95,8 +96,98 @@ fn the_child_gets_only_the_configured_environment_and_the_paths_after_a_separato
     assert_eq!(
         row.logical,
         format!(
-            "ls --json --all -- /tasks|{}|hangar@example.invalid|unset",
+            "ls --json --all -- /tasks|{}|hangar@example.invalid|1|unset",
             directory.display()
         )
     );
+}
+
+#[test]
+fn a_child_that_ends_past_the_output_limit_fails_as_a_child_failure() {
+    let answer = ended(Outcome::Ended(Status::Code(0)), true, &Limits::default());
+    assert!(
+        matches!(&answer, Err(Failure::Child(text)) if text.contains("bytes")),
+        "{answer:?}"
+    );
+}
+
+#[test]
+fn a_child_that_ends_within_the_output_limit_answers_its_exit_code() {
+    let answer = ended(Outcome::Ended(Status::Code(1)), false, &Limits::default());
+    assert_eq!(answer, Ok(1));
+}
+
+#[test]
+fn a_child_that_a_signal_ended_fails_as_a_child_failure() {
+    let answer = ended(Outcome::Ended(Status::Signal(9)), false, &Limits::default());
+    assert!(
+        matches!(&answer, Err(Failure::Child(text)) if text.contains("signal")),
+        "{answer:?}"
+    );
+}
+
+#[test]
+fn a_failure_report_with_exit_status_0_fails_as_a_child_failure() {
+    let (board, directory) = scripted(
+        "printf '%s' '{\"schema\":\"board/failure/v1\",\"code\":\"board::path::not_found\",\"message\":\"gone\"}'\n",
+        Limits::default(),
+    );
+    let answer = block_on(board.ls("/tasks"));
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        matches!(&answer, Err(Failure::Child(text)) if text.contains("exit")),
+        "{answer:?}"
+    );
+}
+
+#[test]
+fn a_report_that_lists_no_failures_with_exit_status_1_fails_as_a_child_failure() {
+    let (board, directory) = scripted(
+        "printf '%s' '{\"schema\":\"board/ls-report/v2\",\"data\":[]}'\nexit 1\n",
+        Limits::default(),
+    );
+    let answer = block_on(board.ls("/tasks"));
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        matches!(&answer, Err(Failure::Child(text)) if text.contains("exit")),
+        "{answer:?}"
+    );
+}
+
+#[test]
+fn a_get_report_that_lists_failures_may_exit_with_status_1() {
+    let (board, directory) = scripted(
+        "printf '%s' '{\"schema\":\"board/get-report/v2\",\"data\":[],\"failures\":[{\"index\":0,\"code\":\"board::path::not_found\"}]}'\nexit 1\n",
+        Limits::default(),
+    );
+    let answer = block_on(board.get(&["/tasks/a"]));
+    std::fs::remove_dir_all(directory).unwrap();
+    assert_eq!(answer, Ok(vec![Got::Missing]));
+}
+
+#[test]
+fn a_call_that_finds_no_free_place_before_the_deadline_fails_as_a_child_failure() {
+    let limits = Limits {
+        children: 1,
+        child_deadline: Duration::from_millis(300),
+        ..Limits::default()
+    };
+    let (board, directory) = scripted(
+        "printf '%s' '{\"schema\":\"board/ls-report/v2\",\"data\":[]}'\n",
+        limits,
+    );
+    let held = board
+        .gate
+        .enter_within(Instant::now() + Duration::from_secs(5))
+        .unwrap();
+    let started = Instant::now();
+    let answer = block_on(board.ls("/tasks"));
+    let took = started.elapsed();
+    drop(held);
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(
+        matches!(&answer, Err(Failure::Child(text)) if text.contains("place")),
+        "{answer:?}"
+    );
+    assert!(took < Duration::from_secs(5), "the call waited {took:?}");
 }

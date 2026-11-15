@@ -8,7 +8,7 @@
 
 use crate::bindings;
 use crate::process::{Board, Rows};
-use crate::report::{Failure, Got};
+use crate::report::{Failure, Got, LogRow};
 use crate::stored::{self, PAGE_TYPE, PageRecord};
 use hangar_core::{
     ContentFormat, MadeFrom, Page, PageName, PagePin, PageStoreError, PageVersion, Provenance,
@@ -39,13 +39,16 @@ fn is_commit(text: &str) -> bool {
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// The commits that changed the page's record, newest first.
+/// The commits that changed the page's record, newest first. A walk that
+/// stopped after 100,000 commits or reached a shallow clone's boundary
+/// answers `Unavailable`, because its list may miss versions or name the
+/// boundary as one.
 pub(crate) async fn versions(
     board: &Arc<Board>,
     name: &PageName,
 ) -> Result<Vec<PageVersion>, PageStoreError> {
     match board.log(&record_path(name), None, Rows::All).await {
-        Ok(log) if log.truncated => Err(PageStoreError::Unavailable),
+        Ok(log) if log.truncated || !log.summary.complete => Err(PageStoreError::Unavailable),
         Ok(log) => {
             let mut versions = Vec::with_capacity(log.data.len());
             for row in log.data {
@@ -63,35 +66,67 @@ pub(crate) async fn versions(
     }
 }
 
+/// The newest row of the page record's log from `HEAD`, which a version
+/// needs a complete walk to trust. No row from a complete walk is
+/// `NotFound`. A walk that stopped after 100,000 commits or reached a
+/// shallow clone's boundary is `Unavailable`, because the row it lists, or
+/// the row it missed, may not be the page's last change.
+async fn newest(board: &Arc<Board>, name: &PageName) -> Result<LogRow, PageStoreError> {
+    match board.log(&record_path(name), None, Rows::Newest).await {
+        Ok(log) if !log.summary.complete => Err(PageStoreError::Unavailable),
+        Ok(log) => log.data.into_iter().next().ok_or(PageStoreError::NotFound),
+        Err(Failure::Board(failure)) if failure.code == "board::path::not_found" => {
+            Err(PageStoreError::NotFound)
+        }
+        Err(other) => unavailable(other),
+    }
+}
+
 /// The newest version of a page.
 pub(crate) async fn latest(
     board: &Arc<Board>,
     name: &PageName,
 ) -> Result<PublishedPage, PageStoreError> {
-    let newest = match board.log(&record_path(name), None, Rows::Newest).await {
-        Ok(log) => log
-            .data
-            .into_iter()
-            .next()
-            .ok_or(PageStoreError::NotFound)?,
-        Err(Failure::Board(failure)) if failure.code == "board::path::not_found" => {
+    let row = newest(board, name).await?;
+    let version =
+        PageVersion::try_from(row.commit.as_str()).map_err(|_| PageStoreError::Unavailable)?;
+    read_version(board, name, &version).await
+}
+
+/// One version of a page. A version is only a commit that changed the
+/// page's record, so a commit that never changed it is not found.
+///
+/// One `board log --at <version> --limit 1` decides it: its first row is
+/// the version itself exactly when the version changed the record, and the
+/// walk reads that one commit, however long the history. When the walk is
+/// not complete, the version is a shallow clone's boundary, where every
+/// file looks added, and the answer is `Unavailable`. A commit the board
+/// does not hold is not found.
+pub(crate) async fn at(board: &Arc<Board>, pin: &PagePin) -> Result<PublishedPage, PageStoreError> {
+    let version = pin.version().as_str();
+    if !is_commit(version) {
+        return Err(PageStoreError::NotFound);
+    }
+    let log = match board
+        .log(&record_path(pin.name()), Some(version), Rows::Newest)
+        .await
+    {
+        Ok(log) => log,
+        Err(Failure::Board(failure))
+            if failure.code == "board::path::not_found"
+                || failure.code == "board::commit::not_found" =>
+        {
             return Err(PageStoreError::NotFound);
         }
         Err(other) => return unavailable(other),
     };
-    let version =
-        PageVersion::try_from(newest.commit.as_str()).map_err(|_| PageStoreError::Unavailable)?;
-    read_version(board, name, &version).await
-}
-
-/// One version of a page. A version is only a commit that `versions`
-/// lists, so a commit that never changed the page's record is not found.
-pub(crate) async fn at(board: &Arc<Board>, pin: &PagePin) -> Result<PublishedPage, PageStoreError> {
-    if !is_commit(pin.version().as_str()) {
-        return Err(PageStoreError::NotFound);
-    }
-    if !versions(board, pin.name()).await?.contains(pin.version()) {
-        return Err(PageStoreError::NotFound);
+    match log.data.first() {
+        Some(row) if row.commit == version && row.blob.is_some() => {
+            if !log.summary.complete {
+                return Err(PageStoreError::Unavailable);
+            }
+        }
+        _ => return Err(PageStoreError::NotFound),
     }
     read_version(board, pin.name(), pin.version()).await
 }
@@ -134,6 +169,20 @@ async fn read_version(
         .page(name, &text)
         .map_err(|_| PageStoreError::Unavailable)?;
     Ok(PublishedPage::new(page, version.clone(), provenance))
+}
+
+/// Answers `Ok` when the page's record is in the working tree, and
+/// `NotFound` when it is not.
+pub(crate) async fn exists(board: &Arc<Board>, name: &PageName) -> Result<(), PageStoreError> {
+    let got = board
+        .get(&[record_path(name).as_str()])
+        .await
+        .or_else(unavailable)?;
+    match got.into_iter().next() {
+        Some(Got::Found(_)) => Ok(()),
+        Some(Got::Missing) => Err(PageStoreError::NotFound),
+        _ => Err(PageStoreError::Unavailable),
+    }
 }
 
 /// The names of the directories under `/pages` that parse as page names.
@@ -216,15 +265,13 @@ pub(crate) async fn publish(
         let previous = match &record_blob {
             None => None,
             Some(blob) => {
-                let log = board
-                    .log(&record, None, Rows::Newest)
-                    .await
-                    .or_else(unavailable)?;
-                let row = log
-                    .data
-                    .into_iter()
-                    .next()
-                    .ok_or(PageStoreError::Unavailable)?;
+                // A page whose last change the walk cannot reach, past
+                // 100,000 commits or at a shallow boundary, answers
+                // Unavailable, so no publish names a wrong previous version.
+                let row = match newest(board, name).await {
+                    Err(PageStoreError::NotFound) => return Err(PageStoreError::Unavailable),
+                    other => other?,
+                };
                 // The record's bytes differ from its last commit's when
                 // another publish committed between the two reads, or when
                 // a stopped put left them uncommitted. A new read settles

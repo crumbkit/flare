@@ -318,3 +318,78 @@ fn a_record_reached_through_a_link_or_mount_is_unavailable() {
         [Err(ReadError::Unavailable), Ok(path("/tasks/a"))]
     );
 }
+
+/// A board program that, before each put, commits a valid change to
+/// /tasks/a with the real board, and then runs the put it was given.
+fn racing_before_each_put(board: &ScratchBoard) -> std::path::PathBuf {
+    let real = board.program().display().to_string();
+    board.script(
+        "racing-board",
+        &format!(
+            r#"case "$1" in
+  put)
+    printf '%s\n' '{{"path":"/tasks/a","record":{{"$type":"tasks/task/v2","title":"raced"}}}}' | "{real}" put --batch --json >/dev/null;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    )
+}
+
+#[test]
+fn an_invalid_body_whose_record_changed_before_the_put_is_a_conflict() {
+    let board = seeded_task();
+    let store = board.store();
+    let before = block_on(store.read(&path("/tasks/a"))).unwrap();
+    let racing = board.store_with(
+        &racing_before_each_put(&board),
+        hangar_board::Limits::default(),
+    );
+    let answer = block_on(racing.write(
+        &path("/tasks/a"),
+        &body(&json!({"$type": "tasks/task/v2", "title": 5})),
+        &edit(before.blob()),
+    ));
+    assert_eq!(answer, Err(WriteError::Conflict));
+    assert_eq!(object(&store, "/tasks/a")["title"], "raced");
+    assert!(edits(&board).is_empty());
+}
+
+#[test]
+fn read_all_answers_unavailable_when_its_files_come_from_two_commits() {
+    let board = seeded_task();
+    let entry = |file: &str, commit: &str| {
+        json!({
+            "location": {"path": file, "pointers": [], "source": commit},
+            "blob": "b".repeat(40),
+            "text": "{\"$type\":\"tasks/task/v2\"}",
+            "record": {"$type": "tasks/task/v2"},
+        })
+    };
+    let report = json!({
+        "schema": "board/get-report/v2",
+        "data": [
+            entry("tasks/a.json", &"1".repeat(40)),
+            entry("tasks/b.json", &"2".repeat(40)),
+        ],
+        "failures": [],
+    });
+    // The log answer would make each path readable on its own, so only the
+    // check that every file comes from one commit makes them unavailable.
+    let log = json!({
+        "schema": "board/log-report/v2",
+        "data": [{"commit": "1".repeat(40), "blob": "b".repeat(40)}],
+        "summary": {"complete": true},
+    });
+    let two_sources = board.script(
+        "two-sources-board",
+        &format!(
+            "case \"$1\" in\n  log) printf '%s\\n' '{log}';;\n  *) printf '%s\\n' '{report}';;\nesac\n"
+        ),
+    );
+    let store = board.store_with(&two_sources, hangar_board::Limits::default());
+    assert_eq!(
+        block_on(store.read_all(&[path("/tasks/a"), path("/tasks/b")])),
+        [Err(ReadError::Unavailable), Err(ReadError::Unavailable)]
+    );
+}

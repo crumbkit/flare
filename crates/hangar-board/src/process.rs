@@ -14,9 +14,9 @@
 //!   character.
 //! - **Environment.** Cleared, then `PATH` as configured, `HOME` set to the
 //!   configured state directory, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and
-//!   `XDG_STATE_HOME` inside it, and the committer identity as
-//!   `GIT_AUTHOR_*` and `GIT_COMMITTER_*`. The working directory is the
-//!   board's root.
+//!   `XDG_STATE_HOME` inside it, `GIT_CONFIG_NOSYSTEM=1` so Git reads no
+//!   system configuration, and the committer identity as `GIT_AUTHOR_*` and
+//!   `GIT_COMMITTER_*`. The working directory is the board's root.
 //! - **Streams and deadline.** Standard input is empty, or the batch's JSON
 //!   Lines. Standard error is discarded. At most
 //!   [`Limits::output_bytes`](crate::Limits::output_bytes) of standard
@@ -27,16 +27,22 @@
 //!   own and, at the deadline or the output limit, sends the group SIGTERM,
 //!   waits one second, kills it and reaps the child. A put that is stopped
 //!   may leave written files with no commit, which the next write replaces,
-//!   as the lifecycle's crash points say.
+//!   as the lifecycle's crash points say. The exit code must agree with the
+//!   report, as [`parse`] checks.
 //!
 //! A counting gate lets at most [`Limits::children`](crate::Limits::children)
 //! children run at once. A call that finds no free place waits on the
-//! thread that runs it, and the place is freed when that thread ends.
+//! thread that runs it for at most
+//! [`Limits::child_deadline`](crate::Limits::child_deadline), and then fails
+//! as a child failure, which the stores answer as `Unavailable`. The place
+//! is freed when that thread ends.
 
 use crate::Limits;
-use crate::report::{Failure, GetReport, Got, LogReport, LsReport, LsRow, PutReport, parse};
+use crate::report::{Failure, GetReport, Got, LogReport, LsReport, LsRow, PutReport, Ran, parse};
 use crate::wait::{Gate, on_thread};
-use crumbkit_process::{Capture, Escalation, Input, Outcome, RunOptions, Signal, Zeroizing};
+use crumbkit_process::{
+    Capture, Escalation, Input, Outcome, RunOptions, Signal, Status, Zeroizing,
+};
 use serde_json::Value;
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -139,8 +145,8 @@ impl Board {
     }
 
     /// Runs board with `args` and `stdin` on a thread of its own and
-    /// returns its standard output.
-    async fn run(self: &Arc<Self>, args: &[&str], stdin: Vec<u8>) -> Result<Vec<u8>, Failure> {
+    /// returns its standard output and exit code.
+    async fn run(self: &Arc<Self>, args: &[&str], stdin: Vec<u8>) -> Result<Ran, Failure> {
         let board = Arc::clone(self);
         let args: Vec<OsString> = args.iter().map(OsString::from).collect();
         on_thread(move || board.run_blocking(args, stdin))
@@ -152,8 +158,18 @@ impl Board {
             })
     }
 
-    fn run_blocking(&self, args: Vec<OsString>, stdin: Vec<u8>) -> Result<Vec<u8>, Failure> {
-        let _place = self.gate.enter();
+    fn run_blocking(&self, args: Vec<OsString>, stdin: Vec<u8>) -> Result<Ran, Failure> {
+        let deadline = || {
+            Instant::now()
+                .checked_add(self.limits.child_deadline)
+                .ok_or_else(|| Failure::Child("the child deadline is too far away".into()))
+        };
+        let _place = self.gate.enter_within(deadline()?).ok_or_else(|| {
+            Failure::Child(format!(
+                "no place in the gate freed within {:?}",
+                self.limits.child_deadline
+            ))
+        })?;
         #[expect(
             clippy::disallowed_methods,
             reason = "this is hangar-board's process module (PROC-1)"
@@ -169,6 +185,7 @@ impl Board {
             .env("XDG_CONFIG_HOME", self.state.join("config"))
             .env("XDG_DATA_HOME", self.state.join("data"))
             .env("XDG_STATE_HOME", self.state.join("state"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_AUTHOR_NAME", name)
             .env("GIT_AUTHOR_EMAIL", email)
             .env("GIT_COMMITTER_NAME", name)
@@ -178,34 +195,49 @@ impl Board {
         } else {
             Input::Bytes(Zeroizing::new(stdin))
         };
-        let deadline = Instant::now()
-            .checked_add(self.limits.child_deadline)
-            .ok_or_else(|| Failure::Child("the child deadline is too far away".into()))?;
         let options = RunOptions::new()
             .stdin(input)
             .stdout(Capture::whole(self.limits.output_bytes))
             .stderr(Capture::discard())
-            .deadline(deadline)
+            .deadline(deadline()?)
             .escalation(Escalation::default().step(Signal::Terminate, TERM_GRACE));
         let finished = crumbkit_process::run(command, &options)
             .map_err(|error| Failure::Child(format!("board could not run: {error}")))?;
-        let over = || {
-            Failure::Child(format!(
-                "board printed more than {} bytes",
-                self.limits.output_bytes
-            ))
-        };
-        match finished.outcome() {
-            // A child that exits on its own just after it passes the limit
-            // ends before the run stops it, with its output cut short.
-            Outcome::Ended(_) if finished.stdout().over_limit() => Err(over()),
-            Outcome::Ended(_) => Ok(finished.into_output().0.into_bytes()),
-            Outcome::TimedOut => Err(Failure::Child(format!(
-                "board ran past its deadline of {:?}",
-                self.limits.child_deadline
-            ))),
-            _ => Err(over()),
-        }
+        let code = ended(
+            finished.outcome(),
+            finished.stdout().over_limit(),
+            &self.limits,
+        )?;
+        Ok(Ran {
+            stdout: finished.into_output().0.into_bytes(),
+            code,
+        })
+    }
+}
+
+/// The exit code of a child that ended with `outcome`, or why its output
+/// cannot be used. `over_limit` says whether it printed past
+/// [`Limits::output_bytes`].
+pub(crate) fn ended(outcome: Outcome, over_limit: bool, limits: &Limits) -> Result<i32, Failure> {
+    let over = || {
+        Failure::Child(format!(
+            "board printed more than {} bytes",
+            limits.output_bytes
+        ))
+    };
+    match outcome {
+        // A child that exits on its own just after it passes the limit
+        // ends before the run stops it, with its output cut short.
+        Outcome::Ended(_) if over_limit => Err(over()),
+        Outcome::Ended(Status::Code(code)) => Ok(code),
+        Outcome::Ended(status) => Err(Failure::Child(format!(
+            "board ended by a signal, with status {status:?}"
+        ))),
+        Outcome::TimedOut => Err(Failure::Child(format!(
+            "board ran past its deadline of {:?}",
+            limits.child_deadline
+        ))),
+        _ => Err(over()),
     }
 }
 

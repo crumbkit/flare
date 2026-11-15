@@ -155,7 +155,7 @@ pub(crate) async fn of_page(
     board: &Arc<Board>,
     name: &PageName,
 ) -> Result<Vec<Binding>, PageStoreError> {
-    pages::versions(board, name).await?;
+    pages::exists(board, name).await?;
     let rows = board
         .ls("/bindings")
         .await
