@@ -11,14 +11,18 @@
 )]
 pub mod fake_provider;
 
-use fake_provider::{EMAIL, Fake, HOME, assert_refused, config_with, connect, secret, sign_in};
+use fake_provider::{
+    DOMAIN, EMAIL, Fake, HOME, assert_refused, config_with, connect, connect_domain, secret,
+    sign_in,
+};
 use hangar_auth_oidc::{
-    AllowEntry, AllowList, Email, OidcAuthenticator, Reach, SignInRefusal, TestClock,
+    Admit, AllowEntry, AllowList, Email, OidcAuthenticator, Reach, SignInRefusal, TestClock,
 };
 use hangar_core::{
     Access, AuthError, Authenticator, Credential, Decision, PageName, Principal, PrincipalId,
     Resource,
 };
+use serde_json::json;
 use std::time::Duration;
 
 fn page(name: &str) -> Resource {
@@ -114,9 +118,13 @@ async fn two_entry_authenticator(fake: &Fake) -> OidcAuthenticator<TestClock> {
         ),
     ])
     .unwrap();
-    OidcAuthenticator::connect_with_clock(config_with(fake, allow), &secret(), TestClock::new())
-        .await
-        .unwrap()
+    OidcAuthenticator::connect_with_clock(
+        config_with(fake, Admit::Emails(allow)),
+        &secret(),
+        TestClock::new(),
+    )
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -153,5 +161,101 @@ async fn a_second_allow_listed_person_signs_in_as_their_own_principal() {
     assert_eq!(
         signed_in.principal().id(),
         &PrincipalId::try_from("grace").unwrap()
+    );
+}
+
+fn principal(id: &str) -> Principal {
+    Principal::new(PrincipalId::try_from(id).unwrap())
+}
+
+async fn ask<C: hangar_auth_oidc::Clock>(
+    authenticator: &OidcAuthenticator<C>,
+    principal: &Principal,
+    resource: &Resource,
+) -> Decision {
+    authenticator
+        .authorize(principal, Access::Read, resource)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn authorize_allows_a_domain_principal_only_while_a_session_of_it_is_live() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, clock) = connect_domain(&fake).await;
+    let ada = principal(EMAIL);
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
+    let signed_in = sign_in(&authenticator, &fake).await.unwrap();
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Allowed
+    );
+    for access in [Access::Read, Access::Write] {
+        assert_eq!(
+            authenticator.authorize(&ada, access, &page(HOME)).await,
+            Ok(Decision::Allowed)
+        );
+    }
+    // The rule's reach still bounds a principal with a live session.
+    assert_eq!(
+        ask(&authenticator, &ada, &page("elsewhere")).await,
+        Decision::Denied
+    );
+    authenticator.sign_out(signed_in.session());
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
+
+    assert!(sign_in(&authenticator, &fake).await.is_ok());
+    clock.advance(Duration::from_secs(12 * 60 * 60 - 1));
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Allowed
+    );
+    clock.advance(Duration::from_secs(1));
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
+}
+
+#[tokio::test]
+async fn a_domain_principal_with_two_sessions_stays_allowed_after_one_signs_out() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, _clock) = connect_domain(&fake).await;
+    let ada = principal(EMAIL);
+    let first = sign_in(&authenticator, &fake).await.unwrap();
+    let second = sign_in(&authenticator, &fake).await.unwrap();
+    authenticator.sign_out(first.session());
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Allowed
+    );
+    authenticator.sign_out(second.session());
+    assert_eq!(
+        ask(&authenticator, &ada, &page(HOME)).await,
+        Decision::Denied
+    );
+}
+
+#[tokio::test]
+async fn authorize_denies_a_principal_of_the_domain_that_never_signed_in() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, _clock) = connect_domain(&fake).await;
+    assert!(sign_in(&authenticator, &fake).await.is_ok());
+    assert_eq!(
+        ask(&authenticator, &principal("grace@example.com"), &page(HOME)).await,
+        Decision::Denied
+    );
+    assert_eq!(
+        ask(&authenticator, &principal(EMAIL), &page(HOME)).await,
+        Decision::Allowed
     );
 }

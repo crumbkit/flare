@@ -149,16 +149,22 @@ pub(crate) fn begin(
     let nonce = random_secret()?;
     let verifier = random_secret()?;
     let mut redirect = authorization.clone();
-    redirect
-        .query_pairs_mut()
-        .append_pair("response_type", "code")
-        .append_pair("client_id", config.client_id.as_str())
-        .append_pair("redirect_uri", config.redirect_uri.as_str())
-        .append_pair("scope", "openid email profile")
-        .append_pair("state", state.expose_secret())
-        .append_pair("nonce", nonce.expose_secret())
-        .append_pair("code_challenge", &challenge(verifier.expose_secret()))
-        .append_pair("code_challenge_method", "S256");
+    {
+        let mut query = redirect.query_pairs_mut();
+        query
+            .append_pair("response_type", "code")
+            .append_pair("client_id", config.client_id.as_str())
+            .append_pair("redirect_uri", config.redirect_uri.as_str())
+            .append_pair("scope", "openid email profile")
+            .append_pair("state", state.expose_secret())
+            .append_pair("nonce", nonce.expose_secret())
+            .append_pair("code_challenge", &challenge(verifier.expose_secret()))
+            .append_pair("code_challenge_method", "S256");
+        // A hint only: the signed `hd` claim decides who is admitted.
+        if let Some(domain) = config.admit.hosted_domain_hint() {
+            query.append_pair("hd", domain);
+        }
+    }
     let key = hash(state.expose_secret());
     let pending = Pending {
         nonce,

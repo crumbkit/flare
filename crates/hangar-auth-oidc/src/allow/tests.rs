@@ -71,3 +71,60 @@ fn an_email_with_a_non_ascii_character_is_refused_and_ascii_capitals_are_lowered
         "kate@example.com"
     );
 }
+
+#[test]
+fn a_workspace_domain_is_admitted_in_lower_case_whatever_case_it_is_written_in() {
+    let lower = WorkspaceDomain::try_from("example.com").unwrap();
+    let mixed = WorkspaceDomain::try_from("Example.COM").unwrap();
+    assert_eq!(lower, mixed);
+    assert_eq!(mixed.as_str(), "example.com");
+    for text in ["eu.example.com", "a-b.example.co.uk", "x1.io"] {
+        assert_eq!(WorkspaceDomain::try_from(text).unwrap().as_str(), text);
+    }
+    let longest_label = format!("{}.com", "a".repeat(63));
+    assert!(WorkspaceDomain::try_from(longest_label.as_str()).is_ok());
+    let longest_name = format!(
+        "{}.{}.{}.{}",
+        "a".repeat(63),
+        "b".repeat(63),
+        "c".repeat(63),
+        "d".repeat(61)
+    );
+    assert_eq!(longest_name.len(), 253);
+    assert!(WorkspaceDomain::try_from(longest_name.as_str()).is_ok());
+}
+
+#[test]
+fn a_workspace_domain_that_is_not_a_dns_name_of_two_labels_is_refused() {
+    let long_label = format!("{}.com", "a".repeat(64));
+    let long_name = format!(
+        "{}.{}.{}.{}",
+        "a".repeat(63),
+        "b".repeat(63),
+        "c".repeat(63),
+        "d".repeat(62)
+    );
+    assert_eq!(long_name.len(), 254);
+    for text in [
+        "",
+        "localhost",
+        ".example.com",
+        "example.com.",
+        "example..com",
+        "ada@example.com",
+        "example .com",
+        " example.com",
+        "ex\u{00E4}mple.com",
+        "-example.com",
+        "example-.com",
+        "exa_mple.com",
+        long_label.as_str(),
+        long_name.as_str(),
+    ] {
+        assert_eq!(
+            WorkspaceDomain::try_from(text),
+            Err(ConfigError::Domain),
+            "{text:?}"
+        );
+    }
+}

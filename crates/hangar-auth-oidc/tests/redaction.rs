@@ -11,12 +11,16 @@
 )]
 pub mod fake_provider;
 
-use fake_provider::{CLIENT_SECRET, EMAIL, Fake, config, connect, return_to, secret};
+use fake_provider::{
+    CLIENT_SECRET, DOMAIN, EMAIL, Fake, config, connect, connect_domain, domain_config, return_to,
+    secret, sign_in,
+};
 use hangar_auth_oidc::{
     ConnectError, Email, FixedSecret, KeptState, MetadataFault, SecretError, SignInRefusal,
     TokenFault,
 };
 use secrecy::ExposeSecret;
+use serde_json::json;
 
 fn assert_hidden(shown: &str, secrets: &[&str]) {
     for secret in secrets {
@@ -90,6 +94,8 @@ fn every_refusal_formats_without_a_secret_or_an_email() {
         SignInRefusal::NotAllowed,
         SignInRefusal::TooManySessions,
         SignInRefusal::NoRandomness,
+        SignInRefusal::NoHostedDomain,
+        SignInRefusal::OtherHostedDomain,
     ];
     let errors = [
         ConnectError::Secret(SecretError::Failed),
@@ -109,5 +115,36 @@ fn every_refusal_formats_without_a_secret_or_an_email() {
     for text in shown {
         assert!(!text.is_empty());
         assert_hidden(&text, &[CLIENT_SECRET, EMAIL, "@"]);
+    }
+}
+
+#[test]
+fn the_two_hosted_domain_refusals_format_without_an_email_or_an_hd_value() {
+    for refusal in [
+        SignInRefusal::NoHostedDomain,
+        SignInRefusal::OtherHostedDomain,
+    ] {
+        assert!(!refusal.is_temporary());
+        for text in [format!("{refusal:?}"), refusal.to_string()] {
+            assert!(!text.is_empty());
+            assert_hidden(&text, &[EMAIL, DOMAIN, "@", "example"]);
+        }
+    }
+}
+
+#[tokio::test]
+async fn debug_output_of_a_domain_config_and_a_domain_sign_in_hides_the_email_and_the_domain() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, _clock) = connect_domain(&fake).await;
+    let signed_in = sign_in(&authenticator, &fake).await.unwrap();
+    // The principal itself names the email: the admitted value is there.
+    assert_eq!(signed_in.principal().id().as_str(), EMAIL);
+    for shown in [
+        format!("{:?}", domain_config(&fake)),
+        format!("{authenticator:?}"),
+        format!("{signed_in:?}"),
+    ] {
+        assert_hidden(&shown, &[EMAIL, DOMAIN]);
     }
 }
