@@ -12,3 +12,7 @@ This file records the notable changes to hangar. The format follows
   provenance and principals, the `Authenticator`, `PageStore` and
   `RecordStore` traits, in-memory stores, and a contract suite for each
   trait that every implementation runs from its own tests.
+- `hangar-auth-oidc` signs people in with an OpenID Connect provider such as
+  Google. It runs the authorisation code flow with PKCE, verifies the RS256
+  ID token, admits only verified emails on its allow-list, keeps sessions in
+  memory and reads the client secret from the macOS Keychain.

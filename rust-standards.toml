@@ -6,23 +6,38 @@
 schema = "rust-standards/adoption/v1"
 standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb405507588b" }
 
-# hangar-core is a library that other hangar crates depend on. The profiles
-# child-process, service, cli and durable-state join with the crate that
-# needs each of them: child-process with hangar-board, service with
+# hangar-core and hangar-auth-oidc are libraries that other hangar crates
+# depend on. hangar-auth-oidc starts /usr/bin/security to read its client
+# secret, so it brings in child-process. The profiles service, cli and
+# durable-state join with the crate that needs each of them: service with
 # hangar-server, cli with the binary and durable-state with
 # hangar-auth-loopback's token file.
-profiles = ["base", "library"]
+profiles = ["base", "library", "child-process"]
 
 [[binding]]
 rule = "BASE-24"
-owners = ["crates/hangar-core/tests/support/fixed_authenticator.rs"]
+owners = [
+  "crates/hangar-core/tests/support/fixed_authenticator.rs",
+  "crates/hangar-auth-oidc/src/flow.rs",
+  "crates/hangar-auth-oidc/src/session.rs",
+  "crates/hangar-auth-oidc/src/token.rs",
+]
 checks = ["review: expose_secret appears only in the files listed in owners"]
-note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. A real Authenticator in a later crate adds its own file here."
+note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned."
+
+[[binding]]
+rule = "PROC-1"
+owners = ["crates/hangar-auth-oidc/src/keychain.rs"]
+checks = [
+  "clippy disallowed_methods and disallowed_types (clippy.toml)",
+  "the KeychainSecret tests in crates/hangar-auth-oidc/tests/keychain.rs (PROC-2)",
+]
+note = "Reading the client secret through /usr/bin/security is the one process operation. Its module documentation states PROC-2's five items, and it stops only its direct child, not the child's descendants (PROC-3)."
 
 [[decision]]
 id = "lanes"
 requirement = """
-- Lane: `lane` in .github/workflows/ci.yml, on each pull request and each push to main. It runs every step of the pull-request lane in the standards' order (format, workflows, deny, shear, clippy, tests, doctests, rustdoc, features). It has no macOS job, because the workspace has no platform code. Its budget is ten minutes, the job's timeout. A merge waits for it.
+- Lane: `lane` in .github/workflows/ci.yml, on each pull request and each push to main. It runs every step of the pull-request lane in the standards' order (format, workflows, deny, shear, clippy, tests, doctests, rustdoc, features). It has no macOS job: the one macOS-only path, KeychainSecret, runs /usr/bin/security, and its tests run a fake program on Linux. Its budget is ten minutes, the job's timeout. A merge waits for it.
 - Lane: `advisories` in .github/workflows/ci.yml, daily at 06:43 UTC and on each push to main (BASE-29). Nothing waits for it.
 """
 purpose = "The pull-request lane stays within ten minutes on a small workspace and grows with the code. A daily advisory run catches an advisory published against a dependency already on main, and finding it after merge is safe because the advisory concerns code that is already on main."
