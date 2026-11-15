@@ -10,7 +10,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use secrecy::{ExposeSecret as _, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::time::SystemTime;
 
@@ -101,7 +101,16 @@ struct Claims {
     nonce: Option<String>,
     email: Option<String>,
     email_verified: Option<Value>,
+    /// `None` only when the claim is absent: an `hd` of JSON `null` is
+    /// `Some(Value::Null)`, so it is refused as another domain.
+    #[serde(default, deserialize_with = "present")]
     hd: Option<Value>,
+}
+
+/// Reads a claim that is present, whatever JSON value it holds, `null`
+/// included.
+fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 /// What a verified ID token says about the person: the email it marks
