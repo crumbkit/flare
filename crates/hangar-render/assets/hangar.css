@@ -1,0 +1,206 @@
+/* hangar's stylesheet for the page document, the edit form and the conflict
+   view. The board-ui tokens are copied from crumbkit/board ui/src/tokens.css
+   without Tailwind; the --h- tokens are hangar's chrome. The markup that uses
+   these class names is written in this crate, so the two change together. */
+
+:root {
+  color-scheme: light dark;
+  --paper: #f7f6f2;
+  --surface: #ffffff;
+  --ink: #1d2126;
+  --ink-muted: #5b636d;
+  --rule: #dcd9d0;
+  --accent: #2f6f62;
+  --accent-soft: #e2efeb;
+  --warn: #9a3b1c;
+  --warn-soft: #f8e6dd;
+  --code-bg: #f0eee8;
+  --added: #2d6a2f;
+  --added-soft: #e3f1e0;
+  --removed: #a2332b;
+  --removed-soft: #f9e3e0;
+  --font-text: ui-serif, Georgia, "Iowan Old Style", serif;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --measure: 68ch;
+  --radius: 6px;
+
+  --h-chalk: #eef0f5;
+  --h-panel: #ffffff;
+  --h-tint: oklch(0.925 0.045 268);
+  --h-tint-line: oklch(0.84 0.06 268);
+  --h-ink: #1c2036;
+  --h-muted: #5c637a;
+  --h-line: #d6dae6;
+  --h-act: #3846a6;
+  --h-act-ink: #ffffff;
+  --h-bad: #8c2d28;
+  --h-bad-soft: oklch(0.94 0.035 25);
+  --h-good: #2a6336;
+  --h-good-soft: oklch(0.94 0.04 150);
+  --h-note: #5c4310;
+  --h-note-soft: oklch(0.94 0.055 88);
+  --r-block: 12px;
+  --r-ctl: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #15181b;
+    --surface: #1c2024;
+    --ink: #e4e2dc;
+    --ink-muted: #9aa2ab;
+    --rule: #30363c;
+    --accent: #7cc4b3;
+    --accent-soft: #1f3530;
+    --warn: #f0a07f;
+    --warn-soft: #3a2219;
+    --code-bg: #111416;
+    --added: #8fd18a;
+    --added-soft: #1d3320;
+    --removed: #f29a90;
+    --removed-soft: #3d1f1c;
+
+    --h-chalk: #11131b;
+    --h-panel: #1a1d29;
+    --h-tint: oklch(0.30 0.055 268);
+    --h-tint-line: oklch(0.42 0.07 268);
+    --h-ink: #e3e6f1;
+    --h-muted: #a0a7bd;
+    --h-line: #2d3246;
+    --h-act: #98a6f4;
+    --h-act-ink: #10142a;
+    --h-bad: #f3a79f;
+    --h-bad-soft: oklch(0.29 0.05 25);
+    --h-good: #9cd8a6;
+    --h-good-soft: oklch(0.29 0.045 150);
+    --h-note: #efd59a;
+    --h-note-soft: oklch(0.31 0.05 88);
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+/* A Markdown page. */
+.prose-board {
+  font-family: var(--font-text);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  max-width: var(--measure);
+  padding: 24px;
+}
+.prose-board h1,
+.prose-board h2,
+.prose-board h3,
+.prose-board h4 {
+  font-family: var(--font-ui);
+  line-height: 1.25;
+  margin: 1.6em 0 0.5em;
+}
+.prose-board h1 { font-size: 1.6rem; }
+.prose-board h2 { font-size: 1.3rem; }
+.prose-board h3 { font-size: 1.1rem; }
+.prose-board > :first-child { margin-top: 0; }
+.prose-board a { color: var(--accent); }
+.prose-board code { font-family: var(--font-mono); font-size: 0.875em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+.prose-board pre { background: var(--code-bg); padding: 0.9em 1em; border-radius: var(--radius); overflow-x: auto; line-height: 1.45; }
+.prose-board pre code { background: none; padding: 0; }
+.prose-board table { border-collapse: collapse; font-family: var(--font-ui); font-size: 0.9375rem; }
+.prose-board th, .prose-board td { border: 1px solid var(--rule); padding: 0.3em 0.7em; text-align: left; }
+.prose-board .align-center { text-align: center; }
+.prose-board .align-right { text-align: right; }
+.prose-board blockquote { margin: 0; padding-left: 1em; border-left: 3px solid var(--rule); color: var(--ink-muted); }
+.prose-board img { max-width: 100%; }
+
+/* hangar's chrome: the edit form and the conflict view. */
+.hangar-form,
+.conflict {
+  box-sizing: border-box;
+  color: var(--h-ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.hangar-form *, .conflict * { box-sizing: border-box; }
+.hangar-form h3, .conflict h3, .hangar-form p, .conflict p, .result dl, .result dd { margin: 0; }
+
+.hangar-form {
+  background: var(--h-tint);
+  border-top: 1px solid var(--h-tint-line);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+.hangar-form h3 { font-size: 1rem; }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.field { display: grid; gap: 4px; font-size: 0.82rem; font-weight: 600; min-width: 0; }
+.field input, .field select, .field textarea {
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.95rem;
+  color: var(--h-ink);
+  background: var(--h-panel);
+  border: 1px solid var(--h-tint-line);
+  border-radius: var(--r-ctl);
+  padding: 8px 10px;
+  width: 100%;
+  min-width: 0;
+}
+.field textarea { min-height: 6em; resize: vertical; }
+.field input[type="checkbox"] { width: auto; justify-self: start; }
+.field.readonly .value { font-weight: 400; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.hint { font-size: 0.84rem; color: var(--h-muted); font-weight: 400; }
+.go { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.go .hint { flex: 1 1 260px; min-width: 0; }
+
+.btn {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--h-act);
+  background: var(--h-act);
+  color: var(--h-act-ink);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn.quiet { background: transparent; color: var(--h-act); }
+:focus-visible { outline: 2px solid var(--h-act); outline-offset: 2px; }
+
+.msg { border-radius: var(--r-ctl); padding: 8px 12px; font-size: 0.88rem; display: grid; gap: 2px; }
+.msg.bad { background: var(--h-bad-soft); color: var(--h-bad); }
+.msg.good { background: var(--h-good-soft); color: var(--h-good); }
+
+/* The conflict view: hangar's own document, with no page content. */
+.conflict { background: var(--h-panel); padding: 20px 16px; display: grid; gap: 16px; }
+.cf { display: grid; border: 1px solid var(--h-line); border-radius: var(--r-block); overflow: hidden; }
+.cf .r { display: grid; grid-template-columns: 84px minmax(0, 1fr) minmax(0, 1fr); border-top: 1px solid var(--h-line); }
+.cf .r:first-child { border-top: 0; }
+.cf .r > * { padding: 10px 12px; min-width: 0; font-size: 0.9rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.cf .r > * + * { border-left: 1px solid var(--h-line); }
+.cf .hd > * { font-size: 0.78rem; color: var(--h-muted); background: var(--h-chalk); }
+.cf .hd b { display: block; color: var(--h-ink); font-size: 0.86rem; }
+.cf .f { font-weight: 600; font-size: 0.84rem; }
+.cf .same { color: var(--h-muted); }
+.cf mark { background: var(--h-note-soft); color: var(--h-note); border-radius: 4px; padding: 0 4px; }
+.cf .keep { background: var(--h-good-soft); }
+.cf .sub { display: block; font-size: 0.78rem; color: var(--h-muted); }
+.cf .rest { padding: 10px 12px; border-top: 1px solid var(--h-line); font-size: 0.9rem; color: var(--h-muted); }
+@media (max-width: 560px) {
+  .cf .r { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .cf .r > :first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--h-line); padding-block: 6px; background: var(--h-chalk); }
+  .cf .r > :nth-child(2) { border-left: 0; }
+  .cf .hd > :first-child { display: none; }
+}
+.result { background: var(--h-tint); border-radius: var(--r-block); padding: 16px; display: grid; gap: 12px; }
+.result dl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 12px; font-size: 0.92rem; }
+.result dt { font-weight: 600; font-size: 0.84rem; }
+.result dd { overflow-wrap: anywhere; white-space: pre-wrap; }

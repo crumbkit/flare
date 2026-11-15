@@ -6,9 +6,9 @@
 schema = "rust-standards/adoption/v1"
 standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb405507588b" }
 
-# hangar-core and hangar-auth-oidc are libraries that other hangar crates
-# depend on. hangar-auth-oidc starts /usr/bin/security to read its client
-# secret, so it brings in child-process. The profiles service, cli and
+# hangar-core, hangar-auth-oidc and hangar-render are libraries that other
+# hangar crates depend on. hangar-auth-oidc starts /usr/bin/security to read
+# its client secret, so it brings in child-process. The profiles service, cli and
 # durable-state join with the crate that needs each of them: service with
 # hangar-server, cli with the binary and durable-state with
 # hangar-auth-loopback's token file.
@@ -21,9 +21,10 @@ owners = [
   "crates/hangar-auth-oidc/src/flow.rs",
   "crates/hangar-auth-oidc/src/session.rs",
   "crates/hangar-auth-oidc/src/token.rs",
+  "crates/hangar-render/src/token.rs",
 ]
 checks = ["review: expose_secret appears only in the files listed in owners"]
-note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned."
+note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. hangar-render holds the form token in FormToken, a SecretString, and calls it only in token.rs: to write the token into a form's hidden input and in FormToken's ExposeSecret implementation, which the server uses to look the token up. Its tests call it to read back the token a post carried."
 
 [[binding]]
 rule = "PROC-1"
