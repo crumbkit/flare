@@ -241,6 +241,45 @@ fn a_section_that_copies_a_large_record_on_each_pass_of_a_long_loop_is_refused_q
 }
 
 #[test]
+fn a_tag_with_a_name_of_a_million_bytes_inside_a_long_loop_is_refused_by_the_check() {
+    let a = format!(r#"{{"items": [{}0]}}"#, "0,".repeat(499_999));
+    let template = format!(
+        "{{{{#a.items}}}}{{{{{}}}}}{{{{/a.items}}}}",
+        "x".repeat(1_000_000)
+    );
+    assert!(matches!(
+        render_two(&template, &a, "{}"),
+        Err(RenderError::Flaws(_))
+    ));
+}
+
+#[test]
+fn a_256_byte_name_looked_up_on_each_pass_of_a_long_loop_is_refused_by_the_cost_budget() {
+    let a = format!(r#"{{"items": [{}0]}}"#, "0,".repeat(499_999));
+    let template = format!(
+        "{{{{#a.items}}}}{{{{{}}}}}{{{{/a.items}}}}",
+        "x".repeat(256)
+    );
+    assert!(matches!(
+        render_two(&template, &a, "{}"),
+        Err(RenderError::TooCostly {
+            max: MAX_COPIED_BYTES
+        })
+    ));
+}
+
+#[test]
+fn a_list_section_counts_one_copy_of_the_list_and_one_of_each_element() {
+    // The lookup of a.items on a stack of one counts 7 bytes. The list
+    // ["ab", "cd"] counts 32 + (32 + 2) * 2 = 100 bytes, and each element 34
+    // more.
+    assert_eq!(
+        walk::copied("{{#a.items}}{{/a.items}}", r#"{"items": ["ab", "cd"]}"#),
+        175
+    );
+}
+
+#[test]
 fn a_loop_over_a_long_list_of_numbers_in_one_record_is_admitted() {
     let a = format!(r#"{{"items": [{}0]}}"#, "7,".repeat(99_999));
     let document = render_two("<p>{{#a.items}}{{.}} {{/a.items}}</p>", &a, "{}").unwrap();

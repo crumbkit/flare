@@ -3,6 +3,11 @@
 
 use super::{FlawKind, Found};
 
+/// The longest name a Mustache tag may hold, in bytes. mustache2 hashes the
+/// name once for each value on its context stack at each lookup, so a long
+/// name inside a long loop would take minutes.
+pub(crate) const MAX_NAME_BYTES: usize = 256;
+
 /// The kinds of Mustache tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TagKind {
@@ -91,6 +96,11 @@ fn classify(content: &str) -> Result<(TagKind, String), FlawKind> {
     } else {
         characters.as_str().trim()
     };
+    if name.len() > MAX_NAME_BYTES {
+        return Err(FlawKind::TagNameTooLong {
+            max: MAX_NAME_BYTES,
+        });
+    }
     if well_named(name) {
         Ok((kind, name.to_owned()))
     } else {

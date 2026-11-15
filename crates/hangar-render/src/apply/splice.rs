@@ -162,3 +162,6 @@ pub(super) fn splice(text: &str, changes: &[(&str, Option<String>)]) -> Option<S
     out.push_str(text.get(last.end..)?);
     Some(out)
 }
+
+#[cfg(test)]
+mod tests;

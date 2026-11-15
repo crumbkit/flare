@@ -37,17 +37,28 @@ impl Budget {
         Ok(())
     }
 
-    /// Counts one copy of `value`. The count stops as soon as it passes the
-    /// budget, so measuring a large value costs no more than the budget.
-    fn copy(&mut self, value: &Data) -> Result<(), RenderError> {
-        let left = MAX_COPIED_BYTES.saturating_sub(self.copied);
-        self.copied = self.copied.saturating_add(copy_size(value, left));
+    /// Counts one lookup of `name` on a context stack `depth` values deep.
+    /// mustache2 hashes the name once for each value on the stack, so a
+    /// lookup counts at least the name's length times the depth.
+    fn look_up(&mut self, name: &str, depth: usize) -> Result<(), RenderError> {
+        self.charge(name.len().max(1).saturating_mul(depth.max(1)))
+    }
+
+    fn charge(&mut self, bytes: usize) -> Result<(), RenderError> {
+        self.copied = self.copied.saturating_add(bytes);
         if self.copied > MAX_COPIED_BYTES {
             return Err(RenderError::TooCostly {
                 max: MAX_COPIED_BYTES,
             });
         }
         Ok(())
+    }
+
+    /// Counts one copy of `value`. The count stops as soon as it passes the
+    /// budget, so measuring a large value costs no more than the budget.
+    fn copy(&mut self, value: &Data) -> Result<(), RenderError> {
+        let left = MAX_COPIED_BYTES.saturating_sub(self.copied);
+        self.charge(copy_size(value, left))
     }
 }
 
@@ -81,13 +92,13 @@ fn copy_size(value: &Data, limit: usize) -> usize {
 ///
 /// A section over a list visits each element, a section over another truthy
 /// value pushes it, and an inverted section pushes nothing. The walk stops
-/// as soon as the bound passes 4 MiB, or the record data mustache2 would
-/// copy passes 64 MiB.
+/// as soon as the bound passes 4 MiB, or the bytes mustache2 would copy and
+/// look up pass 64 MiB.
 ///
 /// # Errors
 ///
 /// Returns [`RenderError::TooLarge`] when the bound passes 4 MiB,
-/// [`RenderError::TooCostly`] when the copies pass 64 MiB, and
+/// [`RenderError::TooCostly`] when the copies and lookups pass 64 MiB, and
 /// [`RenderError::NotText`] when a variable tag resolves to a list or an
 /// object.
 pub(crate) fn worst_case(text: &str, nodes: &[Node], data: &Data) -> Result<usize, RenderError> {
@@ -107,6 +118,7 @@ fn walk(
         match node {
             Node::Text(bytes) => budget.add(*bytes)?,
             Node::Variable { name, at } => {
+                budget.look_up(name, stack.len())?;
                 budget.add(written(text, name, *at, resolve(stack, name))?)?
             }
             Node::Section {
@@ -116,6 +128,7 @@ fn walk(
                 ..
             } => {
                 budget.add(0)?;
+                budget.look_up(name, stack.len())?;
                 let value = resolve(stack, name);
                 if *inverted {
                     if !value.is_some_and(Data::is_truthy) {
@@ -197,4 +210,23 @@ fn resolve<'d>(stack: &[&'d Data], name: &str) -> Option<&'d Data> {
         };
     }
     Some(value)
+}
+
+/// The bytes the cost budget counts for `template` with `a` filling the
+/// slot `a`.
+#[cfg(test)]
+pub(super) fn copied(template: &str, a: &str) -> usize {
+    use crate::test_support::{html_page, record, slot, slot_name};
+    let page = html_page(template, vec![slot("a", &[], None)]);
+    let fills = [(slot_name("a"), record("/tasks/a.md", '1', a))];
+    let Ok(data) = super::data::page_data(&page, &fills) else {
+        return 0;
+    };
+    let Ok(Some(nodes)) = crate::check::template(&page) else {
+        return 0;
+    };
+    let mut budget = Budget::default();
+    let mut stack = vec![&data];
+    let _ = walk(template, &nodes, &mut stack, &mut budget);
+    budget.copied
 }

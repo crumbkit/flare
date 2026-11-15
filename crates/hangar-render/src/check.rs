@@ -68,6 +68,11 @@ pub enum FlawKind {
     /// ASCII, or names something with characters other than letters, digits,
     /// `_`, `-` and `.`.
     MalformedMustacheTag,
+    /// A Mustache tag whose name is longer than 256 bytes.
+    TagNameTooLong {
+        /// The longest name in bytes.
+        max: usize,
+    },
     /// A Mustache tag inside an HTML tag but outside an attribute value in
     /// double quotes, or in an end tag.
     TagInMarkup,
@@ -140,6 +145,9 @@ impl fmt::Display for FlawKind {
             Self::MalformedMustacheTag => formatter.write_str(
                 "the Mustache tag is unclosed or names something with characters other than letters, digits, `_`, `-` and `.`",
             ),
+            Self::TagNameTooLong { max } => {
+                write!(formatter, "a Mustache tag's name can be at most {max} bytes")
+            }
             Self::TagInMarkup => formatter.write_str(
                 "a Mustache tag inside an HTML tag must be in an attribute value in double quotes",
             ),

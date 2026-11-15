@@ -149,6 +149,28 @@ fn a_mustache_tag_in_tag_position_is_refused_and_one_in_text_is_admitted() {
 }
 
 #[test]
+fn a_tag_name_over_256_bytes_is_refused_at_its_line_and_column_and_one_of_256_is_admitted() {
+    let long = "x".repeat(257);
+    let page = html_page(
+        &format!("<p>\n  {{{{#{long}}}}}{{{{/{long}}}}}</p>"),
+        Vec::new(),
+    );
+    let flaws = check_page(&page).unwrap_err();
+    let first = flaws.iter().next().unwrap();
+    assert_eq!(first.kind(), &FlawKind::TagNameTooLong { max: 256 });
+    assert_eq!((first.line(), first.column()), (2, 3));
+    refused(
+        &format!("<p>{{{{{long}}}}}</p>"),
+        FlawKind::TagNameTooLong { max: 256 },
+    );
+    refused(
+        &format!("<p>{{{{a.{}}}}}</p>", "b.".repeat(128)),
+        FlawKind::TagNameTooLong { max: 256 },
+    );
+    admitted(&format!("<p>{{{{{}}}}}</p>", "x".repeat(256)));
+}
+
+#[test]
 fn a_section_inside_an_html_tag_is_refused_and_one_around_it_is_admitted() {
     refused("<p {{#s}}hidden{{/s}}>x</p>", FlawKind::SectionInMarkup);
     refused(
