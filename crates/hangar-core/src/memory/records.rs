@@ -21,6 +21,17 @@ pub(super) struct RecordState {
 }
 
 impl RecordState {
+    /// The record at `path`, as a read answers it.
+    fn record_at(&self, path: &RecordPath) -> Result<Record, ReadError> {
+        let entry = self.records.get(path).ok_or(ReadError::NotFound)?;
+        Ok(Record::new(
+            path.clone(),
+            entry.record_type.clone(),
+            entry.blob.clone(),
+            entry.body.clone(),
+        ))
+    }
+
     /// A blob that no earlier call returned.
     ///
     /// Shortcut: the blob is a counter value written as 40 hex digits. It
@@ -108,13 +119,14 @@ impl MemoryRecordStore {
 impl RecordStore for MemoryRecordStore {
     async fn read(&self, path: &RecordPath) -> Result<Record, ReadError> {
         let state = locked(&self.state).ok_or(ReadError::Unavailable)?;
-        let entry = state.records.get(path).ok_or(ReadError::NotFound)?;
-        Ok(Record::new(
-            path.clone(),
-            entry.record_type.clone(),
-            entry.blob.clone(),
-            entry.body.clone(),
-        ))
+        state.record_at(path)
+    }
+
+    async fn read_all(&self, paths: &[RecordPath]) -> Vec<Result<Record, ReadError>> {
+        let Some(state) = locked(&self.state) else {
+            return paths.iter().map(|_| Err(ReadError::Unavailable)).collect();
+        };
+        paths.iter().map(|path| state.record_at(path)).collect()
     }
 
     async fn write(

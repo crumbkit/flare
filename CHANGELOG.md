@@ -28,6 +28,19 @@ This file records the notable changes to hangar. The format follows
   valid for 60 seconds, sets a host-only session cookie. Every request is
   checked for a loopback peer, the exact Host and, when it changes
   something, the server's own Origin.
+- `hangar-board` keeps pages, bindings and record edits in a board. Its
+  `BoardStore` runs the board program for every read and write, so each
+  publish, save, move and edit is one commit. A page version is the commit
+  that made it. Each record edit adds a `hangar/edit/v1` record that names
+  who made it and from which version, in the same commit. A typed Markdown
+  record, such as a task, reads as one JSON object with its prose under
+  `$body`.
+- `RecordStore::read_all` reads several records at one state of the store,
+  and every page store reads a binding's fills with it, so a fit check
+  never mixes two states of the records. Its default body reads the paths
+  in turn.
+- `RecordFixture::with_bodies` and `PageFixture::with_bodies` run the
+  contract suites with bodies in a store's own form.
 - `hangar-render` renders a page and the records that fill its slots into a
   whole HTML document, with Markdown pages shown as prose and raw HTML shown
   as text. `check_page` refuses a Mustache template in which a record value
@@ -37,6 +50,10 @@ This file records the notable changes to hangar. The format follows
   `conflict_view` shows the conflict and saves the edit onto the newer record.
 
 ### Changed
+
+- The record suite's concurrent-writes clause races the two fixture bodies
+  that differ from the record's current body, so a store may answer a
+  write of the current body without writing.
 
 - `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
   an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its

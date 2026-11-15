@@ -33,6 +33,28 @@ pub trait RecordStore: Send + Sync {
     /// [`ReadError::Unavailable`] when the store cannot answer.
     fn read(&self, path: &RecordPath) -> impl Future<Output = Result<Record, ReadError>> + Send;
 
+    /// Reads the record at each of `paths` and answers one result per path,
+    /// in the order of `paths`, each as [`RecordStore::read`] would answer
+    /// it. A store that can read several records at one state answers them
+    /// all from that state, so no change between two reads shows in the
+    /// answer.
+    ///
+    /// The default body reads the paths in turn with
+    /// [`RecordStore::read`], which a store whose records can change between
+    /// two reads overrides.
+    fn read_all(
+        &self,
+        paths: &[RecordPath],
+    ) -> impl Future<Output = Vec<Result<Record, ReadError>>> + Send {
+        async move {
+            let mut answers = Vec::with_capacity(paths.len());
+            for path in paths {
+                answers.push(self.read(path).await);
+            }
+            answers
+        }
+    }
+
     /// Replaces the body of the record at `path`, when the record's current
     /// blob equals the blob that `provenance` names. Returns the new blob.
     ///
@@ -76,8 +98,9 @@ pub trait RecordStore: Send + Sync {
 /// during the call. A record can change type or disappear afterwards, and a
 /// stored binding then stops fitting its page. A reader that needs a fit
 /// calls [`PageStore::check_fit`], which checks one stored binding against
-/// the records as they are now. A store that reads all fills from one
-/// revision of its records belongs to a later change.
+/// the records as they are now. The fills of one binding are read together
+/// with [`RecordStore::read_all`], so the check sees them at one state of
+/// the records when the record store can give one.
 pub trait PageStore: Send + Sync {
     /// Publishes a new version of a page and returns its version.
     ///

@@ -51,6 +51,7 @@ record_suite!(
     a_blob_never_repeats_for_one_record,
     a_rejected_write_changes_nothing,
     an_unknown_path_is_not_found,
+    read_all_answers_each_path_as_read_does,
 );
 
 /// A runner that counts the pairs it drives, and drives them on threads.
@@ -137,6 +138,7 @@ page_suite!(
     move_binding_changes_only_the_pin,
     move_binding_refuses_a_misfit,
     bindings_of_lists_a_pages_bindings,
+    a_two_fill_binding_is_checked_against_one_state,
 );
 
 #[test]
@@ -233,4 +235,47 @@ fn a_memory_record_store_hands_out_a_new_blob_for_every_write() {
     ))
     .unwrap();
     assert_ne!(&second_blob, first.blob());
+}
+
+#[test]
+fn the_record_suite_passes_with_json_bodies_given_through_with_bodies() {
+    let fixture = RecordFixture::with_bodies(
+        r#"{"title":"first"}"#,
+        r#"{"title":"second"}"#,
+        r#"{"title":"third"}"#,
+    )
+    .unwrap();
+    let seed = fixture.seeds().first().unwrap();
+    assert_eq!(seed.path().as_str(), "/tasks/a");
+    assert_eq!(seed.record_type().as_str(), "tasks/task/v2");
+    assert_eq!(seed.body().as_str(), r#"{"title":"first"}"#);
+    let store = seeded_records(fixture.seeds());
+    block_on(record_store::write_returns_a_new_blob_and_replaces_the_body(&store, &fixture))
+        .unwrap();
+}
+
+#[test]
+fn the_page_suite_keeps_the_standard_paths_and_types_with_bodies_given_through_with_bodies() {
+    let fixture =
+        PageFixture::with_bodies(r#"{"title":"a"}"#, r#"{"title":"b"}"#, r#"{"text":"n"}"#)
+            .unwrap();
+    let seeds: Vec<_> = fixture
+        .seeds()
+        .iter()
+        .map(|seed| {
+            (
+                seed.path().as_str(),
+                seed.record_type().as_str(),
+                seed.body().as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        seeds,
+        [
+            ("/tasks/a", "tasks/task/v2", r#"{"title":"a"}"#),
+            ("/tasks/b", "tasks/task/v2", r#"{"title":"b"}"#),
+            ("/notes/n", "notes/note/v1", r#"{"text":"n"}"#),
+        ]
+    );
 }
