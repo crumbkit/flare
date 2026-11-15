@@ -53,7 +53,7 @@
 //! | absent | `issue_code` with fewer than 64 outstanding | unused |
 //! | unused | `sign_in` within 60 seconds | used, and a session is live |
 //! | unused | 60 seconds pass | expired; `expire` hands back its opener |
-//! | used or expired | 10 minutes after it was made, at `expire` or `issue_code` | forgotten |
+//! | used or expired | 10 minutes after it was made, at `expire` or `issue_code` | forgotten; a kept opener comes back from the next `expire` |
 //!
 //! `sign_in` marks the code used and stores the session under one lock.
 //! It reads the session's random bytes before it takes the lock, so a
@@ -76,9 +76,47 @@
 //! changes a mode it finds. It removes only `server.json` when the file
 //! holds the caller's token, and temporary files and openers it named.
 //!
+//! ## Server file (`server.json`)
+//!
+//! | State | Entered by | Left by |
+//! | --- | --- | --- |
+//! | absent | first use; `remove_server` by the server it names; a person removing the directory | `write_server` |
+//! | current | `write_server`: temporary file, sync, rename, directory sync | `remove_server` at exit; `write_server` by a newer server; the server dying |
+//! | stale | the server dying without `remove_server` | `write_server` by the next server |
+//! | untrusted | something outside hangar changing its owner, mode, links or type | `write_server`, which replaces it by rename and never opens it; a person removing it |
+//!
+//! `read_server` cannot tell current from stale. A client tells them apart
+//! with the probe: a current server answers the proof for a fresh nonce,
+//! and a stale file's port answers nothing or a wrong proof.
+//!
+//! ## Opener (`open-<16 hex>.html`)
+//!
+//! | State | Entered by | Left by |
+//! | --- | --- | --- |
+//! | written | `write_opener` after `issue_code` | `remove_opener` after `sign_in` hands it back; `expire` handing it back; the sweep in `prepare` once it is over 60 seconds old |
+//! | removed | any of those | final |
+//!
+//! ## Crash points
+//!
+//! 1. Death after the temporary file is made and before the rename leaves
+//!    `server.json` unchanged; a later sweep removes the temporary file.
+//! 2. Death after the rename and before the directory sync leaves the new
+//!    file; after a power loss it may be the old file or absent.
+//! 3. Death while serving leaves a stale file. Codes and sessions die with
+//!    the process, and the next server's `write_server` replaces the file.
+//! 4. Death between `issue_code` and `write_opener`, or after it, or after
+//!    `sign_in` and before the opener is removed, leaves an opener with a
+//!    dead code; the sweep removes it.
+//! 5. Two servers starting for one board both rename, and the later rename
+//!    wins. The other server keeps serving browsers already signed in to it.
+//!    No lock prevents this.
+//! 6. A server exiting while a newer one replaces the file compares tokens
+//!    and then unlinks. A rename between the two removes the newer file;
+//!    the next client finds no file and starts another server.
+//!
 //! The crate keeps launch codes and session secrets only as SHA-256
-//! digests, and no `Debug` output of the crate shows a token, code or
-//! session secret.
+//! digests, and no `Debug` output of the crate shows a token, code,
+//! session secret or launch host name.
 
 mod codes;
 mod host;
@@ -97,6 +135,4 @@ pub use principal::{Served, local_principal};
 pub use probe::{Nonce, NonceError};
 pub use record::ServerRecord;
 pub use request::{Checked, Refusal};
-#[cfg(feature = "testing")]
-pub use state::ReadStep;
-pub use state::{StateDir, StateError, Untrusted, state_home};
+pub use state::{ReadStep, StateDir, StateError, Untrusted, state_home};

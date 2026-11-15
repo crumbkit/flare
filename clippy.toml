@@ -3,9 +3,10 @@
 # owned by crates/hangar-auth-oidc/src/keychain.rs (PROC-1). When a later
 # crate needs one of these calls, that crate names its owning module in the
 # reason of the entry (BASE-5). The durable-state entries (DUR-1, DUR-2)
-# come from the durable-state profile; hangar-auth-loopback's
-# state/files.rs is the atomic writer and the only module that suppresses
-# them.
+# come from the durable-state profile. hangar-auth-loopback's
+# state/files.rs is the atomic writer and the only library module that
+# suppresses them; tests that write fixture files suppress them too, each
+# with its reason.
 
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true

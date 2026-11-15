@@ -2,8 +2,9 @@
 # `lanes` decision in rust-standards.toml records both (BASE-25). The lane has
 # no macOS job: the one macOS-only path, hangar-auth-oidc's KeychainSecret,
 # runs /usr/bin/security, and its tests run a fake program on Linux.
-# hangar-auth-loopback's platform code is POSIX file modes and ownership
-# through std::os::unix, which the Linux job covers.
+# hangar-auth-loopback's POSIX file checks behave differently on macOS; the
+# Linux job runs their tests through a testing hook, and the hangar-gates
+# suite on a Mac is their macOS check, as the lanes decision says.
 name: CI
 
 on:
