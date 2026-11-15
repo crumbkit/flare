@@ -6,13 +6,14 @@
 schema = "rust-standards/adoption/v1"
 standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb405507588b" }
 
-# hangar-core, hangar-auth-oidc, hangar-auth-loopback and hangar-board are
-# libraries that other hangar crates depend on. hangar-auth-oidc starts
-# /usr/bin/security to read its client secret and hangar-board starts the
-# board program, so they bring in child-process. hangar-auth-loopback
-# writes the server file that holds a running server's token, so it brings in
-# durable-state. The profiles service and cli join with the crate that needs
-# each of them: service with hangar-server and cli with the binary.
+# hangar-core, hangar-auth-oidc, hangar-auth-loopback, hangar-board and
+# hangar-render are libraries that other hangar crates depend on.
+# hangar-auth-oidc starts /usr/bin/security to read its client secret and
+# hangar-board starts the board program, so they bring in child-process.
+# hangar-auth-loopback writes the server file that holds a running server's
+# token, so it brings in durable-state. The profiles service and cli join with
+# the crate that needs each of them: service with hangar-server and cli with
+# the binary.
 profiles = ["base", "library", "child-process", "durable-state"]
 
 [[binding]]
@@ -23,9 +24,10 @@ owners = [
   "crates/hangar-auth-oidc/src/session.rs",
   "crates/hangar-auth-oidc/src/token.rs",
   "crates/hangar-auth-loopback/src/secret.rs",
+  "crates/hangar-render/src/token.rs",
 ]
 checks = ["review: expose_secret appears only in the files listed in owners"]
-note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. hangar-auth-loopback calls it only in secret.rs, which digests and compares the token, launch codes and session secrets, computes the probe's proof, composes the launch URL, opener page, cookie and server file from a secret, and hands the server file's bytes to the atomic writer. Its tests also call it, to read back what the code under test returned."
+note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. hangar-auth-loopback calls it only in secret.rs, which digests and compares the token, launch codes and session secrets, computes the probe's proof, composes the launch URL, opener page, cookie and server file from a secret, and hands the server file's bytes to the atomic writer. Its tests also call it, to read back what the code under test returned. hangar-render holds the form token in FormToken, a SecretString, and calls it only in token.rs: to write the token into a form's hidden input and in FormToken's ExposeSecret implementation, which the server uses to look the token up. Its tests call it to read back the token a post carried."
 
 [[binding]]
 rule = "PROC-1"

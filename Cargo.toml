@@ -5,6 +5,7 @@ members = [
   "crates/hangar-auth-oidc",
   "crates/hangar-board",
   "crates/hangar-core",
+  "crates/hangar-render",
 ]
 
 [workspace.package]
@@ -28,7 +29,7 @@ crumbkit-process = { version = "=0.5.0", default-features = false }
 # base64url for the state, nonce, PKCE verifier and session secrets.
 base64 = "0.23.1"
 # The types and traits that hangar-auth-oidc and hangar-auth-loopback
-# implement.
+# implement and that hangar-render builds on.
 hangar-core = { path = "crates/hangar-core", version = "0.1.0" }
 # The method and header types of a request, which hangar-auth-loopback checks
 # before a route runs; reqwest and hyper already bring it in.
@@ -38,6 +39,13 @@ http = "1.5.0"
 libc = "0.2.191"
 # Verifies the RS256 signature of an OpenID Connect ID token.
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+# Renders the Mustache templates of HTML pages in hangar-render. Its optional
+# serde feature stays off, because hangar-render builds the template data
+# from serde_json values itself.
+mustache2 = { version = "1.0.7", default-features = false }
+# Parses Markdown pages in hangar-render, which writes the HTML itself, so the
+# html and getopts features stay off.
+pulldown-cmark = { version = "0.13.6", default-features = false }
 # The HTTPS client for an OpenID provider's discovery, token and key set
 # requests.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form"] }
@@ -46,7 +54,8 @@ secrecy = "0.10.3"
 # Reads the provider's metadata, token reply, key set and ID token claims,
 # and hangar-auth-loopback's server file.
 serde = { version = "1.0.229", features = ["derive"] }
-# Parses the JSON that serde's derived types read.
+# Parses the JSON that serde's derived types read. hangar-render reads
+# record bodies and schemas with it and writes the new body of an edit.
 serde_json = "1.0.154"
 # Typed error enums with source() and Display derived.
 thiserror = "2.0.21"
@@ -62,6 +71,11 @@ hyper = "1.12.0"
 hyper-util = "0.1.21"
 # Test-only: the fake provider's request and reply bodies.
 http-body-util = "0.1.5"
+# Test-only: the HTML tokenizer that hangar-render's tests read its output
+# with, as a browser would.
+html5ever = "0.40.1"
+# Test-only: hangar-render's property tests.
+proptest = "1.12.0"
 
 # BASE-27: an integer overflow panics in a release build as it does in a
 # debug build.
