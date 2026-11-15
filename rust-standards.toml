@@ -6,9 +6,10 @@
 schema = "rust-standards/adoption/v1"
 standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb405507588b" }
 
-# hangar-core, hangar-auth-oidc and hangar-auth-loopback are libraries that
-# other hangar crates depend on. hangar-auth-oidc starts /usr/bin/security to
-# read its client secret, so it brings in child-process. hangar-auth-loopback
+# hangar-core, hangar-auth-oidc, hangar-auth-loopback and hangar-board are
+# libraries that other hangar crates depend on. hangar-auth-oidc starts
+# /usr/bin/security to read its client secret and hangar-board starts the
+# board program, so they bring in child-process. hangar-auth-loopback
 # writes the server file that holds a running server's token, so it brings in
 # durable-state. The profiles service and cli join with the crate that needs
 # each of them: service with hangar-server and cli with the binary.
@@ -36,6 +37,15 @@ checks = [
 note = "Reading the client secret through /usr/bin/security is the one process operation. Its module documentation states PROC-2's five items, and it stops only its direct child, not the child's descendants (PROC-3)."
 
 [[binding]]
+rule = "PROC-1"
+owners = ["crates/hangar-board/src/process.rs"]
+checks = [
+  "clippy disallowed_methods and disallowed_types (clippy.toml)",
+  "the process tests in crates/hangar-board/src/process/tests.rs and crates/hangar-board/tests/limits.rs (PROC-2)",
+]
+note = "hangar-board runs the board program for every read and write: get, get --at, ls, log and put --batch, one function each. Its module documentation states PROC-2's five items. crumbkit-process starts each child in a process group of its own and stops the whole group at the deadline or the output limit (PROC-3). A counting gate holds at most Limits::children children at once."
+
+[[binding]]
 rule = "DUR-1"
 owners = ["crates/hangar-auth-loopback/src/state/files.rs"]
 checks = [
@@ -53,7 +63,7 @@ note = "remove_server removes server.json only while it holds the caller's token
 [[decision]]
 id = "lanes"
 requirement = """
-- Lane: `lane` in .github/workflows/ci.yml, on each pull request and each push to main. It runs every step of the pull-request lane in the standards' order (format, workflows, deny, shear, clippy, tests, doctests, rustdoc, features). It has no macOS job: the one macOS-only path, KeychainSecret, runs /usr/bin/security, and its tests run a fake program on Linux. hangar-auth-loopback's platform code is POSIX file modes, ownership and links through std::os::unix, and it does not behave alike on Linux and macOS: on macOS a server file being renamed over can report 0 links, a rename can land between the lstat and the open, and the user id comes from the owner of a new pipe. The crate handles both and tests them on every platform through a testing hook, and the Linux job runs those tests. The macOS check is the hangar-gates suite, which runs the workspace tests on the Mac that hangar serves from; the lane has no macOS job. Its budget is ten minutes, the job's timeout. A merge waits for it.
+- Lane: `lane` in .github/workflows/ci.yml, on each pull request and each push to main. It runs every step of the pull-request lane in the standards' order (format, workflows, deny, shear, clippy, tests, doctests, rustdoc, features). It has no macOS job: the one macOS-only path, KeychainSecret, runs /usr/bin/security, and its tests run a fake program on Linux. hangar-auth-loopback's platform code is POSIX file modes, ownership and links through std::os::unix, and it does not behave alike on Linux and macOS: on macOS a server file being renamed over can report 0 links, a rename can land between the lstat and the open, and the user id comes from the owner of a new pipe. The crate handles both and tests them on every platform through a testing hook, and the Linux job runs those tests. The macOS check is the hangar-gates suite, which runs the workspace tests on the Mac that hangar serves from; the lane has no macOS job. Its budget is ten minutes, the job's timeout. A merge waits for it. It needs the `board` job, which builds the board program at a pinned crumbkit/board commit for hangar-board's tests and caches it under a key that names the commit; a cached run restores it in seconds, and the first build of a new pin has its own 40-minute timeout.
 - Lane: `advisories` in .github/workflows/ci.yml, daily at 06:43 UTC and on each push to main (BASE-29). Nothing waits for it.
 """
 purpose = "The pull-request lane stays within ten minutes on a small workspace and grows with the code. A daily advisory run catches an advisory published against a dependency already on main, and finding it after merge is safe because the advisory concerns code that is already on main."

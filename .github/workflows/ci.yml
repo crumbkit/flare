@@ -4,7 +4,8 @@
 # runs /usr/bin/security, and its tests run a fake program on Linux.
 # hangar-auth-loopback's POSIX file checks behave differently on macOS; the
 # Linux job runs their tests through a testing hook, and the hangar-gates
-# suite on a Mac is their macOS check, as the lanes decision says.
+# suite on a Mac is their macOS check, as the lanes decision says. The
+# board job builds the board program that hangar-board's tests run.
 name: CI
 
 on:
@@ -30,8 +31,42 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # hangar-board's tests run the board program. This job builds board at
+  # the pinned commit once and caches the binary under a key that names the
+  # commit, so later runs restore it in seconds. Its first build takes longer
+  # than the lane's budget, so it is a job of its own (BASE-25).
+  board:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read # actions/checkout reads crumbkit/board.
+    # The pin is crumbkit/board#218's merge commit, which adds get --at and
+    # log. A new pin changes the commit in the cache keys and the checkout.
+    steps:
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: board-bin
+          key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: crumbkit/board
+          ref: e4ee3333b2223f3cdc2e1da23d10f9175870bc08
+          path: board-src
+          persist-credentials: false
+      - if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: board-src
+        run: |
+          rustup toolchain install
+          cargo build --locked --release -p board-cli --bin board
+          mkdir -p ../board-bin
+          cp target/release/board ../board-bin/board
+
   lane:
     if: github.event_name != 'schedule'
+    needs: board
     runs-on: ubuntu-latest
     # The pull-request lane's time budget (BASE-25).
     timeout-minutes: 10
@@ -66,8 +101,15 @@ jobs:
         run: cargo shear
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets --all-features
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: board-bin
+          key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
+          fail-on-cache-miss: true
       - name: tests
         run: cargo nextest run --locked --workspace --all-features
+        env:
+          HANGAR_TEST_BOARD: ${{ github.workspace }}/board-bin/board
       - name: doctests
         run: cargo test --locked --doc --workspace --all-features
       - name: rustdoc

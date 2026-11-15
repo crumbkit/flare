@@ -1,0 +1,174 @@
+//! How `BoardStore` keeps page versions, and how it reads a binding's fills
+//! at one commit.
+#![cfg(test)]
+
+#[path = "support/scratch.rs"]
+#[expect(
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::new_without_default,
+    reason = "the scratch board is test support: it panics on a broken fixture, and each test file uses part of it"
+)]
+pub mod scratch;
+
+use hangar_board::{BoardStore, Limits};
+use hangar_core::contract::block_on;
+use hangar_core::{
+    ContentFormat, MadeFrom, Page, PageContent, PageName, PagePin, PageStore, PageStoreError,
+    PageVersion, Principal, PrincipalId, Provenance, RecordPath, RecordStore, RecordType, Slot,
+    SlotName, Slots,
+};
+use scratch::ScratchBoard;
+
+fn page(format: ContentFormat, text: &str) -> Page {
+    let slot = Slot::new(
+        SlotName::try_from("tasks").unwrap(),
+        RecordType::try_from("tasks/task/v2").unwrap(),
+        Vec::new(),
+        None,
+    )
+    .unwrap();
+    Page::new(
+        PageName::try_from("home").unwrap(),
+        PageContent::new(format, text).unwrap(),
+        Slots::new(vec![slot]).unwrap(),
+    )
+}
+
+fn original() -> Provenance {
+    Provenance::new(
+        Principal::new(PrincipalId::try_from("ada").unwrap()),
+        MadeFrom::Original,
+        Vec::new(),
+    )
+    .unwrap()
+}
+
+fn publish(store: &BoardStore, format: ContentFormat, text: &str) -> PageVersion {
+    block_on(store.publish(page(format, text), original())).unwrap()
+}
+
+fn home() -> PageName {
+    PageName::try_from("home").unwrap()
+}
+
+fn path(text: &str) -> RecordPath {
+    RecordPath::try_from(text).unwrap()
+}
+
+#[test]
+fn a_republish_with_the_same_content_still_makes_a_new_version() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    let first = publish(&store, ContentFormat::Html, "<p>hi</p>");
+    let second = publish(&store, ContentFormat::Html, "<p>hi</p>");
+    assert_ne!(first, second);
+    assert_eq!(block_on(store.versions(&home())).unwrap(), [second, first]);
+}
+
+#[test]
+fn a_format_change_removes_the_old_page_file() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, ContentFormat::Html, "<p>hi</p>");
+    assert!(board.root().join("pages/home/page.html").is_file());
+    publish(&store, ContentFormat::Markdown, "# Hi\n");
+    assert!(!board.root().join("pages/home/page.html").exists());
+    assert_eq!(board.file("pages/home/page.md"), "# Hi\n");
+    let latest = block_on(store.latest(&home())).unwrap();
+    assert_eq!(latest.page().content().format(), ContentFormat::Markdown);
+}
+
+#[test]
+fn at_refuses_a_commit_that_never_changed_the_page() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, ContentFormat::Html, "one");
+    board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
+    let unrelated = board.git(&["rev-parse", "HEAD"]);
+    let pin = PagePin::new(home(), PageVersion::try_from(unrelated.trim()).unwrap());
+    assert_eq!(block_on(store.at(&pin)), Err(PageStoreError::NotFound));
+}
+
+#[test]
+fn at_returns_a_commit_that_changed_the_page() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    let first = publish(&store, ContentFormat::Html, "one");
+    publish(&store, ContentFormat::Html, "two");
+    let older = block_on(store.at(&PagePin::new(home(), first.clone()))).unwrap();
+    assert_eq!(older.page().content().text(), "one");
+    assert_eq!(older.version(), &first);
+}
+
+#[test]
+fn a_board_that_does_not_commit_its_puts_cannot_publish() {
+    let board = ScratchBoard::new();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test writes its board's configuration"
+    )]
+    std::fs::write(
+        board.root().join(".board/board.json"),
+        r#"{"$type":"board/config/v1","commit_on_put":false}"#,
+    )
+    .unwrap();
+    let store = board.store();
+    let answer = block_on(store.publish(page(ContentFormat::Html, "one"), original()));
+    assert_eq!(answer, Err(PageStoreError::Unavailable));
+}
+
+/// A board program that answers `get --at HEAD` as board does and then,
+/// before it prints the answer, commits a change that turns /tasks/a into a
+/// note.
+fn committing_after_the_read(board: &ScratchBoard) -> std::path::PathBuf {
+    let real = board.program().display().to_string();
+    board.script(
+        "committing-board",
+        &format!(
+            r#"case "$*" in
+  *"--at HEAD"*)
+    answer=$("{real}" "$@")
+    status=$?
+    printf '%s\n' '{{"path":"/tasks/a","record":{{"$type":"notes/note/v1","text":"now a note"}}}}' | "{real}" put --batch --json >/dev/null
+    printf '%s\n' "$answer"
+    exit $status;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    )
+}
+
+#[test]
+fn read_all_answers_the_records_at_one_commit_while_another_commit_lands() {
+    let board = ScratchBoard::new();
+    board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
+    board.seed_record("/notes/n", r#"{"$type":"notes/note/v1","text":"a note"}"#);
+    let store = board.store();
+    let before = [
+        block_on(store.read(&path("/tasks/a"))).unwrap(),
+        block_on(store.read(&path("/notes/n"))).unwrap(),
+    ];
+
+    let shim = committing_after_the_read(&board);
+    let racing = board.store_with(&shim, Limits::default());
+    let together = block_on(racing.read_all(&[path("/tasks/a"), path("/notes/n")]));
+    let after = block_on(store.read(&path("/tasks/a"))).unwrap();
+
+    assert_eq!(together, before.iter().cloned().map(Ok).collect::<Vec<_>>());
+    assert_eq!(after.record_type().as_str(), "notes/note/v1");
+    assert_ne!(after.blob(), before.first().unwrap().blob());
+}
+
+#[test]
+fn read_all_answers_as_read_does_when_no_commit_lands() {
+    let board = ScratchBoard::new();
+    board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
+    board.seed_record("/notes/n", r#"{"$type":"notes/note/v1","text":"a note"}"#);
+    let store = board.store();
+    let paths = [path("/tasks/a"), path("/tasks/missing"), path("/notes/n")];
+    let together = block_on(store.read_all(&paths));
+    let alone: Vec<_> = paths.iter().map(|at| block_on(store.read(at))).collect();
+    assert_eq!(together, alone);
+}
