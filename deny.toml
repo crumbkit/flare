@@ -22,6 +22,12 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.93
+# reqwest reaches webpki-root-certs, the Mozilla root certificates, through
+# rustls-platform-verifier on targets other than macOS and Linux. Its data
+# licence is admitted for that one crate.
+exceptions = [
+  { crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+]
 # A small dependency tree uses only some of the allowed licences.
 unused-allowed-license = "allow"
 

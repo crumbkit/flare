@@ -1,6 +1,7 @@
 # The pull-request lane and the scheduled advisory check of hangar. The
 # `lanes` decision in rust-standards.toml records both (BASE-25). The lane has
-# no macOS job, because the workspace has no platform code.
+# no macOS job: the one macOS-only path, hangar-auth-oidc's KeychainSecret,
+# runs /usr/bin/security, and its tests run a fake program on Linux.
 name: CI
 
 on:
@@ -70,8 +71,8 @@ jobs:
         run: cargo doc --locked --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
-      # hangar-core is a library, so LIB-5 applies. cargo-hack is in the
-      # install-action tool list above.
+      # hangar-core and hangar-auth-oidc are libraries, so LIB-5 applies.
+      # cargo-hack is in the install-action tool list above.
       - name: features
         run: cargo hack clippy --locked --workspace --each-feature --all-targets
 

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/hangar-core"]
+members = ["crates/hangar-auth-oidc", "crates/hangar-core"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,10 +12,38 @@ repository = "https://github.com/crumbkit/hangar"
 rust-version = "1.99.1"
 
 [workspace.dependencies]
+# Random bytes, SHA-256 and constant-time comparison for hangar-auth-oidc;
+# jsonwebtoken's aws_lc_rs backend already brings it in.
+aws-lc-rs = "1.19.0"
+# base64url for the state, nonce, PKCE verifier and session secrets.
+base64 = "0.23.1"
+# The types and traits that hangar-auth-oidc implements.
+hangar-core = { path = "crates/hangar-core", version = "0.1.0" }
+# Verifies the RS256 signature of an OpenID Connect ID token.
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+# The HTTPS client for an OpenID provider's discovery, token and key set
+# requests.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form"] }
 # BASE-24: a credential is held in a type whose Debug prints a placeholder.
 secrecy = "0.10.3"
+# Reads the provider's metadata, token reply, key set and ID token claims.
+serde = { version = "1.0.229", features = ["derive"] }
+# Parses the JSON that serde's derived types read.
+serde_json = "1.0.154"
 # Typed error enums with source() and Display derived.
 thiserror = "2.0.21"
+# Builds the authorisation URL and parses the callback query.
+url = "2.5.8"
+
+# hangar-auth-oidc serialises its key set refreshes with tokio's async mutex,
+# and its fake OpenID provider in tests is an HTTP server on a Tokio runtime.
+tokio = "1.54.1"
+# Test-only: the fake provider's HTTP/1 server.
+hyper = "1.12.0"
+# Test-only: connects hyper to Tokio's sockets in the fake provider.
+hyper-util = "0.1.21"
+# Test-only: the fake provider's request and reply bodies.
+http-body-util = "0.1.5"
 
 # BASE-27: an integer overflow panics in a release build as it does in a
 # debug build.
