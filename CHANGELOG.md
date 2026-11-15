@@ -16,6 +16,12 @@ This file records the notable changes to hangar. The format follows
   Google. It runs the authorisation code flow with PKCE, verifies the RS256
   ID token, admits only verified emails on its allow-list, keeps sessions in
   memory and reads the client secret from the macOS Keychain.
+- `hangar-auth-oidc` can admit every verified account of one Google
+  Workspace domain with `Admit::Domain`. The signed `hd` claim of the ID
+  token decides membership, and the email's domain does not. A sign-in
+  without `hd` is refused as `NoHostedDomain`, and one with another `hd` as
+  `OtherHostedDomain`. Each admitted account signs in as its email, and
+  `authorize` allows it while one of its sessions is live.
 - `hangar-render` renders a page and the records that fill its slots into a
   whole HTML document, with Markdown pages shown as prose and raw HTML shown
   as text. `check_page` refuses a Mustache template in which a record value
@@ -23,3 +29,9 @@ This file records the notable changes to hangar. The format follows
   draws the form that edits a filled slot's editable fields, `FormPost` and
   `Edit::apply` turn its post into a record write or a conflict, and
   `conflict_view` shows the conflict and saves the edit onto the newer record.
+
+### Changed
+
+- `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
+  an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its
+  behaviour.

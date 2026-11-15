@@ -1,6 +1,5 @@
 //! The code exchange and the ID token checks.
 
-use crate::allow::Email;
 use crate::clock::unix_seconds;
 use crate::config::OidcConfig;
 use crate::provider::{Provider, send};
@@ -11,7 +10,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use secrecy::{ExposeSecret as _, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::time::SystemTime;
 
@@ -102,6 +101,25 @@ struct Claims {
     nonce: Option<String>,
     email: Option<String>,
     email_verified: Option<Value>,
+    /// `None` only when the claim is absent: an `hd` of JSON `null` is
+    /// `Some(Value::Null)`, so it is refused as another domain.
+    #[serde(default, deserialize_with = "present")]
+    hd: Option<Value>,
+}
+
+/// Reads a claim that is present, whatever JSON value it holds, `null`
+/// included.
+fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
+}
+
+/// What a verified ID token says about the person: the email it marks
+/// verified, and its `hd` claim, which Google sets to the domain of the
+/// account's organisation. It has no `Debug` output, so neither value can
+/// reach a log.
+pub(crate) struct Verified {
+    pub(crate) email: String,
+    pub(crate) hd: Option<Value>,
 }
 
 /// What a token must say to be accepted.
@@ -148,12 +166,12 @@ fn verify_signature(token: &SecretString, key: &DecodingKey) -> Result<Claims, T
 }
 
 /// Verifies the token with `key`, checks its claims in order and returns
-/// its verified email.
+/// its verified email and its `hd` claim.
 pub(crate) fn check(
     token: &SecretString,
     key: &DecodingKey,
     expected: &Expected<'_>,
-) -> Result<Email, SignInRefusal> {
+) -> Result<Verified, SignInRefusal> {
     let reject = SignInRefusal::TokenRejected;
     let claims = verify_signature(token, key).map_err(reject)?;
     let config = expected.config;
@@ -184,7 +202,10 @@ pub(crate) fn check(
         .email
         .filter(|_| verified)
         .ok_or(SignInRefusal::EmailUnverified)?;
-    Email::try_from(email.as_str()).map_err(|_| SignInRefusal::NotAllowed)
+    Ok(Verified {
+        email,
+        hd: claims.hd,
+    })
 }
 
 #[cfg(test)]

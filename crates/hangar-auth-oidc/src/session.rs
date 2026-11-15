@@ -3,17 +3,19 @@
 
 use crate::flow::{ReturnTo, hash, random_secret};
 use crate::refusal::SignInRefusal;
-use hangar_core::{Credential, Principal};
+use hangar_core::{Credential, Principal, PrincipalId};
 use secrecy::{ExposeSecret as _, SecretString};
 use std::collections::HashMap;
+use std::fmt;
 use std::time::{Duration, SystemTime};
 
 /// How many sessions may be live at once.
 const MAX_SESSIONS: usize = 1024;
 
 /// What a finished sign-in returns. The session credential appears here
-/// once, and the crate keeps only its hash.
-#[derive(Debug)]
+/// once, and the crate keeps only its hash. Its `Debug` output hides the
+/// principal, which under [`Admit::Domain`](crate::Admit::Domain) is the
+/// person's email.
 #[non_exhaustive]
 pub struct SignedIn {
     session: Credential,
@@ -45,6 +47,18 @@ impl SignedIn {
     #[must_use]
     pub fn expires_in(&self) -> Duration {
         self.expires_in
+    }
+}
+
+impl fmt::Debug for SignedIn {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SignedIn")
+            .field("session", &self.session)
+            .field("principal", &"<hidden>")
+            .field("return_to", &self.return_to)
+            .field("expires_in", &self.expires_in)
+            .finish()
     }
 }
 
@@ -104,6 +118,14 @@ impl Sessions {
         }
         self.0.remove(&key);
         None
+    }
+
+    /// Whether a session that has not expired holds `principal`. It scans
+    /// the table, which holds at most 1,024 sessions.
+    pub(crate) fn holds(&self, principal: &PrincipalId, now: SystemTime) -> bool {
+        self.0
+            .values()
+            .any(|live| live.expires > now && live.principal.id() == principal)
     }
 
     /// Removes a session.

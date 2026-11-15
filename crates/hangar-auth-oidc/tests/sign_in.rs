@@ -16,8 +16,8 @@ use fake_provider::{
     config_with, connect, now_seconds, return_to, secret, sign_in,
 };
 use hangar_auth_oidc::{
-    AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal, TestClock,
-    TokenFault,
+    Admit, AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal,
+    TestClock, TokenFault,
 };
 use hangar_core::{Authenticator, PrincipalId};
 use serde_json::json;
@@ -470,7 +470,7 @@ async fn an_email_with_a_non_ascii_letter_that_lower_cases_to_an_allowed_one_is_
     )])
     .unwrap();
     let authenticator = OidcAuthenticator::connect_with_clock(
-        config_with(&fake, allow),
+        config_with(&fake, Admit::Emails(allow)),
         &secret(),
         TestClock::new(),
     )
