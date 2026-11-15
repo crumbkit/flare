@@ -1,4 +1,9 @@
-//! The [`RecordStore`] contract suite.
+//! The [`RecordStore`] contract suite. The clause about reading several
+//! paths together lives in a submodule, and this module re-exports it.
+
+mod read_all;
+
+pub use read_all::read_all_answers_each_path_as_read_does;
 
 use super::{Clause, RunTogether, SeedRecord, Violation, ensure, fixture, seed, unexpected};
 use crate::{
@@ -29,10 +34,22 @@ impl RecordFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
+        Self::with_bodies("title: first\n", "title: second\n", "title: third\n")
+    }
+
+    /// The standard fixture with the three bodies in a store's own form: the
+    /// seeded body of `/tasks/a`, then the bodies that the writes use. The
+    /// paths, the type and the principal stay the standard ones. A store
+    /// that holds a task only as JSON passes JSON bodies.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] when a body is over 1 MiB.
+    pub fn with_bodies(seeded: &str, other: &str, third: &str) -> Result<Self, Violation> {
         Ok(Self {
-            seeds: vec![seed("/tasks/a", "tasks/task/v2", "title: first\n")?],
-            other_body: fixture(RecordBody::try_from("title: second\n"))?,
-            third_body: fixture(RecordBody::try_from("title: third\n"))?,
+            seeds: vec![seed("/tasks/a", "tasks/task/v2", seeded)?],
+            other_body: fixture(RecordBody::try_from(other))?,
+            third_body: fixture(RecordBody::try_from(third))?,
             missing: fixture(RecordPath::try_from("/tasks/missing"))?,
             principal: Principal::new(fixture(PrincipalId::try_from("contract-suite"))?),
             binding: fixture(BindingName::try_from("contract-view"))?,
@@ -290,7 +307,10 @@ pub async fn a_rejected_write_changes_nothing<S: RecordStore>(
 /// Two writes from one blob that run together give one success and one
 /// `Conflict`, and the record keeps the body of the write that succeeded.
 /// The clause runs several pairs, each from the blob that the last pair left,
-/// and `runner` drives each pair.
+/// and `runner` drives each pair. Each pair writes the two bodies of the
+/// fixture that differ from the record's current body, because a store may
+/// answer a write of the current body with the current blob and change
+/// nothing, and such a write does not race the other.
 ///
 /// # Errors
 ///
@@ -305,8 +325,19 @@ pub async fn concurrent_writes_from_one_blob_give_one_conflict<S: RecordStore>(
     for round in 0..WRITE_ROUNDS {
         let before = unexpected(store.read(path).await)?;
         let provenance = contract_fixture.write_based_on(before.blob().clone());
-        let (first_body, second_body) =
-            (&contract_fixture.other_body, &contract_fixture.third_body);
+        let seeded = contract_fixture.target()?.body();
+        let bodies = [
+            seeded,
+            &contract_fixture.other_body,
+            &contract_fixture.third_body,
+        ];
+        let mut changing = bodies.into_iter().filter(|body| *body != before.body());
+        let (Some(first_body), Some(second_body)) = (changing.next(), changing.next()) else {
+            return Err(Violation::new(
+                Clause::FixtureIsUnusable,
+                "the fixture's bodies are not three different bodies",
+            ));
+        };
         let answers = runner
             .run_together(
                 || store.write(path, first_body, &provenance),

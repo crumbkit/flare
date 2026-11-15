@@ -81,6 +81,57 @@ impl RecordStore for IgnoresExpectedBlob {
     }
 }
 
+/// A record store that reads one path as the store it wraps does, and
+/// answers `NotFound` for every path it is asked to read together.
+pub(crate) struct ReadAllFindsNothing(pub(crate) MemoryRecordStore);
+
+impl RecordStore for ReadAllFindsNothing {
+    async fn read(&self, path: &RecordPath) -> Result<Record, ReadError> {
+        self.0.read(path).await
+    }
+
+    async fn read_all(&self, paths: &[RecordPath]) -> Vec<Result<Record, ReadError>> {
+        paths.iter().map(|_| Err(ReadError::NotFound)).collect()
+    }
+
+    async fn write(
+        &self,
+        path: &RecordPath,
+        body: &RecordBody,
+        provenance: &WriteProvenance,
+    ) -> Result<Blob, WriteError> {
+        self.0.write(path, body, provenance).await
+    }
+}
+
+/// A record store that hands each read to the store it wraps one path at a
+/// time, so a page store that uses it reads a binding's fills one by one
+/// and each read may see another state of the records.
+struct OneByOne<'a, R>(&'a R);
+
+impl<R: RecordStore> RecordStore for OneByOne<'_, R> {
+    async fn read(&self, path: &RecordPath) -> Result<Record, ReadError> {
+        self.0.read(path).await
+    }
+
+    async fn read_all(&self, paths: &[RecordPath]) -> Vec<Result<Record, ReadError>> {
+        let mut answers = Vec::new();
+        for path in paths {
+            answers.push(self.0.read(path).await);
+        }
+        answers
+    }
+
+    async fn write(
+        &self,
+        _path: &RecordPath,
+        _body: &RecordBody,
+        _provenance: &WriteProvenance,
+    ) -> Result<Blob, WriteError> {
+        Err(WriteError::Unavailable)
+    }
+}
+
 /// The flaw that a [`FlawedPageStore`] has.
 #[derive(Clone, Copy)]
 pub(crate) enum Flaw {
@@ -123,6 +174,9 @@ pub(crate) enum Flaw {
     ListsOnlyNewestPins,
     /// `check_fit` answers `Ok` without reading the records.
     ChecksNoFit,
+    /// `save_binding` reads the bound records one at a time, so its fit
+    /// check can see two states of the records.
+    ReadsFillByFill,
 }
 
 /// A page store that is correct except for one flaw.
@@ -327,6 +381,7 @@ impl PageStore for FlawedPageStore {
                 let rewritten = made_from_nothing(&binding)?;
                 self.inner.save_binding(rewritten, records).await
             }
+            Flaw::ReadsFillByFill => self.inner.save_binding(binding, &OneByOne(records)).await,
             Flaw::AcceptsUnresolvedPageOriginOnSave
                 if matches!(binding.provenance().made_from(), MadeFrom::Page(_)) =>
             {

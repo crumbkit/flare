@@ -27,14 +27,18 @@ enum Fetched {
 }
 
 impl FillTypes {
-    /// Reads the record at each path of `fills`, in the order of the fills.
+    /// Reads the record at each path of `fills` with one call of
+    /// [`RecordStore::read_all`], in the order of the fills. A fill that the
+    /// answer has no result for counts as unavailable.
     pub async fn read(fills: &Fills, records: &impl RecordStore) -> Self {
+        let paths: Vec<RecordPath> = fills.iter().map(|(_, path)| path.clone()).collect();
+        let mut answers = records.read_all(&paths).await.into_iter();
         let mut entries = Vec::new();
         for (slot, path) in fills.iter() {
-            let fetched = match records.read(path).await {
-                Ok(record) => Fetched::Found(record.record_type().clone()),
-                Err(ReadError::NotFound) => Fetched::Missing(path.clone()),
-                Err(_) => Fetched::Unavailable,
+            let fetched = match answers.next() {
+                Some(Ok(record)) => Fetched::Found(record.record_type().clone()),
+                Some(Err(ReadError::NotFound)) => Fetched::Missing(path.clone()),
+                Some(Err(_)) | None => Fetched::Unavailable,
             };
             entries.push((slot.clone(), fetched));
         }
