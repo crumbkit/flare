@@ -3,6 +3,7 @@
 //! as. Without the feature, a read runs no hook and reads as this process's
 //! user.
 
+#[cfg(feature = "testing")]
 use super::StateDir;
 use super::files::user;
 use std::fmt;
