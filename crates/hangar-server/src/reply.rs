@@ -20,7 +20,7 @@ const COOP: HeaderName = HeaderName::from_static("cross-origin-opener-policy");
 const FIXED: [(HeaderName, &str); 7] = [
     (CONTENT_SECURITY_POLICY, POLICY),
     (X_CONTENT_TYPE_OPTIONS, "nosniff"),
-    (REFERRER_POLICY, "no-referrer"),
+    (REFERRER_POLICY, "same-origin"),
     (CACHE_CONTROL, "no-store"),
     (CORP, "same-origin"),
     (COOP, "same-origin"),

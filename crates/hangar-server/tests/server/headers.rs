@@ -14,7 +14,7 @@ pub(crate) fn assert_headers(reply: &Reply, what: &str) {
     for (name, value) in [
         ("content-security-policy", POLICY),
         ("x-content-type-options", "nosniff"),
-        ("referrer-policy", "no-referrer"),
+        ("referrer-policy", "same-origin"),
         ("cache-control", "no-store"),
         ("cross-origin-resource-policy", "same-origin"),
         ("cross-origin-opener-policy", "same-origin"),
