@@ -1,0 +1,22 @@
+Save a binding that fills a page's slots with records
+
+Usage: hangar bind [OPTIONS] --name <NAME> <PAGE> <SLOT=PATH>...
+
+Arguments:
+  <PAGE>          The page the binding fills
+  <SLOT=PATH>...  Each slot and the record that fills it, as SLOT=PATH, separated by spaces
+
+Options:
+      --name <NAME>           The binding's name, one segment of lowercase letters, digits and dashes
+      --board <DIR>           The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
+      --board-program <PATH>  The board program; without it, HANGAR_BOARD, then the first board on PATH
+      --dry-run               Report what the command would change, and change nothing
+  -h, --help                  Print help (see more with '--help')
+
+Examples:
+  hangar bind task-card --name kitchen task=/tasks/tap
+
+Effects: additive, not idempotent, closed-world.
+Writes: applies all items or none.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `hangar bind --help` describes them.
+Next: hangar bind --help explains each column.

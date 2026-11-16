@@ -1,15 +1,15 @@
 # Working on hangar
 
 hangar serves agent-written pages from a board and works on board records
-through them. It is a Cargo workspace. `crates/hangar-core` holds the types
-and traits that every other hangar crate codes against.
-`crates/hangar-auth-oidc` signs people in with an OpenID Connect provider,
-`crates/hangar-auth-loopback` signs in the person who runs a local server, and
-`crates/hangar-render` renders pages and turns form posts into record writes.
-The rules are the Rust standards that [rust-standards.toml](rust-standards.toml)
-adopts. A change is ready when the pull-request lane passes. The commands of the pull-request lane are the steps of the `lane` job in
-[.github/workflows/ci.yml](.github/workflows/ci.yml). Run them with
-`CARGO_BUILD_WARNINGS=deny`, as that file's `env` sets.
+through them. It is a Cargo workspace. `hangar-core` holds the types and
+traits that the other crates code against. The two `hangar-auth-*` crates
+sign people in, `hangar-board` keeps pages and records in a board,
+`hangar-render` renders pages, `hangar-server` serves them, and `hangar-cli`
+builds the `hangar` command. The rules are the Rust standards that
+[rust-standards.toml](rust-standards.toml) adopts. A change is ready when the
+steps of the `lane` job in [.github/workflows/ci.yml](.github/workflows/ci.yml)
+pass with `CARGO_BUILD_WARNINGS=deny`. Tests that run the board program read
+its path from `HANGAR_TEST_BOARD`.
 
 - Write the test first, named as a sentence (BASE-36).
 - Give each new dependency a reason in `Cargo.toml` (BASE-23).

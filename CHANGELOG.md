@@ -48,6 +48,20 @@ This file records the notable changes to hangar. The format follows
   draws the form that edits a filled slot's editable fields, `FormPost` and
   `Edit::apply` turn its post into a record write or a conflict, and
   `conflict_view` shows the conflict and saves the edit onto the newer record.
+- `hangar-server` serves a board's pages and bindings on loopback
+  addresses. Each page renders inside a sandboxed `srcdoc` frame under a
+  frame policy. A binding shows one edit form per editable slot, and a
+  post writes the record only when its form token matches the session,
+  binding, slot and record version it was drawn for; a stale form shows
+  the conflict view. The person who runs the server signs in with a
+  launch code, and accounts that the config admits sign in with Google
+  through `localhost:8740`. Every refusal has a code, as an RFC 9457
+  problem document or a small HTML page.
+- The `hangar` command: `hangar serve`, `hangar open`, `hangar publish`
+  and `hangar bind`, built on crumbkit.
+- `BoardStore::check_program` in `hangar-board` checks that the board
+  program can read history, and answers `TooOld` for a board older than
+  crumbkit/board e4ee3333.
 
 ### Changed
 

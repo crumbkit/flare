@@ -1,0 +1,12 @@
+Explore hangar's commands
+
+Usage: hangar commands [OPTIONS] <COMMAND>
+
+Commands:
+  list  List a branch of hangar's commands with their arguments and examples
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Global flags: --json, --fields <FIELD>, --long, --full, --no-input. `hangar commands --help` describes them.
+Next: hangar commands <COMMAND> -h
