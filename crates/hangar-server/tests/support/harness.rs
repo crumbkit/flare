@@ -707,8 +707,8 @@ impl Call {
         self.header("Authorization", &format!("Bearer {token}"))
     }
 
-    /// Adds `Origin` and `Sec-Fetch-Site: same-origin`, as a browser does for
-    /// a form post on the page's own origin.
+    /// Sets `Origin` to the launch origin and `Sec-Fetch-Site: same-origin` by
+    /// hand, for tests that are not about browser fidelity.
     pub fn same_origin(self) -> Self {
         let origin = self.origin.clone();
         self.header("Origin", &origin)
