@@ -151,7 +151,7 @@ impl<'a> Doc<'a> {
             format!(" data-code=\"{}\"", escape(code))
         });
         format!(
-            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"referrer\" content=\"no-referrer\">\n{refresh}<title>{} - hangar</title>\n<link rel=\"stylesheet\" href=\"/hangar/style.css\">\n</head>\n<body class=\"hangar\">\n{}<main{code}>\n{}\n</main>\n</body>\n</html>\n",
+            "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"referrer\" content=\"same-origin\">\n{refresh}<title>{} - hangar</title>\n<link rel=\"stylesheet\" href=\"/hangar/style.css\">\n</head>\n<body class=\"hangar\">\n{}<main{code}>\n{}\n</main>\n</body>\n</html>\n",
             escape(self.title),
             self.band.markup(),
             self.main

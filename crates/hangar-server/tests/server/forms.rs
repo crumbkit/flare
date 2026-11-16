@@ -16,20 +16,23 @@ pub(crate) async fn draw(server: &Server, binding: &str, cookie: &str) -> Vec<(S
         .send()
         .await;
     assert_eq!(reply.status, 200, "{}", reply.body);
+    *server.drawn_policy.lock().unwrap() = reply.header("referrer-policy").map(str::to_owned);
     form_pairs(&reply.body)
 }
 
-/// Posts `pairs` to `binding` as a browser on the launch origin does.
+/// Posts `pairs` to `binding` as a browser does: it reads the Referrer-Policy
+/// the last drawn page was served with and sends the Origin the browser sends under it.
 pub(crate) async fn post(
     server: &Server,
     binding: &str,
     cookie: &str,
     pairs: &[(String, String)],
 ) -> Reply {
+    let policy = server.drawn_policy.lock().unwrap().clone();
     server
         .request("POST", &format!("/b/{binding}"))
         .cookie(cookie)
-        .same_origin()
+        .browser_post_under(policy.as_deref())
         .form(pairs)
         .send()
         .await

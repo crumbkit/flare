@@ -340,6 +340,8 @@ pub struct Server {
     pub debug: String,
     app: App<Pages, Records, FixedSchemas, TestClock>,
     scratch: Scratch,
+    /// The Referrer-Policy of the page drawn last by the forms tests.
+    pub drawn_policy: Mutex<Option<String>>,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<Result<Stopped, ServeError>>>,
 }
@@ -417,6 +419,7 @@ impl Server {
             debug,
             app,
             scratch,
+            drawn_policy: Mutex::new(None),
             shutdown: Some(sender),
             task: Some(task),
         };
@@ -708,6 +711,19 @@ impl Call {
     /// a form post on the page's own origin.
     pub fn same_origin(self) -> Self {
         let origin = self.origin.clone();
+        self.header("Origin", &origin)
+            .header("Sec-Fetch-Site", "same-origin")
+    }
+
+    /// Adds `Origin` and `Sec-Fetch-Site: same-origin` as a browser sends them
+    /// for a form post from a page served with `policy` as its Referrer-Policy.
+    /// Under `no-referrer` the browser sends `Origin: null`; under any other
+    /// policy it sends the page's own origin.
+    pub fn browser_post_under(self, policy: Option<&str>) -> Self {
+        let origin = match policy {
+            Some("no-referrer") => "null".to_owned(),
+            _ => self.origin.clone(),
+        };
         self.header("Origin", &origin)
             .header("Sec-Fetch-Site", "same-origin")
     }
