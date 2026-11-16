@@ -1,0 +1,38 @@
+[package]
+name = "hangar-server"
+description = "hangar's HTTP server: pages, bindings, edit forms and sign-in on loopback addresses"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aws-lc-rs.workspace = true
+base64.workspace = true
+form_urlencoded.workspace = true
+hangar-auth-loopback.workspace = true
+hangar-auth-oidc.workspace = true
+hangar-board.workspace = true
+hangar-core.workspace = true
+hangar-render.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["tokio", "server", "server-graceful", "http1"] }
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "net", "time", "sync", "macros"] }
+tracing.workspace = true
+
+[dev-dependencies]
+hangar-auth-oidc = { workspace = true, features = ["testing"] }
+hangar-core = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util"] }
+tracing-subscriber.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

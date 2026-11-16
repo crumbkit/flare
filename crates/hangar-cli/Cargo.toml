@@ -1,0 +1,17 @@
+[package]
+name = "hangar-cli"
+description = "The hangar command: serve pages and bindings from a board, open them, publish pages and save bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "hangar"
+path = "src/main.rs"
+
+[dependencies]
+
+[lints]
+workspace = true
