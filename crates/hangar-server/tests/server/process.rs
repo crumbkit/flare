@@ -1,13 +1,11 @@
-//! Plan tests 14 and 15: shutdown, the idle exit, `/up` and `/ready`, a
-//! panicking handler, and that no secret reaches the log or a `Debug`
-//! output.
+//! Plan test 14: shutdown, the idle exit, `/up` and `/ready`, and a
+//! panicking handler. Plan test 15, that no secret reaches the log, is in
+//! tests/log.rs, because it needs a test binary of its own.
 
-use crate::forms::draw;
-use crate::harness::{BINDING, Options, PAGE, Server, exchange, limits, value};
+use crate::harness::{Options, PAGE, Server, exchange, limits};
 use hangar_server::Stopped;
-use std::io::Write;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
@@ -96,75 +94,4 @@ async fn a_panicking_handler_answers_500_and_the_server_keeps_serving() {
         .send()
         .await;
     assert_eq!(again.status, 200);
-}
-
-#[derive(Clone, Default)]
-struct Captured(Arc<Mutex<Vec<u8>>>);
-
-impl Write for Captured {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn no_secret_reaches_the_log_or_a_debug_output() {
-    let log = Captured::default();
-    let writer = log.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_max_level(tracing::Level::TRACE)
-        .with_writer(move || writer.clone())
-        .finish();
-    let _guard = tracing::subscriber::set_default(subscriber);
-    let server = Server::start().await;
-    server.seed_binding().await;
-    let token = server.token();
-    let cookie = server.sign_in().await;
-    let session = cookie.trim_start_matches("hangar_session=").to_owned();
-    let pairs = draw(&server, BINDING, &cookie).await;
-    let form_token = value(&pairs, "token").to_owned();
-    let codes = server
-        .request("POST", "/launch/codes?return_to=/hangar/")
-        .bearer(&token)
-        .send()
-        .await;
-    assert_eq!(codes.status, 200);
-    server
-        .get("/launch?code=a-wrong-code-that-is-not-logged")
-        .send()
-        .await;
-    let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
-    assert!(
-        text.contains("status=200"),
-        "the request log is written: {text}"
-    );
-    for secret in [
-        token.as_str(),
-        session.as_str(),
-        form_token.as_str(),
-        "a-wrong-code-that-is-not-logged",
-    ] {
-        assert!(!text.contains(secret), "the log holds a secret: {text}");
-        assert!(
-            !server.debug.contains(secret),
-            "Debug holds a secret: {}",
-            server.debug
-        );
-        assert!(!format!("{:?}", server.loopback).contains(secret));
-    }
-    assert!(!text.contains("code="), "the log holds a query string");
-    assert!(
-        !server.debug.contains(&server.authority),
-        "Debug holds the launch host"
-    );
-    assert!(
-        !text.contains(&server.authority),
-        "the log holds the launch host"
-    );
 }
