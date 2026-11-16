@@ -56,6 +56,19 @@ disallowed-methods = [
     { path = "tokio::process::Command::spawn", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
     { path = "tokio::process::Command::status", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
     { path = "tokio::process::Command::output", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board", allow-invalid = true },
+    # SVC-1 (the service profile): hangar-server's tasks.rs spawns every
+    # task, and a JoinSet there owns each one. Other crates spawn a thread
+    # only with an owner that joins it, and say so in an #[expect].
+    { path = "std::thread::spawn", reason = "spawn through the task owner, hangar-server's tasks.rs, which joins or aborts" },
+    { path = "tokio::spawn", reason = "spawn through the task owner, hangar-server's tasks.rs, which joins or aborts", allow-invalid = true },
+    { path = "tokio::task::spawn", reason = "spawn through the task owner, hangar-server's tasks.rs, which joins or aborts", allow-invalid = true },
+    { path = "tokio::task::spawn_blocking", reason = "spawn through the task owner, hangar-server's tasks.rs, which joins or aborts", allow-invalid = true },
+    # CLI-1 (the cli profile): crumbkit's output owns the standard streams
+    # of the hangar command, and hangar-cli's log.rs owns the server's log
+    # on standard error.
+    { path = "std::io::stdout", reason = "write through crumbkit's output" },
+    { path = "std::io::stderr", reason = "write through crumbkit's output, or log through hangar-cli's log.rs" },
+    { path = "std::io::stdin", reason = "read through crumbkit's output, which knows whether input is a terminal" },
 ]
 
 disallowed-types = [

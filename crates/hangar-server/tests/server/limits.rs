@@ -119,6 +119,10 @@ async fn a_request_past_the_in_work_limit_answers_503_and_the_next_request_is_se
         .cookie(&cookie)
         .bytes();
     let port = server.port;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test awaits the request's task"
+    )]
     let first = tokio::spawn(async move { exchange(port, &held).await });
     server.switches.held.notified().await;
     let busy = server.get("/up").send().await;

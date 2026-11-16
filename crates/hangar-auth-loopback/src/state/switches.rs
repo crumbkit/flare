@@ -12,7 +12,7 @@ use std::path::Path;
 #[cfg(feature = "testing")]
 use std::sync::Arc;
 
-/// A step of [`StateDir::read_server`] at which the `testing` feature's
+/// A step of [`StateDir::read_server`](crate::StateDir::read_server) at which the `testing` feature's
 /// hook runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

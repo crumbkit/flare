@@ -11,10 +11,12 @@ standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb4055075
 # hangar-auth-oidc starts /usr/bin/security to read its client secret and
 # hangar-board starts the board program, so they bring in child-process.
 # hangar-auth-loopback writes the server file that holds a running server's
-# token, so it brings in durable-state. The profiles service and cli join with
-# the crate that needs each of them: service with hangar-server and cli with
-# the binary.
-profiles = ["base", "library", "child-process", "durable-state"]
+# token, so it brings in durable-state. hangar-server is an HTTP service, so
+# it brings in service, and hangar-cli builds the `hangar` command, so it
+# brings in cli. The standards also name a deployed profile for a server that
+# runs on hosts other than its author's; this version runs on one Mac, so it
+# is left for the change that hosts hangar.
+profiles = ["base", "library", "child-process", "durable-state", "service", "cli"]
 
 [[binding]]
 rule = "BASE-24"
@@ -25,9 +27,29 @@ owners = [
   "crates/hangar-auth-oidc/src/token.rs",
   "crates/hangar-auth-loopback/src/secret.rs",
   "crates/hangar-render/src/token.rs",
+  "crates/hangar-server/src/secret.rs",
+  "crates/hangar-cli/src/open.rs",
 ]
 checks = ["review: expose_secret appears only in the files listed in owners"]
-note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. hangar-auth-loopback calls it only in secret.rs, which digests and compares the token, launch codes and session secrets, computes the probe's proof, composes the launch URL, opener page, cookie and server file from a secret, and hands the server file's bytes to the atomic writer. Its tests also call it, to read back what the code under test returned. hangar-render holds the form token in FormToken, a SecretString, and calls it only in token.rs: to write the token into a form's hidden input and in FormToken's ExposeSecret implementation, which the server uses to look the token up. Its tests call it to read back the token a post carried."
+note = "hangar-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. hangar-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL and to compare the kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. hangar-auth-loopback calls it only in secret.rs, which digests and compares the token, launch codes and session secrets, computes the probe's proof, composes the launch URL, opener page, cookie and server file from a secret, and hands the server file's bytes to the atomic writer. Its tests also call it, to read back what the code under test returned. hangar-render holds the form token in FormToken, a SecretString, and calls it only in token.rs: to write the token into a form's hidden input and in FormToken's ExposeSecret implementation, which the server uses to look the token up. Its tests call it to read back the token a post carried. hangar-server calls it only in secret.rs, which digests the hand-over codes and form tokens, compares digests in constant time, writes the session and kept-state cookies and composes the finish URL. hangar-cli calls it only in open.rs, to put the server's token in the bearer header of the code request after the server has proved that it holds the token."
+
+[[binding]]
+rule = "SVC-1"
+owners = ["crates/hangar-server/src/tasks.rs"]
+checks = [
+  "clippy disallowed_methods (clippy.toml)",
+  "the shutdown test in crates/hangar-server/tests/server/process.rs (SVC-2)",
+]
+note = "tasks.rs holds the JoinSet that owns each connection task and the sweep task; serve drains it within Limits::drain and aborts what remains. hangar-auth-oidc's keychain.rs starts one reader thread per secret read, which ends when the child's output closes, and says so in its #[expect]. Tests that start a task or a thread say in their #[expect] who joins it."
+
+[[binding]]
+rule = "PROC-1"
+owners = ["crates/hangar-cli/src/opener.rs"]
+checks = [
+  "clippy disallowed_methods and disallowed_types (clippy.toml)",
+  "the open tests in crates/hangar-cli/tests/serve.rs, which run a recording script in place of the opener (PROC-2)",
+]
+note = "Opening the opener file in the browser is the hangar command's one process operation: /usr/bin/open on macOS, xdg-open elsewhere, or HANGAR_OPENER. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline (PROC-3)."
 
 [[binding]]
 rule = "PROC-1"

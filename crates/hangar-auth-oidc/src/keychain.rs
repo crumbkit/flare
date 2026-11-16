@@ -134,6 +134,10 @@ fn run(source: &KeychainSecret) -> Result<Vec<u8>, SecretError> {
         return Err(SecretError::Unavailable);
     };
     let (sender, receiver) = mpsc::channel();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the process module's reader thread ends when the child's standard output closes, which stop() ensures, and the receiver's deadline bounds the wait (SVC-1)"
+    )]
     std::thread::spawn(move || {
         let mut output = Vec::new();
         let read = stdout.take(READ_LIMIT).read_to_end(&mut output);

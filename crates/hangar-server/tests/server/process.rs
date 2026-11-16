@@ -23,6 +23,10 @@ async fn shutdown_lets_a_slow_request_finish_and_removes_the_server_file() {
         .cookie(&cookie)
         .bytes();
     let port = server.port;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test awaits the request's task"
+    )]
     let request = tokio::spawn(async move { exchange(port, &slow).await });
     server.switches.held.notified().await;
     server.signal_shutdown();

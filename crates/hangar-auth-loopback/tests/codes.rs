@@ -128,6 +128,10 @@ fn of_eight_threads_presenting_one_code_exactly_one_signs_in() {
             let loopback = loopback.clone();
             let code = Arc::clone(&code);
             let barrier = Arc::clone(&barrier);
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "the test joins each signing-in thread"
+            )]
             std::thread::spawn(move || {
                 barrier.wait();
                 loopback.sign_in(&code, now).map(|_| ())

@@ -252,6 +252,10 @@ fn a_reader_during_a_hundred_writes_always_reads_a_whole_record() {
     let done = Arc::new(AtomicBool::new(false));
     let writer = {
         let (state, records, done) = (Arc::clone(&state), Arc::clone(&records), Arc::clone(&done));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test joins the writer thread"
+        )]
         std::thread::spawn(move || {
             for round in 0..100 {
                 state.write_server(&records[round % 2]).unwrap();

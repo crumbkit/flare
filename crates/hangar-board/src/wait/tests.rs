@@ -43,6 +43,10 @@ fn a_gate_holds_no_more_than_its_places_at_once() {
 fn a_place_is_freed_when_its_holder_panics() {
     let gate = Arc::new(Gate::new(1));
     let held = Arc::clone(&gate);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test joins the thread that holds the place"
+    )]
     let _ = std::thread::spawn(move || {
         let _place = held.enter_within(far()).unwrap();
         panic!("the holder failed");

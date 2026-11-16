@@ -339,6 +339,10 @@ impl Server {
         .with_clock(time.clone());
         let debug = format!("{app:?} {listeners:?}");
         let (sender, receiver) = oneshot::channel::<()>();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test server's task is joined by Server::join or ends with the test's runtime"
+        )]
         let task = tokio::spawn(listeners.serve(app, async {
             let _ = receiver.await;
         }));

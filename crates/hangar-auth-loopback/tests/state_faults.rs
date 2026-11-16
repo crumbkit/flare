@@ -151,6 +151,10 @@ fn a_fifo_put_in_place_of_the_file_before_the_open_is_refused_without_waiting() 
         assert!(status.success());
     }));
     let (send, answer) = mpsc::channel();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the reader thread ends with its read, and the test waits for its answer with a deadline"
+    )]
     std::thread::spawn(move || {
         let _ = send.send(reader.read_server().map(|_| ()));
     });

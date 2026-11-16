@@ -120,6 +120,10 @@ async fn main() -> Result<(), StartError> {
 async fn serve(listener: TcpListener, authenticator: Arc<OidcAuthenticator>) {
     while let Ok((stream, _)) = listener.accept().await {
         let authenticator = Arc::clone(&authenticator);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the example serves each connection on a task that ends with the connection, and the process exits after one sign-in"
+        )]
         tokio::spawn(async move {
             let service = service_fn(move |request| route(Arc::clone(&authenticator), request));
             let _ = hyper::server::conn::http1::Builder::new()
