@@ -31,35 +31,56 @@ struct Row {
     issued: Instant,
 }
 
+/// The table after a panic poisoned its lock. Its routes answer 503
+/// `forms::unavailable`, because a half-changed table is never read as
+/// good.
+#[derive(Debug)]
+pub(crate) struct Unusable;
+
 /// The form tokens this process issued, oldest first.
 #[derive(Debug)]
 pub(crate) struct Forms {
     rows: Mutex<VecDeque<Row>>,
     capacity: usize,
+    /// The most rows one session keeps: an eighth of the table, so one
+    /// session that draws many forms cannot push out another's tokens
+    /// until eight sessions fill the table.
+    per_session: usize,
     life: Duration,
 }
 
 impl Forms {
-    /// A table of at most `capacity` rows, each living `life`.
+    /// A table of at most `capacity` rows, each living `life`. One session
+    /// keeps at most an eighth of them.
     pub(crate) fn new(capacity: usize, life: Duration) -> Self {
         Self {
             rows: Mutex::new(VecDeque::new()),
             capacity,
+            per_session: (capacity / 8).max(1),
             life,
         }
     }
 
-    /// `None` after a panic poisoned the table, so a half-changed table is
-    /// never read as good.
-    fn rows(&self) -> Option<MutexGuard<'_, VecDeque<Row>>> {
-        self.rows.lock().ok()
+    fn rows(&self) -> Result<MutexGuard<'_, VecDeque<Row>>, Unusable> {
+        self.rows.lock().map_err(|_| Unusable)
     }
 
-    /// Issues a token for `tied`. A full table drops its oldest row. `None`
-    /// when the system gives no random bytes or the table is unusable.
+    /// Issues a token for `tied`. A session that holds its share of rows
+    /// drops its own oldest row, and a full table drops its oldest row.
+    /// `None` when the system gives no random bytes or the table is
+    /// unusable.
     pub(crate) fn issue(&self, tied: Tied, now: Instant) -> Option<FormToken> {
         let secret = secret::random()?;
-        let mut rows = self.rows()?;
+        let mut rows = self.rows().ok()?;
+        let own = rows
+            .iter()
+            .filter(|row| row.tied.session == tied.session)
+            .count();
+        if own >= self.per_session
+            && let Some(at) = rows.iter().position(|row| row.tied.session == tied.session)
+        {
+            rows.remove(at);
+        }
         while !rows.is_empty() && rows.len() >= self.capacity {
             rows.pop_front();
         }
@@ -73,20 +94,26 @@ impl Forms {
 
     /// Removes the row of `token` and returns what it was tied to, when it
     /// is there and younger than its life. The token is spent either way.
-    pub(crate) fn take(&self, token: &FormToken, now: Instant) -> Option<Tied> {
+    pub(crate) fn take(&self, token: &FormToken, now: Instant) -> Result<Option<Tied>, Unusable> {
         let digest = secret::digest_of_token(token);
         let mut rows = self.rows()?;
-        let at = rows
+        let Some(row) = rows
             .iter()
-            .position(|row| secret::same(&row.digest, &digest))?;
-        let row = rows.remove(at)?;
-        (now.saturating_duration_since(row.issued) < self.life).then_some(row.tied)
+            .position(|row| secret::same(&row.digest, &digest))
+            .and_then(|at| rows.remove(at))
+        else {
+            return Ok(None);
+        };
+        Ok((now.saturating_duration_since(row.issued) < self.life).then_some(row.tied))
     }
 
     /// Drops the rows older than their life.
     pub(crate) fn expire(&self, now: Instant) {
-        if let Some(mut rows) = self.rows() {
+        if let Ok(mut rows) = self.rows() {
             rows.retain(|row| now.saturating_duration_since(row.issued) < self.life);
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

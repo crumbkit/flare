@@ -38,6 +38,9 @@ pub(crate) enum Redeemed {
     Expired(Credential),
     /// No row has the code: never issued, used, dropped or swept.
     Unknown,
+    /// A panic poisoned the table, so a half-changed table is never read
+    /// as good. The finish route answers 503.
+    Unusable,
 }
 
 /// What `issue` gives.
@@ -94,7 +97,7 @@ impl Handover {
     pub(crate) fn redeem(&self, code: &str, now: Instant) -> Redeemed {
         let digest = secret::digest_of_text(code);
         let Some(mut rows) = self.rows() else {
-            return Redeemed::Unknown;
+            return Redeemed::Unusable;
         };
         let Some(row) = rows
             .iter()
@@ -133,3 +136,6 @@ impl Handover {
         expired
     }
 }
+
+#[cfg(test)]
+mod tests;

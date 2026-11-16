@@ -107,6 +107,43 @@ async fn a_header_block_that_arrives_too_slowly_loses_its_connection_and_the_nex
     assert_next_request_served(&server).await;
 }
 
+/// Departure 11: the connection past the limit waits in the accept queue,
+/// and is served once the header timeout closes an idle connection.
+#[tokio::test]
+async fn a_connection_past_the_connections_limit_waits_until_an_idle_one_is_closed() {
+    let server = with_limits(|limits| {
+        limits.connections = 2;
+        limits.read_time = Duration::from_millis(500);
+    })
+    .await;
+    let mut idle = Vec::new();
+    for _ in 0..2 {
+        idle.push(
+            TcpStream::connect(("127.0.0.1", server.port))
+                .await
+                .unwrap(),
+        );
+    }
+    let started = std::time::Instant::now();
+    let reply = tokio::time::timeout(Duration::from_secs(10), server.get("/up").send())
+        .await
+        .expect("the waiting connection is served");
+    assert_eq!(reply.status, 200);
+    assert!(
+        started.elapsed() >= Duration::from_millis(400),
+        "the third connection was served before an idle one closed, after {:?}",
+        started.elapsed()
+    );
+    for mut stream in idle {
+        let mut raw = Vec::new();
+        tokio::time::timeout(Duration::from_secs(10), stream.read_to_end(&mut raw))
+            .await
+            .expect("the server closes an idle connection")
+            .unwrap();
+        assert!(raw.is_empty(), "an idle connection gets no reply");
+    }
+}
+
 #[tokio::test]
 async fn a_request_past_the_in_work_limit_answers_503_and_the_next_request_is_served() {
     let server = with_limits(|limits| limits.in_work = 1).await;

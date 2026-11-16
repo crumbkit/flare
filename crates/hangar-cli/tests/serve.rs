@@ -125,6 +125,19 @@ struct Running {
 
 impl Running {
     fn start(home: &Home, board: &ScratchBoard, extra: &[&str]) -> Self {
+        Self::start_when(home, board, extra, |state| {
+            state.read_server().ok().flatten().is_some()
+        })
+    }
+
+    /// Starts `hangar serve` and waits until `ready` holds for its state
+    /// directory.
+    fn start_when(
+        home: &Home,
+        board: &ScratchBoard,
+        extra: &[&str],
+        ready: impl Fn(&StateDir) -> bool,
+    ) -> Self {
         let (root, program) = paths(board);
         let mut args = serve_args(board, &root, &program);
         args.extend(extra);
@@ -140,7 +153,7 @@ impl Running {
             .unwrap();
         let state = StateDir::for_board(&home.state(), &board.root());
         let deadline = Instant::now() + Duration::from_secs(30);
-        while state.read_server().ok().flatten().is_none() {
+        while !ready(&state) {
             assert!(
                 Instant::now() < deadline,
                 "hangar serve wrote no server.json"
@@ -321,6 +334,40 @@ fn a_second_serve_for_the_same_board_is_refused_while_the_first_answers() {
     home.run(&serve_args(&board, &root, &program))
         .assert_failed("hangar::server::already_running");
     running.stop("-TERM");
+}
+
+/// Crash point 2: a server killed while it serves leaves `server.json`
+/// stale. `hangar open` then fails with `server::not_running`, and the next
+/// `hangar serve` replaces the file with its own.
+#[test]
+fn the_next_serve_replaces_the_server_json_a_killed_server_left() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let root = board.root().to_str().unwrap().to_owned();
+    let killed = Running::start(&home, &board, &[]);
+    let state = killed.state.clone();
+    let token = |state: &StateDir| {
+        state
+            .read_server()
+            .unwrap()
+            .map(|record| record.token().expose_secret().to_owned())
+    };
+    let stale = token(&state).unwrap();
+    let ran = killed.stop("-KILL");
+    assert_eq!(ran.code, None, "SIGKILL ends the server");
+    assert_eq!(
+        token(&state).as_ref(),
+        Some(&stale),
+        "the file is left stale"
+    );
+    home.run(&["open", "--board", &root])
+        .assert_failed("hangar::server::not_running");
+    let next = Running::start_when(&home, &board, &[], |state| {
+        token(state).is_some_and(|current| current != stale)
+    });
+    home.run(&["open", "--board", &root]).assert_ok();
+    let ran = next.stop("-TERM");
+    assert!(!ran.all().contains(&stale), "{}", ran.all());
 }
 
 #[test]

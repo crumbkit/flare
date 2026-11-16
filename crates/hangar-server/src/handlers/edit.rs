@@ -5,7 +5,7 @@ use super::Ctx;
 use super::view::{self, Bound};
 use crate::auth::Admitted;
 use crate::docs::{Doc, escape};
-use crate::forms::Tied;
+use crate::forms::{Tied, Unusable};
 use crate::problem::{Code, Help, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
@@ -63,6 +63,7 @@ where
         .shared
         .forms
         .take(post.token(), ctx.now)
+        .map_err(|Unusable| Code::FormsUnavailable)?
         .ok_or(Code::TokenUnknown)?;
     let claims = Tied {
         session,
@@ -124,6 +125,10 @@ where
                     &format!("<div class=\"own\">{}</div>", html.as_str()),
                 ));
             }
+            // hangar_render::Outcome is #[non_exhaustive], so the compiler
+            // needs this arm. Write, Unchanged and Conflict are the three
+            // variants the lifecycle names; a variant that hangar-render
+            // adds later answers 500 until this match names it.
             Ok(_) => return Err(Code::Fault.into()),
             Err(error) => return refused(ctx, &again, &record, &error.to_string()),
         };

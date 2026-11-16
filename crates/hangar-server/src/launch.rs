@@ -102,6 +102,7 @@ where
             return Err(Code::HandoverUnknown.into());
         }
         Redeemed::Unknown => return Err(Code::HandoverUnknown.into()),
+        Redeemed::Unusable => return Err(Code::LaunchUnavailable.into()),
     };
     let cookie =
         secret::session_cookie(&handed.session, handed.lasts).ok_or(Code::HandoverUnknown)?;

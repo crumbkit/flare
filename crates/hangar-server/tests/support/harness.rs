@@ -67,6 +67,14 @@ pub struct Switches {
     pub hold: Arc<Mutex<Option<Arc<Semaphore>>>>,
     /// Notified when `latest` starts waiting on `hold`.
     pub held: Arc<Notify>,
+    /// While set, a record write waits for a permit of this semaphore
+    /// before it writes.
+    pub write_hold: Arc<Mutex<Option<Arc<Semaphore>>>>,
+    /// Notified when a record write starts waiting on `write_hold`.
+    pub write_held: Arc<Notify>,
+    /// Record writes whose future has started and has not yet ended or
+    /// been dropped.
+    pub writes_in_work: Arc<AtomicUsize>,
     /// A binding that reads of its name answer in place of the stored one,
     /// as when someone edits a binding record by hand.
     pub binding_override: Arc<Mutex<Option<Binding>>>,
@@ -174,6 +182,23 @@ impl PageStore for Pages {
     }
 }
 
+/// Counts one record write in work until it drops, whether the write ends
+/// or its future is dropped.
+struct InWork(Arc<AtomicUsize>);
+
+impl InWork {
+    fn enter(count: &Arc<AtomicUsize>) -> Self {
+        count.fetch_add(1, Ordering::SeqCst);
+        Self(Arc::clone(count))
+    }
+}
+
+impl Drop for InWork {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// The record store the server gets.
 #[derive(Debug, Clone)]
 pub struct Records {
@@ -197,6 +222,12 @@ impl RecordStore for Records {
         body: &RecordBody,
         provenance: &WriteProvenance,
     ) -> Result<Blob, WriteError> {
+        let _in_work = InWork::enter(&self.switches.writes_in_work);
+        let hold = self.switches.write_hold.lock().unwrap().clone();
+        if let Some(hold) = hold {
+            self.switches.write_held.notify_one();
+            let _permit = hold.acquire().await;
+        }
         let conflict = self
             .switches
             .conflicts
@@ -270,6 +301,18 @@ pub struct Options {
     pub limits: Option<Limits>,
     /// The OpenID Connect authenticator, which turns the sign-in host on.
     pub oidc: Option<OidcAuthenticator<TestClock>>,
+    /// The stores and state directory of an earlier server, which this one
+    /// shares, as a new `hangar serve` process on the same board does.
+    pub after: Option<Earlier>,
+}
+
+/// What a later server on the same board shares with an earlier one.
+#[derive(Debug, Clone)]
+pub struct Earlier {
+    pages: Pages,
+    records: Records,
+    switches: Switches,
+    state: StateDir,
 }
 
 /// A running server.
@@ -295,6 +338,7 @@ pub struct Server {
     pub state: StateDir,
     /// The `Debug` output of the app, taken before it started serving.
     pub debug: String,
+    app: App<Pages, Records, FixedSchemas, TestClock>,
     scratch: Scratch,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<Result<Stopped, ServeError>>>,
@@ -315,16 +359,29 @@ impl Server {
         let loopback =
             Loopback::new(port, local_principal("tester").unwrap(), Served::Everything).unwrap();
         let scratch = Scratch::new();
-        let state =
-            StateDir::for_board(&scratch.path().join("state"), &scratch.path().join("board"));
-        let switches = Switches::default();
-        let pages = Pages {
-            store: Arc::new(MemoryPageStore::new()),
-            switches: switches.clone(),
-        };
-        let records = Records {
-            store: Arc::new(MemoryRecordStore::new()),
-            switches: switches.clone(),
+        let (pages, records, switches, state) = match options.after {
+            Some(earlier) => (
+                earlier.pages,
+                earlier.records,
+                earlier.switches,
+                earlier.state,
+            ),
+            None => {
+                let switches = Switches::default();
+                let pages = Pages {
+                    store: Arc::new(MemoryPageStore::new()),
+                    switches: switches.clone(),
+                };
+                let records = Records {
+                    store: Arc::new(MemoryRecordStore::new()),
+                    switches: switches.clone(),
+                };
+                let state = StateDir::for_board(
+                    &scratch.path().join("state"),
+                    &scratch.path().join("board"),
+                );
+                (pages, records, switches, state)
+            }
         };
         let schemas = FixedSchemas(HashMap::from([(TASK.to_owned(), TASK_SCHEMA.to_owned())]));
         let time = TestTime::default();
@@ -343,7 +400,7 @@ impl Server {
             clippy::disallowed_methods,
             reason = "the test server's task is joined by Server::join or ends with the test's runtime"
         )]
-        let task = tokio::spawn(listeners.serve(app, async {
+        let task = tokio::spawn(listeners.serve(app.clone(), async {
             let _ = receiver.await;
         }));
         let authority = loopback.launch_host().authority();
@@ -358,6 +415,7 @@ impl Server {
             time,
             state,
             debug,
+            app,
             scratch,
             shutdown: Some(sender),
             task: Some(task),
@@ -368,12 +426,37 @@ impl Server {
 
     async fn wait_for_server_file(&self) {
         let deadline = Instant::now() + Duration::from_secs(10);
-        while self.state.read_server().ok().flatten().is_none() {
+        while !self.named_by_server_file() {
             assert!(
                 Instant::now() < deadline,
                 "the server never wrote server.json"
             );
             tokio::task::yield_now().await;
+        }
+    }
+
+    /// The `Debug` output of the app now, with every session, token and
+    /// code it holds.
+    pub fn debug_now(&self) -> String {
+        format!("{:?}", self.app)
+    }
+
+    /// Whether `server.json` names this server.
+    pub fn named_by_server_file(&self) -> bool {
+        self.state
+            .read_server()
+            .ok()
+            .flatten()
+            .is_some_and(|record| record.token().expose_secret() == self.token())
+    }
+
+    /// What a later server on the same board shares with this one.
+    pub fn earlier(&self) -> Earlier {
+        Earlier {
+            pages: self.pages.clone(),
+            records: self.records.clone(),
+            switches: self.switches.clone(),
+            state: self.state.clone(),
         }
     }
 

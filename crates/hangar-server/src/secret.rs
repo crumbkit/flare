@@ -1,6 +1,7 @@
 //! The server's secrets: form tokens, hand-over codes and the session
 //! cookie of an OpenID Connect sign-in (BASE-24). This file is the only one
-//! in the crate's source that calls `expose_secret`.
+//! in the crate's source, apart from unit tests, that calls
+//! `expose_secret`.
 //!
 //! The tables keep only SHA-256 digests. A secret leaves the process only
 //! in a `Set-Cookie` header, a form's hidden input and the hand-over

@@ -31,6 +31,8 @@ pub mod harness;
 
 #[path = "server/authenticators.rs"]
 mod authenticators;
+#[path = "server/crashes.rs"]
+mod crashes;
 #[path = "server/edits.rs"]
 mod edits;
 #[path = "server/forms.rs"]

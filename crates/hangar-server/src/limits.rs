@@ -27,12 +27,16 @@ pub struct Limits {
     /// `server::busy`. The default is 16.
     pub in_work: usize,
     /// How long one request may take, from its route starting to its
-    /// reply. A slower one answers 503 `server::deadline`. The default is
-    /// 30 seconds.
+    /// reply. A slower one is dropped and answers 503 `server::deadline`.
+    /// The request's store calls are dropped before the 503 is sent;
+    /// hangar-board's stores stop a dropped call's board child and wait for
+    /// it to end, so no write commits after the 503. The default is 30
+    /// seconds.
     pub request_time: Duration,
-    /// The most form tokens kept at once. A new token past this drops the
-    /// oldest, whose post then answers 403 `forms::token_unknown`. The
-    /// default is 1,024.
+    /// The most form tokens kept at once. One session keeps at most an
+    /// eighth of them, and its next token drops its own oldest. A new
+    /// token past the whole table drops the oldest row. A dropped token's
+    /// post answers 403 `forms::token_unknown`. The default is 1,024.
     pub form_tokens: usize,
     /// How long a form token works. The default is one hour.
     pub form_token_life: Duration,
@@ -45,7 +49,9 @@ pub struct Limits {
     /// itself, as a shutdown would. The default is 8 hours.
     pub idle_exit: Duration,
     /// How long a shutdown lets requests in work finish before it stops
-    /// them. The default is 5 seconds.
+    /// them. A stopped request's store calls are dropped before `serve`
+    /// returns, and hangar-board's stores stop and reap the board child of
+    /// each. The default is 5 seconds.
     pub drain: Duration,
     /// How often the server drops expired launch codes, form tokens and
     /// hand-over codes and removes their openers. The default is 30

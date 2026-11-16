@@ -204,6 +204,47 @@ async fn the_launch_host_does_not_serve_the_sign_in_hosts_paths() {
 }
 
 #[tokio::test]
+async fn a_credentialed_request_that_loads_a_binding_into_a_frame_is_refused() {
+    let server = Server::start().await;
+    server.seed_binding().await;
+    let cookie = server.sign_in().await;
+    let binding = format!("/b/{BINDING}");
+    let page = format!("/pages/{PAGE}");
+    for dest in ["iframe", "frame"] {
+        for path in [binding.as_str(), page.as_str()] {
+            for site in ["cross-site", "same-origin"] {
+                let reply = server
+                    .get(path)
+                    .cookie(&cookie)
+                    .header("Sec-Fetch-Dest", dest)
+                    .header("Sec-Fetch-Site", site)
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .send()
+                    .await;
+                assert_eq!(reply.status, 403, "{path} into {dest} from {site}");
+                assert_eq!(reply.code().as_deref(), Some("request::framed"));
+                assert!(!reply.body.contains("name=\"token\""), "no form token");
+            }
+        }
+    }
+    let unsigned = server
+        .get(&binding)
+        .header("Sec-Fetch-Dest", "iframe")
+        .send()
+        .await;
+    assert_eq!(unsigned.code().as_deref(), Some("auth::sign_in_needed"));
+    let top = server
+        .get(&binding)
+        .cookie(&cookie)
+        .header("Sec-Fetch-Dest", "document")
+        .header("Sec-Fetch-Site", "cross-site")
+        .header("Sec-Fetch-Mode", "navigate")
+        .send()
+        .await;
+    assert_eq!(top.status, 200, "{}", top.body);
+}
+
+#[tokio::test]
 async fn a_credentialed_cross_site_request_is_refused_unless_it_is_a_navigation() {
     let server = Server::start().await;
     server.seed_binding().await;

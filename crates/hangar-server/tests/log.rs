@@ -1,4 +1,7 @@
-//! Plan test 15: no secret reaches the log or a `Debug` output.
+//! Plan test 15: no secret reaches the log or a `Debug` output. The test
+//! makes every kind of secret first, including an OpenID Connect sign-in
+//! against the fake provider whose client secret is a marker, and formats
+//! the app's `Debug` output after them.
 //!
 //! This test is the only one in its binary. It captures the log with a
 //! subscriber that `tracing::subscriber::set_default` sets on its own
@@ -36,9 +39,57 @@ pub mod scratch;
 )]
 pub mod harness;
 
-use harness::{BINDING, Server, form_pairs, value};
+use fake_provider::{CLIENT_SECRET, Fake, connect};
+use harness::{BINDING, Options, Server, cookie_pair, form_pairs, value};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use url::Url;
+
+/// The secrets of an OpenID Connect sign-in: the kept-state cookie's
+/// value, the hand-over code and the session.
+struct OidcSecrets {
+    kept: String,
+    handover: String,
+    session: String,
+}
+
+/// Signs a browser in through the fake and returns the secrets the
+/// sign-in made.
+async fn oidc_sign_in(server: &Server, fake: &Fake) -> OidcSecrets {
+    let started = server
+        .oidc_request("GET", "/auth/oidc/start?return_to=/hangar/")
+        .send()
+        .await;
+    assert_eq!(started.status, 303, "{}", started.body);
+    let location = Url::parse(started.header("location").unwrap()).unwrap();
+    let kept = cookie_pair(&started, "hangar_oidc_state").unwrap();
+    let called = server
+        .oidc_request(
+            "GET",
+            &format!("/auth/oidc/callback?{}", fake.approve(&location)),
+        )
+        .cookie(&kept)
+        .send()
+        .await;
+    assert_eq!(called.status, 303, "{}", called.body);
+    let finish = Url::parse(called.header("location").unwrap()).unwrap();
+    let handover = finish
+        .query_pairs()
+        .find(|(name, _)| name == "code")
+        .map(|(_, code)| code.into_owned())
+        .unwrap();
+    let finished = server
+        .get(&format!("{}?{}", finish.path(), finish.query().unwrap()))
+        .send()
+        .await;
+    assert_eq!(finished.status, 200, "{}", finished.body);
+    let session = cookie_pair(&finished, "hangar_session").unwrap();
+    OidcSecrets {
+        kept: kept.trim_start_matches("hangar_oidc_state=").to_owned(),
+        handover,
+        session: session.trim_start_matches("hangar_session=").to_owned(),
+    }
+}
 
 /// A log writer that keeps every byte for the test to read.
 #[derive(Clone, Default)]
@@ -65,8 +116,15 @@ async fn no_secret_reaches_the_log_or_a_debug_output() {
         .with_writer(move || writer.clone())
         .finish();
     let _guard = tracing::subscriber::set_default(subscriber);
-    let server = Server::start().await;
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let server = Server::start_with(Options {
+        oidc: Some(authenticator),
+        ..Options::default()
+    })
+    .await;
     server.seed_binding().await;
+    let oidc = oidc_sign_in(&server, &fake).await;
     let token = server.token();
     let cookie = server.sign_in().await;
     let session = cookie.trim_start_matches("hangar_session=").to_owned();
@@ -93,18 +151,22 @@ async fn no_secret_reaches_the_log_or_a_debug_output() {
         text.contains("status=200"),
         "the request log is written: {text}"
     );
+    let debug = server.debug_now();
+    assert!(debug.contains("App"), "{debug}");
     for secret in [
         token.as_str(),
         session.as_str(),
         form_token.as_str(),
         "a-wrong-code-that-is-not-logged",
+        CLIENT_SECRET,
+        oidc.kept.as_str(),
+        oidc.handover.as_str(),
+        oidc.session.as_str(),
     ] {
         assert!(!text.contains(secret), "the log holds a secret: {text}");
-        assert!(
-            !server.debug.contains(secret),
-            "Debug holds a secret: {}",
-            server.debug
-        );
+        for output in [&server.debug, &debug] {
+            assert!(!output.contains(secret), "Debug holds a secret: {output}");
+        }
         assert!(!format!("{:?}", server.loopback).contains(secret));
     }
     assert!(!text.contains("code="), "the log holds a query string");

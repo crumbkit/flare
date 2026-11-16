@@ -18,6 +18,7 @@ pub(crate) enum Code {
     Peer,
     Origin,
     CrossSite,
+    Framed,
     HeadersTooLarge,
     BodyTooLarge,
     Slow,
@@ -30,6 +31,7 @@ pub(crate) enum Code {
     NeedsSession,
     TokenUnknown,
     TokenMismatch,
+    FormsUnavailable,
     BindingChanged,
     BadPost,
     Refused,
@@ -72,6 +74,7 @@ impl Code {
             Self::Peer => (S::FORBIDDEN, "request::peer"),
             Self::Origin => (S::FORBIDDEN, "request::origin"),
             Self::CrossSite => (S::FORBIDDEN, "request::cross_site"),
+            Self::Framed => (S::FORBIDDEN, "request::framed"),
             Self::HeadersTooLarge => (
                 S::REQUEST_HEADER_FIELDS_TOO_LARGE,
                 "request::headers_too_large",
@@ -87,6 +90,7 @@ impl Code {
             Self::NeedsSession => (S::FORBIDDEN, "forms::needs_session"),
             Self::TokenUnknown => (S::FORBIDDEN, "forms::token_unknown"),
             Self::TokenMismatch => (S::FORBIDDEN, "forms::token_mismatch"),
+            Self::FormsUnavailable => (S::SERVICE_UNAVAILABLE, "forms::unavailable"),
             Self::BindingChanged => (S::CONFLICT, "forms::binding_changed"),
             Self::BadPost => (S::BAD_REQUEST, "forms::bad_post"),
             Self::Refused => (S::UNPROCESSABLE_ENTITY, "forms::refused"),
@@ -126,6 +130,7 @@ impl Code {
                 "A request that changes something must come from this server's own pages."
             }
             Self::CrossSite => "Another site's page asked for this with your sign-in.",
+            Self::Framed => "A frame asked for this with your sign-in. Open it in its own tab.",
             Self::HeadersTooLarge => "The request's headers are larger than 32 KiB.",
             Self::BodyTooLarge => "The request's body is larger than 1 MiB.",
             Self::Slow => "The request's body did not arrive in time.",
@@ -143,6 +148,9 @@ impl Code {
             }
             Self::TokenMismatch => {
                 "This form was drawn for another session, binding, slot or record version."
+            }
+            Self::FormsUnavailable => {
+                "The server cannot check form tokens until hangar serve is started again."
             }
             Self::BindingChanged => "The binding changed after this form was drawn. Open it again.",
             Self::BadPost => "The post is not one this server's forms send.",
@@ -169,7 +177,9 @@ impl Code {
                 "This sign-in link is unknown, used or expired. Sign in again."
             }
             Self::ServerBusy => "The server is busy. Try again.",
-            Self::Deadline => "The request took longer than 30 seconds.",
+            Self::Deadline => {
+                "The request took longer than 30 seconds, and the server stopped it. Reload to see whether a save landed."
+            }
             Self::Fault => "The server failed while answering. The failure is logged.",
         }
     }

@@ -156,6 +156,30 @@ async fn the_frame_documents_head_starts_with_the_frame_policy_before_any_page_m
 }
 
 #[tokio::test]
+async fn an_ampersand_and_an_entity_in_page_content_reach_the_frame_unchanged() {
+    let server = Server::start().await;
+    server
+        .seed_page_with(
+            PAGE,
+            "<p class=\"card\">Fish &amp; chips & peas &lt;b&gt; {{task.title}}</p>",
+            &["title"],
+        )
+        .await;
+    let cookie = server.sign_in().await;
+    let reply = server
+        .get(&format!("/pages/{PAGE}"))
+        .cookie(&cookie)
+        .send()
+        .await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    let (document, _) = frame(&reply.body);
+    assert!(
+        document.contains("Fish &amp; chips & peas &lt;b&gt;"),
+        "the frame document holds the page's own text: {document}"
+    );
+}
+
+#[tokio::test]
 async fn a_binding_renders_from_its_records_with_one_edit_form_under_the_frame() {
     let server = Server::start().await;
     server.seed_binding().await;

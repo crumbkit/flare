@@ -10,6 +10,7 @@ use std::net::IpAddr;
 
 const SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
 const SEC_FETCH_MODE: HeaderName = HeaderName::from_static("sec-fetch-mode");
+const SEC_FETCH_DEST: HeaderName = HeaderName::from_static("sec-fetch-dest");
 
 /// The bytes the header block takes: each name, value, colon, space and
 /// line end.
@@ -49,6 +50,12 @@ pub(crate) fn sign_in_host(peer: IpAddr, headers: &HeaderMap, port: u16) -> Resu
 /// subresource requests are cross-site, and Safari sends the session cookie
 /// on them; the launch and finish routes are reached by cross-site
 /// navigations.
+///
+/// It also refuses a credentialed request whose `Sec-Fetch-Dest` is
+/// `iframe` or `frame`: a link in a page's content, clicked inside the
+/// sandboxed frame, would load `/b/<name>` in the frame with the session.
+/// No hangar document is ever framed, and the frame's `srcdoc` sends no
+/// request, so nothing a reader does is refused by this.
 pub(crate) fn cross_site(headers: &HeaderMap, has_credential: bool) -> Result<(), Code> {
     if !has_credential {
         return Ok(());
@@ -59,6 +66,9 @@ pub(crate) fn cross_site(headers: &HeaderMap, has_credential: bool) -> Result<()
             .iter()
             .any(|header| header.as_bytes().eq_ignore_ascii_case(value))
     };
+    if is(&SEC_FETCH_DEST, b"iframe") || is(&SEC_FETCH_DEST, b"frame") {
+        return Err(Code::Framed);
+    }
     if is(&SEC_FETCH_SITE, b"cross-site") && !is(&SEC_FETCH_MODE, b"navigate") {
         return Err(Code::CrossSite);
     }
@@ -75,3 +85,6 @@ pub(crate) fn query_value(uri: &Uri, name: &str) -> Option<String> {
     let first = values.next()?;
     values.next().is_none().then_some(first)
 }
+
+#[cfg(test)]
+mod tests;
