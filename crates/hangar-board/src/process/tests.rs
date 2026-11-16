@@ -2,12 +2,14 @@ use super::{Board, Rows, ended};
 use crate::Limits;
 use crate::report::{Failure, Got};
 use crate::wait::Gate;
-use crumbkit_process::{Outcome, Status};
+use crumbkit_process::{Cancel, Outcome, Status};
 use hangar_core::contract::block_on;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::task::{Context, Waker};
 use std::time::{Duration, Instant};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -178,7 +180,7 @@ fn a_call_that_finds_no_free_place_before_the_deadline_fails_as_a_child_failure(
     );
     let held = board
         .gate
-        .enter_within(Instant::now() + Duration::from_secs(5))
+        .enter_within(Instant::now() + Duration::from_secs(5), &Cancel::new())
         .unwrap();
     let started = Instant::now();
     let answer = block_on(board.ls("/tasks"));
@@ -190,4 +192,72 @@ fn a_call_that_finds_no_free_place_before_the_deadline_fails_as_a_child_failure(
         "{answer:?}"
     );
     assert!(took < Duration::from_secs(5), "the call waited {took:?}");
+}
+
+/// Polls `future` once, which starts its thread.
+fn start<F: Future>(future: &mut Pin<Box<F>>) {
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(future.as_mut().poll(&mut context).is_pending());
+}
+
+/// Lets another thread or the child run for `millis`.
+fn pause(millis: u64) {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test gives a thread or a child time to act, which shows no signal"
+    )]
+    std::thread::sleep(Duration::from_millis(millis));
+}
+
+/// Waits until `path` exists, for at most ten seconds.
+fn wait_for(path: &std::path::Path) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !path.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "{} never appeared",
+            path.display()
+        );
+        pause(10);
+    }
+}
+
+#[test]
+fn dropping_a_call_stops_its_child_and_returns_once_the_child_has_ended() {
+    let (board, directory) = scripted(
+        "trap 'sleep 0.3; echo stopped > stopped; exit 1' TERM\necho started > started\nsleep 30 &\nwait\n",
+        Limits::default(),
+    );
+    let mut call = Box::pin(board.put_batch(&[]));
+    start(&mut call);
+    wait_for(&directory.join("started"));
+    drop(call);
+    let stopped = directory.join("stopped").exists();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(stopped, "the child still ran when the drop returned");
+}
+
+#[test]
+fn dropping_a_call_that_waits_for_a_place_gives_up_the_wait() {
+    let limits = Limits {
+        children: 1,
+        ..Limits::default()
+    };
+    let (board, directory) = scripted("echo ran > ran\n", limits);
+    let held = board
+        .gate
+        .enter_within(Instant::now() + Duration::from_secs(5), &Cancel::new())
+        .unwrap();
+    let mut call = Box::pin(board.ls("/tasks"));
+    start(&mut call);
+    pause(100);
+    let started = Instant::now();
+    drop(call);
+    let took = started.elapsed();
+    drop(held);
+    pause(300);
+    let ran = directory.join("ran").exists();
+    std::fs::remove_dir_all(directory).unwrap();
+    assert!(!ran, "the dropped call still ran its child");
+    assert!(took < Duration::from_secs(2), "the drop waited {took:?}");
 }

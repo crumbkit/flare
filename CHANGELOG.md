@@ -62,6 +62,10 @@ This file records the notable changes to hangar. The format follows
 - `BoardStore::check_program` in `hangar-board` checks that the board
   program can read history, and answers `TooOld` for a board older than
   crumbkit/board e4ee3333.
+- Dropping the future of a `hangar-board` call before it resolves stops
+  the board child's process group and waits until the child has ended. A
+  caller that gives up on a write, such as a request past its deadline,
+  knows that the write will not commit later.
 
 ### Changed
 
