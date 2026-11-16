@@ -228,6 +228,10 @@ fn chunked_server(body: Vec<u8>) -> String {
     use std::io::{Read as _, Write as _};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let issuer = format!("http://{}", listener.local_addr().unwrap());
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test server's thread answers one connection and ends with the test process"
+    )]
     std::thread::spawn(move || {
         let Ok((mut stream, _)) = listener.accept() else {
             return;

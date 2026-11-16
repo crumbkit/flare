@@ -197,9 +197,17 @@ impl Fake {
             seen: Vec::new(),
         }));
         let shared = Arc::clone(&state);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the fake provider's tasks end with the test's runtime"
+        )]
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 let shared = Arc::clone(&shared);
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "each connection's task ends with the connection or the test's runtime"
+                )]
                 tokio::spawn(async move {
                     let service = service_fn(move |request| handle(Arc::clone(&shared), request));
                     let _ = hyper::server::conn::http1::Builder::new()

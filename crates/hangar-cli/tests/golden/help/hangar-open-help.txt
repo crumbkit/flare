@@ -1,0 +1,38 @@
+Open the running server's index, a page or a binding in a browser
+
+Usage: hangar open [OPTIONS] [NAME]
+
+Arguments:
+  [NAME]
+          The page or binding to open; without it, the index
+
+Options:
+      --board <DIR>
+          The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  hangar open
+          Open the index of the running server
+
+  hangar open kitchen
+          Open the binding or page named kitchen
+
+Columns:
+  target  The path the browser opens on the server, such as `/b/kitchen`.
+
+Effects: additive, not idempotent, closed-world.

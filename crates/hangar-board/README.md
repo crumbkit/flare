@@ -53,7 +53,9 @@ let store = BoardStore::open(config)?;
 The state directory is each child's `HOME` and holds its XDG directories.
 `Limits` bounds the children that run at once, each child's deadline, the
 wait for the board's lock, the output read from a child and the retries of
-a publish or a move that lost a race.
+a publish or a move that lost a race. Dropping a call's future before it
+resolves stops its child's process group and blocks until the child has
+ended, so a caller that gives up on a write knows it will not commit later.
 
 ## Tests
 

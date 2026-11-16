@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hangar/open/v1",
+  "description": "The page, binding or index that the browser opened.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/Opened"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "hangar/open/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "Opened": {
+      "description": "What `hangar open` opened.",
+      "type": "object",
+      "properties": {
+        "target": {
+          "description": "The path the browser opens on the server, such as `/b/kitchen`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target"
+      ]
+    }
+  }
+}

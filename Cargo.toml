@@ -6,6 +6,8 @@ members = [
   "crates/hangar-board",
   "crates/hangar-core",
   "crates/hangar-render",
+  "crates/hangar-server",
+  "crates/hangar-cli",
 ]
 
 [workspace.package]
@@ -62,14 +64,40 @@ thiserror = "2.0.21"
 # Builds the authorisation URL and parses the callback query.
 url = "2.5.8"
 
+# The crates that hangar-server and the hangar binary build on.
+hangar-auth-loopback = { path = "crates/hangar-auth-loopback", version = "0.1.0" }
+hangar-auth-oidc = { path = "crates/hangar-auth-oidc", version = "0.1.0" }
+hangar-board = { path = "crates/hangar-board", version = "0.1.0" }
+hangar-render = { path = "crates/hangar-render", version = "0.1.0" }
+hangar-server = { path = "crates/hangar-server", version = "0.1.0" }
+
+# The hangar binary's command line, failures, documents and usage log
+# (the cli profile). Evaluated in /evals/hangar-server-dependencies.
+clap = { version = "=4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
+crumbkit = { version = "=0.5.0", features = ["derive"] }
+crumbkit-usage = "=0.5.0"
+# Test-only: the cli profile's convention checks.
+crumbkit-test = "=0.5.0"
+# The JSON Schemas of the binary's documents, which crumbkit's Row and
+# Document need; crumbkit already brings it in.
+schemars = "1.2.3"
+# hangar-server's structured request log (SVC-9); reqwest and hyper already
+# bring tracing in. tracing-subscriber, evaluated in
+# /evals/hangar-server-dependencies, writes it to standard error.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "std"] }
+# Decodes a form post's body; url and reqwest already bring it in.
+form_urlencoded = "1.2.2"
+
 # hangar-auth-oidc serialises its key set refreshes with tokio's async mutex,
-# and its fake OpenID provider in tests is an HTTP server on a Tokio runtime.
+# hangar-server runs on Tokio, and the fake OpenID provider in tests is an
+# HTTP server on a Tokio runtime.
 tokio = "1.54.1"
-# Test-only: the fake provider's HTTP/1 server.
+# hangar-server's HTTP/1 server, and the fake provider's in tests.
 hyper = "1.12.0"
-# Test-only: connects hyper to Tokio's sockets in the fake provider.
+# Connects hyper to Tokio's sockets and shuts connections down gracefully.
 hyper-util = "0.1.21"
-# Test-only: the fake provider's request and reply bodies.
+# The request and reply bodies, and the body size limit.
 http-body-util = "0.1.5"
 # Test-only: the HTML tokenizer that hangar-render's tests read its output
 # with, as a browser would.

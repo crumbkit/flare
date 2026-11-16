@@ -25,7 +25,9 @@
 //!   moment the child gets its place in the gate.
 //! - **End.** crumbkit-process starts the child in a process group of its
 //!   own and, at the deadline or the output limit, sends the group SIGTERM,
-//!   waits one second, kills it and reaps the child. A put that is stopped
+//!   waits one second, kills it and reaps the child. It does the same when
+//!   the caller drops the call's future, and the drop returns only once
+//!   the child is reaped (`wait.rs`). A put that is stopped
 //!   may leave written files with no commit, which the next write replaces,
 //!   as the lifecycle's crash points say. The exit code must agree with the
 //!   report, as [`parse`] checks.
@@ -41,7 +43,7 @@ use crate::Limits;
 use crate::report::{Failure, GetReport, Got, LogReport, LsReport, LsRow, PutReport, Ran, parse};
 use crate::wait::{Gate, on_thread};
 use crumbkit_process::{
-    Capture, Escalation, Input, Outcome, RunOptions, Signal, Status, Zeroizing,
+    Cancel, Capture, Escalation, Input, Outcome, RunOptions, Signal, Status, StopReason, Zeroizing,
 };
 use serde_json::Value;
 use std::ffi::OsString;
@@ -145,11 +147,14 @@ impl Board {
     }
 
     /// Runs board with `args` and `stdin` on a thread of its own and
-    /// returns its standard output and exit code.
+    /// returns its standard output and exit code. Dropping the future
+    /// stops the child and waits for it to end.
     async fn run(self: &Arc<Self>, args: &[&str], stdin: Vec<u8>) -> Result<Ran, Failure> {
         let board = Arc::clone(self);
         let args: Vec<OsString> = args.iter().map(OsString::from).collect();
-        on_thread(move || board.run_blocking(args, stdin))
+        let stop = Cancel::new();
+        let watched = stop.clone();
+        on_thread(stop, move || board.run_blocking(args, stdin, &watched))
             .await
             .unwrap_or_else(|| {
                 Err(Failure::Child(
@@ -158,13 +163,18 @@ impl Board {
             })
     }
 
-    fn run_blocking(&self, args: Vec<OsString>, stdin: Vec<u8>) -> Result<Ran, Failure> {
+    fn run_blocking(
+        &self,
+        args: Vec<OsString>,
+        stdin: Vec<u8>,
+        stop: &Cancel,
+    ) -> Result<Ran, Failure> {
         let deadline = || {
             Instant::now()
                 .checked_add(self.limits.child_deadline)
                 .ok_or_else(|| Failure::Child("the child deadline is too far away".into()))
         };
-        let _place = self.gate.enter_within(deadline()?).ok_or_else(|| {
+        let _place = self.gate.enter_within(deadline()?, stop).ok_or_else(|| {
             Failure::Child(format!(
                 "no place in the gate freed within {:?}",
                 self.limits.child_deadline
@@ -200,6 +210,7 @@ impl Board {
             .stdout(Capture::whole(self.limits.output_bytes))
             .stderr(Capture::discard())
             .deadline(deadline()?)
+            .cancel(stop)
             .escalation(Escalation::default().step(Signal::Terminate, TERM_GRACE));
         let finished = crumbkit_process::run(command, &options)
             .map_err(|error| Failure::Child(format!("board could not run: {error}")))?;
@@ -237,6 +248,9 @@ pub(crate) fn ended(outcome: Outcome, over_limit: bool, limits: &Limits) -> Resu
             "board ran past its deadline of {:?}",
             limits.child_deadline
         ))),
+        Outcome::Stopped(StopReason::Cancelled) => Err(Failure::Child(
+            "the call was dropped, so its child was stopped".into(),
+        )),
         _ => Err(over()),
     }
 }
