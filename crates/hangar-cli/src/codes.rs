@@ -5,57 +5,60 @@
 use crumbkit::{Call, Code, Failure, Recovery};
 
 /// No server answers for the board.
-pub const SERVER_NOT_RUNNING: Code<'static> = Code::new("hangar", "server", "not_running");
+pub const SERVER_NOT_RUNNING: Code<'static> = Code::from_spelling("hangar::server::not_running");
 /// A server already serves the board.
-pub const SERVER_ALREADY_RUNNING: Code<'static> = Code::new("hangar", "server", "already_running");
+pub const SERVER_ALREADY_RUNNING: Code<'static> =
+    Code::from_spelling("hangar::server::already_running");
 /// Another program holds the port.
-pub const SERVER_PORT_IN_USE: Code<'static> = Code::new("hangar", "server", "port_in_use");
+pub const SERVER_PORT_IN_USE: Code<'static> = Code::from_spelling("hangar::server::port_in_use");
 /// The board's directory does not exist.
-pub const BOARD_NOT_FOUND: Code<'static> = Code::new("hangar", "board", "not_found");
+pub const BOARD_NOT_FOUND: Code<'static> = Code::from_spelling("hangar::board::not_found");
 /// The directory holds no board.
-pub const BOARD_NOT_A_BOARD: Code<'static> = Code::new("hangar", "board", "not_a_board");
+pub const BOARD_NOT_A_BOARD: Code<'static> = Code::from_spelling("hangar::board::not_a_board");
 /// The board program has no `log --at`.
-pub const BOARD_TOO_OLD: Code<'static> = Code::new("hangar", "board", "too_old");
+pub const BOARD_TOO_OLD: Code<'static> = Code::from_spelling("hangar::board::too_old");
 /// The board program was not found or did not answer.
 pub const BOARD_PROGRAM_UNAVAILABLE: Code<'static> =
-    Code::new("hangar", "board", "program_unavailable");
+    Code::from_spelling("hangar::board::program_unavailable");
 /// The board could not answer a read or a write.
-pub const BOARD_UNAVAILABLE: Code<'static> = Code::new("hangar", "board", "unavailable");
+pub const BOARD_UNAVAILABLE: Code<'static> = Code::from_spelling("hangar::board::unavailable");
 /// The config file could not be read.
-pub const CONFIG_UNREADABLE: Code<'static> = Code::new("hangar", "config", "unreadable");
+pub const CONFIG_UNREADABLE: Code<'static> = Code::from_spelling("hangar::config::unreadable");
 /// The config file is not a hangar config.
-pub const CONFIG_INVALID: Code<'static> = Code::new("hangar", "config", "invalid");
+pub const CONFIG_INVALID: Code<'static> = Code::from_spelling("hangar::config::invalid");
 /// The client secret could not be read from the Keychain.
 pub const OIDC_SECRET_UNAVAILABLE: Code<'static> =
-    Code::new("hangar", "oidc", "secret_unavailable");
+    Code::from_spelling("hangar::oidc::secret_unavailable");
 /// The OpenID Connect provider could not be reached or is misconfigured.
 pub const OIDC_PROVIDER_UNAVAILABLE: Code<'static> =
-    Code::new("hangar", "oidc", "provider_unavailable");
+    Code::from_spelling("hangar::oidc::provider_unavailable");
 /// No page or binding has the name.
-pub const PAGES_NOT_FOUND: Code<'static> = Code::new("hangar", "pages", "not_found");
+pub const PAGES_NOT_FOUND: Code<'static> = Code::from_spelling("hangar::pages::not_found");
 /// The page's template has flaws.
-pub const PAGES_TEMPLATE_FLAWS: Code<'static> = Code::new("hangar", "pages", "template_flaws");
+pub const PAGES_TEMPLATE_FLAWS: Code<'static> =
+    Code::from_spelling("hangar::pages::template_flaws");
 /// The page file is neither HTML nor Markdown.
-pub const PAGES_UNKNOWN_FORMAT: Code<'static> = Code::new("hangar", "pages", "unknown_format");
+pub const PAGES_UNKNOWN_FORMAT: Code<'static> =
+    Code::from_spelling("hangar::pages::unknown_format");
 /// The page's name, text or slots are not valid.
-pub const PAGES_INVALID: Code<'static> = Code::new("hangar", "pages", "invalid");
+pub const PAGES_INVALID: Code<'static> = Code::from_spelling("hangar::pages::invalid");
 /// The page file or the slots file could not be read.
-pub const PAGES_UNREADABLE: Code<'static> = Code::new("hangar", "pages", "unreadable");
+pub const PAGES_UNREADABLE: Code<'static> = Code::from_spelling("hangar::pages::unreadable");
 /// The binding's records do not fit the page.
-pub const BINDINGS_MISFIT: Code<'static> = Code::new("hangar", "bindings", "misfit");
+pub const BINDINGS_MISFIT: Code<'static> = Code::from_spelling("hangar::bindings::misfit");
 /// A binding with the name exists.
-pub const BINDINGS_NAME_TAKEN: Code<'static> = Code::new("hangar", "bindings", "name_taken");
+pub const BINDINGS_NAME_TAKEN: Code<'static> = Code::from_spelling("hangar::bindings::name_taken");
 /// A record the binding names does not exist.
 pub const BINDINGS_RECORD_NOT_FOUND: Code<'static> =
-    Code::new("hangar", "bindings", "record_not_found");
+    Code::from_spelling("hangar::bindings::record_not_found");
 /// The binding's name or fills are not valid.
-pub const BINDINGS_INVALID: Code<'static> = Code::new("hangar", "bindings", "invalid");
+pub const BINDINGS_INVALID: Code<'static> = Code::from_spelling("hangar::bindings::invalid");
 /// The program that opens the browser failed.
-pub const OPENER_FAILED: Code<'static> = Code::new("hangar", "opener", "failed");
+pub const OPENER_FAILED: Code<'static> = Code::from_spelling("hangar::opener::failed");
 /// hangar's state directory cannot be used.
-pub const STATE_UNUSABLE: Code<'static> = Code::new("hangar", "state", "unusable");
+pub const STATE_UNUSABLE: Code<'static> = Code::from_spelling("hangar::state::unusable");
 /// The operating system refused a socket, a thread or random bytes.
-pub const SYSTEM_UNAVAILABLE: Code<'static> = Code::new("hangar", "system", "unavailable");
+pub const SYSTEM_UNAVAILABLE: Code<'static> = Code::from_spelling("hangar::system::unavailable");
 
 /// Why a `hangar` command failed.
 #[derive(Debug, thiserror::Error, Failure)]
