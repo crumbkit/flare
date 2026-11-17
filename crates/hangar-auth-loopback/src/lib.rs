@@ -81,7 +81,7 @@
 //! | State | Entered by | Left by |
 //! | --- | --- | --- |
 //! | absent | first use; `remove_server` by the server it names; a person removing the directory | `write_server` |
-//! | current | `write_server`: temporary file, sync, rename, directory sync | `remove_server` at exit; `write_server` by a newer server; the server dying |
+//! | current | `write_server`: crumbkit-durable writes a temporary file, syncs it, renames it and syncs the directory | `remove_server` at exit; `write_server` by a newer server; the server dying |
 //! | stale | the server dying without `remove_server` | `write_server` by the next server |
 //! | untrusted | something outside hangar changing its owner, mode, links or type | `write_server`, which replaces it by rename and never opens it; a person removing it |
 //!

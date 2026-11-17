@@ -357,9 +357,9 @@ fn the_sweep_removes_old_temporary_files_and_openers_and_leaves_the_rest() {
     let state = prepared(&scratch);
     let now = SystemTime::now();
     let names = [
-        "server.json.0123456789abcdef.tmp",
+        ".server.json.4242.0.tmp",
         "open-0123456789abcdef.html",
-        "server.json.fedcba9876543210.tmp",
+        ".server.json.4242.1.tmp",
         "open-fedcba9876543210.html",
         "notes.txt",
     ];

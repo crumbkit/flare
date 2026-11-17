@@ -2,8 +2,8 @@
 //! days, such as `90s`, `30m`, `8h` or `2d`.
 //!
 //! This reads one number and one unit and no more (RUST-10). It takes no
-//! fractions and no sums such as `1h30m`; humantime, which crumbkit-usage
-//! already brings in, replaces it if `hangar` needs either.
+//! fractions and no sums such as `1h30m`; jiff's friendly durations, which
+//! crumbkit-usage already brings in, replace it if `hangar` needs either.
 
 use std::time::Duration;
 

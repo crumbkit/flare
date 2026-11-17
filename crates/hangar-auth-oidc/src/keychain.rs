@@ -14,30 +14,25 @@
 //! - **Streams and deadline.** Standard input is empty, standard error is
 //!   discarded and at most 4 KiB of standard output is captured. The
 //!   deadline is 10 seconds from the start.
-//! - **End.** This module stops and reaps the child. Past the deadline, or
-//!   when the output passes 4 KiB, it kills the child and waits for it. It
-//!   reads the exit status after the child closes its output, and any
+//! - **End.** crumbkit-process starts the program in a process group of its
+//!   own and reaps it. Past the deadline, or when the output passes 4 KiB,
+//!   it sends the group SIGTERM, waits one second and kills the group. Any
 //!   status other than zero is [`SecretError::Failed`]. The program only
 //!   reads the Keychain, so it leaves no partial work behind.
-//!
-//! The deadline stops only the direct child, not any process the child
-//! starts (PROC-3). `/usr/bin/security` starts none.
 
 use crate::refusal::SecretError;
 use crate::secret::ClientSecretSource;
+use crumbkit_process::{Capture, Escalation, Input, Outcome, RunOptions, Signal, Status};
 use secrecy::SecretString;
 use secrecy::zeroize::Zeroize as _;
-use std::io::Read as _;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::time::Duration;
+use std::process::Command;
+use std::time::{Duration, Instant};
 
 const SECURITY: &str = "/usr/bin/security";
 const MAX_OUTPUT: usize = 4096;
-/// One byte more than [`MAX_OUTPUT`], which is how much the reader reads to
-/// tell output of exactly 4 KiB from longer output.
-const READ_LIMIT: u64 = 4097;
+/// How long the program has to end after SIGTERM before it is killed.
+const KILL_GRACE: Duration = Duration::from_secs(1);
 const DEADLINE: Duration = Duration::from_secs(10);
 
 /// Reads the client secret from the macOS Keychain item of one service,
@@ -121,67 +116,37 @@ impl ClientSecretSource for KeychainSecret {
     reason = "PROC-1: this is the crate's one process module, and reading the secret is its one operation"
 )]
 fn run(source: &KeychainSecret) -> Result<Vec<u8>, SecretError> {
-    let mut child = Command::new(&source.program)
+    let mut command = Command::new(&source.program);
+    command
         .args(["find-generic-password", "-s", &source.service, "-w"])
-        .env_clear()
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| SecretError::Unavailable)?;
-    let Some(stdout) = child.stdout.take() else {
-        stop(&mut child);
-        return Err(SecretError::Unavailable);
+        .env_clear();
+    let deadline = Instant::now()
+        .checked_add(source.deadline)
+        .ok_or(SecretError::TimedOut)?;
+    let options = RunOptions::new()
+        .stdin(Input::Null)
+        .stdout(Capture::whole(MAX_OUTPUT))
+        .stderr(Capture::discard())
+        .deadline(deadline)
+        .escalation(Escalation::default().step(Signal::Terminate, KILL_GRACE));
+    let finished =
+        crumbkit_process::run(command, &options).map_err(|_| SecretError::Unavailable)?;
+    let over_limit = finished.stdout().over_limit();
+    let outcome = finished.outcome();
+    let mut output = finished.into_output().0.into_bytes();
+    let result = match outcome {
+        Outcome::TimedOut => Err(SecretError::TimedOut),
+        // A child that exits on its own just after it passes the limit
+        // ends before the run stops it, with its output cut short.
+        _ if over_limit => Err(SecretError::TooLong),
+        Outcome::Ended(Status::Code(0)) => Ok(()),
+        _ => Err(SecretError::Failed),
     };
-    let (sender, receiver) = mpsc::channel();
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the process module's reader thread ends when the child's standard output closes, which stop() ensures, and the receiver's deadline bounds the wait (SVC-1)"
-    )]
-    std::thread::spawn(move || {
-        let mut output = Vec::new();
-        let read = stdout.take(READ_LIMIT).read_to_end(&mut output);
-        let _ = sender.send(read.map(|_| output));
-    });
-    match receiver.recv_timeout(source.deadline) {
-        Err(_) => {
-            stop(&mut child);
-            Err(SecretError::TimedOut)
-        }
-        Ok(Err(_)) => {
-            stop(&mut child);
-            Err(SecretError::Failed)
-        }
-        Ok(Ok(mut output)) if output.len() > MAX_OUTPUT => {
+    match result {
+        Ok(()) => Ok(output),
+        Err(error) => {
             output.zeroize();
-            stop(&mut child);
-            Err(SecretError::TooLong)
-        }
-        Ok(Ok(mut output)) => {
-            // Shortcut: the deadline covers the wait for the output to end,
-            // and the wait for the exit after it is unbounded. `security`
-            // exits as it closes its output, so the wait ends at once. A
-            // program that closed its output and kept running would hold
-            // `connect` until it exited; a crate such as wait-timeout would
-            // bound this wait if another program is ever run here.
-            let status = child.wait().map_err(|_| SecretError::Failed)?;
-            if status.success() {
-                Ok(output)
-            } else {
-                output.zeroize();
-                Err(SecretError::Failed)
-            }
+            Err(error)
         }
     }
-}
-
-#[expect(
-    clippy::disallowed_types,
-    reason = "PROC-1: the process module stops and reaps its own child"
-)]
-fn stop(child: &mut std::process::Child) {
-    // Both calls fail only when the child has already exited and been
-    // reaped, which leaves nothing to stop.
-    let _ = child.kill();
-    let _ = child.wait();
 }

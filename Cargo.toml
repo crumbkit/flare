@@ -24,9 +24,13 @@ rust-version = "1.99.1"
 # and hangar-auth-loopback; jsonwebtoken's aws_lc_rs backend already brings
 # it in.
 aws-lc-rs = "1.19.0"
-# Runs hangar-board's board children in a process group of their own, with a
+# Runs hangar-board's board children, hangar-auth-oidc's Keychain reader and
+# the hangar command's browser opener in a process group of their own, with a
 # deadline and output byte limits (PROC-2). Evaluated in
 # /evals/hangar-board-dependencies.
+# Replaces hangar-auth-loopback's server file atomically: a new file beside
+# it, synced, renamed, with the directory synced (DUR-1).
+crumbkit-durable = "=0.6.0"
 crumbkit-process = { version = "=0.6.0", default-features = false }
 # base64url for the state, nonce, PKCE verifier and session secrets.
 base64 = "0.23.1"

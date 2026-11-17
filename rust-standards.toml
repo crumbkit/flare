@@ -58,7 +58,7 @@ checks = [
   "clippy disallowed_methods and disallowed_types (clippy.toml)",
   "the KeychainSecret tests in crates/hangar-auth-oidc/tests/keychain.rs (PROC-2)",
 ]
-note = "Reading the client secret through /usr/bin/security is the one process operation. Its module documentation states PROC-2's five items, and it stops only its direct child, not the child's descendants (PROC-3)."
+note = "Reading the client secret through /usr/bin/security is the one process operation. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline or the output limit (PROC-3)."
 
 [[binding]]
 rule = "PROC-1"
@@ -76,7 +76,7 @@ checks = [
   "clippy disallowed_methods (clippy.toml)",
   "the reader-during-writes test in crates/hangar-auth-loopback/tests/state.rs",
 ]
-note = "The server file is written to server.json.<16 hex>.tmp with create_new and mode 0600, synced, renamed over server.json, and the directory is synced. The openers are new files written the same way without a rename. hangar takes no file lock, so the DUR-2 entries of clippy.toml name no lock module."
+note = "crumbkit-durable writes the server file to .server.json.<pid>.<n>.tmp with mode 0600, syncs it, renames it over server.json and syncs the directory. The openers are new files of mode 0600 written with create_new in state/files.rs, without a rename. hangar takes no file lock, so the DUR-2 entries of clippy.toml name no lock module."
 
 [[binding]]
 rule = "DUR-4"

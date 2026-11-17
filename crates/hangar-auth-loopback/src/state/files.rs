@@ -4,6 +4,7 @@
 use super::switches::{ReadStep, Switches};
 use super::{StateError, Untrusted};
 use crate::secret::{is_hex, with_bytes};
+use crumbkit_durable::{Mode, write_atomically};
 use secrecy::SecretString;
 use std::fs::{File, Metadata, OpenOptions, Permissions};
 use std::io::{self, Read as _, Write as _};
@@ -202,26 +203,14 @@ pub(super) fn write_new(path: &Path, contents: &SecretString) -> io::Result<()> 
     })
 }
 
-/// Writes `contents` to `temporary`, renames it over `target` and syncs
-/// `dir` (DUR-1). On failure it names the path whose step failed.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the state module is the crate's atomic writer (DUR-1)"
-)]
-pub(super) fn replace(
-    temporary: &Path,
-    target: &Path,
-    contents: &SecretString,
-    dir: &Path,
-) -> Result<(), (PathBuf, io::Error)> {
-    write_new(temporary, contents).map_err(|error| (temporary.to_owned(), error))?;
-    std::fs::rename(temporary, target).map_err(|error| {
-        let _ = remove_if_present(temporary);
-        (target.to_owned(), error)
-    })?;
-    File::open(dir)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| (dir.to_owned(), error))
+/// Replaces `target` with `contents` through crumbkit-durable: a new file
+/// of mode 0600 beside it, synced, renamed over `target`, and the directory
+/// synced (DUR-1). On failure it names the path whose step failed.
+pub(super) fn replace(target: &Path, contents: &SecretString) -> Result<(), (PathBuf, io::Error)> {
+    with_bytes(contents, |bytes| {
+        write_atomically(target, bytes, Mode::Private)
+    })
+    .map_err(|error| (error.path, error.source))
 }
 
 /// Removes `path`; one already gone is fine.
@@ -236,11 +225,15 @@ pub(super) fn is_opener_name(name: &str) -> bool {
         .is_some_and(|hex| is_hex(hex, 16))
 }
 
-/// Whether `name` is `server.json.<16 hex>.tmp`.
+/// Whether `name` is `.server.json.<pid>.<n>.tmp`, the name that
+/// crumbkit-durable gives the file it writes before it renames it over
+/// `server.json`.
 fn is_temporary_name(name: &str) -> bool {
-    name.strip_prefix("server.json.")
+    let digits = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    name.strip_prefix(".server.json.")
         .and_then(|rest| rest.strip_suffix(".tmp"))
-        .is_some_and(|hex| is_hex(hex, 16))
+        .and_then(|ids| ids.split_once('.'))
+        .is_some_and(|(pid, number)| digits(pid) && digits(number))
 }
 
 /// Removes the regular files named as temporary files or openers whose

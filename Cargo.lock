@@ -481,6 +481,7 @@ name = "hangar-auth-loopback"
 version = "0.1.0"
 dependencies = [
  "aws-lc-rs",
+ "crumbkit-durable",
  "hangar-auth-loopback",
  "hangar-core",
  "http",
@@ -497,6 +498,7 @@ version = "0.1.0"
 dependencies = [
  "aws-lc-rs",
  "base64 0.23.1",
+ "crumbkit-process",
  "hangar-auth-oidc",
  "hangar-core",
  "http-body-util",
