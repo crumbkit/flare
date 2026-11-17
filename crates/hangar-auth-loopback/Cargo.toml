@@ -9,6 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 aws-lc-rs.workspace = true
+# Writes the server file atomically (DUR-1).
+crumbkit-durable.workspace = true
 hangar-core.workspace = true
 http.workspace = true
 libc.workspace = true

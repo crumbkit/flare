@@ -109,8 +109,9 @@ impl StateDir {
         Ok(())
     }
 
-    /// Writes the server file: a new temporary file of mode 0600, synced,
-    /// renamed over `server.json`, then the directory synced. A reader sees
+    /// Writes the server file through crumbkit-durable: a new temporary file
+    /// of mode 0600, synced, renamed over `server.json`, then the directory
+    /// synced. A reader sees
     /// the whole old file or the whole new one. A bad file in the way is
     /// replaced by the rename and never opened.
     ///
@@ -125,11 +126,8 @@ impl StateDir {
             .user()
             .map_err(|source| io_error(&self.dir, source))?;
         check_dir(&self.dir, user)?;
-        let suffix = random_hex(8).map_err(|_| StateError::Random)?;
-        let temporary = self.dir.join(format!("{SERVER_FILE}.{suffix}.tmp"));
         let target = self.dir.join(SERVER_FILE);
-        files::replace(&temporary, &target, &record.to_json(), &self.dir)
-            .map_err(|(path, source)| io_error(&path, source))
+        files::replace(&target, &record.to_json()).map_err(|(path, source)| io_error(&path, source))
     }
 
     /// Reads the server file. `None` when the directory or the file is
