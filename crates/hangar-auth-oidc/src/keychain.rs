@@ -22,7 +22,7 @@
 
 use crate::refusal::SecretError;
 use crate::secret::ClientSecretSource;
-use crumbkit_process::{Capture, Escalation, Input, Outcome, RunOptions, Signal, Status};
+use crumbkit_process::{Capture, Escalation, Input, Outcome, RunError, RunOptions, Signal, Status};
 use secrecy::SecretString;
 use secrecy::zeroize::Zeroize as _;
 use std::path::PathBuf;
@@ -129,8 +129,10 @@ fn run(source: &KeychainSecret) -> Result<Vec<u8>, SecretError> {
         .stderr(Capture::discard())
         .deadline(deadline)
         .escalation(Escalation::default().step(Signal::Terminate, KILL_GRACE));
-    let finished =
-        crumbkit_process::run(command, &options).map_err(|_| SecretError::Unavailable)?;
+    let finished = crumbkit_process::run(command, &options).map_err(|error| match error {
+        RunError::Start(_) => SecretError::Unavailable,
+        _ => SecretError::Failed,
+    })?;
     let over_limit = finished.stdout().over_limit();
     let outcome = finished.outcome();
     let mut output = finished.into_output().0.into_bytes();

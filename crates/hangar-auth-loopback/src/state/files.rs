@@ -183,7 +183,7 @@ fn open_once(
 /// it created; a file that was already at `path` is never removed.
 #[expect(
     clippy::disallowed_methods,
-    reason = "the state module is the crate's atomic writer (DUR-1)"
+    reason = "the state module writes the crate's new private files (DUR-1)"
 )]
 pub(super) fn write_new(path: &Path, contents: &SecretString) -> io::Result<()> {
     let mut file = OpenOptions::new()
@@ -205,7 +205,7 @@ pub(super) fn write_new(path: &Path, contents: &SecretString) -> io::Result<()> 
 
 /// Replaces `target` with `contents` through crumbkit-durable: a new file
 /// of mode 0600 beside it, synced, renamed over `target`, and the directory
-/// synced (DUR-1). On failure it names the path whose step failed.
+/// synced (DUR-1). On failure it returns `target` and the operating system's error.
 pub(super) fn replace(target: &Path, contents: &SecretString) -> Result<(), (PathBuf, io::Error)> {
     with_bytes(contents, |bytes| {
         write_atomically(target, bytes, Mode::Private)

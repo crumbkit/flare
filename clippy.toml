@@ -21,11 +21,11 @@ max-fn-params-bools = 3 # BASE-16
 disallowed-methods = [
     # DUR-1: the atomic writer is crumbkit-durable; the new private files that
     # are never replaced are written by crates/hangar-auth-loopback/src/state/files.rs.
-    { path = "std::fs::write", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
-    { path = "std::fs::copy", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
-    { path = "std::fs::rename", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
-    { path = "std::fs::File::create", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
-    { path = "std::fs::OpenOptions::new", reason = "write durable files through the atomic writer, hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::write", reason = "replace durable files with crumbkit-durable, and write new private files in hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::copy", reason = "replace durable files with crumbkit-durable, and write new private files in hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::rename", reason = "replace durable files with crumbkit-durable, and write new private files in hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::File::create", reason = "replace durable files with crumbkit-durable, and write new private files in hangar-auth-loopback's state/files.rs" },
+    { path = "std::fs::OpenOptions::new", reason = "replace durable files with crumbkit-durable, and write new private files in hangar-auth-loopback's state/files.rs" },
     # DUR-2: hangar takes no file lock. A crate that needs one names its lock
     # module, which owns the deadline, in these reasons.
     { path = "std::fs::File::lock", reason = "hangar takes no file lock; add a lock module that owns the deadline" },
