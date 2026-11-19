@@ -101,14 +101,24 @@ jobs:
         run: cargo shear
       # The `testing` features expose switches such as an http issuer and
       # PublicOrigin::loopback_http. This step fails when the hangar
-      # command's own dependency tree turns one on for any hangar crate.
+      # command's own dependency tree turns one on for any hangar crate,
+      # and when cargo tree or grep fails. The tree is printed with no
+      # colour and no prefix, so each line starts with the crate's name.
       - name: no testing features in hangar
         run: |
-          if cargo tree --locked -p hangar-cli -e normal,build -f '{p} {f}' \
-            | grep -E '^\W*hangar-[a-z-]+ v[^ ]+ \(.*\) .*\btesting\b'; then
-            echo "the hangar command enables a testing feature" >&2
+          tree="$RUNNER_TEMP/hangar-tree.txt"
+          if ! cargo tree --locked --color never --prefix none -p hangar-cli \
+            -e normal,build -f '{p} {f}' > "$tree"; then
+            echo "cargo tree failed, so the testing features were not checked" >&2
             exit 1
           fi
+          found=0
+          grep -E '^hangar-[a-z-]+ v[^ ]+ \(.*\) .*\btesting\b' "$tree" || found=$?
+          case "$found" in
+            0) echo "the hangar command enables a testing feature" >&2; exit 1 ;;
+            1) ;;
+            *) echo "grep could not read the dependency tree" >&2; exit 1 ;;
+          esac
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets --all-features
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

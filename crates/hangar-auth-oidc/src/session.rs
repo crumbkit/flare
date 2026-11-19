@@ -21,6 +21,7 @@ const MAX_PER_PRINCIPAL: usize = 8;
 #[non_exhaustive]
 pub struct SignedIn {
     session: Credential,
+    secret: SecretString,
     principal: Principal,
     return_to: ReturnTo,
     expires_in: Duration,
@@ -31,6 +32,13 @@ impl SignedIn {
     #[must_use]
     pub fn session(&self) -> &Credential {
         &self.session
+    }
+
+    /// The secret of the session credential, for a server that sets it as
+    /// a cookie without matching on the credential's kind.
+    #[must_use]
+    pub fn session_secret(&self) -> &SecretString {
+        &self.secret
     }
 
     /// Who signed in.
@@ -127,7 +135,8 @@ impl Sessions {
             },
         );
         Ok(SignedIn {
-            session: Credential::Session(secret),
+            session: Credential::Session(secret.clone()),
+            secret,
             principal,
             return_to,
             expires_in: lifetime,

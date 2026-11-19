@@ -15,12 +15,12 @@
 //! The checks read no `X-Forwarded-*` or `Forwarded` header and take no
 //! peer address: behind a proxy every peer is the proxy.
 
+use crate::cookies::{Cookie, cookie};
 use crate::problem::Code;
-use crate::secret::{HOSTED_KEPT_COOKIE, HOSTED_SESSION_COOKIE};
+use crate::secret::HOSTED_SESSION_COOKIE;
 use crate::site::PublicOrigin;
-use hangar_auth_oidc::KeptState;
 use hangar_core::Credential;
-use http::header::{AUTHORIZATION, COOKIE, HOST, HeaderName, ORIGIN};
+use http::header::{AUTHORIZATION, HOST, HeaderName, ORIGIN};
 use http::{HeaderMap, Method};
 
 const SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
@@ -58,64 +58,6 @@ pub(crate) fn check(
         Cookie::Absent => Ok(None),
         Cookie::One(value) => Ok(Some(Credential::session(value))),
         Cookie::Bad => Err(Code::BadCredential),
-    }
-}
-
-/// The hosted kept-state cookie, when the request carries exactly one with
-/// a token value.
-pub(crate) fn kept_state(headers: &HeaderMap) -> Option<KeptState> {
-    match cookie(headers, HOSTED_KEPT_COOKIE) {
-        Cookie::One(value) => Some(KeptState::from_cookie(value)),
-        Cookie::Absent | Cookie::Bad => None,
-    }
-}
-
-/// What the request's cookies hold under one name.
-enum Cookie<'h> {
-    /// No pair has the name.
-    Absent,
-    /// One pair has it, and its value is a token.
-    One(&'h str),
-    /// Two pairs have it, or its value is not a token.
-    Bad,
-}
-
-/// Whether `value` is a cookie token: one or more visible ASCII bytes with
-/// no comma, semicolon, double quote or backslash.
-fn is_token(value: &[u8]) -> bool {
-    !value.is_empty()
-        && value
-            .iter()
-            .all(|byte| byte.is_ascii_graphic() && !b",;\"\\".contains(byte))
-}
-
-/// Reads the pairs of every Cookie header byte by byte. A pair is split at
-/// its first `=` and its name compared exactly; a pair without `=` and a
-/// pair with another name are skipped, whatever bytes they hold.
-fn cookie<'h>(headers: &'h HeaderMap, name: &str) -> Cookie<'h> {
-    let mut found = None;
-    for header in headers.get_all(COOKIE) {
-        for pair in header.as_bytes().split(|byte| *byte == b';') {
-            let pair = pair.trim_ascii();
-            let Some(at) = pair.iter().position(|byte| *byte == b'=') else {
-                continue;
-            };
-            let (key, value) = pair.split_at(at);
-            if key != name.as_bytes() {
-                continue;
-            }
-            if found.is_some() {
-                return Cookie::Bad;
-            }
-            found = Some(value.get(1..).unwrap_or_default());
-        }
-    }
-    match found {
-        None => Cookie::Absent,
-        Some(value) if is_token(value) => {
-            std::str::from_utf8(value).map_or(Cookie::Bad, Cookie::One)
-        }
-        Some(_) => Cookie::Bad,
     }
 }
 

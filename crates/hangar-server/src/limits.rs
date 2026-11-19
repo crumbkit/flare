@@ -28,12 +28,26 @@ pub struct Limits {
     pub in_work: usize,
     /// The most `/auth/oidc/callback` requests in work at once, each of
     /// which may hold a token request to the provider for up to its
-    /// deadline. A callback takes one of these before its in-work slot, and
-    /// the next one answers 503 `server::busy` at once, so callbacks never
-    /// hold more than this many of the in-work slots. It bounds token
+    /// deadline. A callback takes one of these before its in-work slot, so
+    /// callbacks never hold more than this many of the in-work slots. A
+    /// callback that finds none free waits for one, in the order the
+    /// callbacks arrived, for up to [`Limits::token_wait`]. It bounds token
     /// requests in flight, and does not limit how often clients call; a
     /// hosted site's proxy rate-limits the sign-in routes. The default is 4.
     pub token_calls: usize,
+    /// How long a callback waits for a slot of [`Limits::token_calls`]. A
+    /// callback still waiting when it passes answers 503 `server::busy`. A
+    /// waiting callback holds its connection and no in-work slot, and the
+    /// wait comes before [`Limits::request_time`] starts, so a callback
+    /// answers within `token_wait + request_time`. The default is 10
+    /// seconds, the deadline of one token request to the provider.
+    pub token_wait: Duration,
+    /// The most callbacks that wait for a slot of [`Limits::token_calls`]
+    /// at once. The next callback answers 503 `server::busy` at once, so
+    /// callbacks hold at most `token_calls + token_waiters` of the
+    /// [`Limits::connections`] and the rest stay free for readers. The
+    /// default is 16.
+    pub token_waiters: usize,
     /// How long one request may take, from its route starting to its
     /// reply. A slower one is dropped and answers 503 `server::deadline`.
     /// The request's store calls are dropped before the 503 is sent;
@@ -77,6 +91,8 @@ impl Default for Limits {
             connections: 64,
             in_work: 16,
             token_calls: 4,
+            token_wait: Duration::from_secs(10),
+            token_waiters: 16,
             request_time: Duration::from_secs(30),
             form_tokens: 1024,
             form_token_life: Duration::from_secs(60 * 60),

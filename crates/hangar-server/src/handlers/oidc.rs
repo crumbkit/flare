@@ -7,24 +7,25 @@
 //!
 //! On the hosted site, the same two paths are routes of the table that
 //! name the hosted site only, and run after `hosted::check` and
-//! `checks::cross_site` like every hosted route. The callback reads the
-//! `__Host-` kept-state cookie with `hosted.rs`'s byte-level parser, passes
-//! the session that `hosted::check` parsed to `complete` as the old one,
-//! sets `__Host-hangar_session` and answers 303 to the return path.
+//! `checks::cross_site` like every hosted route. The callback passes the
+//! session that `hosted::check` parsed to `complete` as the old one, sets
+//! `__Host-hangar_session` and answers 303 to the return path.
+//!
+//! Both sites read the kept-state cookie with `cookies.rs`'s byte-level
+//! parser, so a foreign non-ASCII cookie cannot fail a sign-in.
 
 use super::Ctx;
 use crate::checks;
+use crate::cookies;
 use crate::handover::Handed;
-use crate::hosted;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
-use crate::secret::{self, HOSTED_CLEAR_KEPT, KEPT_COOKIE};
+use crate::secret::{self, HOSTED_CLEAR_KEPT, HOSTED_KEPT_COOKIE, KEPT_COOKIE};
 use hangar_auth_loopback::ReturnPath;
-use hangar_auth_oidc::{Clock as OidcClock, KeptState, ReturnTo, SignInRefusal, SignedIn};
+use hangar_auth_oidc::{Clock as OidcClock, ReturnTo, SignInRefusal, SignedIn};
 use hangar_core::{Credential, PageStore, RecordStore};
 use http::Method;
-use http::header::COOKIE;
 use std::net::IpAddr;
 
 /// Clears the kept-state cookie.
@@ -57,7 +58,7 @@ where
         return Ok(Reply::see_other(start.redirect().as_str().to_owned())
             .cookie(secret::kept_cookie(start.kept())));
     }
-    let kept = kept_state(ctx);
+    let kept = cookies::kept_state(ctx.headers, KEPT_COOKIE);
     let query = ctx.uri.query().unwrap_or_default();
     let answer = match oidc.complete(query, kept.as_ref(), None).await {
         Ok(signed_in) => {
@@ -138,10 +139,10 @@ where
     K: OidcClock,
 {
     let oidc = ctx.shared.site.oidc().ok_or(Code::NotFound)?;
-    let kept = hosted::kept_state(ctx.headers);
+    let kept = cookies::kept_state(ctx.headers, HOSTED_KEPT_COOKIE);
     let query = ctx.uri.query().unwrap_or_default();
     let answer = match oidc.complete(query, kept.as_ref(), old).await {
-        Ok(signed_in) => signed_in_reply(&signed_in).ok_or(Code::OidcUnavailable),
+        Ok(signed_in) => Ok(signed_in_reply(&signed_in)),
         Err(refusal) => {
             let code = refused(refusal);
             tracing::info!(code = code.text(), refusal = ?refusal, "a sign-in was refused");
@@ -154,11 +155,11 @@ where
 
 /// The hosted callback's 303 to the sealed return path, with the session
 /// cookie.
-fn signed_in_reply(signed_in: &SignedIn) -> Option<Reply> {
-    let cookie = secret::hosted_session_cookie(signed_in.session(), signed_in.expires_in())?;
+fn signed_in_reply(signed_in: &SignedIn) -> Reply {
+    let cookie = secret::hosted_session_cookie(signed_in.session_secret(), signed_in.expires_in());
     let back = signed_in.return_to().as_str();
     let target = ReturnPath::try_from(back).map_or("/hangar/", |_| back);
-    Some(Reply::see_other(target.to_owned()).cookie(cookie))
+    Reply::see_other(target.to_owned()).cookie(cookie)
 }
 
 fn refused(refusal: SignInRefusal) -> Code {
@@ -167,23 +168,4 @@ fn refused(refusal: SignInRefusal) -> Code {
     } else {
         Code::OidcRefused
     }
-}
-
-/// The kept-state cookie, when the request carries exactly one.
-fn kept_state<P, R, S, K: OidcClock>(ctx: &Ctx<'_, P, R, S, K>) -> Option<KeptState> {
-    let mut found = None;
-    for header in &ctx.headers.get_all(COOKIE) {
-        let text = header.to_str().ok()?;
-        for pair in text.split(';') {
-            if let Some((name, value)) = pair.trim().split_once('=')
-                && name == KEPT_COOKIE
-            {
-                if found.is_some() {
-                    return None;
-                }
-                found = Some(KeptState::from_cookie(value));
-            }
-        }
-    }
-    found
 }

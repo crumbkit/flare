@@ -81,8 +81,13 @@ This file records the notable changes to hangar. The format follows
 - `hangar-server` takes a `Site`, either `Site::Local` with the gate and the
   state directory or `Site::Hosted` with a `PublicOrigin` and the OpenID
   Connect authenticator. `Limits::token_calls` caps the sign-in callbacks
-  that wait on the provider at once; a callback past the cap answers 503
-  `server::busy`.
+  that wait on the provider at once. A callback past the cap waits for a
+  slot in arrival order for up to `Limits::token_wait`, and at most
+  `Limits::token_waiters` wait at once; a callback that finds the queue
+  full or whose wait runs out answers 503 `server::busy`.
+- `SignedIn::session_secret` in `hangar-auth-oidc` gives the secret of the
+  session credential, so a server can set it as a cookie without matching
+  on the credential's kind.
 
 ### Changed
 
@@ -98,6 +103,9 @@ This file records the notable changes to hangar. The format follows
   number of sign-ins can be in progress and a restart voids them all. A
   kept value is refused 10 minutes after its start. A replayed callback is
   refused by the provider as `CodeRejected`.
+- The local sign-in host reads its kept-state cookie byte by byte, as the
+  hosted site does, so a non-ASCII cookie that another app set on
+  `localhost` no longer fails a sign-in.
 - `OidcAuthenticator::complete` takes the browser's current session
   credential, if any, and ends that session only when the new one is
   created. A principal keeps at most 8 sessions; a ninth sign-in ends its

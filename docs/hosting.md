@@ -36,6 +36,13 @@ up around it.
   absolute path.
 - `admit` is the same rule the local site uses; the root README describes
   it.
+- An `emails` admit rule admits any Google account that says a listed
+  address is verified, whatever Workspace domain the account belongs to.
+  A personal Google account can be created on an address at any domain and
+  keeps that address after the mailbox is lost, so a listed address at a
+  domain where someone else, such as a former employee, could have created
+  one lets that account sign in. A `domain` rule admits only accounts of
+  the Workspace domain, so it avoids this.
 - Register `<origin>/auth/oidc/callback` as the redirect URI of the Google
   client, such as `https://hangar.example.com/auth/oidc/callback`.
 - A config error exits with `hangar::config::invalid` and names the key.
@@ -68,10 +75,42 @@ forwards plain HTTP to `hosted.listen`.
   private address, or firewall it. A client that reaches it directly
   skips the proxy's rate limits.
 - Rate-limit `/auth/oidc/start` and `/auth/oidc/callback` per client at the
-  proxy. hangar caps the callbacks that wait on Google at 4 and answers
-  503 `server::busy` past that, but it cannot tell clients apart
-  behind the proxy.
+  proxy. hangar cannot tell clients apart behind the proxy. It lets 4
+  callbacks wait on Google at once. The next 16 callbacks queue for a
+  slot in the order they arrived, for up to 10 seconds each, and answer
+  503 `server::busy` when the wait runs out. A callback that finds 16
+  already queued answers 503 `server::busy` at once. A person's callback
+  therefore waits behind the callbacks already queued, and a client that
+  keeps more than 20 callbacks open at once can still make sign-ins fail
+  until the proxy limits it.
+- A callback can take up to 40 seconds: 10 waiting for a slot and 30 in
+  work. Keep the proxy's upstream read timeout above that. nginx's
+  default is 60 seconds.
 - Point the proxy's health check at `/up`.
+
+nginx sends its own upstream name as Host unless told otherwise. This
+example also limits each client address to 10 sign-in requests a minute,
+with a burst of 10, and answers 429 past that. `limit_req_zone` belongs in
+the `http` block, which a file in `conf.d` is included into:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=hangar_sign_in:10m rate=10r/m;
+
+server {
+    listen 443 ssl;
+    server_name hangar.example.com;
+    location /auth/oidc/ {
+        limit_req zone=hangar_sign_in burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+    }
+}
+```
 
 Caddy passes Host through and adds no Authorization header by default:
 
@@ -81,22 +120,19 @@ hangar.example.com {
 }
 ```
 
-nginx sends its own upstream name as Host unless told otherwise:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name hangar.example.com;
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-    }
-}
-```
+Stock Caddy has no per-client rate limit, so this example sets none. To
+add one, build Caddy with the third-party `rate_limit` module from
+`github.com/mholt/caddy-ratelimit` using `xcaddy`, or put a proxy that has
+one, such as nginx above, in front of hangar.
 
 On fly.io, the edge proxy terminates TLS and passes Host through. Set
 `internal_port` to the port of `hosted.listen`, and bind `hosted.listen` to
-`0.0.0.0` or `[::]` so the edge can reach it:
+`0.0.0.0` or `[::]` so the edge can reach it. That address is also
+reachable from every other machine in the same fly.io organisation over
+its private network, without the edge proxy, so run hangar in an
+organisation that holds no machine you do not trust. The configuration
+below sets no per-client rate limit, so on fly.io hangar's callback queue
+is the only limit on sign-in requests:
 
 ```toml
 [http_service]

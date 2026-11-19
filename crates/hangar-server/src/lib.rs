@@ -116,6 +116,15 @@
 //! | set | `/auth/oidc/start` | `/auth/oidc/callback`, which clears it on every answer; 600 seconds passing |
 //! | cleared | either of the above | final |
 //!
+//! A callback's place in the callback budget, on both sites (memory, at most
+//! [`Limits::token_calls`] holding and [`Limits::token_waiters`] waiting):
+//!
+//! | State | Entered by | Left by |
+//! | --- | --- | --- |
+//! | waiting | `/auth/oidc/callback` arriving while every slot is taken and fewer than `token_waiters` callbacks wait | a slot freeing, which goes to the callback that has waited longest; [`Limits::token_wait`] passing |
+//! | holding | a free slot on arrival or while waiting, then an in-work slot | the reply, which frees both |
+//! | refused | the queue already full, the wait passing, or no in-work slot | final; 503 `server::busy`, with no token request sent |
+//!
 //! # Crash points
 //!
 //! 1. Death after bind and before `write_server` leaves nothing behind.
@@ -185,8 +194,12 @@
 //!     `/launch/codes`, `/launch/probe` and `/auth/oidc/finish`, writes no
 //!     file, has no write route, and stores nothing server-side for an
 //!     anonymous request.
-//! 14. At most [`Limits::token_calls`] callbacks are in work at once; the
-//!     next answers 503 before it takes an in-work slot.
+//! 14. At most [`Limits::token_calls`] callbacks are in work at once. The
+//!     next waits for a slot, in arrival order, for up to
+//!     [`Limits::token_wait`], and at most [`Limits::token_waiters`] wait
+//!     at once. A waiting callback holds no in-work slot. A callback that
+//!     finds the queue full, or whose wait runs out, answers 503
+//!     `server::busy` before it takes an in-work slot, on both sites.
 //! 15. A hosted hangar runs as one process, because its sessions and
 //!     sealing key live in that process's memory. A second process behind
 //!     the same origin refuses the first one's kept values and sessions.
@@ -195,6 +208,7 @@ mod app;
 mod auth;
 mod checks;
 mod clock;
+mod cookies;
 mod docs;
 mod forms;
 mod frame;

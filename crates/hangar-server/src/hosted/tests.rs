@@ -1,4 +1,4 @@
-use super::{check, kept_state};
+use super::check;
 use crate::problem::Code;
 use crate::site::PublicOrigin;
 use hangar_core::Credential;
@@ -116,20 +116,4 @@ fn the_session_cookie_is_read_from_any_cookie_header_beside_unparseable_pairs() 
         check(&public(), &Method::GET, &map).map(secret_of),
         Ok(Some("tok-en_1".to_owned()))
     );
-}
-
-#[test]
-fn the_kept_state_is_read_byte_by_byte_and_two_are_none() {
-    let one = headers(&[(COOKIE.as_str(), b"a=\xff; __Host-hangar_oidc_state=sealed")]);
-    assert_eq!(
-        kept_state(&one).map(|kept| kept.expose().to_owned()),
-        Some("sealed".to_owned())
-    );
-    let two = headers(&[(
-        COOKIE.as_str(),
-        b"__Host-hangar_oidc_state=a; __Host-hangar_oidc_state=b",
-    )]);
-    assert!(kept_state(&two).is_none());
-    let plain = headers(&[(COOKIE.as_str(), b"hangar_oidc_state=sealed")]);
-    assert!(kept_state(&plain).is_none());
 }

@@ -21,7 +21,7 @@ use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, SemaphorePermit};
 
 /// The reply body type every route answers with.
 pub(crate) mod bytes_alias {
@@ -43,8 +43,8 @@ pub(crate) enum Kind {
     Hosted,
 }
 
-/// The path of the OpenID Connect callback, which takes a slot of
-/// [`Limits::token_calls`] before its in-work slot.
+/// The path of the OpenID Connect callback, which waits for a slot of
+/// [`Limits::token_calls`] before it takes its in-work slot.
 const CALLBACK: &str = "/auth/oidc/callback";
 
 /// Everything a request needs. Clones share it.
@@ -72,6 +72,9 @@ pub(crate) struct Shared<P, R, S, K: OidcClock> {
     pub(crate) handover: Handover,
     pub(crate) in_work: Semaphore,
     token_calls: Semaphore,
+    /// Callbacks that hold or wait for a slot of `token_calls`: at most
+    /// [`Limits::token_calls`] plus [`Limits::token_waiters`].
+    token_queue: Semaphore,
     oidc_origin: OnceLock<String>,
     last_request: Mutex<Instant>,
     next_request: AtomicU64,
@@ -97,6 +100,12 @@ where
             handover: Handover::new(limits.handover_codes, limits.handover_life),
             in_work: Semaphore::new(limits.in_work),
             token_calls: Semaphore::new(limits.token_calls),
+            token_queue: Semaphore::new(
+                limits
+                    .token_calls
+                    .saturating_add(limits.token_waiters)
+                    .min(Semaphore::MAX_PERMITS),
+            ),
             pages,
             records,
             schemas,
@@ -228,13 +237,11 @@ where
         // takes a slot of the callback budget before an in-work slot, and
         // anonymous callbacks cannot take every reader's slot.
         let budget = if request.uri().path() == CALLBACK {
-            shared.token_calls.try_acquire().map(Some)
+            shared.callback_slot().await.map(Some)
         } else {
-            Ok(None)
+            Some(None)
         };
-        let held = budget
-            .ok()
-            .and_then(|budget| Some((budget, shared.in_work.try_acquire().ok()?)));
+        let held = budget.and_then(|budget| Some((budget, shared.in_work.try_acquire().ok()?)));
         let (reply, route) = match held {
             None => (Problem::from(Code::ServerBusy).reply(&headers), "-"),
             Some(_held) => {
@@ -276,7 +283,25 @@ impl<P, R, S, K: OidcClock> Shared<P, R, S, K> {
     pub(crate) fn oidc_origin(&self) -> Option<&str> {
         self.oidc_origin.get().map(String::as_str)
     }
+
+    /// A slot of the callback budget, with the callback's place in the
+    /// queue. It is `None` at once when [`Limits::token_waiters`] callbacks
+    /// already wait for a slot, and `None` when no slot frees within
+    /// [`Limits::token_wait`]. Tokio's semaphore hands slots out in the
+    /// order callbacks asked for them, so a callback waits only behind the
+    /// callbacks that arrived before it.
+    async fn callback_slot(&self) -> Option<CallbackSlot<'_>> {
+        let queued = self.token_queue.try_acquire().ok()?;
+        let slot = tasks::within(self.limits.token_wait, self.token_calls.acquire())
+            .await?
+            .ok()?;
+        Some((queued, slot))
+    }
 }
+
+/// A callback's place in the budget's queue and its slot, released together
+/// when the callback answers.
+type CallbackSlot<'a> = (SemaphorePermit<'a>, SemaphorePermit<'a>);
 
 impl<P, R, S, K: OidcClock> fmt::Debug for App<P, R, S, K> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

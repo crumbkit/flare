@@ -117,15 +117,12 @@ pub(crate) const HOSTED_KEPT_COOKIE: &str = "__Host-hangar_oidc_state";
 /// The `Set-Cookie` value that carries a session on the hosted site:
 /// `Secure`, `HttpOnly`, `SameSite=Lax` so links opened from other sites
 /// carry it, for as long as the session lives.
-pub(crate) fn hosted_session_cookie(credential: &Credential, max_age: Duration) -> Option<String> {
-    match credential {
-        Credential::Session(secret) => Some(format!(
-            "{HOSTED_SESSION_COOKIE}={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={}",
-            secret.expose_secret(),
-            max_age.as_secs()
-        )),
-        _ => None,
-    }
+pub(crate) fn hosted_session_cookie(secret: &SecretString, max_age: Duration) -> String {
+    format!(
+        "{HOSTED_SESSION_COOKIE}={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={}",
+        secret.expose_secret(),
+        max_age.as_secs()
+    )
 }
 
 /// The `Set-Cookie` value that keeps a sealed sign-in on the hosted site

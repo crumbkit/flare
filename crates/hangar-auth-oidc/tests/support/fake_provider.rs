@@ -31,6 +31,7 @@ use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpListener;
+use tokio::sync::Notify;
 use url::Url;
 
 /// The client ID that the fake knows.
@@ -57,6 +58,9 @@ pub enum TokenReply {
     Status(u16),
     /// No reply at all, so the client's deadline passes.
     Stall,
+    /// No reply until a test sets another token reply; each held request
+    /// then answers as that reply says.
+    Hold,
     /// A 200 reply whose JSON has an access token and no ID token.
     NoIdToken,
 }
@@ -129,6 +133,7 @@ struct State {
     redeemed: HashSet<String>,
     next_code: u64,
     seen: Vec<Seen>,
+    released: Arc<Notify>,
 }
 
 /// A running fake provider.
@@ -195,6 +200,7 @@ impl Fake {
             redeemed: HashSet::new(),
             next_code: 0,
             seen: Vec::new(),
+            released: Arc::new(Notify::new()),
         }));
         let shared = Arc::clone(&state);
         #[expect(
@@ -258,9 +264,14 @@ impl Fake {
         self.with(|state| state.forge = forge);
     }
 
-    /// Sets what the token endpoint replies.
+    /// Sets what the token endpoint replies. Requests held by
+    /// [`TokenReply::Hold`] then answer with `reply`.
     pub fn token_reply(&self, reply: TokenReply) {
-        self.with(|state| state.token_reply = reply);
+        let released = self.with(|state| {
+            state.token_reply = reply;
+            Arc::clone(&state.released)
+        });
+        released.notify_waiters();
     }
 
     /// Sets what the key set endpoint replies.
@@ -375,13 +386,28 @@ async fn handle(
             .collect(),
         body: String::from_utf8_lossy(&body).into_owned(),
     };
-    let stall = {
+    let to_token = seen.path == "/token";
+    let (stall, released) = {
         let mut state = shared.lock().expect("the fake's lock");
         state.seen.push(seen.clone());
-        seen.path == "/token" && state.token_reply == TokenReply::Stall
+        (
+            to_token && state.token_reply == TokenReply::Stall,
+            Arc::clone(&state.released),
+        )
     };
     if stall {
         std::future::pending::<()>().await;
+    }
+    if to_token {
+        loop {
+            // The waiter is made before the reply is read, so a release
+            // between the two still wakes it.
+            let release = released.notified();
+            if shared.lock().expect("the fake's lock").token_reply != TokenReply::Hold {
+                break;
+            }
+            release.await;
+        }
     }
     let mut state = shared.lock().expect("the fake's lock");
     Ok(match seen.path.as_str() {
@@ -447,7 +473,7 @@ fn token(state: &mut State, body: &str) -> Response<Full<Bytes>> {
                 json!({ "access_token": "at", "token_type": "Bearer" }),
             );
         }
-        TokenReply::Normal | TokenReply::Stall => {}
+        TokenReply::Normal | TokenReply::Stall | TokenReply::Hold => {}
     }
     let fields: HashMap<String, String> = url::form_urlencoded::parse(body.as_bytes())
         .into_owned()
@@ -605,6 +631,21 @@ pub async fn connect(fake: &Fake) -> (OidcAuthenticator<TestClock>, TestClock) {
         OidcAuthenticator::connect_with_clock(config(fake), &secret(), clock.clone())
             .await
             .expect("connect succeeds against the fake");
+    (authenticator, clock)
+}
+
+/// Connects an authenticator with a test clock to the fake, with
+/// `deadline` for each request to it in place of two seconds, for a test
+/// that holds token requests longer than that.
+pub async fn connect_with_deadline(
+    fake: &Fake,
+    deadline: Duration,
+) -> (OidcAuthenticator<TestClock>, TestClock) {
+    let clock = TestClock::new();
+    let config = config(fake).with_request_deadline(deadline);
+    let authenticator = OidcAuthenticator::connect_with_clock(config, &secret(), clock.clone())
+        .await
+        .expect("connect succeeds against the fake");
     (authenticator, clock)
 }
 

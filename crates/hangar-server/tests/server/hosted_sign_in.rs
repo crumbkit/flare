@@ -3,7 +3,7 @@
 //! session limits, the callback budget and the refusals that set no
 //! session.
 
-use crate::fake_provider::{HOME, TokenReply};
+use crate::fake_provider::{HOME, TokenReply, form};
 use crate::harness::{cookie_pair, limits};
 use crate::hosted::{Admits, Hosted, KEPT, SESSION};
 use std::time::{Duration, Instant};
@@ -116,61 +116,107 @@ async fn a_principal_at_eight_sessions_signs_in_while_the_table_holds_1024() {
 }
 
 #[tokio::test]
-async fn twenty_parallel_callbacks_take_four_token_requests_and_a_signed_in_read_still_answers() {
-    let hosted = Hosted::start_with(
-        Admits::AllowList,
-        Some(limits(|limits| {
-            limits.request_time = Duration::from_secs(20)
-        })),
+async fn twenty_parallel_callbacks_take_four_token_requests_eight_wait_and_a_signed_in_read_still_answers()
+ {
+    let wait = Duration::from_secs(2);
+    let hosted = Hosted::start_with_deadline(
+        Duration::from_secs(30),
+        limits(|limits| {
+            limits.token_wait = wait;
+            limits.token_waiters = 8;
+        }),
     )
     .await;
     let reader = hosted.sign_in().await;
     let (_, location, kept) = hosted.start_sign_in().await;
     let query = hosted.fake.approve(&location);
-    hosted.fake.token_reply(TokenReply::Stall);
+    let before = hosted.fake.token_requests();
+    hosted.fake.token_reply(TokenReply::Hold);
     let began = Instant::now();
     let mut callbacks = JoinSet::new();
     for _ in 0..20 {
         let call = hosted.callback(&query).cookie(&kept);
         callbacks.spawn(async move {
             let reply = call.send().await;
-            (reply, Instant::now())
+            (reply, began.elapsed())
         });
     }
-    let mut busy = 0;
-    let mut held = 0;
-    let mut first_held: Option<Instant> = None;
-    let mut last_busy: Option<Instant> = None;
-    let mut read = None;
-    while let Some(joined) = callbacks.join_next().await {
-        let (reply, at) = joined.unwrap();
-        if reply.code().as_deref() == Some("server::busy") {
-            assert_eq!(reply.status, 503);
-            busy += 1;
-            last_busy = Some(at);
-            if busy == 16 {
-                read = Some(hosted.read_home(&reader).await);
-            }
+    let (mut at_once, mut after_wait) = (0, 0);
+    while at_once + after_wait < 16 {
+        let (reply, took) = callbacks.join_next().await.unwrap().unwrap();
+        assert_eq!(
+            (reply.status, reply.code().as_deref()),
+            (503, Some("server::busy")),
+            "a held callback answered before the provider was released"
+        );
+        if took < wait {
+            at_once += 1;
         } else {
-            held += 1;
-            first_held.get_or_insert(at);
+            after_wait += 1;
         }
     }
-    assert_eq!((busy, held), (16, 4));
+    assert_eq!((at_once, after_wait), (8, 8));
+    assert_eq!(hosted.fake.token_requests() - before, 4);
     assert_eq!(
-        read,
-        Some(200),
-        "a signed-in read answers while 4 callbacks wait"
+        hosted.read_home(&reader).await,
+        200,
+        "a signed-in read answers while 4 callbacks hold token requests"
     );
-    let last_busy = last_busy.unwrap();
-    assert!(
-        last_busy.duration_since(began) < Duration::from_secs(1),
-        "the busy answers came at once"
-    );
-    assert!(first_held.unwrap() > last_busy);
     hosted.fake.token_reply(TokenReply::Normal);
+    let mut held = Vec::new();
+    while let Some(joined) = callbacks.join_next().await {
+        held.push(joined.unwrap().0.status);
+    }
+    held.sort_unstable();
+    assert_eq!(held, [303, 403, 403, 403]);
     let after = hosted.sign_in().await;
     assert_eq!(hosted.read_home(&after).await, 200);
+}
+
+#[tokio::test]
+async fn a_callback_that_finds_every_slot_taken_by_replays_waits_and_signs_in_when_one_frees() {
+    let hosted = Hosted::start_with_deadline(Duration::from_secs(30), limits(|_| {})).await;
+    let (_, junk_location, junk_kept) = hosted.start_sign_in().await;
+    let state = junk_location
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .unwrap();
+    let (_, location, kept) = hosted.start_sign_in().await;
+    let query = hosted.fake.approve(&location);
+    hosted.fake.token_reply(TokenReply::Hold);
+    let mut replays = JoinSet::new();
+    for at in 0..4 {
+        let junk = form(&[("code", &format!("junk-{at}")), ("state", &state)]);
+        let call = hosted.callback(&junk).cookie(&junk_kept);
+        replays.spawn(call.send());
+    }
+    let held = Instant::now();
+    while hosted.fake.token_requests() < 4 {
+        assert!(
+            held.elapsed() < Duration::from_secs(10),
+            "the replays reach the provider"
+        );
+        tokio::task::yield_now().await;
+    }
+    let own = hosted.callback(&query).cookie(&kept);
+    let mut waiting = JoinSet::new();
+    waiting.spawn(own.send());
+    let waited = tokio::time::timeout(Duration::from_millis(500), waiting.join_next()).await;
+    assert!(waited.is_err(), "the callback waits for a slot");
+    assert_eq!(hosted.fake.token_requests(), 4);
+    hosted.fake.token_reply(TokenReply::Normal);
+    let signed_in = waiting.join_next().await.unwrap().unwrap();
+    assert_eq!(signed_in.status, 303, "{}", signed_in.body);
+    let session = cookie_pair(&signed_in, SESSION).unwrap();
+    assert_eq!(hosted.read_home(&session).await, 200);
+    while let Some(replay) = replays.join_next().await {
+        let replay = replay.unwrap();
+        assert_eq!(
+            (replay.status, replay.code().as_deref()),
+            (403, Some("oidc::refused"))
+        );
+    }
 }
 
 #[tokio::test]

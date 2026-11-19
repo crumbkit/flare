@@ -3,7 +3,7 @@
 //! provider and memory stores. Requests name `localhost:<port>` as their
 //! Host, which is the origin's authority.
 
-use crate::fake_provider::{DOMAIN, Fake, HOME, connect, connect_domain};
+use crate::fake_provider::{DOMAIN, Fake, HOME, connect, connect_domain, connect_with_deadline};
 use crate::harness::{
     BINDING, Call, Pages, RECORD, Records, Reply, Switches, cookie_pair, schemas, seed_page_in,
     stores,
@@ -60,6 +60,14 @@ impl Hosted {
     /// with the page `home` published.
     pub async fn start() -> Self {
         Self::start_with(Admits::AllowList, None).await
+    }
+
+    /// A hosted server that admits the allow-list, with `limits`, the page
+    /// `home` published, and `deadline` for each request to the provider.
+    pub async fn start_with_deadline(deadline: Duration, limits: Limits) -> Self {
+        let fake = Fake::start().await;
+        let (oidc, clock) = connect_with_deadline(&fake, deadline).await;
+        Self::serve(oidc, fake, clock, Some(limits)).await
     }
 
     /// A hosted server that admits `admits`, with `limits` or the default

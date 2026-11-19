@@ -19,7 +19,8 @@ use hangar_auth_oidc::{
     Admit, AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal,
     TestClock, TokenFault,
 };
-use hangar_core::{Authenticator, PrincipalId};
+use hangar_core::{Authenticator, Credential, PrincipalId};
+use secrecy::ExposeSecret as _;
 use serde_json::json;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -42,6 +43,20 @@ async fn a_good_sign_in_returns_a_session_that_authenticate_accepts() {
         .await
         .unwrap();
     assert_eq!(principal.id(), &expected);
+}
+
+#[tokio::test]
+async fn a_sign_ins_session_secret_is_the_secret_its_session_credential_carries() {
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let signed_in = sign_in(&authenticator, &fake).await.expect("a sign-in");
+    let Credential::Session(session) = signed_in.session() else {
+        panic!("a sign-in returns a session credential");
+    };
+    assert_eq!(
+        signed_in.session_secret().expose_secret(),
+        session.expose_secret()
+    );
 }
 
 #[tokio::test]

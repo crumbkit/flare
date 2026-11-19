@@ -1,10 +1,11 @@
 //! Plan test 12: the OpenID Connect sign-in through the fake provider, and
 //! the hand-over from `localhost` to the launch host.
 
-use crate::fake_provider::{Fake, HOME, TokenReply, connect};
-use crate::harness::{Options, Reply, Server, cookie_pair};
+use crate::fake_provider::{Fake, HOME, TokenReply, connect, connect_with_deadline};
+use crate::harness::{Options, Reply, Server, cookie_pair, limits};
 use hangar_auth_oidc::TestClock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tokio::task::JoinSet;
 use url::Url;
 
 /// A server with OpenID Connect against a new fake, and the page the
@@ -169,6 +170,76 @@ async fn a_hand_over_code_works_for_60_seconds() {
         (reply.status, reply.code().as_deref()),
         (403, Some("oidc::handover_unknown"))
     );
+}
+
+#[tokio::test]
+async fn a_callback_completes_beside_a_foreign_cookie_with_a_non_ascii_byte() {
+    let (server, fake, _clock) = oidc_server().await;
+    let (_, location, kept) = start(&server).await;
+    let reply = callback(
+        &server,
+        &fake.approve(&location),
+        &format!("theme=caf\u{e9}; {kept}; other=\u{1F600}"),
+    )
+    .await;
+    assert_eq!(reply.status, 303, "{}", reply.body);
+    finish_path(&server, &reply);
+    let (_, location, kept) = start(&server).await;
+    let plain = callback(&server, &fake.approve(&location), &kept).await;
+    assert_eq!(plain.status, 303, "{}", plain.body);
+}
+
+#[tokio::test]
+async fn the_callback_budget_holds_on_the_sign_in_host_four_reach_the_provider_and_eight_wait() {
+    let wait = Duration::from_secs(2);
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect_with_deadline(&fake, Duration::from_secs(30)).await;
+    let server = Server::start_with(Options {
+        oidc: Some(authenticator),
+        limits: Some(limits(|limits| {
+            limits.token_wait = wait;
+            limits.token_waiters = 8;
+        })),
+        ..Options::default()
+    })
+    .await;
+    let (_, location, kept) = start(&server).await;
+    let query = fake.approve(&location);
+    fake.token_reply(TokenReply::Hold);
+    let began = Instant::now();
+    let mut callbacks = JoinSet::new();
+    for _ in 0..20 {
+        let call = server
+            .oidc_request("GET", &format!("/auth/oidc/callback?{query}"))
+            .cookie(&kept);
+        callbacks.spawn(async move {
+            let reply = call.send().await;
+            (reply, began.elapsed())
+        });
+    }
+    let (mut at_once, mut after_wait) = (0, 0);
+    while at_once + after_wait < 16 {
+        let (reply, took) = callbacks.join_next().await.unwrap().unwrap();
+        assert_eq!(
+            (reply.status, reply.code().as_deref()),
+            (503, Some("server::busy")),
+            "a held callback answered before the provider was released"
+        );
+        if took < wait {
+            at_once += 1;
+        } else {
+            after_wait += 1;
+        }
+    }
+    assert_eq!((at_once, after_wait), (8, 8));
+    assert_eq!(fake.token_requests(), 4);
+    fake.token_reply(TokenReply::Normal);
+    let mut held = Vec::new();
+    while let Some(joined) = callbacks.join_next().await {
+        held.push(joined.unwrap().0.status);
+    }
+    held.sort_unstable();
+    assert_eq!(held, [303, 403, 403, 403]);
 }
 
 #[tokio::test]
