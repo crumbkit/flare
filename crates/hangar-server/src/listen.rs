@@ -1,5 +1,5 @@
 //! [`Listeners`]: the sockets, the accept loop, graceful shutdown and the
-//! idle exit.
+//! local site's idle exit.
 
 use crate::app::{App, Kind};
 use crate::schemas::Schemas;
@@ -53,15 +53,19 @@ pub enum ServeError {
 pub enum Stopped {
     /// The shutdown future resolved.
     Shutdown,
-    /// No request arrived for [`Limits::idle_exit`](crate::Limits::idle_exit).
+    /// No request arrived for [`Limits::idle_exit`](crate::Limits::idle_exit)
+    /// on the local site.
     Idle,
 }
 
-/// The bound sockets: the launch host's on `127.0.0.1`, and with OpenID
-/// Connect the sign-in host's on `127.0.0.1` and `::1`.
+/// The bound sockets. For the local site: the launch host's on
+/// `127.0.0.1`, and with OpenID Connect the sign-in host's on `127.0.0.1`
+/// and `::1`. For the hosted site: one plain-HTTP socket on the configured
+/// address, behind a TLS proxy.
 #[derive(Debug)]
 pub struct Listeners {
-    launch: StdListener,
+    primary: StdListener,
+    primary_kind: Kind,
     oidc: Vec<StdListener>,
     oidc_port: Option<u16>,
 }
@@ -93,20 +97,41 @@ impl Listeners {
             oidc_port = Some(bound);
         }
         Ok(Self {
-            launch,
+            primary: launch,
+            primary_kind: Kind::Launch,
             oidc: sockets,
             oidc_port,
         })
     }
 
-    /// The launch host's port, which `Loopback::new` needs.
+    /// Binds the hosted site's one listener on `address`, where port 0
+    /// picks a free port. hangar never terminates TLS: the proxy in front
+    /// does, and only the proxy should reach this address.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BindError::PortInUse`] when the port is held and
+    /// [`BindError::Io`] for any other refusal.
+    pub fn bind_hosted(address: SocketAddr) -> Result<Self, BindError> {
+        Ok(Self {
+            primary: listen(address)?,
+            primary_kind: Kind::Hosted,
+            oidc: Vec::new(),
+            oidc_port: None,
+        })
+    }
+
+    /// The launch host's port, which `Loopback::new` needs, or the hosted
+    /// listener's port.
     ///
     /// # Panics
     ///
     /// Never: a bound socket always has an address.
     #[must_use]
     pub fn port(&self) -> u16 {
-        self.launch.local_addr().map_or(0, |address| address.port())
+        self.primary
+            .local_addr()
+            .map_or(0, |address| address.port())
     }
 
     /// The sign-in host's port, when OpenID Connect is on.
@@ -115,10 +140,13 @@ impl Listeners {
         self.oidc_port
     }
 
-    /// Writes the server file, serves until `shutdown` resolves or the idle
-    /// period passes, then stops accepting, lets requests in work finish
-    /// for at most [`Limits::drain`](crate::Limits::drain), removes the
-    /// server file and the openers, and returns.
+    /// On the local site, writes the server file and serves until
+    /// `shutdown` resolves or the idle period passes; on the hosted site,
+    /// writes nothing and serves until `shutdown` resolves. Then it stops
+    /// accepting, lets requests in work finish for at most
+    /// [`Limits::drain`](crate::Limits::drain), removes the local site's
+    /// server file and openers, and returns. A listener bound for one site
+    /// answers 404 to every request when the app serves the other.
     ///
     /// # Errors
     ///
@@ -137,7 +165,8 @@ impl Listeners {
         K: OidcClock,
     {
         let oidc_port = self.oidc_port;
-        let launch = runtime_listener(self.launch)?;
+        let primary_kind = self.primary_kind;
+        let launch = runtime_listener(self.primary)?;
         let mut oidc = Vec::new();
         for socket in self.oidc {
             oidc.push(runtime_listener(socket)?);
@@ -156,7 +185,7 @@ impl Listeners {
         let reason = loop {
             let accepted = async {
                 let permit = Arc::clone(&connections).acquire_owned().await;
-                let accepted = accept(&launch, &oidc, oidc_port).await;
+                let accepted = accept((&launch, &primary_kind), &oidc, oidc_port).await;
                 (permit, accepted)
             };
             tokio::select! {
@@ -225,13 +254,13 @@ fn runtime_listener(socket: StdListener) -> Result<TcpListener, ServeError> {
 /// Accepts the next connection on any listener. Each `accept` is
 /// cancel-safe, so a `select!` that drops this future loses no connection.
 async fn accept(
-    launch: &TcpListener,
+    (primary, kind): (&TcpListener, &Kind),
     oidc: &[TcpListener],
     oidc_port: Option<u16>,
 ) -> io::Result<(TcpStream, std::net::IpAddr, Kind)> {
     let on_launch = async {
-        let (stream, peer) = launch.accept().await?;
-        Ok::<_, io::Error>((stream, peer.ip(), Kind::Launch))
+        let (stream, peer) = primary.accept().await?;
+        Ok::<_, io::Error>((stream, peer.ip(), kind.clone()))
     };
     let on_oidc = async {
         match (oidc, oidc_port) {

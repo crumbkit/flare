@@ -4,9 +4,7 @@
 use crate::allow::Admit;
 use crate::clock::{Clock, SystemClock};
 use crate::config::OidcConfig;
-use crate::flow::{
-    Callback, KeptState, Outcome, PendingSignIns, ReturnTo, SignInStart, begin, hash,
-};
+use crate::flow::{Callback, KeptState, Outcome, ReturnTo, Sealer, SignInStart, begin};
 use crate::keys::{KeyCache, KeyError, KeySet};
 use crate::provider::Provider;
 use crate::refusal::{ConnectError, SignInRefusal, TokenFault};
@@ -25,7 +23,7 @@ pub struct OidcAuthenticator<C: Clock = SystemClock> {
     secret: SecretString,
     provider: Provider,
     keys: KeyCache,
-    pending: Mutex<PendingSignIns>,
+    sealer: Sealer,
     sessions: Mutex<Sessions>,
     clock: C,
 }
@@ -35,14 +33,14 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl OidcAuthenticator {
-    /// Reads the client secret, fetches the provider's discovery document
-    /// and checks it, then fetches the key set and checks it. Needs a Tokio
-    /// runtime.
+    /// Reads the client secret, draws the key that seals pending sign-ins,
+    /// fetches the provider's discovery document and checks it, then
+    /// fetches the key set and checks it. Needs a Tokio runtime.
     ///
     /// # Errors
     ///
-    /// Returns a [`ConnectError`] for the first step that fails, and the
-    /// secret is read before any request.
+    /// Returns a [`ConnectError`] for the first step that fails. The secret
+    /// is read and the key drawn before any request.
     pub async fn connect(
         config: OidcConfig,
         secret: &impl ClientSecretSource,
@@ -63,6 +61,7 @@ impl<C: Clock> OidcAuthenticator<C> {
         clock: C,
     ) -> Result<Self, ConnectError> {
         let secret = secret.client_secret().map_err(ConnectError::Secret)?;
+        let sealer = Sealer::new(&config.client_id).ok_or(ConnectError::NoRandomness)?;
         let provider = Provider::discover(&config.issuer, config.deadlines).await?;
         let body = provider
             .fetch_keys()
@@ -74,38 +73,43 @@ impl<C: Clock> OidcAuthenticator<C> {
             config,
             secret,
             provider,
-            pending: Mutex::new(PendingSignIns::default()),
+            sealer,
             sessions: Mutex::new(Sessions::default()),
             clock,
         })
     }
 
-    /// Starts a sign-in and keeps it pending for 10 minutes. Makes no
-    /// request. While 256 sign-ins are pending, it removes the oldest.
+    /// Starts a sign-in, sealed into the kept value it returns, which
+    /// opens for 10 minutes. Makes no request and stores nothing.
     ///
     /// # Errors
     ///
     /// Returns [`SignInRefusal::NoRandomness`] when the system's random
-    /// number generator fails.
+    /// number generator fails, and [`SignInRefusal::CannotSeal`] when the
+    /// sign-in cannot be sealed.
     pub fn start(&self, return_to: ReturnTo) -> Result<SignInStart, SignInRefusal> {
-        let now = self.clock.now();
-        let (start, key, pending) = begin(
+        begin(
             &self.provider.endpoints.authorization,
             &self.config,
+            &self.sealer,
             return_to,
-            now,
-        )?;
-        lock(&self.pending).insert(key, pending, now);
-        Ok(start)
+            self.clock.now(),
+        )
     }
 
     /// Completes a sign-in from the provider's callback. `query` is the
-    /// callback's raw query string, and `kept` is the state the server kept
-    /// from [`start`](Self::start), or `None` when the browser sent none.
-    /// Needs a Tokio runtime.
+    /// callback's raw query string, `kept` is the sealed value the server
+    /// kept from [`start`](Self::start), or `None` when the browser sent
+    /// none, and `old` is the session credential the browser already holds,
+    /// if any. Needs a Tokio runtime.
     ///
-    /// The pending sign-in is used up before the token request, so a code
-    /// is sent to the provider at most once.
+    /// The kept value opens again until it is 10 minutes old, so a second
+    /// callback with it sends the code to the provider again, and the
+    /// provider refuses a used code as [`SignInRefusal::CodeRejected`].
+    ///
+    /// The session of `old` ends only when the sign-in succeeds, in the
+    /// same step that creates the new session. A refused sign-in leaves it
+    /// live.
     ///
     /// # Errors
     ///
@@ -115,15 +119,14 @@ impl<C: Clock> OidcAuthenticator<C> {
         &self,
         query: &str,
         kept: Option<&KeptState>,
+        old: Option<&Credential>,
     ) -> Result<SignedIn, SignInRefusal> {
         let callback = Callback::parse(query)?;
         let kept = kept.ok_or(SignInRefusal::NoKeptState)?;
-        if !kept.matches(&callback.state) {
+        let pending = self.sealer.open(kept, self.clock.now())?;
+        if !pending.matches(&callback.state) {
             return Err(SignInRefusal::WrongState);
         }
-        let pending = lock(&self.pending)
-            .take(&hash(&callback.state), self.clock.now())
-            .ok_or(SignInRefusal::UnknownState)?;
         let Outcome::Code(code) = callback.outcome else {
             return Err(SignInRefusal::ProviderDenied);
         };
@@ -162,6 +165,7 @@ impl<C: Clock> OidcAuthenticator<C> {
             pending.return_to,
             self.config.session_lifetime,
             self.clock.now(),
+            old,
         )
     }
 

@@ -1,5 +1,5 @@
-//! The limits that keep one local process or one large record from
-//! exhausting the server (threat 21).
+//! The limits that keep one client or one large record from exhausting
+//! the server (threat 21).
 
 use std::time::Duration;
 
@@ -26,6 +26,14 @@ pub struct Limits {
     /// The most requests in work at once. The next one answers 503
     /// `server::busy`. The default is 16.
     pub in_work: usize,
+    /// The most `/auth/oidc/callback` requests in work at once, each of
+    /// which may hold a token request to the provider for up to its
+    /// deadline. A callback takes one of these before its in-work slot, and
+    /// the next one answers 503 `server::busy` at once, so callbacks never
+    /// hold more than this many of the in-work slots. It bounds token
+    /// requests in flight, and does not limit how often clients call; a
+    /// hosted site's proxy rate-limits the sign-in routes. The default is 4.
+    pub token_calls: usize,
     /// How long one request may take, from its route starting to its
     /// reply. A slower one is dropped and answers 503 `server::deadline`.
     /// The request's store calls are dropped before the 503 is sent;
@@ -45,8 +53,9 @@ pub struct Limits {
     pub handover_codes: usize,
     /// How long a hand-over code works. The default is 60 seconds.
     pub handover_life: Duration,
-    /// How long the server serves without a request before it stops by
-    /// itself, as a shutdown would. The default is 8 hours.
+    /// How long the local site serves without a request before it stops by
+    /// itself, as a shutdown would. The hosted site never stops by itself.
+    /// The default is 8 hours.
     pub idle_exit: Duration,
     /// How long a shutdown lets requests in work finish before it stops
     /// them. A stopped request's store calls are dropped before `serve`
@@ -67,6 +76,7 @@ impl Default for Limits {
             read_time: Duration::from_secs(10),
             connections: 64,
             in_work: 16,
+            token_calls: 4,
             request_time: Duration::from_secs(30),
             form_tokens: 1024,
             form_token_life: Duration::from_secs(60 * 60),

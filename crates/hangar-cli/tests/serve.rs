@@ -113,6 +113,93 @@ fn serve_refuses_a_config_with_an_unknown_key_or_a_client_secret() {
     home.run(&args).assert_failed("hangar::config::unreadable");
 }
 
+/// A hosted config whose secret file is `secret` and whose issuer is
+/// `issuer`.
+fn hosted_config(secret: &str, issuer: &str) -> String {
+    format!(
+        r#"{{"hosted":{{"origin":"https://hangar.example.com","listen":"127.0.0.1:0"}},"oidc":{{"issuer":"{issuer}","client_id":"x","client_secret_file":"{secret}","admit":{{"domain":"example.com","reach":"everything"}}}}}}"#
+    )
+}
+
+#[test]
+fn serve_refuses_a_hosted_config_without_its_keys_naming_each_and_admits_a_whole_one() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let (root, program) = paths(&board);
+    let secret = home.path().join("client_secret");
+    run::write(&secret, "made-up-secret");
+    let whole = hosted_config(secret.to_str().unwrap(), "https://127.0.0.1:1");
+    for (broken, key) in [
+        (
+            whole.replace("https://hangar.example.com", "http://hangar.example.com"),
+            "hosted.origin",
+        ),
+        (
+            whole.replace("https://hangar.example.com", "https://hangar.example.com/x"),
+            "hosted.origin",
+        ),
+        (
+            whole.replace(
+                &format!(r#""client_secret_file":"{}","#, secret.display()),
+                "",
+            ),
+            "oidc.client_secret_file",
+        ),
+        (
+            whole.replace(secret.to_str().unwrap(), "client_secret"),
+            "oidc.client_secret_file",
+        ),
+        (
+            r#"{"hosted":{"origin":"https://hangar.example.com","listen":"127.0.0.1:0"}}"#
+                .to_owned(),
+            "oidc",
+        ),
+    ] {
+        home.write_config(&broken);
+        let ran = home.run(&serve_args(&board, &root, &program));
+        ran.assert_failed("hangar::config::invalid");
+        assert!(ran.all().contains(key), "{key}: {}", ran.all());
+    }
+    // The whole config passes the config and secret checks and stops at the
+    // provider, which nothing serves.
+    home.write_config(&whole);
+    home.run(&serve_args(&board, &root, &program))
+        .assert_failed("hangar::oidc::provider_unavailable");
+}
+
+#[test]
+fn serve_refuses_a_hosted_secret_file_that_is_missing_or_writable_by_others_naming_the_path() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let (root, program) = paths(&board);
+    let secret = home.path().join("client_secret");
+    home.write_config(&hosted_config(
+        secret.to_str().unwrap(),
+        "https://127.0.0.1:1",
+    ));
+    let missing = home.run(&serve_args(&board, &root, &program));
+    missing.assert_failed("hangar::oidc::secret_unavailable");
+    assert!(
+        missing.all().contains(secret.to_str().unwrap()),
+        "{}",
+        missing.all()
+    );
+    run::write(&secret, "made-up-secret");
+    std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o666)).unwrap();
+    let writable = home.run(&serve_args(&board, &root, &program));
+    writable.assert_failed("hangar::oidc::secret_unavailable");
+    assert!(writable.all().contains("writable"), "{}", writable.all());
+    assert!(
+        !writable.all().contains("made-up-secret"),
+        "{}",
+        writable.all()
+    );
+    std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
+    home.run(&serve_args(&board, &root, &program))
+        .assert_failed("hangar::oidc::provider_unavailable");
+}
+
 /// A running `hangar serve` and the home it runs in.
 struct Running {
     #[expect(

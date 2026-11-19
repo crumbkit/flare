@@ -99,6 +99,16 @@ jobs:
         run: cargo deny --locked check bans licenses sources
       - name: shear
         run: cargo shear
+      # The `testing` features expose switches such as an http issuer and
+      # PublicOrigin::loopback_http. This step fails when the hangar
+      # command's own dependency tree turns one on for any hangar crate.
+      - name: no testing features in hangar
+        run: |
+          if cargo tree --locked -p hangar-cli -e normal,build -f '{p} {f}' \
+            | grep -E '^\W*hangar-[a-z-]+ v[^ ]+ \(.*\) .*\btesting\b'; then
+            echo "the hangar command enables a testing feature" >&2
+            exit 1
+          fi
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets --all-features
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -12,11 +12,12 @@
 pub mod fake_provider;
 
 use fake_provider::{
-    DOMAIN, EMAIL, Fake, HOME, assert_refused, config_with, connect, connect_domain, secret,
-    sign_in,
+    DOMAIN, EMAIL, Fake, HOME, TokenReply, assert_refused, config_with, connect, connect_domain,
+    secret, sign_in, sign_in_replacing,
 };
 use hangar_auth_oidc::{
-    Admit, AllowEntry, AllowList, Email, OidcAuthenticator, Reach, SignInRefusal, TestClock,
+    Admit, AllowEntry, AllowList, Email, OidcAuthenticator, Reach, SignInRefusal, SignedIn,
+    TestClock,
 };
 use hangar_core::{
     Access, AuthError, Authenticator, Credential, Decision, PageName, Principal, PrincipalId,
@@ -83,24 +84,165 @@ async fn sign_out_rejects_that_session_and_another_session_stays_accepted() {
     assert!(authenticator.authenticate(second.session()).await.is_ok());
 }
 
+/// Signs in the domain account `<name>@example.com`.
+async fn sign_in_as(
+    authenticator: &OidcAuthenticator<TestClock>,
+    fake: &Fake,
+    name: &str,
+) -> Result<SignedIn, SignInRefusal> {
+    fake.set_email(&format!("{name}@{DOMAIN}"));
+    sign_in(authenticator, fake).await
+}
+
+/// Fills the table with `count` sessions of distinct domain accounts.
+async fn fill(authenticator: &OidcAuthenticator<TestClock>, fake: &Fake, count: usize) {
+    for at in 0..count {
+        assert!(
+            sign_in_as(authenticator, fake, &format!("filler{at}"))
+                .await
+                .is_ok()
+        );
+    }
+}
+
 #[tokio::test]
 async fn the_1025th_sign_in_is_refused_and_succeeds_after_an_older_session_expires() {
     let fake = Fake::start().await;
-    let (authenticator, clock) = connect(&fake).await;
-    assert!(sign_in(&authenticator, &fake).await.is_ok());
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, clock) = connect_domain(&fake).await;
+    assert!(sign_in_as(&authenticator, &fake, "first").await.is_ok());
     clock.advance(Duration::from_secs(60));
-    for _ in 1..1024 {
-        assert!(sign_in(&authenticator, &fake).await.is_ok());
-    }
-    let refusal = sign_in(&authenticator, &fake).await.unwrap_err();
+    fill(&authenticator, &fake, 1023).await;
+    let refusal = sign_in_as(&authenticator, &fake, "late").await.unwrap_err();
     assert_eq!(refusal, SignInRefusal::TooManySessions);
     assert!(refusal.is_temporary());
     // The first session expires sixty seconds before the others.
     clock.advance(Duration::from_secs(12 * 60 * 60 - 30));
-    assert!(sign_in(&authenticator, &fake).await.is_ok());
+    assert!(sign_in_as(&authenticator, &fake, "late").await.is_ok());
+    assert_refused(
+        sign_in_as(&authenticator, &fake, "later").await,
+        &SignInRefusal::TooManySessions,
+    );
+}
+
+#[tokio::test]
+async fn a_principals_ninth_sign_in_ends_its_earliest_expiring_session_and_no_one_elses() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, clock) = connect_domain(&fake).await;
+    let grace = sign_in_as(&authenticator, &fake, "grace").await.unwrap();
+    let mut ada = Vec::new();
+    for _ in 0..8 {
+        ada.push(sign_in_as(&authenticator, &fake, "ada").await.unwrap());
+        clock.advance(Duration::from_secs(1));
+    }
+    for signed_in in &ada {
+        assert!(
+            authenticator
+                .authenticate(signed_in.session())
+                .await
+                .is_ok()
+        );
+    }
+    let ninth = sign_in_as(&authenticator, &fake, "ada").await.unwrap();
+    assert_eq!(
+        authenticator.authenticate(ada[0].session()).await,
+        Err(AuthError::Rejected),
+        "the earliest-expiring session ends"
+    );
+    for signed_in in ada.iter().skip(1).chain([&ninth]) {
+        assert!(
+            authenticator
+                .authenticate(signed_in.session())
+                .await
+                .is_ok()
+        );
+    }
+    assert!(authenticator.authenticate(grace.session()).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_sign_in_that_passes_the_old_session_ends_it_and_one_without_keeps_it() {
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let kept = sign_in(&authenticator, &fake).await.unwrap();
+    let old = sign_in(&authenticator, &fake).await.unwrap();
+    let new = sign_in_replacing(&authenticator, &fake, Some(old.session()))
+        .await
+        .unwrap();
+    assert_eq!(
+        authenticator.authenticate(old.session()).await,
+        Err(AuthError::Rejected)
+    );
+    assert!(authenticator.authenticate(new.session()).await.is_ok());
+    assert!(authenticator.authenticate(kept.session()).await.is_ok());
+}
+
+#[tokio::test]
+async fn passing_the_old_session_removes_it_before_the_table_limit_is_checked() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, _clock) = connect_domain(&fake).await;
+    let old = sign_in_as(&authenticator, &fake, "ada").await.unwrap();
+    fill(&authenticator, &fake, 1023).await;
+    fake.set_email(&format!("ada@{DOMAIN}"));
     assert_refused(
         sign_in(&authenticator, &fake).await,
         &SignInRefusal::TooManySessions,
+    );
+    let new = sign_in_replacing(&authenticator, &fake, Some(old.session()))
+        .await
+        .unwrap();
+    assert!(authenticator.authenticate(new.session()).await.is_ok());
+    assert_eq!(
+        authenticator.authenticate(old.session()).await,
+        Err(AuthError::Rejected)
+    );
+}
+
+#[tokio::test]
+async fn a_principal_at_eight_sessions_signs_in_while_the_table_is_full() {
+    let fake = Fake::start().await;
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, _clock) = connect_domain(&fake).await;
+    for _ in 0..8 {
+        assert!(sign_in_as(&authenticator, &fake, "ada").await.is_ok());
+    }
+    fill(&authenticator, &fake, 1016).await;
+    assert_refused(
+        sign_in_as(&authenticator, &fake, "grace").await,
+        &SignInRefusal::TooManySessions,
+    );
+    assert!(sign_in_as(&authenticator, &fake, "ada").await.is_ok());
+}
+
+#[tokio::test]
+async fn a_failed_sign_in_leaves_the_old_session_live_and_a_good_one_ends_it() {
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let old = sign_in(&authenticator, &fake).await.unwrap();
+    fake.set_email("eve@example.com");
+    assert_refused(
+        sign_in_replacing(&authenticator, &fake, Some(old.session())).await,
+        &SignInRefusal::NotAllowed,
+    );
+    assert!(authenticator.authenticate(old.session()).await.is_ok());
+    fake.token_reply(TokenReply::Status(500));
+    fake.set_email(EMAIL);
+    assert_refused(
+        sign_in_replacing(&authenticator, &fake, Some(old.session())).await,
+        &SignInRefusal::ProviderUnavailable,
+    );
+    assert!(authenticator.authenticate(old.session()).await.is_ok());
+    fake.token_reply(TokenReply::Normal);
+    assert!(
+        sign_in_replacing(&authenticator, &fake, Some(old.session()))
+            .await
+            .is_ok()
+    );
+    assert_eq!(
+        authenticator.authenticate(old.session()).await,
+        Err(AuthError::Rejected)
     );
 }
 
@@ -155,7 +297,7 @@ async fn a_second_allow_listed_person_signs_in_as_their_own_principal() {
     let start = authenticator.start(fake_provider::return_to()).unwrap();
     let query = fake.approve(start.redirect());
     let signed_in = authenticator
-        .complete(&query, Some(start.kept()))
+        .complete(&query, Some(start.kept()), None)
         .await
         .unwrap();
     assert_eq!(

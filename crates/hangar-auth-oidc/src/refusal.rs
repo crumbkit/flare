@@ -19,18 +19,32 @@ pub enum SecretError {
     /// the Keychain holds no such item.
     #[error("the program that reads the client secret failed")]
     Failed,
-    /// The program printed nothing but a newline.
+    /// The program or the file gave nothing but a newline.
     #[error("the client secret is empty")]
     Empty,
-    /// The program printed more than 4 KiB.
+    /// The program or the file gave more than 4 KiB.
     #[error("the client secret is longer than 4 KiB")]
     TooLong,
-    /// The program printed bytes that are not UTF-8.
+    /// The program or the file gave bytes that are not UTF-8.
     #[error("the client secret is not UTF-8 text")]
     NotText,
     /// The program ran past its deadline and was stopped.
     #[error("the program that reads the client secret ran past its deadline")]
     TimedOut,
+    /// The secret file is missing or could not be opened or read.
+    #[error("the client secret file could not be opened or read")]
+    FileUnreadable,
+    /// The secret file is a directory, a FIFO or anything else that is not
+    /// a regular file.
+    #[error("the client secret file is not a regular file")]
+    NotAFile,
+    /// The secret file is owned by a user other than the one this process
+    /// runs as and other than root.
+    #[error("the client secret file must be owned by the user hangar runs as or by root")]
+    FileOwner,
+    /// The secret file is writable by its group or by other users.
+    #[error("the client secret file must not be writable by its group or by other users")]
+    FileWritable,
 }
 
 /// What is wrong with the provider's discovery document. Each fault is
@@ -82,6 +96,10 @@ pub enum ConnectError {
     /// The key set could not be fetched or holds no usable RS256 key.
     #[error("the provider's key set could not be fetched or holds no usable RS256 signing key")]
     Keys,
+    /// The system gave no random bytes for the key that seals pending
+    /// sign-ins.
+    #[error("no random bytes were available for the sign-in sealing key")]
+    NoRandomness,
 }
 
 /// Which check an ID token failed.
@@ -129,8 +147,11 @@ pub enum SignInRefusal {
     /// The query's state differs from the kept state.
     #[error("the callback's state differs from the browser's")]
     WrongState,
-    /// The state names no pending sign-in: it was used, expired or evicted.
-    #[error("the sign-in is unknown, used or expired")]
+    /// The kept value does not open under this process's key, so it was
+    /// changed, sealed by another process or for another client, issued 10
+    /// minutes or more ago, or issued more than 60 seconds ahead of the
+    /// clock.
+    #[error("the sign-in is unknown or expired")]
     UnknownState,
     /// The provider sent an `error` instead of a code.
     #[error("the provider refused the sign-in")]
@@ -163,6 +184,11 @@ pub enum SignInRefusal {
     /// The system's random number generator failed.
     #[error("no random bytes were available")]
     NoRandomness,
+    /// The pending sign-in could not be sealed into the kept value: this
+    /// process has sealed 2^64 values under its key, or the value is too
+    /// long to seal. A restart draws a new key.
+    #[error("the sign-in state could not be sealed")]
+    CannotSeal,
     /// Under [`Admit::Domain`](crate::Admit::Domain), the ID token has no
     /// `hd` claim, as for a personal Google account, even one whose email
     /// ends in the configured domain.
@@ -181,7 +207,10 @@ impl SignInRefusal {
     pub fn is_temporary(&self) -> bool {
         matches!(
             self,
-            Self::ProviderUnavailable | Self::TooManySessions | Self::NoRandomness
+            Self::ProviderUnavailable
+                | Self::TooManySessions
+                | Self::NoRandomness
+                | Self::CannotSeal
         )
     }
 }

@@ -219,6 +219,12 @@ impl OidcConfig {
         }
     }
 
+    /// Where the provider sends the browser back.
+    #[must_use]
+    pub fn redirect_uri(&self) -> &RedirectUri {
+        &self.redirect_uri
+    }
+
     /// Sets how long a session lasts from its sign-in.
     #[must_use]
     pub fn with_session_lifetime(mut self, lifetime: Duration) -> Self {

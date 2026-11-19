@@ -3,7 +3,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 Usage: hangar [OPTIONS] <COMMAND>
 
 Verbs
-  serve     Serve a board's pages and bindings on this machine until Ctrl-C
+  serve     Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
   open      Open the running server's index, a page or a binding in a browser
   publish   Publish a new version of a page from an HTML or Markdown file
   bind      Save a binding that fills a page's slots with records

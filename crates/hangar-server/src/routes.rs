@@ -1,9 +1,33 @@
-//! The launch host's route table: one static array, so the tests can walk
-//! it and see that no GET route writes. The sign-in host's two routes are
-//! in `handlers/oidc.rs`.
+//! The route table of the launch host and the hosted site: one static
+//! array, so the tests can walk it and see that no GET route writes and
+//! that no writing route serves the hosted site. Each route names the
+//! sites that serve it. The local sign-in host's two routes are in
+//! `handlers/oidc.rs`.
 
+use crate::site::SiteKind;
 use hangar_core::Access;
 use http::Method;
+
+/// The sites that serve a route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Sites {
+    /// The local site's launch host only.
+    Local,
+    /// The hosted site only.
+    Hosted,
+    /// Both.
+    Both,
+}
+
+impl Sites {
+    /// Whether `site` serves a route with these sites.
+    pub(crate) fn serves(self, site: SiteKind) -> bool {
+        matches!(
+            (self, site),
+            (Self::Both, _) | (Self::Local, SiteKind::Local) | (Self::Hosted, SiteKind::Hosted)
+        )
+    }
+}
 
 /// The credential a route needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +57,16 @@ pub(crate) enum Handler {
     Edit,
     Codes,
     Probe,
+    OidcStart,
+    OidcCallback,
+}
+
+#[cfg(test)]
+impl Handler {
+    /// Whether the handler writes a record, a page or a binding.
+    pub(crate) fn writes(self) -> bool {
+        self == Self::Edit
+    }
 }
 
 /// One route.
@@ -49,14 +83,16 @@ pub(crate) struct Route {
     pub(crate) access: Option<Access>,
     /// What it does.
     pub(crate) handler: Handler,
+    /// The sites that serve it.
+    pub(crate) sites: Sites,
 }
 
 const fn route(
     method: Method,
     pattern: &'static str,
-    credential: Need,
-    access: Option<Access>,
+    (credential, access): (Need, Option<Access>),
     handler: Handler,
+    sites: Sites,
 ) -> Route {
     Route {
         method,
@@ -64,70 +100,88 @@ const fn route(
         credential,
         access,
         handler,
+        sites,
     }
 }
 
+const OPEN: (Need, Option<Access>) = (Need::Nothing, None);
+const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
+
 /// The table.
-pub(crate) static ROUTES: [Route; 12] = [
-    route(Method::GET, "/up", Need::Nothing, None, Handler::Up),
-    route(Method::GET, "/ready", Need::Nothing, None, Handler::Ready),
-    route(Method::GET, "/launch", Need::Nothing, None, Handler::Launch),
+pub(crate) static ROUTES: [Route; 14] = [
+    route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
+    route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
+    route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
     route(
         Method::GET,
         "/auth/oidc/finish",
-        Need::Nothing,
-        None,
+        OPEN,
         Handler::Finish,
+        Sites::Local,
+    ),
+    route(
+        Method::GET,
+        "/auth/oidc/start",
+        OPEN,
+        Handler::OidcStart,
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/auth/oidc/callback",
+        OPEN,
+        Handler::OidcCallback,
+        Sites::Hosted,
     ),
     route(
         Method::GET,
         "/hangar/style.css",
-        Need::Nothing,
-        None,
+        OPEN,
         Handler::Style,
+        Sites::Both,
     ),
-    route(Method::GET, "/", Need::Credential, None, Handler::Root),
     route(
         Method::GET,
-        "/hangar/",
-        Need::Credential,
-        Some(Access::Read),
-        Handler::Index,
+        "/",
+        (Need::Credential, None),
+        Handler::Root,
+        Sites::Both,
     ),
+    route(Method::GET, "/hangar/", READ, Handler::Index, Sites::Both),
     route(
         Method::GET,
         "/pages/<name>",
-        Need::Credential,
-        Some(Access::Read),
+        READ,
         Handler::Page,
+        Sites::Both,
     ),
     route(
         Method::GET,
         "/b/<name>",
-        Need::Credential,
-        Some(Access::Read),
+        READ,
         Handler::Binding,
+        Sites::Local,
     ),
     route(
         Method::POST,
         "/b/<name>",
-        Need::Session,
-        Some(Access::Write),
+        (Need::Session, Some(Access::Write)),
         Handler::Edit,
+        Sites::Local,
     ),
     route(
         Method::POST,
         "/launch/codes",
-        Need::Bearer,
-        None,
+        (Need::Bearer, None),
         Handler::Codes,
+        Sites::Local,
     ),
     route(
         Method::GET,
         "/launch/probe",
-        Need::Nothing,
-        None,
+        OPEN,
         Handler::Probe,
+        Sites::Local,
     ),
 ];
 
@@ -150,10 +204,10 @@ fn matches<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
     }
 }
 
-/// The route for `method` and `path`.
-pub(crate) fn find<'p>(method: &Method, path: &'p str) -> Found<'p> {
+/// The route for `method` and `path` among the routes `site` serves.
+pub(crate) fn find<'p>(method: &Method, path: &'p str, site: SiteKind) -> Found<'p> {
     let mut path_known = false;
-    for route in &ROUTES {
+    for route in ROUTES.iter().filter(|route| route.sites.serves(site)) {
         if let Some(name) = matches(route.pattern, path) {
             if route.method == method {
                 return Found::Route(route, name);
@@ -168,9 +222,14 @@ pub(crate) fn find<'p>(method: &Method, path: &'p str) -> Found<'p> {
     }
 }
 
-/// Every route's method and pattern.
+/// The method and pattern of every route the local site's launch host
+/// serves.
 pub(crate) fn listed() -> impl Iterator<Item = (Method, &'static str)> {
     ROUTES
         .iter()
+        .filter(|route| route.sites.serves(SiteKind::Local))
         .map(|route| (route.method.clone(), route.pattern))
 }
+
+#[cfg(test)]
+mod tests;

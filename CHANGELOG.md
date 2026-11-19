@@ -66,6 +66,23 @@ This file records the notable changes to hangar. The format follows
   the board child's process group and waits until the child has ended. A
   caller that gives up on a write, such as a request past its deadline,
   knows that the write will not commit later.
+- `hangar serve` serves a board's pages as a hosted site on a host behind a
+  TLS-terminating proxy when its config has a `hosted` section with an
+  `origin` and a `listen` address. People sign in with Google through
+  `<origin>/auth/oidc/start` and read `/`, `/hangar/` and `/pages/<name>`.
+  The hosted site refuses a request with another Host, an Authorization
+  header, or a cross-origin or cross-site write; sets only `__Host-`
+  cookies; sends HSTS on every reply; writes no server file; and never
+  exits by itself. docs/hosting.md says how to run it behind a proxy.
+- `FileSecret` in `hangar-auth-oidc` reads the client secret from a file
+  that is regular, owned by the running user or root, not group- or
+  world-writable, and 1 to 4,096 bytes long. `hangar serve` reads it from
+  `oidc.client_secret_file`, which a hosted config requires.
+- `hangar-server` takes a `Site`, either `Site::Local` with the gate and the
+  state directory or `Site::Hosted` with a `PublicOrigin` and the OpenID
+  Connect authenticator. `Limits::token_calls` caps the sign-in callbacks
+  that wait on the provider at once; a callback past the cap answers 503
+  `server::busy`.
 
 ### Changed
 
@@ -76,3 +93,14 @@ This file records the notable changes to hangar. The format follows
 - `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
   an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its
   behaviour.
+- A pending sign-in in `hangar-auth-oidc` is sealed with AES-256-GCM into
+  the kept-state cookie, and the server keeps no table of them, so any
+  number of sign-ins can be in progress and a restart voids them all. A
+  kept value is refused 10 minutes after its start. A replayed callback is
+  refused by the provider as `CodeRejected`.
+- `OidcAuthenticator::complete` takes the browser's current session
+  credential, if any, and ends that session only when the new one is
+  created. A principal keeps at most 8 sessions; a ninth sign-in ends its
+  session that expires first.
+- `App::new` in `hangar-server` takes a `Site` in place of a `Gate` and a
+  `StateDir`.

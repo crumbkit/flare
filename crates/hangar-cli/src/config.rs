@@ -1,10 +1,13 @@
 //! The config file: `hangar serve --config <path>`, else
 //! `$XDG_CONFIG_HOME/hangar/config.json`, else `~/.config/hangar/config.json`.
 //!
-//! A missing file means loopback only. Every object refuses unknown keys,
-//! and a `client_secret` key anywhere is refused with a message that names
-//! the Keychain service, because the secret lives only in the Keychain.
-//! No message repeats a value from the file.
+//! A missing file means the local site with loopback sign-in only. A
+//! `hosted` section makes `hangar serve` serve the hosted site, behind a
+//! TLS proxy, and needs an `oidc` section with `client_secret_file`,
+//! because a host has no Keychain. Every object refuses unknown keys, and a
+//! `client_secret` key anywhere is refused, because the secret lives only
+//! in the Keychain or in the file `client_secret_file` names. A refusal
+//! names the key, and no message repeats a value from the file.
 
 use crate::codes::Failed;
 use crate::env::Snapshot;
@@ -13,15 +16,17 @@ use hangar_auth_oidc::{
     RedirectUri, WorkspaceDomain,
 };
 use hangar_core::{BindingName, PageName, PrincipalId, RecordPath, Resource};
+use hangar_server::PublicOrigin;
 use serde::Deserialize;
 use serde_json::Value;
 use std::io::Read as _;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 mod tests;
 
-/// The only redirect URI: the sign-in host's callback.
+/// The local site's only redirect URI: the sign-in host's callback.
 const REDIRECT: &str = "http://localhost:8740/auth/oidc/callback";
 
 /// The Keychain service that holds the client secret.
@@ -30,8 +35,54 @@ pub(crate) const KEYCHAIN_SERVICE: &str = "hangar-oidc-google";
 /// A parsed config.
 #[derive(Debug)]
 pub(crate) struct Config {
-    /// The OpenID Connect settings, when the file has them.
-    pub(crate) oidc: Option<OidcConfig>,
+    /// The site `hangar serve` serves.
+    pub(crate) site: Site,
+}
+
+/// Which site the config asks for.
+#[derive(Debug)]
+pub(crate) enum Site {
+    /// The local site, with OpenID Connect when the file has an `oidc`
+    /// section.
+    Local {
+        /// The OpenID Connect settings.
+        oidc: Option<LocalOidc>,
+    },
+    /// The hosted site.
+    Hosted(Hosted),
+}
+
+/// The local site's OpenID Connect settings and where its secret is.
+#[derive(Debug)]
+pub(crate) struct LocalOidc {
+    /// The settings.
+    pub(crate) config: OidcConfig,
+    /// Where the client secret is.
+    pub(crate) secret: Secret,
+}
+
+/// Where the client secret is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Secret {
+    /// The Keychain service [`KEYCHAIN_SERVICE`].
+    Keychain,
+    /// This file.
+    File(PathBuf),
+}
+
+/// The hosted site's settings.
+#[derive(Debug)]
+pub(crate) struct Hosted {
+    /// The public origin, such as `https://hangar.example.com`.
+    pub(crate) origin: PublicOrigin,
+    /// The address the plain-HTTP listener binds, which only the proxy
+    /// reaches.
+    pub(crate) listen: SocketAddr,
+    /// The OpenID Connect settings, whose redirect URI is
+    /// `<origin>/auth/oidc/callback`.
+    pub(crate) oidc: OidcConfig,
+    /// The file that holds the client secret.
+    pub(crate) secret_file: PathBuf,
 }
 
 /// Why a config's text was refused.
@@ -44,7 +95,15 @@ pub(crate) enum Problem {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
+    hosted: Option<HostedSection>,
     oidc: Option<OidcSection>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HostedSection {
+    origin: String,
+    listen: String,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +111,7 @@ struct File {
 struct OidcSection {
     issuer: String,
     client_id: String,
+    client_secret_file: Option<String>,
     admit: AdmitSection,
 }
 
@@ -124,8 +184,11 @@ const MAX_BYTES: u64 = 64 * 1024;
 ///
 /// Returns [`Failed::ConfigUnreadable`] or [`Failed::ConfigInvalid`].
 pub(crate) fn load(given: Option<&Path>, env: &Snapshot) -> Result<Config, Failed> {
+    let local = || Config {
+        site: Site::Local { oidc: None },
+    };
     let Some(path) = self::path(given, env) else {
-        return Ok(Config { oidc: None });
+        return Ok(local());
     };
     let shown = path.display().to_string();
     let unreadable = |problem: String| Failed::ConfigUnreadable {
@@ -135,7 +198,7 @@ pub(crate) fn load(given: Option<&Path>, env: &Snapshot) -> Result<Config, Faile
     let file = match std::fs::File::open(&path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && given.is_none() => {
-            return Ok(Config { oidc: None });
+            return Ok(local());
         }
         Err(error) => return Err(unreadable(error.to_string())),
     };
@@ -168,12 +231,72 @@ pub(crate) fn parse(text: &str) -> Result<Config, Problem> {
     })?;
     if holds_client_secret(&value) {
         return Err(invalid(&format!(
-            "it holds a client_secret key; remove it and keep the secret in the Keychain service {KEYCHAIN_SERVICE}"
+            "it holds a client_secret key; remove it and keep the secret in the Keychain service {KEYCHAIN_SERVICE}, or in a file that oidc.client_secret_file names"
         )));
     }
     let file: File = serde_json::from_value(value).map_err(|error| invalid(&error.to_string()))?;
-    let oidc = file.oidc.map(oidc).transpose().map_err(Problem::Invalid)?;
-    Ok(Config { oidc })
+    let site = match (file.hosted, file.oidc) {
+        (None, oidc) => Site::Local {
+            oidc: oidc.map(local_oidc).transpose().map_err(Problem::Invalid)?,
+        },
+        (Some(hosted), Some(oidc)) => {
+            Site::Hosted(self::hosted(hosted, oidc).map_err(Problem::Invalid)?)
+        }
+        (Some(_), None) => {
+            return Err(invalid(
+                "a hosted section needs an oidc section, because the hosted site signs people in only with OpenID Connect",
+            ));
+        }
+    };
+    Ok(Config { site })
+}
+
+/// The secret file's path: absolute, or a refusal that names the key.
+fn secret_file(text: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(text);
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err("oidc.client_secret_file must be an absolute path".to_owned())
+    }
+}
+
+fn local_oidc(section: OidcSection) -> Result<LocalOidc, String> {
+    let secret = match &section.client_secret_file {
+        Some(text) => Secret::File(secret_file(text)?),
+        None => Secret::Keychain,
+    };
+    let redirect = RedirectUri::try_from(REDIRECT).map_err(|error| error.to_string())?;
+    Ok(LocalOidc {
+        config: oidc(section, redirect)?,
+        secret,
+    })
+}
+
+fn hosted(section: HostedSection, oidc_section: OidcSection) -> Result<Hosted, String> {
+    let origin = PublicOrigin::try_from(section.origin.as_str())
+        .map_err(|error| format!("hosted.origin is not valid: {error}"))?;
+    let listen = section.listen.parse::<SocketAddr>().map_err(|_| {
+        "hosted.listen must be an IP address and a port, such as 0.0.0.0:8080 or [::]:8080"
+            .to_owned()
+    })?;
+    let secret_file = match &oidc_section.client_secret_file {
+        Some(text) => secret_file(text)?,
+        None => {
+            return Err(
+                "a hosted section needs oidc.client_secret_file, the absolute path of the file that holds the client secret, because a host has no Keychain"
+                    .to_owned(),
+            );
+        }
+    };
+    let redirect =
+        RedirectUri::try_from(origin.redirect_uri().as_str()).map_err(|error| error.to_string())?;
+    Ok(Hosted {
+        oidc: oidc(oidc_section, redirect)?,
+        origin,
+        listen,
+        secret_file,
+    })
 }
 
 /// Whether any object in `value` has a `client_secret` key.
@@ -187,11 +310,10 @@ fn holds_client_secret(value: &Value) -> bool {
     }
 }
 
-fn oidc(section: OidcSection) -> Result<OidcConfig, String> {
+fn oidc(section: OidcSection, redirect: RedirectUri) -> Result<OidcConfig, String> {
     let issuer = IssuerUrl::try_from(section.issuer.as_str()).map_err(|error| error.to_string())?;
     let client =
         ClientId::try_from(section.client_id.as_str()).map_err(|error| error.to_string())?;
-    let redirect = RedirectUri::try_from(REDIRECT).map_err(|error| error.to_string())?;
     let admit = match section.admit {
         AdmitSection::Emails(list) => {
             let mut entries = Vec::new();

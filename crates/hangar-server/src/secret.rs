@@ -1,7 +1,8 @@
-//! The server's secrets: form tokens, hand-over codes and the session
-//! cookie of an OpenID Connect sign-in (BASE-24). This file is the only one
-//! in the crate's source, apart from unit tests, that calls
-//! `expose_secret`.
+//! The server's secrets: form tokens, hand-over codes, the session cookie
+//! of an OpenID Connect sign-in and the kept-state cookie (BASE-24). This
+//! file is the only one in the crate's source, apart from unit tests, that
+//! calls `expose_secret`. It composes every `Set-Cookie` that carries a
+//! secret, and on the hosted site every `__Host-` cookie, set or cleared.
 //!
 //! The tables keep only SHA-256 digests. A secret leaves the process only
 //! in a `Set-Cookie` header, a form's hidden input and the hand-over
@@ -104,3 +105,39 @@ pub(crate) fn kept_cookie(kept: &KeptState) -> String {
 
 /// The name of the kept-state cookie.
 pub(crate) const KEPT_COOKIE: &str = "hangar_oidc_state";
+
+/// The name of the hosted site's session cookie. The `__Host-` prefix makes
+/// a browser accept it only with `Secure`, `Path=/` and no `Domain`, so no
+/// other host, a subdomain included, can set it.
+pub(crate) const HOSTED_SESSION_COOKIE: &str = "__Host-hangar_session";
+
+/// The name of the hosted site's kept-state cookie.
+pub(crate) const HOSTED_KEPT_COOKIE: &str = "__Host-hangar_oidc_state";
+
+/// The `Set-Cookie` value that carries a session on the hosted site:
+/// `Secure`, `HttpOnly`, `SameSite=Lax` so links opened from other sites
+/// carry it, for as long as the session lives.
+pub(crate) fn hosted_session_cookie(credential: &Credential, max_age: Duration) -> Option<String> {
+    match credential {
+        Credential::Session(secret) => Some(format!(
+            "{HOSTED_SESSION_COOKIE}={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age={}",
+            secret.expose_secret(),
+            max_age.as_secs()
+        )),
+        _ => None,
+    }
+}
+
+/// The `Set-Cookie` value that keeps a sealed sign-in on the hosted site
+/// until the callback, for 600 seconds.
+pub(crate) fn hosted_kept_cookie(kept: &KeptState) -> String {
+    format!(
+        "{HOSTED_KEPT_COOKIE}={}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600",
+        kept.expose()
+    )
+}
+
+/// The `Set-Cookie` value that clears the hosted kept-state cookie, with
+/// the attributes that set it.
+pub(crate) const HOSTED_CLEAR_KEPT: &str =
+    "__Host-hangar_oidc_state=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0";

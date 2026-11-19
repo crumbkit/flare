@@ -204,6 +204,8 @@ pub(crate) enum Help {
     /// How to sign in: `hangar open`, and with OpenID Connect a link to
     /// this start URL.
     SignIn(Option<String>),
+    /// How to sign in on the hosted site: a link to this start URL.
+    HostedSignIn(String),
     /// A link back to this local path.
     Back(String),
 }
@@ -254,6 +256,12 @@ impl Problem {
                         docs::escape(start)
                     ));
                 }
+            }
+            Help::HostedSignIn(start) => {
+                main.push_str(&format!(
+                    "<span><a href=\"{}\">Sign in with Google</a></span>",
+                    docs::escape(start)
+                ));
             }
             Help::Back(path) => {
                 main.push_str(&format!(

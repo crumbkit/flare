@@ -26,7 +26,7 @@ pub const BOARD_UNAVAILABLE: Code<'static> = Code::from_spelling("hangar::board:
 pub const CONFIG_UNREADABLE: Code<'static> = Code::from_spelling("hangar::config::unreadable");
 /// The config file is not a hangar config.
 pub const CONFIG_INVALID: Code<'static> = Code::from_spelling("hangar::config::invalid");
-/// The client secret could not be read from the Keychain.
+/// The client secret could not be read from the Keychain or its file.
 pub const OIDC_SECRET_UNAVAILABLE: Code<'static> =
     Code::from_spelling("hangar::oidc::secret_unavailable");
 /// The OpenID Connect provider could not be reached or is misconfigured.
@@ -178,6 +178,19 @@ pub enum Failed {
     )]
     SecretUnavailable {
         /// What went wrong.
+        problem: String,
+    },
+    /// The client secret file could not be read or is not safe to read.
+    #[error("the client secret file {path} could not be used: {problem}")]
+    #[failure(
+        code = OIDC_SECRET_UNAVAILABLE,
+        hint = "make oidc.client_secret_file name a regular file of 1 to 4096 bytes that the user hangar runs as or root owns, with mode 0400 or 0600",
+        field(path = path)
+    )]
+    SecretFileUnavailable {
+        /// The file.
+        path: String,
+        /// Which rule it broke, never its content.
         problem: String,
     },
     /// The provider could not be reached or is misconfigured.

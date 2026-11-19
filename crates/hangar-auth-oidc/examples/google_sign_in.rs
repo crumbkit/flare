@@ -157,7 +157,7 @@ async fn route(
         "/auth/oidc/callback" => {
             let query = request.uri().query().unwrap_or_default().to_owned();
             let kept = kept_state(&request);
-            match authenticator.complete(&query, kept.as_ref()).await {
+            match authenticator.complete(&query, kept.as_ref(), None).await {
                 Ok(signed_in) => text(StatusCode::OK, signed_in.principal().id().as_str()),
                 Err(refusal) => text(StatusCode::FORBIDDEN, &format!("{refusal:?}")),
             }

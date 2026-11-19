@@ -58,9 +58,12 @@ pub(crate) async fn tick(every: Duration) {
     tokio::time::sleep_until(TokioInstant::now() + every).await;
 }
 
-/// Resolves when `deadline` passes.
-pub(crate) async fn until(deadline: std::time::Instant) {
-    tokio::time::sleep_until(TokioInstant::from_std(deadline)).await;
+/// Resolves when `deadline` passes, and never without one.
+pub(crate) async fn until(deadline: Option<std::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(TokioInstant::from_std(deadline)).await,
+        None => std::future::pending().await,
+    }
 }
 
 /// Runs `future` for at most `limit`; `None` when the limit passed first.

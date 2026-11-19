@@ -1,6 +1,7 @@
 //! Every request's path through the server: the listener's checks, the
-//! route table, the credential and the handler. Each handler answers a
-//! [`Reply`] or a [`Problem`], and `handle` turns both into one reply.
+//! route table of the request's site, the credential and the handler. Each
+//! handler answers a [`Reply`] or a [`Problem`], and `handle` turns both
+//! into one reply.
 
 mod edit;
 mod oidc;
@@ -10,11 +11,13 @@ use crate::app::{Kind, Shared};
 use crate::auth::Admitted;
 use crate::checks;
 use crate::docs::{self, Entry};
+use crate::hosted;
 use crate::launch;
 use crate::problem::{Code, Help, Problem};
 use crate::reply::Reply;
 use crate::routes::{self, Found, Handler, Need, Route};
 use crate::schemas::Schemas;
+use crate::site::{Site, SiteKind};
 use hangar_auth_loopback::Nonce;
 use hangar_auth_oidc::Clock as OidcClock;
 use hangar_core::{
@@ -54,7 +57,7 @@ where
         access: Access,
         resource: &Resource,
     ) -> Result<(), Problem> {
-        match self.shared.gate.authorize(admitted, access, resource).await {
+        match self.shared.site.authorize(admitted, access, resource).await {
             Ok(Decision::Allowed) => Ok(()),
             Ok(_) => Err(Code::Denied.into()),
             Err(AuthError::Rejected) => Err(self.sign_in_needed()),
@@ -63,6 +66,8 @@ where
     }
 
     /// The 401 problem, with the OpenID Connect start link when it is on.
+    /// The local site also says to run `hangar open`; the hosted site has
+    /// only the link.
     pub(crate) fn sign_in_needed(&self) -> Problem {
         let start = self.shared.oidc_origin().map(|origin| {
             let back = if self.uri.path().starts_with('/') {
@@ -73,7 +78,11 @@ where
             let encoded: String = form_urlencoded::byte_serialize(back.as_bytes()).collect();
             format!("{origin}/auth/oidc/start?return_to={encoded}")
         });
-        Problem::with_help(Code::SignInNeeded, Help::SignIn(start))
+        let help = match (self.shared.site.kind(), start) {
+            (SiteKind::Hosted, Some(start)) => Help::HostedSignIn(start),
+            (_, start) => Help::SignIn(start),
+        };
+        Problem::with_help(Code::SignInNeeded, help)
     }
 }
 
@@ -111,9 +120,15 @@ where
             "-",
         );
     }
-    let (answer, pattern) = match kind {
-        Kind::Oidc { port } => (oidc::handle(&ctx, port, peer, &parts.method).await, "oidc"),
-        Kind::Launch => launch_host(&ctx, peer, &parts.method, body).await,
+    let (answer, pattern) = match (kind, &shared.site) {
+        (Kind::Oidc { port }, Site::Local { .. }) => {
+            (oidc::handle(&ctx, port, peer, &parts.method).await, "oidc")
+        }
+        (Kind::Launch, Site::Local { .. }) => launch_host(&ctx, peer, &parts.method, body).await,
+        (Kind::Hosted, Site::Hosted { origin, .. }) => {
+            hosted_site(&ctx, origin, &parts.method, body).await
+        }
+        _ => (Err(Code::NotFound.into()), "-"),
     };
     let reply = answer.unwrap_or_else(|problem| problem.reply(&parts.headers));
     (reply, pattern)
@@ -131,15 +146,62 @@ where
     S: Schemas,
     K: OidcClock,
 {
-    let checked = match ctx.shared.gate.loopback().check(peer, method, ctx.headers) {
+    let Some(gate) = ctx.shared.site.gate() else {
+        return (Err(Code::NotFound.into()), "-");
+    };
+    let checked = match gate.loopback().check(peer, method, ctx.headers) {
         Ok(checked) => checked,
         Err(refusal) => return (Err(checks::refusal(refusal).into()), "-"),
     };
-    let credential = checked.into_credential();
+    routed(
+        ctx,
+        method,
+        checked.into_credential(),
+        body,
+        SiteKind::Local,
+    )
+    .await
+}
+
+/// The hosted site: `hosted::check`, then the same cross-site rule, route
+/// table and dispatch as the launch host, among the hosted site's routes.
+async fn hosted_site<P, R, S, K>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    origin: &crate::site::PublicOrigin,
+    method: &Method,
+    body: Incoming,
+) -> (Result<Reply, Problem>, &'static str)
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
+    match hosted::check(origin, method, ctx.headers) {
+        Ok(credential) => routed(ctx, method, credential, body, SiteKind::Hosted).await,
+        Err(code) => (Err(code.into()), "-"),
+    }
+}
+
+/// The cross-site rule, the route among those `site` serves, the
+/// credential the route needs and the handler.
+async fn routed<P, R, S, K>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    method: &Method,
+    credential: Option<Credential>,
+    body: Incoming,
+    site: SiteKind,
+) -> (Result<Reply, Problem>, &'static str)
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
     if let Err(code) = checks::cross_site(ctx.headers, credential.is_some()) {
         return (Err(code.into()), "-");
     }
-    let (route, name) = match routes::find(method, ctx.uri.path()) {
+    let (route, name) = match routes::find(method, ctx.uri.path(), site) {
         Found::Route(route, name) => (route, name),
         Found::MethodNotAllowed => return (Err(Code::MethodNotAllowed.into()), "-"),
         Found::Nothing => return (Err(Code::NotFound.into()), "-"),
@@ -168,7 +230,7 @@ where
         return Ok(None);
     }
     let credential = credential.ok_or_else(|| ctx.sign_in_needed())?;
-    let admitted = match ctx.shared.gate.authenticate(credential).await {
+    let admitted = match ctx.shared.site.authenticate(credential).await {
         Ok(admitted) => admitted,
         Err(AuthError::Rejected) => return Err(ctx.sign_in_needed()),
         Err(_) => return Err(Code::AuthUnavailable.into()),
@@ -194,8 +256,13 @@ where
     S: Schemas,
     K: OidcClock,
 {
-    let signed_in = admitted.map(|admitted| (admitted, credential));
     let access = route.access.unwrap_or(Access::Read);
+    match route.handler {
+        Handler::OidcStart => return oidc::hosted_start(ctx),
+        Handler::OidcCallback => return oidc::hosted_callback(ctx, credential.as_ref()).await,
+        _ => {}
+    }
+    let signed_in = admitted.map(|admitted| (admitted, credential));
     match (route.handler, signed_in) {
         (Handler::Up, _) => Ok(Reply::empty(StatusCode::OK)),
         (Handler::Ready, _) => ready(ctx).await,
@@ -243,7 +310,8 @@ where
 {
     let text = ctx.query("nonce").ok_or(Code::BadQuery)?;
     let nonce = Nonce::try_from(text.as_str()).map_err(|_| Code::BadQuery)?;
-    let proof = ctx.shared.gate.loopback().prove(&nonce);
+    let gate = ctx.shared.site.gate().ok_or(Code::NotFound)?;
+    let proof = gate.loopback().prove(&nonce);
     Ok(Reply::with_body(
         StatusCode::OK,
         "text/plain; charset=utf-8",
@@ -274,11 +342,16 @@ where
             continue;
         }
         let mut bindings = Vec::new();
-        for binding in pages
-            .bindings_of(&name)
-            .await
-            .map_err(|error| store_problem(&error, Code::PageNotFound))?
-        {
+        // Bindings are a local-only feature, so the hosted index lists
+        // pages alone.
+        let listed = match ctx.shared.site.kind() {
+            SiteKind::Local => pages
+                .bindings_of(&name)
+                .await
+                .map_err(|error| store_problem(&error, Code::PageNotFound))?,
+            SiteKind::Hosted => Vec::new(),
+        };
+        for binding in listed {
             let resource = Resource::Binding(binding.name().clone());
             if ctx.allow(admitted, access, &resource).await.is_ok() {
                 bindings.push(binding.name().as_str().to_owned());

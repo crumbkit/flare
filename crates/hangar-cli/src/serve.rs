@@ -1,20 +1,28 @@
-//! `hangar serve`: checks the board program, the config and the Keychain
-//! secret before it binds, then serves the board until Ctrl-C, SIGTERM or
-//! the idle exit.
+//! `hangar serve`: checks the board program, the config and the client
+//! secret before it binds, then serves the board until Ctrl-C, SIGTERM or,
+//! on the local site, the idle exit.
 //!
-//! It prints one line that names the board and says to run `hangar open`,
-//! and never prints the launch host, a launch URL or the token.
+//! Without a `hosted` section in the config it serves the local site and
+//! prints one line that names the board and says to run `hangar open`; it
+//! never prints the launch host, a launch URL or the token. With one, it
+//! serves the hosted site on the configured address behind a TLS proxy,
+//! reads the client secret from the configured file, writes no server file
+//! and has no idle exit.
 
 use crate::board;
 use crate::cli::ServeArgs;
 use crate::codes::Failed;
-use crate::config::{self, KEYCHAIN_SERVICE};
+use crate::config::{self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Site as Configured};
 use crate::documents::Served;
 use crate::env::Snapshot;
 use crate::{log, open};
 use hangar_auth_loopback::{Loopback, Served as Reach, local_principal};
-use hangar_auth_oidc::{ConnectError, KeychainSecret, OidcAuthenticator, OidcConfig};
-use hangar_server::{App, BindError, Gate, Limits, Listeners, ServeError, Stopped};
+use hangar_auth_oidc::{
+    ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator, OidcConfig,
+};
+use hangar_board::BoardStore;
+use hangar_server::{App, BindError, Gate, Limits, Listeners, ServeError, Site, Stopped};
+use std::path::Path;
 use std::sync::OnceLock;
 use tokio::signal::unix::{SignalKind, signal};
 
@@ -39,18 +47,42 @@ fn system(error: impl std::fmt::Display) -> Failed {
 }
 
 /// Connects the OpenID Connect authenticator, reading the client secret
-/// from the Keychain.
-async fn connect(config: OidcConfig) -> Result<OidcAuthenticator, Failed> {
-    let secret =
-        KeychainSecret::new(KEYCHAIN_SERVICE).map_err(|error| Failed::SecretUnavailable {
-            problem: error.to_string(),
-        })?;
-    OidcAuthenticator::connect(config, &secret)
+/// from where `secret` says.
+async fn connect(config: OidcConfig, secret: &Secret) -> Result<OidcAuthenticator, Failed> {
+    match secret {
+        Secret::Keychain => {
+            let source = KeychainSecret::new(KEYCHAIN_SERVICE).map_err(|error| {
+                Failed::SecretUnavailable {
+                    problem: error.to_string(),
+                }
+            })?;
+            connect_with(config, &source, |problem| Failed::SecretUnavailable {
+                problem,
+            })
+            .await
+        }
+        Secret::File(path) => {
+            let shown = path.display().to_string();
+            connect_with(config, &FileSecret::new(path), |problem| {
+                Failed::SecretFileUnavailable {
+                    path: shown.clone(),
+                    problem,
+                }
+            })
+            .await
+        }
+    }
+}
+
+async fn connect_with(
+    config: OidcConfig,
+    source: &impl ClientSecretSource,
+    unreadable: impl Fn(String) -> Failed,
+) -> Result<OidcAuthenticator, Failed> {
+    OidcAuthenticator::connect(config, source)
         .await
         .map_err(|error| match error {
-            ConnectError::Secret(error) => Failed::SecretUnavailable {
-                problem: error.to_string(),
-            },
+            ConnectError::Secret(error) => unreadable(error.to_string()),
             other => Failed::ProviderUnavailable {
                 problem: other.to_string(),
             },
@@ -89,33 +121,86 @@ impl Signals {
 pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
     let (root, store) = board::checked_store(&args.board, env).await?;
     let config = config::load(args.config.as_deref(), env)?;
-    let oidc = match config.oidc {
-        Some(config) => Some(connect(config).await?),
-        None => None,
-    };
-    if open::answers(&root, env).await {
-        return Err(Failed::AlreadyRunning);
+    match config.site {
+        Configured::Local { oidc } => local(args, env, (&root, store), oidc).await,
+        Configured::Hosted(hosted) => self::hosted(&root, store, hosted).await,
     }
-    let state = board::loopback_state(&root, env)?;
-    let mut signals = Signals::install()?;
-    let wanted = oidc.as_ref().map(|_| SIGN_IN_PORT);
-    let listeners = Listeners::bind(args.port, wanted).map_err(|error| match error {
+}
+
+fn bind_failed(error: BindError) -> Failed {
+    match error {
         BindError::PortInUse { port } => Failed::PortInUse { port },
         other => system(other),
-    })?;
+    }
+}
+
+/// Serves the local site.
+async fn local(
+    args: &ServeArgs,
+    env: &Snapshot,
+    (root, store): (&Path, BoardStore),
+    oidc: Option<LocalOidc>,
+) -> Result<(Served, Stop), Failed> {
+    let oidc = match oidc {
+        Some(LocalOidc { config, secret }) => Some(connect(config, &secret).await?),
+        None => None,
+    };
+    if open::answers(root, env).await {
+        return Err(Failed::AlreadyRunning);
+    }
+    let state = board::loopback_state(root, env)?;
+    let mut signals = Signals::install()?;
+    let wanted = oidc.as_ref().map(|_| SIGN_IN_PORT);
+    let listeners = Listeners::bind(args.port, wanted).map_err(bind_failed)?;
     let principal = local_principal(&env.user()).map_err(|error| Failed::StateUnusable {
         problem: format!("the account name is not a principal: {error}"),
     })?;
     let loopback = Loopback::new(listeners.port(), principal, Reach::Everything).map_err(system)?;
     let mut limits = Limits::default();
     limits.idle_exit = args.idle_exit;
-    let gate = Gate::new(loopback, oidc);
-    let app = App::new(store.clone(), store.clone(), store, gate, state, limits);
+    let site = Site::Local {
+        gate: Gate::new(loopback, oidc),
+        state,
+    };
+    let app = App::new(store.clone(), store.clone(), store, site, limits);
     log::start();
     tracing::info!(
         board = %root.display(),
         "hangar serves this board; run `hangar open` to open it in a browser"
     );
+    serve(root, listeners, app, &mut signals).await
+}
+
+/// Serves the hosted site: reads the secret file, draws the sealing key
+/// and discovers the provider before it binds.
+async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Served, Stop), Failed> {
+    let Hosted {
+        origin,
+        listen,
+        oidc,
+        secret_file,
+    } = hosted;
+    let oidc = connect(oidc, &Secret::File(secret_file)).await?;
+    let mut signals = Signals::install()?;
+    let listeners = Listeners::bind_hosted(listen).map_err(bind_failed)?;
+    log::start();
+    tracing::info!(
+        board = %root.display(),
+        origin = origin.as_str(),
+        "hangar serves this board as a hosted site behind a TLS proxy"
+    );
+    let site = Site::Hosted { origin, oidc };
+    let app = App::new(store.clone(), store.clone(), store, site, Limits::default());
+    serve(root, listeners, app, &mut signals).await
+}
+
+/// Serves `app` until a signal or, on the local site, the idle exit.
+async fn serve(
+    root: &Path,
+    listeners: Listeners,
+    app: App<BoardStore, BoardStore, BoardStore>,
+    signals: &mut Signals,
+) -> Result<(Served, Stop), Failed> {
     let caught = OnceLock::new();
     let shutdown = async {
         let _ = caught.set(signals.wait().await);

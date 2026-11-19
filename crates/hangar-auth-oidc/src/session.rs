@@ -11,6 +11,8 @@ use std::time::{Duration, SystemTime};
 
 /// How many sessions may be live at once.
 const MAX_SESSIONS: usize = 1024;
+/// How many sessions one principal may hold at once.
+const MAX_PER_PRINCIPAL: usize = 8;
 
 /// What a finished sign-in returns. The session credential appears here
 /// once, and the crate keeps only its hash. Its `Debug` output hides the
@@ -73,20 +75,47 @@ struct Live {
 pub(crate) struct Sessions(HashMap<[u8; 32], Live>);
 
 impl Sessions {
-    /// Creates a session for `principal` that lasts `lifetime`. It first
-    /// removes expired sessions, and refuses while 1,024 are live.
+    /// Creates a session for `principal` that lasts `lifetime`, in a
+    /// browser that holds the session `old`, if any. It draws the new
+    /// secret, removes expired sessions, then decides in this order: the
+    /// session of `old` goes, then the principal's session with the
+    /// earliest expiry while it holds 8, and only then does a table still
+    /// holding 1,024 sessions refuse. A refusal removes nothing that is
+    /// live.
     pub(crate) fn create(
         &mut self,
         principal: Principal,
         return_to: ReturnTo,
         lifetime: Duration,
         now: SystemTime,
+        old: Option<&Credential>,
     ) -> Result<SignedIn, SignInRefusal> {
+        let secret = random_secret()?;
         self.0.retain(|_, live| live.expires > now);
-        if self.0.len() >= MAX_SESSIONS {
+        let old = match old {
+            Some(Credential::Session(old)) => Some(hash(old.expose_secret())),
+            _ => None,
+        }
+        .filter(|key| self.0.contains_key(key));
+        let mut held: Vec<([u8; 32], SystemTime)> = self
+            .0
+            .iter()
+            .filter(|(key, live)| Some(**key) != old && live.principal.id() == principal.id())
+            .map(|(key, live)| (*key, live.expires))
+            .collect();
+        held.sort_by_key(|(_, expires)| *expires);
+        let evicted: Vec<[u8; 32]> = held
+            .iter()
+            .take(held.len().saturating_sub(MAX_PER_PRINCIPAL - 1))
+            .map(|(key, _)| *key)
+            .collect();
+        let removed = usize::from(old.is_some()) + evicted.len();
+        if self.0.len().saturating_sub(removed) >= MAX_SESSIONS {
             return Err(SignInRefusal::TooManySessions);
         }
-        let secret = random_secret()?;
+        for key in old.iter().chain(&evicted) {
+            self.0.remove(key);
+        }
         // A lifetime that runs past the end of SystemTime ends the session
         // at once, and no such lifetime is configured in practice.
         let expires = now.checked_add(lifetime).unwrap_or(now);

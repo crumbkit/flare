@@ -18,7 +18,7 @@ use hangar_auth_oidc::{
     OidcAuthenticator, OidcConfig, Reach, RedirectUri, ReturnTo, SignInRefusal, SignedIn,
     TestClock, WorkspaceDomain,
 };
-use hangar_core::{PageName, PrincipalId, Resource};
+use hangar_core::{Credential, PageName, PrincipalId, Resource};
 use http_body_util::{BodyExt as _, Full};
 use hyper::body::{Bytes, Incoming};
 use hyper::service::service_fn;
@@ -629,10 +629,20 @@ pub async fn sign_in(
     authenticator: &OidcAuthenticator<TestClock>,
     fake: &Fake,
 ) -> Result<SignedIn, SignInRefusal> {
+    sign_in_replacing(authenticator, fake, None).await
+}
+
+/// Starts a sign-in, approves it at the fake and completes it in a browser
+/// that holds the session `old`.
+pub async fn sign_in_replacing(
+    authenticator: &OidcAuthenticator<TestClock>,
+    fake: &Fake,
+    old: Option<&Credential>,
+) -> Result<SignedIn, SignInRefusal> {
     let start = authenticator.start(return_to()).expect("a start");
     let query = fake.approve(start.redirect());
     let kept = KeptState::from_cookie(start.kept().expose());
-    authenticator.complete(&query, Some(&kept)).await
+    authenticator.complete(&query, Some(&kept), old).await
 }
 
 /// Asserts that a sign-in was refused with `expected`.

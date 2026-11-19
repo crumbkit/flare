@@ -4,7 +4,9 @@ Serve agent-written pages from a board and work on board records through them.
 
 hangar is under construction. The `hangar` command serves a board on the Mac
 that runs it, to the person who runs it, and to Google accounts that its
-config admits.
+config admits. With a `hosted` section in its config, it serves a board's
+pages on a host behind a TLS proxy to the Google accounts that the config
+admits; [docs/hosting.md](docs/hosting.md) says how to run it.
 
 | Crate | Holds |
 | --- | --- |
@@ -20,7 +22,7 @@ config admits.
 
 | Command | What it does |
 | --- | --- |
-| `hangar serve [--board <dir>] [--port <n>] [--board-program <path>] [--config <path>] [--idle-exit <duration>]` | Checks the board program, the config and the Keychain secret, binds `127.0.0.1`, writes the server file and serves until Ctrl-C (exit 130), SIGTERM or 8 hours without a request (exit 0). It removes the server file when it stops. |
+| `hangar serve [--board <dir>] [--port <n>] [--board-program <path>] [--config <path>] [--idle-exit <duration>]` | Checks the board program, the config and the Keychain secret, binds `127.0.0.1`, writes the server file and serves until Ctrl-C (exit 130), SIGTERM or 8 hours without a request (exit 0). It removes the server file when it stops. With a `hosted` section in the config, it reads the client secret from `oidc.client_secret_file`, binds `hosted.listen`, writes no server file and serves until Ctrl-C or SIGTERM. |
 | `hangar open [<page-or-binding>] [--board <dir>]` | Proves that the running server holds its token, then asks it for a one-use launch code and opens it in the browser. Without a name it opens the index at `/hangar/`. |
 | `hangar publish <file> --name <name> [--slots <file.json>] [--dry-run]` | Publishes a new version of a page from a `.html` or `.md` file. A template with flaws is refused before anything is written. |
 | `hangar bind <page> --name <name> <slot>=<record path>... [--dry-run]` | Saves a binding that pins the page's newest version and fills its slots with records. |
@@ -36,8 +38,9 @@ every command and `hangar self usage` reports how the command is used.
 `$XDG_CONFIG_HOME/hangar/config.json`, else `~/.config/hangar/config.json`.
 Without a file, only the person who runs the server signs in. Every object
 refuses keys it does not name. The client secret is never in the file: it is
-read from the Keychain item with the service `hangar-oidc-google`, and a
-`client_secret` key is refused.
+read from the file that `oidc.client_secret_file` names, else from the
+Keychain item with the service `hangar-oidc-google`, and a `client_secret`
+key is refused.
 
 ```json
 {
@@ -53,6 +56,21 @@ read from the Keychain item with the service `hangar-oidc-google`, and a
 `reach` is `"everything"` or a list of `{ "page": "<name>" }`,
 `{ "binding": "<name>" }` and `{ "record": "<path>" }` entries. The redirect
 URI to register with the provider is `http://localhost:8740/auth/oidc/callback`.
+
+A hosted server's config adds a `hosted` section and names the secret file.
+The redirect URI to register is then `<origin>/auth/oidc/callback`:
+
+```json
+{
+  "hosted": { "origin": "https://hangar.example.com", "listen": "127.0.0.1:8080" },
+  "oidc": {
+    "issuer": "https://accounts.google.com",
+    "client_id": "<from the Google console>",
+    "client_secret_file": "/run/secrets/hangar-client-secret",
+    "admit": { "domain": "example.com", "reach": "everything" }
+  }
+}
+```
 
 ### The slots file
 
