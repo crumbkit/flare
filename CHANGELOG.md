@@ -8,6 +8,16 @@ This file records the notable changes to hangar. The format follows
 
 ### Added
 
+- `hangar-aws` keeps shares and grants in one DynamoDB table and files in
+  an S3 bucket, through `DynamoShareStore`, `DynamoGrantStore` and
+  `S3FileStore`. Each write is one transaction, so a grant or revoke lands
+  only while its writer is still an admin and the grant holds the role the
+  writer read. A write whose answer is lost is resent with the same token
+  and, at the 20-second deadline, settled by a consistent read.
+  `HostedConfig` reads the region, table and bucket and refuses any
+  credential key; credentials come only from the AWS provider chain.
+  `infra/hangar-stores.template.json` defines the table, the private bucket
+  and the IAM policy the stores need.
 - `hangar-core` defines the validated types of pages, bindings, records,
   provenance and principals, the `Authenticator`, `PageStore` and
   `RecordStore` traits, in-memory stores, and a contract suite for each

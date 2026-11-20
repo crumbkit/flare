@@ -16,6 +16,9 @@ standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb4055075
 # brings in cli. hangar-server also serves a hosted site on a host behind a
 # TLS proxy; the standards at this commit have no profile for a server that
 # runs on hosts other than its author's, so the service profile covers it.
+# hangar-aws is a library that keeps shares and grants in DynamoDB and files
+# in S3; the standards at this commit have no profile for a deployed store
+# or for personal data, so the library and service profiles cover it.
 profiles = ["base", "library", "child-process", "durable-state", "service", "cli"]
 
 [[binding]]
@@ -84,10 +87,25 @@ owners = ["crates/hangar-auth-loopback/src/state.rs"]
 checks = ["the remove_server tests in crates/hangar-auth-loopback/tests/state.rs, one with a server that replaced the file"]
 note = "remove_server removes server.json only while it holds the caller's token, compared in constant time. The sweep removes only temporary files and openers that the crate named, once they are more than 60 seconds old."
 
+[[binding]]
+rule = "SVC-12"
+owners = [
+  "crates/hangar-aws/src/connect.rs",
+  "crates/hangar-aws/src/connect/stand_ins.rs",
+  "crates/hangar-aws/src/dynamodb.rs",
+  "crates/hangar-aws/src/s3.rs",
+]
+checks = [
+  "clippy disallowed_types and disallowed_methods (clippy.toml): the SDK clients and their constructors",
+  "cargo-deny bans (deny.toml): aws-config, aws-sdk-dynamodb and aws-sdk-s3 only through hangar-aws",
+]
+note = "hangar-aws is the only crate that depends on the AWS SDK. connect.rs loads the SDK config from the provider chain and builds both clients, and connect/stand_ins.rs builds them for the stand-ins behind the `testing` feature; dynamodb.rs and s3.rs hold each client behind a crate-private type, and every request goes through them. No public item of hangar-aws names an SDK type, so a crate that uses the stores sees only hangar-core's traits, the config type and Stores."
+
 [[decision]]
 id = "lanes"
 requirement = """
 - Lane: `lane` in .github/workflows/ci.yml, on each pull request and each push to main. It runs every step of the pull-request lane in the standards' order (format, workflows, deny, shear, clippy, tests, doctests, rustdoc, features). It has no macOS job: the one macOS-only path, KeychainSecret, runs /usr/bin/security, and its tests run a fake program on Linux. hangar-auth-loopback's platform code is POSIX file modes, ownership and links through std::os::unix, and it does not behave alike on Linux and macOS: on macOS a server file being renamed over can report 0 links, a rename can land between the lstat and the open, and the user id comes from the owner of a new pipe. The crate handles both and tests them on every platform through a testing hook, and the Linux job runs those tests. The macOS check is the hangar-gates suite, which runs the workspace tests on the Mac that hangar serves from; the lane has no macOS job. Its budget is ten minutes, the job's timeout. A merge waits for it. It needs the `board` job, which builds the board program at a pinned crumbkit/board commit for hangar-board's tests and caches it under a key that names the commit; a cached run restores it in seconds, and the first build of a new pin has its own 40-minute timeout.
+- Lane: `hosted` in .github/workflows/ci.yml, on each pull request and each push to main. It runs hangar-aws's tests against DynamoDB Local and SeaweedFS's S3 server, which it starts with `docker run` by digest, and checks the CloudFormation template with cfn-lint pinned by hash. A merge waits for it, so it is a required check. The `lane` job leaves hangar-aws out of its tests step only; its clippy, cargo hack, doctests and rustdoc steps build hangar-aws. No stand-in enforces IAM, a bucket policy or a transaction conflict; the template's test pins the policies.
 - Lane: `advisories` in .github/workflows/ci.yml, daily at 06:43 UTC and on each push to main (BASE-29). Nothing waits for it.
 """
 purpose = "The pull-request lane stays within ten minutes on a small workspace and grows with the code. A daily advisory run catches an advisory published against a dependency already on main, and finding it after merge is safe because the advisory concerns code that is already on main."
