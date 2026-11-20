@@ -9,7 +9,8 @@ builds the `hangar` command. The rules are the Rust standards that
 [rust-standards.toml](rust-standards.toml) adopts. A change is ready when the
 steps of the `lane` job in [.github/workflows/ci.yml](.github/workflows/ci.yml)
 pass with `CARGO_BUILD_WARNINGS=deny`. Tests that run the board program read
-its path from `HANGAR_TEST_BOARD`.
+its path from `HANGAR_TEST_BOARD`. hangar-aws's tests read stand-in URLs
+from `HANGAR_TEST_DYNAMODB` and `HANGAR_TEST_S3`.
 
 - Write the test first, named as a sentence (BASE-36).
 - Give each new dependency a reason in `Cargo.toml` (BASE-23).

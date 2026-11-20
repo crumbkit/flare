@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/hangar-aws",
   "crates/hangar-auth-loopback",
   "crates/hangar-auth-oidc",
   "crates/hangar-board",
@@ -34,6 +35,15 @@ crumbkit-durable = "=0.6.0"
 crumbkit-process = { version = "=0.6.0", default-features = false }
 # base64url for the state, nonce, PKCE verifier and session secrets.
 base64 = "0.23.1"
+# hangar-aws keeps shares and grants in DynamoDB and files in S3 through the
+# official SDK crates. Their default features are off: the defaults add a
+# second, older TLS stack with open advisories and a credential provider that
+# starts child processes. default-https-client uses rustls on aws-lc-rs, the
+# version above. The SDK was compared with object_store and with a
+# hand-written client on aws-sigv4 before it was adopted.
+aws-config = { version = "=1.13.3", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-dynamodb = { version = "=1.140.0", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-s3 = { version = "=1.161.0", default-features = false, features = ["default-https-client", "rt-tokio", "http-1x", "behavior-version-latest"] }
 # The types and traits that hangar-auth-oidc and hangar-auth-loopback
 # implement and that hangar-render builds on.
 hangar-core = { path = "crates/hangar-core", version = "0.1.0" }

@@ -5,7 +5,9 @@
 # hangar-auth-loopback's POSIX file checks behave differently on macOS; the
 # Linux job runs their tests through a testing hook, and the hangar-gates
 # suite on a Mac is their macOS check, as the lanes decision says. The
-# board job builds the board program that hangar-board's tests run.
+# board job builds the board program that hangar-board's tests run. The
+# hosted job runs hangar-aws's tests against a local DynamoDB and a local
+# S3 server, so the lane leaves hangar-aws out of its tests.
 name: CI
 
 on:
@@ -126,8 +128,9 @@ jobs:
           path: board-bin
           key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
           fail-on-cache-miss: true
+      # hangar-aws's tests need the stand-ins that the hosted job starts.
       - name: tests
-        run: cargo nextest run --locked --workspace --all-features
+        run: cargo nextest run --locked --workspace --all-features --exclude hangar-aws
         env:
           HANGAR_TEST_BOARD: ${{ github.workspace }}/board-bin/board
       - name: doctests
@@ -146,6 +149,63 @@ jobs:
       # checked alone with each feature.
       - name: library features
         run: cargo hack clippy --locked --workspace --each-feature --lib
+
+  # hangar-aws's tests run against DynamoDB Local and SeaweedFS's S3
+  # server, each pulled by digest. The tests sign with made-up keys that
+  # SeaweedFS is started with; no job uses a real AWS account. cfn-lint,
+  # pinned by hash in infra/cfn-lint-requirements.txt, checks the template.
+  hosted:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    env:
+      HANGAR_TEST_DYNAMODB: http://127.0.0.1:8000
+      HANGAR_TEST_S3: http://127.0.0.1:8333
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: stand-ins
+        run: |
+          docker run -d --name dynamodb -p 127.0.0.1:8000:8000 \
+            public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86 \
+            -jar DynamoDBLocal.jar -inMemory -sharedDb
+          docker run -d --name s3 -p 127.0.0.1:8333:8333 \
+            -e AWS_ACCESS_KEY_ID=hangartest -e AWS_SECRET_ACCESS_KEY=hangartestsecret \
+            chrislusf/seaweedfs@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-nextest@0.9.140
+          fallback: none
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: template
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cfn"
+          "$RUNNER_TEMP/cfn/bin/pip" install --require-hashes -r infra/cfn-lint-requirements.txt
+          "$RUNNER_TEMP/cfn/bin/cfn-lint" infra/hangar-stores.template.json
+      # DynamoDB Local answers an unsigned request with 400 once it listens,
+      # and SeaweedFS's S3 server answers one with 403.
+      - name: wait for the stand-ins
+        run: |
+          ready() {
+            for _ in $(seq 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "$1" || true)
+              if [ "$code" = "$2" ]; then return 0; fi
+              sleep 2
+            done
+            echo "$1 did not answer $2" >&2
+            docker logs dynamodb >&2; docker logs s3 >&2
+            return 1
+          }
+          ready "$HANGAR_TEST_DYNAMODB" 400
+          ready "$HANGAR_TEST_S3" 403
+      - name: tests
+        run: cargo nextest run --locked -p hangar-aws --all-features
 
   advisories:
     if: github.event_name != 'pull_request'

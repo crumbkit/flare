@@ -46,7 +46,7 @@ disallowed-methods = [
     { path = "std::process::exit", reason = "return the exit code from main so destructors run" },
     # BASE-11
     { path = "std::thread::sleep", reason = "wait for an observable signal, or sleep in the clock owner" },
-    { path = "tokio::time::sleep", reason = "wait for an observable signal, or sleep in the clock owner", allow-invalid = true },
+    { path = "tokio::time::sleep", reason = "wait for an observable signal, or sleep in the clock owner, such as hangar-aws's dynamodb/retry.rs", allow-invalid = true },
     # PROC-1: the process modules are crates/hangar-auth-oidc/src/keychain.rs
     # and crates/hangar-board/src/process.rs.
     { path = "std::process::Command::new", reason = "start processes through the crate's process module: keychain.rs in hangar-auth-oidc, process.rs in hangar-board" },
@@ -71,9 +71,24 @@ disallowed-methods = [
     { path = "std::io::stdout", reason = "write through crumbkit's output" },
     { path = "std::io::stderr", reason = "write through crumbkit's output, or log through hangar-cli's log.rs" },
     { path = "std::io::stdin", reason = "read through crumbkit's output, which knows whether input is a terminal" },
+    # SVC-12 (the service profile): hangar-aws owns the DynamoDB and S3
+    # clients. Its connect.rs builds them, dynamodb.rs holds the DynamoDB
+    # client and s3.rs the S3 client.
+    { path = "aws_config::defaults", reason = "use hangar-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_config::load_defaults", reason = "use hangar-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_config::from_env", reason = "use hangar-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_config::load_from_env", reason = "use hangar-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_dynamodb::Client::new", reason = "use hangar-aws's stores; its connect.rs builds the DynamoDB client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_dynamodb::Client::from_conf", reason = "use hangar-aws's stores; its connect.rs builds the DynamoDB client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_s3::Client::new", reason = "use hangar-aws's stores; its connect.rs builds the S3 client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_s3::Client::from_conf", reason = "use hangar-aws's stores; its connect.rs builds the S3 client (SVC-12)", allow-invalid = true },
 ]
 
 disallowed-types = [
+    # SVC-12: hangar-aws's dynamodb.rs holds the DynamoDB client and its
+    # s3.rs the S3 client.
+    { path = "aws_sdk_dynamodb::Client", reason = "use hangar-aws's DynamoShareStore and DynamoGrantStore; dynamodb.rs owns the client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_s3::Client", reason = "use hangar-aws's S3FileStore; s3.rs owns the client (SVC-12)", allow-invalid = true },
     # PROC-1
     { path = "std::process::Child", reason = "let the crate's process module, keychain.rs or hangar-board's process.rs, hold the child, which owns its deadline and cleanup" },
 ]
