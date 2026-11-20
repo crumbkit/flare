@@ -6,8 +6,9 @@
 # reason of the entry (BASE-5). The durable-state entries (DUR-1, DUR-2)
 # come from the durable-state profile. hangar-auth-loopback's
 # state/files.rs writes its new private files, and it is the only library module that
-# suppresses them; tests that write fixture files suppress them too, each
-# with its reason.
+# suppresses them to write. hangar-auth-oidc's file_secret.rs suppresses
+# OpenOptions::new to open the client secret file read-only. Tests that
+# write fixture files suppress them too, each with its reason.
 
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true

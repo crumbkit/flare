@@ -219,7 +219,7 @@ async fn an_hd_parameter_in_the_callback_query_does_not_admit_a_token_without_th
             form(&[("hd", DOMAIN)])
         );
         let kept = KeptState::from_cookie(start.kept().expose());
-        let result = authenticator.complete(&query, Some(&kept)).await;
+        let result = authenticator.complete(&query, Some(&kept), None).await;
         if admitted {
             assert!(result.is_ok(), "{result:?}");
         } else {

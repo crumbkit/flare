@@ -29,14 +29,16 @@ where
 {
     let target = ctx.query("return_to").unwrap_or_else(|| HOME.to_owned());
     let target = ReturnPath::try_from(target.as_str()).map_err(|_| Code::BadQuery)?;
-    let loopback = ctx.shared.gate.loopback();
+    let (Some(gate), Some(state)) = (ctx.shared.site.gate(), ctx.shared.site.state()) else {
+        return Err(Code::NotFound.into());
+    };
+    let loopback = gate.loopback();
     let code = loopback
         .issue_code(target, ctx.now)
         .map_err(|error| match error {
             CodeError::TooMany => Code::TooManyCodes,
             _ => Code::LaunchUnavailable,
         })?;
-    let state = &ctx.shared.state;
     let opener = state
         .write_opener(&loopback.opener_page(&code))
         .map_err(|_| Code::LaunchUnavailable)?;
@@ -66,17 +68,18 @@ where
     K: OidcClock,
 {
     let code = ctx.query("code").ok_or(Code::BadQuery)?;
-    let signed_in =
-        ctx.shared
-            .gate
-            .loopback()
-            .sign_in(&code, ctx.now)
-            .map_err(|error| match error {
-                SignInError::Unavailable => Code::LaunchUnavailable,
-                _ => Code::LaunchRefused,
-            })?;
+    let (Some(gate), Some(state)) = (ctx.shared.site.gate(), ctx.shared.site.state()) else {
+        return Err(Code::NotFound.into());
+    };
+    let signed_in = gate
+        .loopback()
+        .sign_in(&code, ctx.now)
+        .map_err(|error| match error {
+            SignInError::Unavailable => Code::LaunchUnavailable,
+            _ => Code::LaunchRefused,
+        })?;
     if let Some(opener) = signed_in.opener() {
-        let _ = ctx.shared.state.remove_opener(opener);
+        let _ = state.remove_opener(opener);
     }
     let document = docs::launch(signed_in.target().as_str());
     Ok(Reply::html(StatusCode::OK, document)
@@ -96,7 +99,7 @@ where
     let handed = match ctx.shared.handover.redeem(&code, ctx.now) {
         Redeemed::Handed(handed) => handed,
         Redeemed::Expired(session) => {
-            if let Some(oidc) = ctx.shared.gate.oidc() {
+            if let Some(oidc) = ctx.shared.site.oidc() {
                 oidc.sign_out(&session);
             }
             return Err(Code::HandoverUnknown.into());

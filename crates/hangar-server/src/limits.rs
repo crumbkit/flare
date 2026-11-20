@@ -1,5 +1,5 @@
-//! The limits that keep one local process or one large record from
-//! exhausting the server (threat 21).
+//! The limits that keep one client or one large record from exhausting
+//! the server (threat 21).
 
 use std::time::Duration;
 
@@ -26,6 +26,28 @@ pub struct Limits {
     /// The most requests in work at once. The next one answers 503
     /// `server::busy`. The default is 16.
     pub in_work: usize,
+    /// The most `/auth/oidc/callback` requests in work at once, each of
+    /// which may hold a token request to the provider for up to its
+    /// deadline. A callback takes one of these before its in-work slot, so
+    /// callbacks never hold more than this many of the in-work slots. A
+    /// callback that finds none free waits for one, in the order the
+    /// callbacks arrived, for up to [`Limits::token_wait`]. It bounds token
+    /// requests in flight, and does not limit how often clients call; a
+    /// hosted site's proxy rate-limits the sign-in routes. The default is 4.
+    pub token_calls: usize,
+    /// How long a callback waits for a slot of [`Limits::token_calls`]. A
+    /// callback still waiting when it passes answers 503 `server::busy`. A
+    /// waiting callback holds its connection and no in-work slot, and the
+    /// wait comes before [`Limits::request_time`] starts, so a callback
+    /// answers within `token_wait + request_time`. The default is 10
+    /// seconds, the deadline of one token request to the provider.
+    pub token_wait: Duration,
+    /// The most callbacks that wait for a slot of [`Limits::token_calls`]
+    /// at once. The next callback answers 503 `server::busy` at once, so
+    /// callbacks hold at most `token_calls + token_waiters` of the
+    /// [`Limits::connections`] and the rest stay free for readers. The
+    /// default is 16.
+    pub token_waiters: usize,
     /// How long one request may take, from its route starting to its
     /// reply. A slower one is dropped and answers 503 `server::deadline`.
     /// The request's store calls are dropped before the 503 is sent;
@@ -45,8 +67,9 @@ pub struct Limits {
     pub handover_codes: usize,
     /// How long a hand-over code works. The default is 60 seconds.
     pub handover_life: Duration,
-    /// How long the server serves without a request before it stops by
-    /// itself, as a shutdown would. The default is 8 hours.
+    /// How long the local site serves without a request before it stops by
+    /// itself, as a shutdown would. The hosted site never stops by itself.
+    /// The default is 8 hours.
     pub idle_exit: Duration,
     /// How long a shutdown lets requests in work finish before it stops
     /// them. A stopped request's store calls are dropped before `serve`
@@ -67,6 +90,9 @@ impl Default for Limits {
             read_time: Duration::from_secs(10),
             connections: 64,
             in_work: 16,
+            token_calls: 4,
+            token_wait: Duration::from_secs(10),
+            token_waiters: 16,
             request_time: Duration::from_secs(30),
             form_tokens: 1024,
             form_token_life: Duration::from_secs(60 * 60),

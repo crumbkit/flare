@@ -12,7 +12,7 @@ use hangar_core::{
     Provenance, PublishedPage, ReadError, Record, RecordBody, RecordPath, RecordStore, RecordType,
     Rejection, Sample, Slot, SlotName, Slots, WriteError, WriteProvenance,
 };
-use hangar_server::{App, Clock, Gate, Limits, Listeners, Schemas, ServeError, Stopped};
+use hangar_server::{App, Clock, Gate, Limits, Listeners, Schemas, ServeError, Site, Stopped};
 use secrecy::ExposeSecret as _;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -55,6 +55,10 @@ pub struct Switches {
     pub page_writes: Arc<AtomicUsize>,
     /// Record writes.
     pub record_writes: Arc<AtomicUsize>,
+    /// Reads of the page store: pages, versions, bindings and fit checks.
+    pub page_reads: Arc<AtomicUsize>,
+    /// Reads of the record store.
+    pub record_reads: Arc<AtomicUsize>,
     /// The next page read panics.
     pub panic_on_read: Arc<AtomicBool>,
     /// Every page read answers `Unavailable`.
@@ -90,6 +94,7 @@ pub struct Pages {
 
 impl Pages {
     fn read(&self) -> Result<(), PageStoreError> {
+        self.switches.page_reads.fetch_add(1, Ordering::SeqCst);
         if self.switches.panic_on_read.swap(false, Ordering::SeqCst) {
             panic!("a page read panicked, as the test asked");
         }
@@ -209,10 +214,12 @@ pub struct Records {
 
 impl RecordStore for Records {
     async fn read(&self, path: &RecordPath) -> Result<Record, ReadError> {
+        self.switches.record_reads.fetch_add(1, Ordering::SeqCst);
         self.store.read(path).await
     }
 
     async fn read_all(&self, paths: &[RecordPath]) -> Vec<Result<Record, ReadError>> {
+        self.switches.record_reads.fetch_add(1, Ordering::SeqCst);
         self.store.read_all(paths).await
     }
 
@@ -285,6 +292,25 @@ impl Clock for TestTime {
     fn wall(&self) -> SystemTime {
         SystemTime::now() + self.offset()
     }
+}
+
+/// New empty memory stores and the switches they share.
+pub fn stores() -> (Pages, Records, Switches) {
+    let switches = Switches::default();
+    let pages = Pages {
+        store: Arc::new(MemoryPageStore::new()),
+        switches: switches.clone(),
+    };
+    let records = Records {
+        store: Arc::new(MemoryRecordStore::new()),
+        switches: switches.clone(),
+    };
+    (pages, records, switches)
+}
+
+/// The schemas of the fixtures.
+pub fn schemas() -> FixedSchemas {
+    FixedSchemas(HashMap::from([(TASK.to_owned(), TASK_SCHEMA.to_owned())]))
 }
 
 /// The default limits with `edit` applied.
@@ -369,15 +395,7 @@ impl Server {
                 earlier.state,
             ),
             None => {
-                let switches = Switches::default();
-                let pages = Pages {
-                    store: Arc::new(MemoryPageStore::new()),
-                    switches: switches.clone(),
-                };
-                let records = Records {
-                    store: Arc::new(MemoryRecordStore::new()),
-                    switches: switches.clone(),
-                };
+                let (pages, records, switches) = stores();
                 let state = StateDir::for_board(
                     &scratch.path().join("state"),
                     &scratch.path().join("board"),
@@ -385,14 +403,16 @@ impl Server {
                 (pages, records, switches, state)
             }
         };
-        let schemas = FixedSchemas(HashMap::from([(TASK.to_owned(), TASK_SCHEMA.to_owned())]));
+        let schemas = schemas();
         let time = TestTime::default();
         let app = App::new(
             pages.clone(),
             records.clone(),
             schemas,
-            Gate::new(loopback.clone(), options.oidc),
-            state.clone(),
+            Site::Local {
+                gate: Gate::new(loopback.clone(), options.oidc),
+                state: state.clone(),
+            },
             options.limits.unwrap_or_default(),
         )
         .with_clock(time.clone());
@@ -564,29 +584,7 @@ impl Server {
         template: &str,
         editable: &[&str],
     ) -> PageVersion {
-        let slot = Slot::new(
-            SlotName::try_from("task").unwrap(),
-            RecordType::try_from(TASK).unwrap(),
-            editable
-                .iter()
-                .map(|field| FieldName::try_from(*field).unwrap())
-                .collect(),
-            Some(Sample::new(
-                RecordType::try_from(TASK).unwrap(),
-                RecordBody::try_from(SAMPLE).unwrap(),
-            )),
-        )
-        .unwrap();
-        let page = Page::new(
-            PageName::try_from(name).unwrap(),
-            PageContent::new(ContentFormat::Html, template).unwrap(),
-            Slots::new(vec![slot]).unwrap(),
-        );
-        self.pages
-            .store
-            .publish(page, provenance(MadeFrom::Original))
-            .await
-            .unwrap()
+        seed_page_in(&self.pages, name, template, editable).await
     }
 
     /// Seeds `path` with `body` and returns its blob.
@@ -641,6 +639,39 @@ impl Server {
     }
 }
 
+/// Publishes a page named `name` with `template` and one `task` slot that
+/// edits `editable` in `pages`.
+pub async fn seed_page_in(
+    pages: &Pages,
+    name: &str,
+    template: &str,
+    editable: &[&str],
+) -> PageVersion {
+    let slot = Slot::new(
+        SlotName::try_from("task").unwrap(),
+        RecordType::try_from(TASK).unwrap(),
+        editable
+            .iter()
+            .map(|field| FieldName::try_from(*field).unwrap())
+            .collect(),
+        Some(Sample::new(
+            RecordType::try_from(TASK).unwrap(),
+            RecordBody::try_from(SAMPLE).unwrap(),
+        )),
+    )
+    .unwrap();
+    let page = Page::new(
+        PageName::try_from(name).unwrap(),
+        PageContent::new(ContentFormat::Html, template).unwrap(),
+        Slots::new(vec![slot]).unwrap(),
+    );
+    pages
+        .store
+        .publish(page, provenance(MadeFrom::Original))
+        .await
+        .unwrap()
+}
+
 /// The binding `name` of `page` at `version`, filling `task` with `record`.
 pub fn binding(name: &str, page: &str, version: &PageVersion, record: &str) -> Binding {
     let pin = PagePin::new(PageName::try_from(page).unwrap(), version.clone());
@@ -679,6 +710,22 @@ pub struct Call {
 }
 
 impl Call {
+    /// A request to `port` with exactly the headers `Host: <host>` and
+    /// `Connection: close`, whose same-origin helpers send `origin`.
+    pub fn new(port: u16, method: &str, path: &str, host: &str, origin: &str) -> Self {
+        Self {
+            port,
+            method: method.to_owned(),
+            path: path.to_owned(),
+            headers: vec![
+                ("Host".to_owned(), host.to_owned()),
+                ("Connection".to_owned(), "close".to_owned()),
+            ],
+            body: Vec::new(),
+            origin: origin.to_owned(),
+        }
+    }
+
     /// Adds a header.
     pub fn header(mut self, name: &str, value: &str) -> Self {
         self.headers.push((name.to_owned(), value.to_owned()));

@@ -2,19 +2,22 @@
 //! Google, and implements [`hangar_core::Authenticator`] for the sessions it
 //! creates.
 //!
-//! [`OidcAuthenticator::connect`] reads the client secret, fetches the
-//! provider's discovery document and key set, and checks both.
-//! [`OidcAuthenticator::start`] returns the provider URL to send the browser
-//! to and the state for the server to keep in a cookie.
-//! [`OidcAuthenticator::complete`] takes the callback's query and the kept
-//! state, exchanges the code with PKCE, verifies the ID token, checks the
-//! account against the configured [`Admit`] rule and creates a session. The crate holds no
-//! HTTP routes, cookies or pages; the server that hosts it does.
+//! [`OidcAuthenticator::connect`] reads the client secret, draws the key that
+//! seals pending sign-ins, fetches the provider's discovery document and key
+//! set, and checks both. [`OidcAuthenticator::start`] returns the provider
+//! URL to send the browser to and the sealed state for the server to keep in
+//! a cookie. [`OidcAuthenticator::complete`] takes the callback's query, the
+//! kept state and the browser's current session, if any, exchanges the code
+//! with PKCE, verifies the ID token, checks the account against the
+//! configured [`Admit`] rule and creates a session. The crate holds no HTTP
+//! routes, cookies or pages; the server that hosts it does.
 //!
-//! The crate accepts only ID tokens signed with RS256, asks for no refresh token
-//! and stores no ID token or access token. Everything it keeps lives in the
-//! memory of one process, so a restart signs everyone out and leaves nothing
-//! to repair.
+//! The crate accepts only ID tokens signed with RS256, asks for no refresh
+//! token and stores no ID token or access token. Its sessions and its
+//! sealing key live in the memory of one process, so a restart signs
+//! everyone out, voids every pending sign-in and leaves nothing to repair.
+//! Two processes behind one origin each refuse the other's kept values and
+//! sessions, so a server that hosts the crate runs as one process.
 //!
 //! # ID token checks, in order
 //!
@@ -28,7 +31,7 @@
 //!    `accounts.google.com` too, as Google documents), `aud` is the client ID alone,
 //!    `azp` equals the client ID when present, and `exp` is in the future
 //!    with 60 seconds of leeway.
-//! 5. `nonce` equals the pending sign-in's nonce.
+//! 5. `nonce` equals the sealed pending sign-in's nonce.
 //! 6. `email` is present and `email_verified` is the JSON boolean `true`.
 //! 7. Under [`Admit::Emails`], the email is ASCII, and lower-cased it is on
 //!    the allow-list, whose entry gives the principal. The `hd` claim is
@@ -68,13 +71,16 @@
 //!
 //! # Limits
 //!
-//! - At most 256 sign-ins are pending, each for 10 minutes. A `start` at the
-//!   limit removes the oldest, whose callback then gets
-//!   [`SignInRefusal::UnknownState`].
+//! - A pending sign-in opens for 10 minutes after its `start`. The crate
+//!   stores no pending sign-in, so starts have no limit and none evicts
+//!   another.
 //! - At most 1,024 sessions are live, each for 12 hours unless
 //!   [`OidcConfig::with_session_lifetime`] sets another lifetime. A sign-in
-//!   at the limit, after expired sessions are removed, gets
+//!   at the limit, after expired sessions, the browser's old session and
+//!   the principal's earliest-expiring session beyond 8 are removed, gets
 //!   [`SignInRefusal::TooManySessions`].
+//! - One principal holds at most 8 live sessions. Its next sign-in ends the
+//!   one with the earliest expiry.
 //! - A callback query of more than 4,096 bytes is
 //!   [`SignInRefusal::Malformed`].
 //! - A reply from the provider over 64 KiB, or past the 5 second connect
@@ -85,20 +91,29 @@
 //!
 //! # Pending sign-in
 //!
-//! Owned by `flow.rs`, keyed by the SHA-256 of the state. It holds the
-//! nonce, the PKCE verifier, the return-to value and the time it was made.
+//! Owned by `flow.rs`. `start` seals the issue time, state, nonce, PKCE
+//! verifier and return-to value with AES-256-GCM into the kept value, which
+//! the server keeps in a cookie. The key is 32 random bytes drawn at
+//! `connect` and held only in memory; the associated data is a fixed label
+//! and the client ID; each nonce is four zero bytes and a per-process
+//! counter, so no nonce repeats under the key. Nothing is stored
+//! server-side.
 //!
 //! | State | Event | Guard | Next state |
 //! | --- | --- | --- | --- |
-//! | absent | `start` | none | pending |
-//! | pending | `complete` with the matching kept state | the query's state equals the kept state, compared in constant time; the entry is under 10 minutes old | used (removed) |
-//! | pending | `complete` with a different or missing kept state | none | pending (unchanged) |
-//! | pending | 10 minutes pass | checked when the entry is looked up and when `start` makes room | expired (removed) |
-//! | pending | `start` while 256 are pending | it is the oldest | evicted (removed) |
+//! | absent | `start` | none | sealed (in the browser) |
+//! | sealed | `complete` with the kept value | it opens under this process's key and client ID, was issued under 10 minutes ago and at most 60 seconds ahead, and its state equals the query's, compared in constant time | opened |
+//! | sealed | `complete` with a value that does not open, is expired or is ahead | none | refused as [`SignInRefusal::UnknownState`] |
+//! | sealed | `complete` with a value whose state differs | none | refused as [`SignInRefusal::WrongState`] |
+//! | sealed | the process restarts | none | void; it no longer opens |
+//! | opened | the token exchange and ID token checks | none | a session, or a refusal |
 //!
-//! The entry is removed under one lock, so two callbacks with one state give
-//! one `complete` that continues and one `UnknownState`. It is removed
-//! before the token request, so a code is sent at most once.
+//! A kept value opens again until it is 10 minutes old. A second callback
+//! with it sends the code to the provider again, and a provider refuses a
+//! second use of a code, so the second callback is
+//! [`SignInRefusal::CodeRejected`]. Only the browser that holds the cookie
+//! can present the value, and the PKCE verifier and nonce bind the code to
+//! it.
 //!
 //! # Session
 //!
@@ -107,14 +122,19 @@
 //!
 //! | State | Event | Guard | Next state |
 //! | --- | --- | --- | --- |
-//! | absent | `complete` succeeds under [`Admit::Emails`] | every ID token check passed, the email is verified and on the allow-list, and fewer than 1,024 sessions are live after expired ones are removed | live |
-//! | absent | `complete` succeeds under [`Admit::Domain`] | every ID token check passed, the email is verified, the signed `hd` claim is a string equal to the configured domain without regard to ASCII letter case, the lower-cased email is a valid principal id, and fewer than 1,024 sessions are live after expired ones are removed | live |
+//! | absent | `complete` succeeds under [`Admit::Emails`] | every ID token check passed, the email is verified and on the allow-list, and fewer than 1,024 sessions are live after expired ones, the old session and the principal's evicted session are removed | live |
+//! | absent | `complete` succeeds under [`Admit::Domain`] | every ID token check passed, the email is verified, the signed `hd` claim is a string equal to the configured domain without regard to ASCII letter case, the lower-cased email is a valid principal id, and fewer than 1,024 sessions are live after expired ones, the old session and the principal's evicted session are removed | live |
 //! | absent | `complete` under [`Admit::Domain`] with no `hd`, another `hd` or an unverified email | none | absent; the sign-in is refused |
 //! | live | `authenticate` | the expiry is in the future | live |
 //! | live | `authenticate` after the expiry | none | expired (removed) |
 //! | live | `sign_out` | none | signed out (removed) |
+//! | live | `complete` succeeds with it as the old session | every check of that sign-in passed | replaced (removed in the step that creates the new session) |
+//! | live | its principal's 9th sign-in | it has the earliest expiry of the principal's 8 | evicted (removed) |
 //!
-//! No event extends a session. The secret is returned once, in
+//! `create` draws the new secret, removes expired sessions, then removes
+//! the old session, then the principal's earliest-expiring session while
+//! it holds 8, and refuses only when 1,024 sessions remain. A refusal at
+//! any step removes nothing that is live. No event extends a session. The secret is returned once, in
 //! [`SignedIn`], and the crate keeps only its hash.
 //!
 //! Under [`Admit::Domain`], a session exists only for an email that the
@@ -146,7 +166,8 @@
 //! `connect` reads the secret once through a [`ClientSecretSource`] and
 //! holds it as a [`secrecy::SecretString`]. It leaves the process only in
 //! the body of the POST to the token endpoint. [`KeychainSecret`] reads it
-//! from the macOS Keychain, and [`FixedSecret`] holds one the caller has.
+//! from the macOS Keychain, [`FileSecret`] reads it from a file such as a
+//! container's secret mount, and [`FixedSecret`] holds one the caller has.
 //! No `Debug` or `Display` output of the crate carries a secret, code,
 //! token, email or `hd` value. [`SignedIn`]'s `Debug` output hides the
 //! principal, which under [`Admit::Domain`] is the person's email.
@@ -155,6 +176,7 @@ mod allow;
 mod authenticator;
 mod clock;
 mod config;
+mod file_secret;
 mod flow;
 mod keychain;
 mod keys;
@@ -170,6 +192,7 @@ pub use authenticator::OidcAuthenticator;
 pub use clock::TestClock;
 pub use clock::{Clock, SystemClock};
 pub use config::{ClientId, ConfigError, IssuerUrl, OidcConfig, RedirectUri};
+pub use file_secret::FileSecret;
 pub use flow::{KeptState, ReturnTo, SignInStart};
 pub use keychain::KeychainSecret;
 pub use refusal::{ConnectError, MetadataFault, SecretError, SignInRefusal, TokenFault};

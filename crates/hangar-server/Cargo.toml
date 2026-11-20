@@ -1,6 +1,6 @@
 [package]
 name = "hangar-server"
-description = "hangar's HTTP server: pages, bindings, edit forms and sign-in on loopback addresses"
+description = "hangar's HTTP server: pages, bindings, edit forms and sign-in on a person's own machine or behind a TLS proxy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -25,13 +25,22 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "net", "time", "sync", "macros"] }
 tracing.workspace = true
+# Parses and normalises the hosted site's public origin.
+url.workspace = true
+
+[features]
+# Exposes PublicOrigin::loopback_http, an http origin on localhost for tests
+# that serve a hosted site without TLS. The hangar command never enables
+# it, and a CI step fails when its dependency tree does. The crate's own
+# tests turn it on through the dev-dependency below.
+testing = []
 
 [dev-dependencies]
+hangar-server = { path = ".", features = ["testing"] }
 hangar-auth-oidc = { workspace = true, features = ["testing"] }
 hangar-core = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util"] }
 tracing-subscriber.workspace = true
-url.workspace = true
 
 [lints]
 workspace = true

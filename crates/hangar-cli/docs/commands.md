@@ -8,7 +8,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 
 ### Commands
 
-- [`hangar serve`](#hangar-serve): Serve a board's pages and bindings on this machine until Ctrl-C
+- [`hangar serve`](#hangar-serve): Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
 - [`hangar open`](#hangar-open): Open the running server's index, a page or a binding in a browser
 - [`hangar publish`](#hangar-publish): Publish a new version of a page from an HTML or Markdown file
 - [`hangar bind`](#hangar-bind): Save a binding that fills a page's slots with records
@@ -25,15 +25,15 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 
 ## `hangar serve`
 
-Serve a board's pages and bindings on this machine until Ctrl-C
+Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
 
 ### Arguments
 
 - `--board <DIR>`: The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
 - `--board-program <PATH>`: The board program; without it, HANGAR\_BOARD, then the first board on PATH
-- `--port <N>`: The launch host's port on 127.0.0.1; 0 picks a free port. Default: `0`.
-- `--config <PATH>`: The config file; without it, $XDG\_CONFIG\_HOME/hangar/config.json or \~/.config/hangar/config.json
-- `--idle-exit <DURATION>`: Stop after this long without a request, such as 30m or 8h. Default: `8h`.
+- `--port <N>`: The launch host's port on 127.0.0.1; 0 picks a free port. A hosted server listens on hosted.listen instead. Default: `0`.
+- `--config <PATH>`: The config file, whose hosted section serves the pages behind a TLS proxy; without it, $XDG\_CONFIG\_HOME/hangar/config.json or \~/.config/hangar/config.json
+- `--idle-exit <DURATION>`: Stop after this long without a request, such as 30m or 8h. A hosted server never stops by itself. Default: `8h`.
 
 ### Examples
 

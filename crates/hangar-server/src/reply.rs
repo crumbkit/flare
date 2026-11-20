@@ -3,9 +3,11 @@
 //! other headers, so no handler can leave one out.
 
 use crate::app::bytes_alias::Body;
+use crate::site::SiteKind;
 use http::header::{
     CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HeaderName, HeaderValue, LOCATION,
-    REFERRER_POLICY, SET_COOKIE, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS,
+    REFERRER_POLICY, SET_COOKIE, STRICT_TRANSPORT_SECURITY, X_CONTENT_TYPE_OPTIONS,
+    X_FRAME_OPTIONS,
 };
 use http::{Response, StatusCode};
 use hyper::body::Bytes;
@@ -26,6 +28,10 @@ const FIXED: [(HeaderName, &str); 7] = [
     (COOP, "same-origin"),
     (X_FRAME_OPTIONS, "DENY"),
 ];
+
+/// What every hosted reply adds: browsers keep to HTTPS for the origin for
+/// two years.
+const HSTS: &str = "max-age=63072000";
 
 /// The media type of a hangar document.
 pub(crate) const HTML: &str = "text/html; charset=utf-8";
@@ -90,10 +96,11 @@ impl Reply {
         self.status
     }
 
-    /// The response, with the policy and the six other headers. A location
-    /// or cookie that is not a valid header value, which the server never
-    /// composes, turns the reply into an empty 500.
-    pub(crate) fn into_response(self) -> Response<Body> {
+    /// The response, with the policy and the six other headers, and on the
+    /// hosted site `Strict-Transport-Security`. A location or cookie that
+    /// is not a valid header value, which the server never composes, turns
+    /// the reply into an empty 500.
+    pub(crate) fn into_response(self, site: SiteKind) -> Response<Body> {
         let mut extra = Vec::new();
         if let Some(content_type) = self.content_type {
             extra.push((CONTENT_TYPE, HeaderValue::from_static(content_type)));
@@ -106,7 +113,9 @@ impl Reply {
         for (name, value) in dynamic {
             match HeaderValue::try_from(value) {
                 Ok(value) => extra.push((name, value)),
-                Err(_) => return Self::empty(StatusCode::INTERNAL_SERVER_ERROR).into_response(),
+                Err(_) => {
+                    return Self::empty(StatusCode::INTERNAL_SERVER_ERROR).into_response(site);
+                }
             }
         }
         let mut response = Response::new(Body::new(self.body));
@@ -114,6 +123,9 @@ impl Reply {
         let headers = response.headers_mut();
         for (name, value) in FIXED {
             headers.insert(name, HeaderValue::from_static(value));
+        }
+        if site == SiteKind::Hosted {
+            headers.insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
         }
         for (name, value) in extra {
             headers.append(name, value);

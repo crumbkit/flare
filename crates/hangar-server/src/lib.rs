@@ -1,31 +1,46 @@
 //! hangar's HTTP server: it serves pages and bindings from a board, draws
-//! and checks edit forms, and signs people in, on loopback addresses only.
+//! and checks edit forms, and signs people in, either on a person's own
+//! machine or behind a TLS-terminating proxy.
 //!
 //! The server reads no environment variable and starts no process. Its
-//! caller, the `hangar` binary, builds the stores, the authenticators and
-//! the state directory and hands them to [`App::new`], binds with
-//! [`Listeners::bind`], and calls [`Listeners::serve`]. [`ops`] holds the
-//! two writes that need no server: publishing a page and saving a binding.
+//! caller, the `hangar` binary, builds the stores and a [`Site`] and hands
+//! them to [`App::new`], binds with [`Listeners::bind`] or
+//! [`Listeners::bind_hosted`], and calls [`Listeners::serve`]. [`ops`]
+//! holds the two writes that need no server: publishing a page and saving
+//! a binding.
 //!
-//! # Listeners
+//! # Sites and listeners
+//!
+//! [`Site::Local`] is the server on a person's own machine:
 //!
 //! - The launch host, `h-<32 hex>.localhost:<port>` on `127.0.0.1`, serves
-//!   every route of the table in `routes.rs`.
+//!   every route of the table in `routes.rs` that names the local site.
 //! - With OpenID Connect, `localhost:<oidc port>` on `127.0.0.1` and `::1`
 //!   serves only `/auth/oidc/start` and `/auth/oidc/callback`, and never
 //!   sets the session cookie.
 //!
+//! [`Site::Hosted`] is one plain-HTTP listener behind a TLS proxy, serving
+//! one [`PublicOrigin`]. It runs `hosted.rs`'s checks (the Host, the Origin
+//! of a non-GET request, the exact `__Host-hangar_session` cookie and no
+//! Authorization header), then the same cross-site rule, and serves only
+//! the routes that name the hosted site: `/up`, the stylesheet, `/`,
+//! `/hangar/`, `/pages/<name>`, `/auth/oidc/start` and
+//! `/auth/oidc/callback`. It has no write route. It sets only `__Host-`
+//! cookies, writes no file and has no idle exit.
+//!
 //! Every reply, refusals included, carries the threat model's
-//! Content-Security-Policy and six other headers (`reply.rs`).
+//! Content-Security-Policy and six other headers (`reply.rs`), and every
+//! hosted reply also `Strict-Transport-Security`.
 //!
 //! # Lifecycle
 //!
-//! This is the landed copy of the change's lifecycle record. The server
-//! file, the openers, launch codes and loopback sessions follow
-//! hangar-auth-loopback's table, and pending sign-ins and OpenID Connect
-//! sessions follow hangar-auth-oidc's.
+//! This is the landed copy of the lifecycle records. The server file, the
+//! openers, launch codes and loopback sessions follow hangar-auth-loopback's
+//! table, and pending sign-ins and OpenID Connect sessions follow
+//! hangar-auth-oidc's. The hosted site never creates the server file, the
+//! openers, launch codes, loopback sessions or hand-over codes.
 //!
-//! The server process (`hangar serve`):
+//! The local server process (`hangar serve` without a `hosted` section):
 //!
 //! | State | Entered by | Left by |
 //! | --- | --- | --- |
@@ -35,6 +50,24 @@
 //! | draining | any of the three | every request in work finishing; or [`Limits::drain`] passing, which drops the requests still in work and waits until each board child they started has ended |
 //! | stopped | draining ending, then `remove_server` for its own record and removal of its openers | final |
 //! | killed | SIGKILL, a power loss, a crash; `server.json` is stale | the next `hangar serve`, which replaces the file |
+//!
+//! The hosted server process (`hangar serve` with a `hosted` section):
+//!
+//! | State | Entered by | Left by |
+//! | --- | --- | --- |
+//! | checking | the command starting | the board program, board directory, config, secret file, sealing key and provider discovery passing; or a coded failure and exit, with nothing bound |
+//! | bound | [`Listeners::bind_hosted`] on the configured address | serving starting; or a failure, which closes the listener and exits |
+//! | serving | the accept loop starting; no server file is written | Ctrl-C or SIGTERM; a listener error. There is no idle exit |
+//! | draining | either of the above | every request in work finishing; or [`Limits::drain`] passing, which drops the requests still in work and waits until each board child they started has ended |
+//! | stopped | draining ending | final; every session and the sealing key are gone with the process |
+//! | killed | SIGKILL, a crash, a host restart | final; nothing on disk to repair, and the next start serves with an empty session table and a new key |
+//!
+//! A hosted session (one browser):
+//!
+//! | State | Entered by | Left by |
+//! | --- | --- | --- |
+//! | signed in | `complete` succeeding, which removes the session of the browser's current cookie, if any, in the same step that creates the new one; the callback sets `__Host-hangar_session` (Lax, Max-Age = session life) and answers 303 to the return path | its expiry; a restart; a newer successful sign-in in the same browser; the same principal's 9th sign-in anywhere, which ends its earliest-expiring session. Removal from the admit list does not end it |
+//! | refused | a kept value that does not open, is expired or has another state; a provider refusal; a full session table | final; no cookie set; any older session of the browser stays live |
 //!
 //! Before it binds, `hangar serve` reads `server.json` and sends the probe;
 //! a right proof fails the command with `server::already_running`. A timer
@@ -74,12 +107,23 @@
 //! | redeemed | the finish route removing the row and setting the session cookie | final |
 //! | expired | the time passing, the table filling or the server exiting | final; the OpenID Connect session it held is signed out |
 //!
-//! The kept-state cookie `hangar_oidc_state` on `localhost`:
+//! The kept-state cookie, `hangar_oidc_state` on the local sign-in host and
+//! `__Host-hangar_oidc_state` on the hosted site, holds the sealed pending
+//! sign-in:
 //!
 //! | State | Entered by | Left by |
 //! | --- | --- | --- |
 //! | set | `/auth/oidc/start` | `/auth/oidc/callback`, which clears it on every answer; 600 seconds passing |
 //! | cleared | either of the above | final |
+//!
+//! A callback's place in the callback budget, on both sites (memory, at most
+//! [`Limits::token_calls`] holding and [`Limits::token_waiters`] waiting):
+//!
+//! | State | Entered by | Left by |
+//! | --- | --- | --- |
+//! | waiting | `/auth/oidc/callback` arriving while every slot is taken and fewer than `token_waiters` callbacks wait | a slot freeing, which goes to the callback that has waited longest; [`Limits::token_wait`] passing |
+//! | holding | a free slot on arrival or while waiting, then an in-work slot | the reply, which frees both |
+//! | refused | the queue already full, the wait passing, or no in-work slot | final; 503 `server::busy`, with no token request sent |
 //!
 //! # Crash points
 //!
@@ -108,6 +152,12 @@
 //! 9. Two `hangar serve` commands that start at once for one board both see
 //!    no current server. The later rename of `server.json` wins, and the
 //!    other serves only browsers already signed in until its idle exit.
+//! 10. On the hosted site, death between `start` and the callback voids the
+//!     sealed value with the key; the callback answers `oidc::refused` and
+//!     clears the kept cookie. Death between `complete` and the reply
+//!     leaves the browser with its old cookie, which no longer
+//!     authenticates, and the person signs in again. `complete` removes the
+//!     old session and creates the new one under one lock.
 //!
 //! # Invariants
 //!
@@ -119,8 +169,12 @@
 //!    whose record path comes from the binding.
 //! 4. A token is removed from its table before the post's other checks run,
 //!    so no token is accepted twice, even by two posts at once.
-//! 5. The session cookie is set only on the launch host, by `/launch` and
-//!    `/auth/oidc/finish`.
+//! 5. On the local site, the session cookie is set only on the launch host,
+//!    by `/launch` and `/auth/oidc/finish`. On the hosted site,
+//!    `__Host-hangar_session` is set only by `/auth/oidc/callback`, only
+//!    after `complete` succeeds with a sealed kept value from the same
+//!    browser, and its secret is minted by `complete`, never read from the
+//!    request.
 //! 6. Every `authorize` call goes to the authenticator that accepted the
 //!    request's credential, in the same request. Nothing stores a principal
 //!    or a decision between requests.
@@ -132,16 +186,35 @@
 //! 10. No board child that a request started runs after the server has
 //!     answered that request, and none runs after [`Listeners::serve`]
 //!     returns.
+//! 11. The hosted site serves only requests whose one Host header is its
+//!     origin's authority, and reads no forwarded header or peer address.
+//! 12. The hosted site sets only `__Host-` cookies, each with `Secure`,
+//!     `HttpOnly` and `Path=/`, and clears them with the same attributes.
+//! 13. The hosted site serves none of `/b/<name>`, `/ready`, `/launch`,
+//!     `/launch/codes`, `/launch/probe` and `/auth/oidc/finish`, writes no
+//!     file, has no write route, and stores nothing server-side for an
+//!     anonymous request.
+//! 14. At most [`Limits::token_calls`] callbacks are in work at once. The
+//!     next waits for a slot, in arrival order, for up to
+//!     [`Limits::token_wait`], and at most [`Limits::token_waiters`] wait
+//!     at once. A waiting callback holds no in-work slot. A callback that
+//!     finds the queue full, or whose wait runs out, answers 503
+//!     `server::busy` before it takes an in-work slot, on both sites.
+//! 15. A hosted hangar runs as one process, because its sessions and
+//!     sealing key live in that process's memory. A second process behind
+//!     the same origin refuses the first one's kept values and sessions.
 
 mod app;
 mod auth;
 mod checks;
 mod clock;
+mod cookies;
 mod docs;
 mod forms;
 mod frame;
 mod handlers;
 mod handover;
+mod hosted;
 mod launch;
 mod limits;
 mod listen;
@@ -151,10 +224,11 @@ mod reply;
 mod routes;
 mod schemas;
 mod secret;
+mod site;
 mod tasks;
 
-/// Every route of the launch host's table, as its method and pattern. A
-/// pattern names its one variable segment `<name>`.
+/// Every route the local site's launch host serves, as its method and
+/// pattern. A pattern names its one variable segment `<name>`.
 pub fn routes() -> impl Iterator<Item = (http::Method, &'static str)> {
     routes::listed()
 }
@@ -165,3 +239,4 @@ pub use clock::{Clock, SystemClock};
 pub use limits::Limits;
 pub use listen::{BindError, Listeners, ServeError, Stopped};
 pub use schemas::Schemas;
+pub use site::{OriginError, PublicOrigin, Site};

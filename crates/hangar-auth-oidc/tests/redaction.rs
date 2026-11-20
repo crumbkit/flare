@@ -49,7 +49,7 @@ async fn debug_output_of_the_config_authenticator_start_and_sign_in_hides_every_
         .1
         .into_owned();
     let signed_in = authenticator
-        .complete(&query, Some(start.kept()))
+        .complete(&query, Some(start.kept()), None)
         .await
         .unwrap();
     let hangar_core::Credential::Session(session) = signed_in.session() else {

@@ -29,6 +29,14 @@ pub mod scratch;
 )]
 pub mod harness;
 
+#[path = "support/hosted.rs"]
+#[expect(
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    reason = "the hosted harness is test support: it panics on a broken fixture, and each test reads what it returns"
+)]
+pub mod hosted;
+
 #[path = "server/authenticators.rs"]
 mod authenticators;
 #[path = "server/crashes.rs"]
@@ -39,6 +47,10 @@ mod edits;
 mod forms;
 #[path = "server/headers.rs"]
 mod headers;
+#[path = "server/hosted_sign_in.rs"]
+mod hosted_sign_in;
+#[path = "server/hosted.rs"]
+mod hosted_site;
 #[path = "server/limits.rs"]
 mod limits;
 #[path = "server/loopback.rs"]

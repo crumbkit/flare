@@ -19,7 +19,8 @@ use hangar_auth_oidc::{
     Admit, AllowEntry, AllowList, Email, KeptState, OidcAuthenticator, Reach, SignInRefusal,
     TestClock, TokenFault,
 };
-use hangar_core::{Authenticator, PrincipalId};
+use hangar_core::{Authenticator, Credential, PrincipalId};
+use secrecy::ExposeSecret as _;
 use serde_json::json;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -45,6 +46,20 @@ async fn a_good_sign_in_returns_a_session_that_authenticate_accepts() {
 }
 
 #[tokio::test]
+async fn a_sign_ins_session_secret_is_the_secret_its_session_credential_carries() {
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let signed_in = sign_in(&authenticator, &fake).await.expect("a sign-in");
+    let Credential::Session(session) = signed_in.session() else {
+        panic!("a sign-in returns a session credential");
+    };
+    assert_eq!(
+        signed_in.session_secret().expose_secret(),
+        session.expose_secret()
+    );
+}
+
+#[tokio::test]
 async fn the_authorisation_url_carries_every_parameter_and_two_starts_share_no_value() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
@@ -58,7 +73,10 @@ async fn the_authorisation_url_carries_every_parameter_and_two_starts_share_no_v
     assert_eq!(one["redirect_uri"], REDIRECT);
     assert_eq!(one["scope"], "openid email profile");
     assert_eq!(one["code_challenge_method"], "S256");
-    assert_eq!(one["state"], first.kept().expose());
+    assert!(
+        !first.kept().expose().contains(&one["state"]),
+        "the kept value is sealed, so the state is not readable in it"
+    );
     for name in ["state", "nonce", "code_challenge"] {
         assert_eq!(one[name].len(), 43, "{name} is 32 bytes in base64url");
         assert_ne!(one[name], two[name], "{name} repeats");
@@ -72,13 +90,20 @@ async fn a_callback_whose_state_differs_is_refused_and_the_sign_in_then_complete
     let (authenticator, _clock) = connect(&fake).await;
     let start = authenticator.start(return_to()).unwrap();
     let query = fake.approve(start.redirect());
-    let other = KeptState::from_cookie("another-state-value");
+    // Another sign-in's kept value opens, and its state is not the query's.
+    let another = authenticator.start(return_to()).unwrap();
+    let other = KeptState::from_cookie(another.kept().expose());
     assert_refused(
-        authenticator.complete(&query, Some(&other)).await,
+        authenticator.complete(&query, Some(&other), None).await,
         &SignInRefusal::WrongState,
     );
     let kept = KeptState::from_cookie(start.kept().expose());
-    assert!(authenticator.complete(&query, Some(&kept)).await.is_ok());
+    assert!(
+        authenticator
+            .complete(&query, Some(&kept), None)
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -88,34 +113,77 @@ async fn a_callback_with_no_kept_state_is_refused_and_one_with_it_completes() {
     let start = authenticator.start(return_to()).unwrap();
     let query = fake.approve(start.redirect());
     assert_refused(
-        authenticator.complete(&query, None).await,
+        authenticator.complete(&query, None, None).await,
         &SignInRefusal::NoKeptState,
     );
     assert!(
         authenticator
-            .complete(&query, Some(start.kept()))
+            .complete(&query, Some(start.kept()), None)
             .await
             .is_ok()
     );
 }
 
 #[tokio::test]
-async fn a_second_callback_with_the_same_state_is_refused_and_the_code_is_sent_once() {
+async fn a_second_callback_with_the_same_kept_value_is_refused_by_the_provider_as_code_rejected() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
     let start = authenticator.start(return_to()).unwrap();
     let query = fake.approve(start.redirect());
     assert!(
         authenticator
-            .complete(&query, Some(start.kept()))
+            .complete(&query, Some(start.kept()), None)
             .await
             .is_ok()
     );
     assert_refused(
-        authenticator.complete(&query, Some(start.kept())).await,
+        authenticator
+            .complete(&query, Some(start.kept()), None)
+            .await,
+        &SignInRefusal::CodeRejected,
+    );
+    assert_eq!(fake.token_requests(), 2);
+}
+
+#[tokio::test]
+async fn a_kept_value_that_does_not_open_is_refused_as_unknown_and_its_own_completes() {
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let start = authenticator.start(return_to()).unwrap();
+    let query = fake.approve(start.redirect());
+    let forged = KeptState::from_cookie("another-state-value");
+    assert_refused(
+        authenticator.complete(&query, Some(&forged), None).await,
         &SignInRefusal::UnknownState,
     );
-    assert_eq!(fake.token_requests(), 1);
+    assert_eq!(fake.token_requests(), 0);
+    assert!(
+        authenticator
+            .complete(&query, Some(start.kept()), None)
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn a_kept_value_from_another_authenticator_is_refused_as_unknown() {
+    let fake = Fake::start().await;
+    let (authenticator, _clock) = connect(&fake).await;
+    let (other, _other_clock) = connect(&fake).await;
+    let start = other.start(return_to()).unwrap();
+    let query = fake.approve(start.redirect());
+    assert_refused(
+        authenticator
+            .complete(&query, Some(start.kept()), None)
+            .await,
+        &SignInRefusal::UnknownState,
+    );
+    assert!(
+        other
+            .complete(&query, Some(start.kept()), None)
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -126,7 +194,7 @@ async fn a_code_the_provider_already_redeemed_is_refused_and_a_fresh_code_is_acc
     let query = fake.approve(first.redirect());
     assert!(
         authenticator
-            .complete(&query, Some(first.kept()))
+            .complete(&query, Some(first.kept()), None)
             .await
             .is_ok()
     );
@@ -136,10 +204,12 @@ async fn a_code_the_provider_already_redeemed_is_refused_and_a_fresh_code_is_acc
         .split('&')
         .find(|pair| pair.starts_with("code="))
         .unwrap();
-    let state = second.kept().expose();
+    let state = &params(second.redirect())["state"];
     let replayed = format!("{code}&state={state}");
     assert_refused(
-        authenticator.complete(&replayed, Some(second.kept())).await,
+        authenticator
+            .complete(&replayed, Some(second.kept()), None)
+            .await,
         &SignInRefusal::CodeRejected,
     );
     assert!(sign_in(&authenticator, &fake).await.is_ok());
@@ -337,7 +407,9 @@ async fn a_provider_error_callback_is_refused_without_a_token_request() {
     let start = authenticator.start(return_to()).unwrap();
     let query = fake.deny(start.redirect());
     assert_refused(
-        authenticator.complete(&query, Some(start.kept())).await,
+        authenticator
+            .complete(&query, Some(start.kept()), None)
+            .await,
         &SignInRefusal::ProviderDenied,
     );
     assert_eq!(fake.token_requests(), 0);
@@ -387,40 +459,33 @@ async fn a_pending_sign_in_older_than_ten_minutes_is_refused_and_a_younger_one_c
     clock.advance(Duration::from_secs(599));
     let old_query = fake.approve(old.redirect());
     assert_refused(
-        authenticator.complete(&old_query, Some(old.kept())).await,
+        authenticator
+            .complete(&old_query, Some(old.kept()), None)
+            .await,
         &SignInRefusal::UnknownState,
     );
     let young_query = fake.approve(young.redirect());
     assert!(
         authenticator
-            .complete(&young_query, Some(young.kept()))
+            .complete(&young_query, Some(young.kept()), None)
             .await
             .is_ok()
     );
 }
 
 #[tokio::test]
-async fn the_257th_start_evicts_the_oldest_pending_sign_in_and_the_newest_completes() {
+async fn a_sign_in_completes_after_a_thousand_later_starts() {
     let fake = Fake::start().await;
     let (authenticator, clock) = connect(&fake).await;
-    let oldest = authenticator.start(return_to()).unwrap();
-    for _ in 0..255 {
+    let first = authenticator.start(return_to()).unwrap();
+    for _ in 0..1000 {
         clock.advance(Duration::from_millis(1));
         authenticator.start(return_to()).unwrap();
     }
-    clock.advance(Duration::from_millis(1));
-    let newest = authenticator.start(return_to()).unwrap();
-    let oldest_query = fake.approve(oldest.redirect());
-    assert_refused(
-        authenticator
-            .complete(&oldest_query, Some(oldest.kept()))
-            .await,
-        &SignInRefusal::UnknownState,
-    );
-    let newest_query = fake.approve(newest.redirect());
+    let query = fake.approve(first.redirect());
     assert!(
         authenticator
-            .complete(&newest_query, Some(newest.kept()))
+            .complete(&query, Some(first.kept()), None)
             .await
             .is_ok()
     );
@@ -435,7 +500,7 @@ async fn the_provider_receives_the_verifier_and_the_client_secret_only_in_the_to
     let query = fake.approve(start.redirect());
     assert!(
         authenticator
-            .complete(&query, Some(start.kept()))
+            .complete(&query, Some(start.kept()), None)
             .await
             .is_ok()
     );

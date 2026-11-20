@@ -28,7 +28,7 @@ pub struct Cli {
 /// hangar's commands.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Verb {
-    /// Serve a board's pages and bindings on this machine until Ctrl-C
+    /// Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
     Serve(ServeArgs),
     /// Open the running server's index, a page or a binding in a browser
     Open(OpenArgs),
@@ -82,13 +82,13 @@ pub(crate) struct ServeArgs {
     /// Where the board is and the program that reads it.
     #[command(flatten)]
     pub(crate) board: BoardArgs,
-    /// The launch host's port on 127.0.0.1; 0 picks a free port
+    /// The launch host's port on 127.0.0.1; 0 picks a free port. A hosted server listens on hosted.listen instead
     #[arg(long, value_name = "N", default_value_t = 0)]
     pub(crate) port: u16,
-    /// The config file; without it, $XDG_CONFIG_HOME/hangar/config.json or ~/.config/hangar/config.json
+    /// The config file, whose hosted section serves the pages behind a TLS proxy; without it, $XDG_CONFIG_HOME/hangar/config.json or ~/.config/hangar/config.json
     #[arg(long, value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
-    /// Stop after this long without a request, such as 30m or 8h
+    /// Stop after this long without a request, such as 30m or 8h. A hosted server never stops by itself
     #[arg(long, value_name = "DURATION", default_value = "8h", value_parser = crate::duration::parse)]
     pub(crate) idle_exit: std::time::Duration,
 }

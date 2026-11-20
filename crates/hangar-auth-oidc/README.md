@@ -25,6 +25,32 @@ so with another issuer `Admit::Domain` trusts that issuer's `hd`. Use it
 with the issuer `https://accounts.google.com`. Under `Admit::Domain`,
 `authorize` allows a principal only while one of its sessions is live.
 
+## Pending sign-ins and sessions
+
+`start` seals the pending sign-in into the value the server keeps in a
+cookie, with AES-256-GCM under a key that exists only in the process's
+memory, so the crate stores nothing for a sign-in that has not finished and
+no number of starts evicts another. A kept value opens for 10 minutes. A
+second callback with the same value sends the code to the provider again,
+and the provider refuses the used code as `CodeRejected`.
+
+`complete` takes the session the browser already holds, if any, and ends it
+in the step that creates the new one, after every check has passed. One
+principal holds at most 8 live sessions, and all principals together at
+most 1,024. A restart signs everyone out and voids every pending sign-in,
+so a server that hosts the crate runs as one process.
+
+## The client secret
+
+`KeychainSecret` reads the client secret from a macOS Keychain item.
+`FileSecret` reads it from a file, such as a container's secret mount, on a
+host that has no Keychain. It follows symbolic links and checks the open
+file: a regular file, owned by the user the process runs as or by root, not
+writable by its group or by others, and 1 to 4,096 bytes long. It trims one
+trailing newline. A world-readable file is accepted, because container
+runtimes mount secrets 0444 or 0644 by default; mode 0400 is the
+recommended mode.
+
 ## Tests
 
 The tests run against a fake provider inside the test process
