@@ -16,7 +16,7 @@ use fake_provider::{
     DOMAIN, EMAIL, Fake, assert_refused, connect, connect_domain, form, return_to, sign_in,
 };
 use hangar_auth_oidc::{KeptState, SignInRefusal, SignedIn};
-use hangar_core::{Authenticator, PrincipalId};
+use hangar_core::{Authenticator, Email, PrincipalId};
 use serde_json::{Value, json};
 use url::Url;
 
@@ -54,6 +54,22 @@ async fn a_verified_email_whose_hd_is_the_domain_signs_in_as_the_lower_cased_ema
         .await
         .unwrap();
     assert_eq!(principal.id(), &expected);
+}
+
+#[tokio::test]
+async fn a_domain_sign_in_carries_the_verified_email_in_lower_case_into_every_later_request() {
+    let fake = Fake::start().await;
+    fake.set_email("Ada.Lovelace@Example.com");
+    fake.set_hd(Some(json!(DOMAIN)));
+    let (authenticator, _clock) = connect_domain(&fake).await;
+    let signed_in = sign_in(&authenticator, &fake).await.unwrap();
+    let expected = Email::try_from("ada.lovelace@example.com").unwrap();
+    assert_eq!(signed_in.principal().email(), Some(&expected));
+    let principal = authenticator
+        .authenticate(signed_in.session())
+        .await
+        .unwrap();
+    assert_eq!(principal.email(), Some(&expected));
 }
 
 #[tokio::test]

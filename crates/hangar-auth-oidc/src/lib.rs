@@ -45,6 +45,11 @@
 //!    ASCII, so that lower-cased it is the principal id
 //!    ([`SignInRefusal::NotAllowed`] otherwise).
 //!
+//! Under both rules the session's [`hangar_core::Principal`] carries the
+//! verified email in lower case, which shares are decided by. Under
+//! [`Admit::Emails`] the principal id is the entry's, which may differ
+//! from the email.
+//!
 //! # Admitting a Google Workspace domain
 //!
 //! [`Admit::Domain`] admits every verified account of one Google Workspace
@@ -186,7 +191,7 @@ mod secret;
 mod session;
 mod token;
 
-pub use allow::{Admit, AllowEntry, AllowList, DomainRule, Email, Reach, WorkspaceDomain};
+pub use allow::{Admit, AllowEntry, AllowList, DomainRule, Reach, WorkspaceDomain};
 pub use authenticator::OidcAuthenticator;
 #[cfg(feature = "testing")]
 pub use clock::TestClock;
@@ -194,6 +199,8 @@ pub use clock::{Clock, SystemClock};
 pub use config::{ClientId, ConfigError, IssuerUrl, OidcConfig, RedirectUri};
 pub use file_secret::FileSecret;
 pub use flow::{KeptState, ReturnTo, SignInStart};
+/// The verified address that sign-in admits, defined in `hangar-core`.
+pub use hangar_core::Email;
 pub use keychain::KeychainSecret;
 pub use refusal::{ConnectError, MetadataFault, SecretError, SignInRefusal, TokenFault};
 pub use secret::{ClientSecretSource, FixedSecret};

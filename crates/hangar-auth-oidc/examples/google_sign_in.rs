@@ -34,6 +34,8 @@ enum StartError {
     Usage,
     /// A value in the configuration was refused.
     Config(hangar_auth_oidc::ConfigError),
+    /// The allowed email was refused.
+    Email(hangar_core::ParseError),
     /// The client secret could not be read.
     Secret(hangar_auth_oidc::SecretError),
     /// The provider could not be reached or is misconfigured.
@@ -48,6 +50,7 @@ impl std::fmt::Debug for StartError {
             Self::Usage => formatter
                 .write_str("usage: google_sign_in <client id> <allowed email | --domain <domain>>"),
             Self::Config(error) => write!(formatter, "the configuration was refused: {error}"),
+            Self::Email(error) => write!(formatter, "the allowed email was refused: {error}"),
             Self::Secret(error) => write!(formatter, "the client secret was refused: {error}"),
             Self::Connect(error) => write!(formatter, "the provider could not be used: {error}"),
             Self::Listen(kind) => write!(formatter, "port 8740 could not be opened: {kind}"),
@@ -67,7 +70,7 @@ fn admit(rule: &[String]) -> Result<Admit, StartError> {
         [email] => {
             let principal = PrincipalId::try_from("owner").map_err(|_| StartError::Usage)?;
             let allow = AllowList::new(vec![AllowEntry::new(
-                Email::try_from(email.as_str()).map_err(StartError::Config)?,
+                Email::try_from(email.as_str()).map_err(StartError::Email)?,
                 principal,
                 Reach::Everything,
             )])

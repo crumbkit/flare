@@ -22,9 +22,6 @@ pub enum ConfigError {
     /// host, or it has a user or a fragment.
     #[error("the redirect URI must be https, or http on a loopback host, with no user or fragment")]
     RedirectUri,
-    /// The email is not one address of at most 254 bytes without spaces.
-    #[error("an email must be one address of at most 254 bytes with no spaces")]
-    Email,
     /// The allow-list names one email twice.
     #[error("the allow-list names one email twice")]
     DuplicateEmail,

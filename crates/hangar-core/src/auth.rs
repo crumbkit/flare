@@ -1,28 +1,55 @@
 //! Principals, credentials and the [`Authenticator`] trait.
 
+use crate::email::Email;
 use crate::name::{BindingName, PageName, PrincipalId};
 use crate::record::RecordPath;
 use secrecy::SecretString;
 use std::future::Future;
 
-/// Someone who makes requests.
+/// Someone who makes requests: an id that pages, bindings and records are
+/// decided by, and the email address that the sign-in verified, which
+/// shares are decided by.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Principal {
     id: PrincipalId,
+    email: Option<Email>,
 }
 
 impl Principal {
-    /// Builds a principal from its id.
+    /// Builds a principal from its id, with no verified email.
     #[must_use]
     pub fn new(id: PrincipalId) -> Self {
-        Self { id }
+        Self { id, email: None }
+    }
+
+    /// Builds a principal from its id and the email address that its
+    /// sign-in verified.
+    ///
+    /// `email` must be an address that the identity provider reported as
+    /// verified for this sign-in, and only an [`Authenticator`] calls this
+    /// function. The share service trusts the address without checking it
+    /// and opens every share granted to it, so a principal built with an
+    /// address from any other source, such as a request header or an
+    /// unverified claim, gets the shares granted to that address.
+    #[must_use]
+    pub fn with_email(id: PrincipalId, email: Email) -> Self {
+        Self {
+            id,
+            email: Some(email),
+        }
     }
 
     /// The principal's id.
     #[must_use]
     pub fn id(&self) -> &PrincipalId {
         &self.id
+    }
+
+    /// The email address that the principal's sign-in verified, if any.
+    #[must_use]
+    pub fn email(&self) -> Option<&Email> {
+        self.email.as_ref()
     }
 }
 

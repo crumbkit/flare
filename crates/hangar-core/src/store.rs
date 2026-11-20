@@ -1,14 +1,21 @@
-//! The [`RecordStore`] and [`PageStore`] traits and their errors.
+//! The [`RecordStore`] and [`PageStore`] traits and their errors, and the
+//! [`ShareStore`], [`GrantStore`] and [`FileStore`] traits in submodules.
 //!
-//! Both traits are async, written as methods that return
+//! Every trait is async, written as methods that return
 //! `impl Future<Output = …> + Send`, so this crate needs no runtime and no
 //! `async-trait`. No signature names an HTTP, SDK or Board type.
 
 mod errors;
+mod files;
 mod fill_types;
+mod grants;
+mod shares;
 
 pub use errors::{MoveError, PageStoreError, ReadError, Rejection, WriteError};
+pub use files::{FileStore, FileStoreError};
 pub use fill_types::FillTypes;
+pub use grants::{GrantStore, GrantStoreError};
+pub use shares::{ShareStore, ShareStoreError};
 
 use crate::binding::Binding;
 use crate::name::{BindingName, PageName, PageVersion};

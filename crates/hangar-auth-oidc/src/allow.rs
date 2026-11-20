@@ -3,54 +3,10 @@
 
 use crate::config::ConfigError;
 use crate::refusal::SignInRefusal;
-use hangar_core::{PrincipalId, Resource};
+use hangar_core::{Email, Principal, PrincipalId, Resource};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fmt;
-
-/// An email address of ASCII characters, in lower case.
-///
-/// Shortcut: the parser checks only that the address has one `@` between a
-/// non-empty local part and a non-empty domain, at most 254 bytes and only
-/// visible ASCII characters. It does not check RFC 5321 syntax,
-/// because the provider has verified the address and the crate only
-/// compares it with the allow-list. Its `Debug` output hides the address.
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Email(String);
-
-impl TryFrom<&str> for Email {
-    type Error = ConfigError;
-
-    /// Admits one address and keeps it in lower case.
-    fn try_from(text: &str) -> Result<Self, ConfigError> {
-        let mut halves = text.split('@');
-        let (Some(local), Some(domain), None) = (halves.next(), halves.next(), halves.next())
-        else {
-            return Err(ConfigError::Email);
-        };
-        // Only ASCII is admitted: Unicode lower-casing maps some other
-        // characters onto ASCII letters, such as U+212A KELVIN SIGN onto k,
-        // which would let one address match another's allow-list entry.
-        let clean = text.bytes().all(|byte| byte.is_ascii_graphic());
-        if local.is_empty() || domain.is_empty() || text.len() > 254 || !clean {
-            return Err(ConfigError::Email);
-        }
-        Ok(Self(text.to_ascii_lowercase()))
-    }
-}
-
-impl Email {
-    /// The address in lower case.
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Debug for Email {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Email(<hidden>)")
-    }
-}
 
 /// What a principal on the allow-list may reach, for read and for write.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,12 +196,13 @@ impl DomainRule {
     }
 
     /// The principal of a verified `email` whose ID token carries the `hd`
-    /// claim `hd`.
+    /// claim `hd`: its id is the email in lower case, and it carries the
+    /// email.
     ///
     /// Shortcut: `hd` is a Google claim, and the rule does not check that
     /// the issuer is Google. With another issuer, the rule trusts that
     /// issuer's `hd`.
-    fn principal(&self, email: &str, hd: Option<&Value>) -> Result<PrincipalId, SignInRefusal> {
+    fn principal(&self, email: &str, hd: Option<&Value>) -> Result<Principal, SignInRefusal> {
         let hd = hd.ok_or(SignInRefusal::NoHostedDomain)?;
         if !self.domain.is_named_by(hd) {
             return Err(SignInRefusal::OtherHostedDomain);
@@ -253,7 +210,7 @@ impl DomainRule {
         // The email's own domain is not compared: an account of the
         // organisation may have an email in a secondary domain.
         let email = Email::try_from(email).map_err(|_| SignInRefusal::NotAllowed)?;
-        PrincipalId::try_from(email.as_str()).map_err(|_| SignInRefusal::NotAllowed)
+        Ok(Principal::with_email(email.principal_id(), email))
     }
 }
 
@@ -271,19 +228,21 @@ pub enum Admit {
 
 impl Admit {
     /// The principal that a verified `email`, with the `hd` claim `hd`,
-    /// signs in as.
+    /// signs in as. It carries the verified email, in lower case, which
+    /// shares are decided by, whatever principal id the rule gives.
     pub(crate) fn principal(
         &self,
         email: &str,
         hd: Option<&Value>,
-    ) -> Result<PrincipalId, SignInRefusal> {
+    ) -> Result<Principal, SignInRefusal> {
         match self {
             Self::Emails(allow) => {
                 let email = Email::try_from(email).map_err(|_| SignInRefusal::NotAllowed)?;
-                allow
+                let id = allow
                     .by_email(&email)
                     .map(|entry| entry.principal().clone())
-                    .ok_or(SignInRefusal::NotAllowed)
+                    .ok_or(SignInRefusal::NotAllowed)?;
+                Ok(Principal::with_email(id, email))
             }
             Self::Domain(rule) => rule.principal(email, hd),
         }

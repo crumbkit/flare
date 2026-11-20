@@ -1,7 +1,9 @@
-//! Unit tests of emails and the allow-list.
+//! Unit tests of the allow-list, the domain rule and the principals they
+//! build.
 
 use super::*;
-use hangar_core::PageName;
+use hangar_core::{Email, PageName};
+use serde_json::json;
 
 fn entry(email: &str, principal: &str) -> AllowEntry {
     AllowEntry::new(
@@ -9,29 +11,6 @@ fn entry(email: &str, principal: &str) -> AllowEntry {
         PrincipalId::try_from(principal).unwrap(),
         Reach::Everything,
     )
-}
-
-#[test]
-fn an_email_is_admitted_in_lower_case() {
-    let email = Email::try_from("Ada.Lovelace@Example.COM").unwrap();
-    assert_eq!(email.as_str(), "ada.lovelace@example.com");
-}
-
-#[test]
-fn an_email_without_one_at_sign_or_with_spaces_is_refused() {
-    for text in [
-        "",
-        "ada",
-        "@example.com",
-        "ada@",
-        "a@b@c",
-        "ada @example.com",
-        "ada@exa\nmple.com",
-    ] {
-        assert_eq!(Email::try_from(text), Err(ConfigError::Email), "{text:?}");
-    }
-    let long = format!("{}@example.com", "a".repeat(250));
-    assert_eq!(Email::try_from(long.as_str()), Err(ConfigError::Email));
 }
 
 #[test]
@@ -55,21 +34,6 @@ fn a_reach_of_only_some_resources_reaches_those_and_no_other() {
     assert!(only.reaches(&home));
     assert!(!only.reaches(&other));
     assert!(Reach::Everything.reaches(&other));
-}
-
-#[test]
-fn an_email_with_a_non_ascii_character_is_refused_and_ascii_capitals_are_lowered() {
-    for text in [
-        "\u{212A}ate@example.com",
-        "kate@\u{212A}.example.com",
-        "j\u{00F6}rg@example.com",
-    ] {
-        assert_eq!(Email::try_from(text), Err(ConfigError::Email), "{text:?}");
-    }
-    assert_eq!(
-        Email::try_from("KATE@Example.com").unwrap().as_str(),
-        "kate@example.com"
-    );
 }
 
 #[test]
@@ -127,4 +91,47 @@ fn a_workspace_domain_that_is_not_a_dns_name_of_two_labels_is_refused() {
             "{text:?}"
         );
     }
+}
+
+#[test]
+fn an_allow_list_sign_in_builds_its_principal_with_the_verified_email_in_lower_case() {
+    let allow = AllowList::new(vec![entry("ada@example.com", "google:ada")]).unwrap();
+    let principal = Admit::Emails(allow)
+        .principal("Ada@Example.com", None)
+        .unwrap();
+    assert_eq!(principal.id().as_str(), "google:ada");
+    assert_eq!(
+        principal.email(),
+        Some(&Email::try_from("ada@example.com").unwrap())
+    );
+}
+
+#[test]
+fn an_entry_that_maps_one_address_to_another_address_shaped_principal_keeps_the_first_address() {
+    let allow = AllowList::new(vec![entry("mallory@x.com", "bob@y.com")]).unwrap();
+    let principal = Admit::Emails(allow)
+        .principal("mallory@x.com", None)
+        .unwrap();
+    assert_eq!(principal.id().as_str(), "bob@y.com");
+    assert_eq!(principal.email().map(Email::as_str), Some("mallory@x.com"));
+    // The admitted twin: an address off the list is refused.
+    let allow = AllowList::new(vec![entry("mallory@x.com", "bob@y.com")]).unwrap();
+    assert!(Admit::Emails(allow).principal("bob@y.com", None).is_err());
+}
+
+#[test]
+fn a_domain_sign_in_builds_its_principal_with_the_verified_email_in_lower_case() {
+    let rule = DomainRule::new(
+        WorkspaceDomain::try_from("example.com").unwrap(),
+        Reach::Everything,
+    );
+    let hd = json!("example.com");
+    let principal = Admit::Domain(rule)
+        .principal("Ada@Example.com", Some(&hd))
+        .unwrap();
+    assert_eq!(principal.id().as_str(), "ada@example.com");
+    assert_eq!(
+        principal.email().map(Email::as_str),
+        Some("ada@example.com")
+    );
 }
