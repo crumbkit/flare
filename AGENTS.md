@@ -13,9 +13,9 @@ its path from `HANGAR_TEST_BOARD`.
 
 - Write the test first, named as a sentence (BASE-36).
 - Give each new dependency a reason in `Cargo.toml` (BASE-23).
-- A new implementation of `Authenticator`, `PageStore` or `RecordStore` calls
-  every function of the matching suite in `hangar_core::contract` from its own
-  tests.
+- A new implementation of `Authenticator`, `PageStore`, `RecordStore`,
+  `ShareStore`, `GrantStore` or `FileStore` calls every function of the
+  matching suite in `hangar_core::contract` from its own tests.
 
 ## Writing
 

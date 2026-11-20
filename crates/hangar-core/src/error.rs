@@ -36,6 +36,22 @@ pub enum Subject {
     Fills,
     /// The sources of a [`Provenance`](crate::Provenance).
     Sources,
+    /// An [`Email`](crate::Email).
+    Email,
+    /// A [`ShareId`](crate::ShareId).
+    ShareId,
+    /// A [`ShareTitle`](crate::ShareTitle).
+    ShareTitle,
+    /// A [`ShareVersion`](crate::ShareVersion).
+    ShareVersion,
+    /// A [`DocumentText`](crate::DocumentText).
+    DocumentText,
+    /// A [`FileId`](crate::FileId).
+    FileId,
+    /// A [`MediaType`](crate::MediaType).
+    MediaType,
+    /// A [`FileBytes`](crate::FileBytes).
+    FileBytes,
 }
 
 impl fmt::Display for Subject {
@@ -56,6 +72,14 @@ impl fmt::Display for Subject {
             Self::Slots => "slots",
             Self::Fills => "fills",
             Self::Sources => "sources",
+            Self::Email => "email",
+            Self::ShareId => "share id",
+            Self::ShareTitle => "share title",
+            Self::ShareVersion => "share version",
+            Self::DocumentText => "document",
+            Self::FileId => "file id",
+            Self::MediaType => "media type",
+            Self::FileBytes => "file",
         };
         formatter.write_str(text)
     }

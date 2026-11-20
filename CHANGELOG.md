@@ -88,9 +88,28 @@ This file records the notable changes to hangar. The format follows
 - `SignedIn::session_secret` in `hangar-auth-oidc` gives the secret of the
   session credential, so a server can set it as a cookie without matching
   on the credential's kind.
+- `hangar-core` has shares: a Markdown document that one owner publishes in
+  numbered versions and opens to named people with a Reader or Admin grant.
+  The `Shares` service decides every request from the caller's verified
+  email, the share and its grants. A person with no grant gets the same
+  `NotFound` as for a share that does not exist, a revoke takes effect on
+  the next request, and an admin manages readers and cannot touch another
+  admin or publish. A share holds at most 100 versions and 256 grants, and
+  one owner at most 500 shares; a write past a limit is refused and writes
+  nothing.
+- `ShareStore`, `GrantStore` and `FileStore` in `hangar-core`, each with a
+  contract suite and an in-memory store behind the `testing` feature. A
+  grant or revoke names the role its writer saw and the admin it acts
+  under, and the store refuses it when either changed.
+- `Principal` carries the email address that its sign-in verified
+  (`Principal::with_email` and `Principal::email`), and `hangar-auth-oidc`
+  sets it under both admit rules.
 
 ### Changed
 
+- `Email` moves from `hangar-auth-oidc` to `hangar-core`, which
+  `hangar-auth-oidc` re-exports. Parsing one answers a `ParseError`, and
+  `ConfigError::Email` is gone.
 - The record suite's concurrent-writes clause races the two fixture bodies
   that differ from the record's current body, so a store may answer a
   write of the current body without writing.

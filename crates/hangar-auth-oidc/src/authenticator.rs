@@ -159,7 +159,6 @@ impl<C: Clock> OidcAuthenticator<C> {
             .config
             .admit
             .principal(&verified.email, verified.hd.as_ref())?;
-        let principal = Principal::new(principal);
         lock(&self.sessions).create(
             principal,
             pending.return_to,

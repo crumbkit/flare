@@ -22,8 +22,11 @@ use std::fmt;
 
 pub mod authenticator;
 mod executor;
+pub mod file_store;
+pub mod grant_store;
 pub mod page_store;
 pub mod record_store;
+pub mod share_store;
 
 pub use executor::{RunTogether, Threads, block_on};
 
@@ -80,6 +83,48 @@ clauses! {
     AcceptedCredentialGivesTheSamePrincipal => "an accepted credential gives the same principal every time",
     RejectedCredentialIsRejected => "a credential the authenticator does not accept is rejected",
     AccessFollowsTheResource => "a reachable resource is allowed and an unreachable one is denied, for read and for write",
+    ACreatedShareReadsBack => "a created share reads back with its owner, title, kind, creation time and version 1",
+    TheFirstVersionHoldsTheCreatedContent => "the first version of a created share holds the content it was created with",
+    ATakenShareIdChangesNothing => "creating a share with a taken id answers id taken and leaves the first share and its content unchanged",
+    ConcurrentCreatesOfOneIdGiveOneIdTaken => "two creates of one id that run together give one success and one id taken",
+    PublishGivesTheNextVersion => "publishing gives the next version number and moves the share's latest to it",
+    APublishLeavesOlderVersionsUnchanged => "a publish leaves every older version unchanged, with its content, publisher and time",
+    EveryVersionReadsBack => "every version from 1 to the latest reads back",
+    ConcurrentPublishesGetConsecutiveVersions => "two publishes that run together give two consecutive versions that each read back with their own content",
+    PublishingToAnUnknownShareCreatesNothing => "publishing to an unknown share answers not found and creates nothing",
+    AnUnknownShareOrVersionIsNotFound => "an unknown share, and a version above the latest, answer not found",
+    TheOwnersListHoldsOnlyTheirSharesNewestFirst => "the owner's list holds exactly that owner's shares, newest first",
+    AShareIsListedOnceCreated => "a share is in its owner's list as soon as it is created",
+    TheShareLimitPerOwnerHolds => "a create by an owner with 500 shares answers too many shares and writes nothing, the 501st by another owner succeeds, and two creates at 499 give one success and one too many shares",
+    TheVersionLimitHolds => "a publish to a share with 100 versions answers too many versions and writes nothing, and two publishes at 99 that run together give one success and one too many versions",
+    AShareAlwaysHasItsFirstVersion => "a share is never written without its version 1, and a version above the latest answers not found",
+    AGrantReadsBack => "a grant reads back with its role, its granter and its time",
+    AGrantFromTheCurrentRoleReplacesIt => "granting again from the current role replaces the grant and leaves one entry",
+    AGrantFromAStaleRoleIsChanged => "a grant from a role that is not current answers changed with the current role and writes nothing",
+    ConcurrentGrantsFromNoGrantGiveOneChanged => "two grants from no grant that run together give one success and one changed",
+    ARevokeIsVisibleToEveryRead => "a revoke removes the grant, and the next get, share list and person list show it gone",
+    ARevokeFromAStaleRoleIsChanged => "a revoke from a role that is not current answers changed and keeps the grant",
+    AGrantAndARevokeTogetherLeaveAConsistentState => "a grant and a revoke from one role that run together leave one of two consistent states",
+    AGrantUnderAStaleAdminIsRefused => "a grant under an admin who no longer holds the Admin grant answers stale authority and writes nothing",
+    AGrantUnderACurrentAdminIsApplied => "a grant under an admin who holds the Admin grant is applied",
+    ARevokeUnderAStaleAdminIsRefused => "a revoke under an admin who no longer holds the Admin grant answers stale authority and keeps the grant",
+    AnAdminsGrantNeverLandsAfterTheirRevoke => "a grant under an admin and the revoke of that admin that run together never leave a grant the admin wrote after the revoke",
+    TheGrantLimitHolds => "the 257th new grantee answers too many, an existing grantee at the limit can change role, and a revoke frees a place",
+    ConcurrentGrantsAtTheLimitGiveOneTooMany => "two grants at 255 grantees that run together give one success and one too many",
+    AShareListHoldsOnlyItsGrants => "a share's list holds only that share's grants, and a grant on one share is not visible on another",
+    APersonsListHoldsTheirGrantsNewestFirst => "a person's list holds that person's grants across shares, newest first, with the truncation flag",
+    ARoleChangeKeepsTheFirstGrantTime => "a role change keeps the grant's time of first grant",
+    ARevokeAndARegrantLeaveNoStaleEntry => "a revoke and a re-grant with the same role do not leave a stale list entry or a wrong-role entry",
+    AGrantOnAnUnseenShareIsApplied => "a grant on a share the store holds no grants for is applied, and the grant store never answers not found",
+    ALeaveAppliesUnderTheExpectedRoleAlone => "a revoke under the grantee's own authority applies under the expected role alone, including for an admin ending their own grant",
+    StaleAuthorityComesBeforeChanged => "a revoke under a revoked admin answers stale authority and keeps the grant, and stale authority wins over changed",
+    AListShowsItsTruncationAndOrder => "a list shows its truncation flag and its order",
+    AStoredFileReadsBack => "a stored file reads back with its media type and bytes",
+    AFileIsNotFoundUnderAnotherShare => "a file stored under one share is not found under another share",
+    ATakenFileIdChangesNothing => "storing to a taken id answers id taken and leaves the first file unchanged",
+    ConcurrentPutsOfOneIdGiveOneIdTaken => "two puts of one id that run together give one success and one id taken",
+    AnUnknownFileIsNotFound => "an unknown file answers not found",
+    TheLargestFileReadsBack => "a file of the largest allowed size reads back",
     FixtureIsUnusable => "the fixture holds a value that its type refuses",
     TheStoreFailedUnexpectedly => "the store returned an error that no clause expects",
 }
