@@ -76,6 +76,10 @@ pub enum Fault {
     LoseEveryAnswer,
     /// No write is sent, and each is reported as lost.
     DropEveryRequest,
+    /// The first attempt of each file put reaches the stand-in, and the
+    /// SDK then reads its answer as a 500, so the SDK sends the put again.
+    /// Shares and grants are written as usual.
+    FailFirstPutAttempts,
 }
 
 /// The policy of stores with a fault: a short deadline, so a write whose
@@ -95,19 +99,22 @@ impl Stores {
     }
 
     /// The stores for `config` on the stand-ins at `endpoints`, with
-    /// `fault` on every write and a deadline of 1.5 seconds.
+    /// `fault`. A lost or dropped write has a deadline of 1.5 seconds; a
+    /// failed first put attempt keeps the stores' own policy, so the SDK's
+    /// retry ends inside the deadline.
     #[must_use]
     pub fn connect_at_with_fault(
         config: &HostedConfig,
         endpoints: &Endpoints,
         fault: Fault,
     ) -> Self {
-        let faults = match fault {
-            Fault::LoseEveryAnswer => Faults::LoseAnswers,
-            Fault::DropEveryRequest => Faults::DropRequests,
+        let (faults, policy) = match fault {
+            Fault::LoseEveryAnswer => (Faults::LoseAnswers, FAULT_POLICY),
+            Fault::DropEveryRequest => (Faults::DropRequests, FAULT_POLICY),
+            Fault::FailFirstPutAttempts => (Faults::FailFirstPutAttempts, Policy::STORE),
         };
         let (dynamodb, s3) = clients(config, endpoints);
-        Self::from_clients(config, dynamodb, s3, FAULT_POLICY, faults)
+        Self::from_clients(config, dynamodb, s3, policy, faults)
     }
 }
 

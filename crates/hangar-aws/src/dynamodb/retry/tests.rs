@@ -144,13 +144,39 @@ async fn an_unknown_outcome_whose_read_finds_no_match_is_unavailable() {
 }
 
 #[tokio::test]
-async fn a_refusal_after_an_unknown_outcome_is_settled_first() {
-    let mut attempt = Scripted::new(vec![Sent::Unknown, Sent::Refused("taken")]);
+async fn a_refusal_of_a_resend_after_an_unknown_outcome_is_returned_and_nothing_is_settled() {
+    let mut attempt = Scripted::new(vec![Sent::Unknown, Sent::Refused("stale")]);
     attempt.settle = Some(Settled::Matches(5));
-    assert_eq!(run(&quick(2_000), &attempt).await, Final::Done(5));
-    let mut attempt = Scripted::new(vec![Sent::Unknown, Sent::Refused("taken")]);
+    assert_eq!(run(&quick(2_000), &attempt).await, Final::Refused("stale"));
+    assert_eq!(*attempt.settled.lock().unwrap(), 0);
+}
+
+#[tokio::test]
+async fn a_send_that_never_answers_is_resent_a_few_times_with_growing_waits_until_the_deadline() {
+    let mut attempt = Scripted::new(Vec::new());
+    attempt.then = Some(Sent::Unknown);
     attempt.settle = Some(Settled::Differs);
-    assert_eq!(run(&quick(2_000), &attempt).await, Final::Refused("taken"));
+    let policy = quick(600);
+    assert_eq!(run(&policy, &attempt).await, Final::Unavailable);
+    let tokens = attempt.tokens();
+    assert!(
+        (2..=6).contains(&tokens.len()),
+        "{} sends before the deadline",
+        tokens.len()
+    );
+    let waits: Vec<Duration> = tokens
+        .windows(2)
+        .map(|pair| pair[1].2.duration_since(pair[0].2))
+        .collect();
+    assert!(
+        waits.iter().all(|wait| *wait >= policy.resend_gap),
+        "{waits:?}"
+    );
+    let slack = Duration::from_millis(15);
+    assert!(
+        waits.windows(2).all(|pair| pair[1] + slack >= pair[0]),
+        "{waits:?}"
+    );
 }
 
 #[tokio::test]

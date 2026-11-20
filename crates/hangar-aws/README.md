@@ -67,7 +67,7 @@ nothing that a transaction or a put had finished.
 | `latest = n` | `publish` meets a conflict or a moved `latest` | nothing written, read again and retried | the owner |
 | `latest = n` | `publish` with `n` at 100 | nothing written, `TooManyVersions` | the owner |
 | no items | `create` for an owner with 500 shares | nothing written, `TooManyShares` | the caller |
-| any | a write whose answer is lost, or whose deadline ends | the write may be applied; the store resends with the same token, then settles by a consistent read: a match is success, otherwise `Unavailable`, which means the outcome is unknown | the store |
+| any | a write whose answer is lost, or whose deadline ends | the write may be applied; the store resends with the same token and returns a refusal of the resend as it is, because DynamoDB answers a token whose write was applied with that success; at the deadline it settles by a consistent read: a match is success, otherwise `Unavailable`, which means the outcome is unknown | the store |
 | a version item | any write | none: version items are put once and never updated | nobody |
 
 ### A grant's items
@@ -78,7 +78,7 @@ nothing that a transaction or a put had finished.
 | a role | `grant` or `revoke` from the current role | grant item and entry change together; a revoke subtracts 1 from the count | the owner, an admin or the person |
 | any | the `rev`, the admin's grant or the count fails its condition | nothing written; an admin who lost the Admin role is `StaleAuthority`, then a differing role is `Changed`, then a full share is `TooMany`; the same role with another `rev` is read again and retried | the writer |
 | any | a transaction conflict | retried with a fresh token, at most five times, then `Unavailable` | the store |
-| any | an unknown outcome of a grant or revoke | settled by the grant item's `rev`; a revoke accepts an absent item | the store |
+| any | an unknown outcome of a grant or revoke | settled by the grant item's `rev`; the revoke of an owner or of the grantee accepts an absent item, and the revoke of another admin answers `Unavailable` for an absent item, because another write may have removed it after that admin lost the Admin role | the store |
 
 ### A file
 
@@ -87,7 +87,7 @@ nothing that a transaction or a put had finished.
 | no object | `put` | the object exists | the caller |
 | an object | `put` with the same key | the first object is unchanged, `IdTaken` | the caller |
 | no object | `put` that meets another put of the same key in flight (409) | retried, and the retry meets the other put's object | the store |
-| no object | `put` whose answer is lost | resent; a 412 is success when the stored bytes and type equal ours | the store |
+| no object | `put` whose answer is lost, or that the SDK resends after a 5xx or a timed-out attempt | resent; every 412 is settled by reading the object: success when its bytes and media type equal the file's, `IdTaken` when they differ, `Unavailable` when the read fails | the store |
 | an object | any other write | none: no replace and no delete is permitted | nobody |
 
 ### Crash points
@@ -96,8 +96,10 @@ nothing that a transaction or a put had finished.
   commits, the share, grant, count and entries are all new, because
   DynamoDB applies a transaction whole.
 - A transaction can commit and lose its answer. The store resends with one
-  token while the parameters are identical, waiting 6 seconds after the
-  token's first send, and stops at a 20-second deadline. It then settles an
+  token while the parameters are identical. It waits 6 seconds after an
+  unknown answer before the first resend and twice as long before each
+  later one, up to four times the first wait, and stops at a 20-second
+  deadline. It then settles an
   unknown outcome by a consistent read, and answers `Unavailable` only when
   it cannot tell. `Unavailable` from a write therefore means the outcome is
   unknown, and a late commit within the token's 10 minutes is possible. A
@@ -152,7 +154,8 @@ HANGAR_TEST_DYNAMODB=http://127.0.0.1:8000 HANGAR_TEST_S3=http://127.0.0.1:8333 
 | `tests/contract_dynamodb.rs`, `tests/contract_s3.rs` | Every function of the three contract suites, a second store on the same table, and objects that hangar did not write. |
 | `src/dynamodb/grants/tests.rs` | An admin's grant or revoke built before the admin is revoked is refused when sent, because the admin's check and the write are one transaction. |
 | `src/dynamodb/transact/tests.rs` | Each grant and revoke transaction holds the admin's condition beside the write. |
-| `tests/outcome_unknown.rs` | A write whose answers are all lost is resent with one token and settled by a read. |
+| `tests/outcome_unknown.rs` | A write whose answers are all lost is resent with one token and settled by a read; a put that the SDK resends after S3 stored it answers success, and onto another object answers `IdTaken`; a lost revoke by an admin whose Admin role ends meanwhile answers `Unavailable`. |
+| `src/dynamodb/retry/tests.rs` | A refusal of a resend is returned without a settling read, and a send that never answers is resent a few times with growing waits until the deadline. |
 | `tests/template.rs` | The template's table, bucket, bucket policy and IAM actions. |
 | `tests/log.rs` | No email, title, text or id appears in the crate's logs. |
 

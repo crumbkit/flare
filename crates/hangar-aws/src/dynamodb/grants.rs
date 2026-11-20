@@ -260,8 +260,16 @@ impl Attempt for RevokeOp<'_> {
         }
     }
 
+    /// An absent grant settles the revoke of an owner or of the grantee.
+    /// A revoke that carried another admin's check cannot tell its own
+    /// write from another that removed the grant after that admin lost the
+    /// Admin role, so it settles as unavailable.
     async fn settle(&self, _built: &Transaction) -> Settled<()> {
-        settle::revoked(self.table, &self.share, &self.grantee).await
+        let checked_admin = self.by.admin().is_some() && !self.folded();
+        match settle::revoked(self.table, &self.share, &self.grantee).await {
+            Settled::Matches(()) if checked_admin => Settled::Unavailable,
+            settled => settled,
+        }
     }
 }
 

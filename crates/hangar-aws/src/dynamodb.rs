@@ -36,6 +36,10 @@ pub(crate) enum Faults {
     LoseAnswers,
     /// No write is sent, and each is reported as lost.
     DropRequests,
+    /// The first attempt of each file put is sent and applied, and its
+    /// answer is replaced with a 500 inside the SDK, so the SDK's own retry
+    /// sends it again.
+    FailFirstPutAttempts,
 }
 
 /// The table, its client, the retry policy and the injected fault.

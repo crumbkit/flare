@@ -3,7 +3,8 @@
 //! Each read compares what the table holds with what the write would have
 //! written, on the fields that only that write sets: a create's owner and
 //! creation time, a publish's publisher, time and text, a grant's `rev`,
-//! and, for a revoke, the grant's absence.
+//! and, for a revoke, the grant's absence, which the revoke of another
+//! admin does not accept.
 
 use crate::dynamodb::Table;
 use crate::dynamodb::items::{Item, ItemKind, Malformed, Rev, rev_of, share_from, version_from};

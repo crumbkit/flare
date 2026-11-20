@@ -2,17 +2,22 @@
 //!
 //! A put creates its object only when the key is free, with
 //! `If-None-Match: *`, so a taken id leaves the first object. A put whose
-//! answer is lost is sent again, and a refusal of the resend for a taken
-//! key is success when the stored object equals the file. A read answers
-//! not found only for a missing key; any other failure, including a refused
-//! request, is unavailable, so a policy mistake never reads as a missing
-//! file. The read stops at [`MAX_FILE_BYTES`] while the body streams.
+//! answer is lost is sent again. S3 has no request token, and the SDK
+//! resends a put itself after a 5xx or a timed-out attempt, so any refusal
+//! for a taken key may meet the put's own object: the store reads the
+//! object, and the put is success when its bytes and media type equal the
+//! file's, `IdTaken` when they differ and unavailable when the read fails.
+//! A read answers not found only for a missing key; any other failure,
+//! including a refused request, is unavailable, so a policy mistake never
+//! reads as a missing file. The read stops at [`MAX_FILE_BYTES`] while the
+//! body streams.
 
 use crate::dynamodb::Faults;
 use crate::dynamodb::error_code;
 use crate::dynamodb::items::ItemKind;
 use crate::dynamodb::retry::{Attempt, Final, Sent, Settled, Token, run};
 use crate::s3::Bucket;
+use crate::s3::fault;
 use crate::s3::keys::object_key;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::RequestId;
@@ -37,7 +42,8 @@ impl S3FileStore {
 }
 
 /// What a failed put means, from the HTTP status of its answer, or `None`
-/// when no answer came.
+/// when no answer came. A 412 is a taken key, which the put settles by
+/// reading the object.
 pub(crate) fn put_failure(status: Option<u16>) -> Sent<(), FileStoreError> {
     match status {
         Some(412) => Sent::Refused(FileStoreError::IdTaken),
@@ -158,14 +164,18 @@ impl Attempt for PutOp<'_> {
         Ok(())
     }
 
-    /// S3 has no request token; a resend is a new create-only put, which a
-    /// stored object refuses with 412 and the loop settles.
+    /// S3 has no request token; a resend, by the loop or by the SDK, is a
+    /// new create-only put, which a stored object refuses with 412. Every
+    /// 412 is settled by reading the object.
     async fn send(&self, (): &(), _token: &Token) -> Sent<(), FileStoreError> {
         let faults = self.bucket.faults();
         if faults == Faults::DropRequests {
             return Sent::Unknown;
         }
-        match self.bucket.put_request(self.file).send().await {
+        match fault::prepare(self.bucket.put_request(self.file), faults)
+            .send()
+            .await
+        {
             Ok(_) if faults == Faults::LoseAnswers => Sent::Unknown,
             Ok(_) => Sent::Done(()),
             Err(SdkError::ConstructionFailure(_)) => Sent::Unavailable,
@@ -174,6 +184,13 @@ impl Attempt for PutOp<'_> {
                 let sent = put_failure(status);
                 if sent == Sent::Unavailable {
                     log_failure("PutObject", &error_code(&error), error.request_id());
+                }
+                if sent == Sent::Refused(FileStoreError::IdTaken) {
+                    return match self.settle(&()).await {
+                        Settled::Matches(()) => Sent::Done(()),
+                        Settled::Differs => sent,
+                        Settled::Unavailable => Sent::Unavailable,
+                    };
                 }
                 sent
             }

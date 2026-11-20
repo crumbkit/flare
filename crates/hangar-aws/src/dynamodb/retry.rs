@@ -2,13 +2,17 @@
 //! retries.
 //!
 //! An attempt is built from a fresh read, then sent with a token. A send
-//! whose outcome is unknown is sent again with the same token, at least
-//! [`Policy::resend_gap`] after the token's first send, so a request that
-//! DynamoDB already applied is answered as a replay and not applied twice.
-//! A definite cancellation that a fresh read may clear rebuilds the attempt
-//! with a new token, at most [`Policy::cancellations`] times. One deadline
-//! bounds the whole call. When it ends with the outcome unknown, the loop
-//! settles the outcome with a consistent read: a match is success, and
+//! whose outcome is unknown is sent again with the same token, so a request
+//! that DynamoDB already applied is answered as a replay and not applied
+//! twice. The first resend waits [`Policy::resend_gap`], and each later one
+//! waits twice as long as the one before, up to [`MAX_RESEND_WAIT`] times
+//! the gap. A refusal of a resend is definite, because a token whose
+//! request was applied is answered as a replay of that success, so the loop
+//! returns it. A definite cancellation that a fresh read may clear rebuilds
+//! the attempt with a new token, at most [`Policy::cancellations`] times.
+//! One deadline bounds the whole call. When it ends with the outcome
+//! unknown, or a resend meets a cancellation or an unavailable store, the
+//! loop settles the outcome with a consistent read: a match is success, and
 //! anything else is unavailable, which for a write means the outcome is
 //! unknown.
 //!
@@ -23,7 +27,7 @@ use tokio::time::{Instant, timeout};
 pub(crate) struct Policy {
     /// How long one store call may retry, from its start.
     pub(crate) deadline: Duration,
-    /// How long after a token's first send a resend with that token waits.
+    /// How long the first resend of a token waits after its unknown answer.
     pub(crate) resend_gap: Duration,
     /// How many attempts a call builds before it gives up on cancellations.
     pub(crate) cancellations: u32,
@@ -32,8 +36,8 @@ pub(crate) struct Policy {
 }
 
 impl Policy {
-    /// The policy of the stores: a deadline of 20 seconds, resends at least
-    /// 6 seconds after a token's first send, and at most 5 attempts.
+    /// The policy of the stores: a deadline of 20 seconds, a first resend 6
+    /// seconds after an unknown answer, and at most 5 attempts.
     pub(crate) const STORE: Self = Self {
         deadline: Duration::from_secs(20),
         resend_gap: Duration::from_secs(6),
@@ -41,6 +45,10 @@ impl Policy {
         backoff: Duration::from_millis(25),
     };
 }
+
+/// The longest wait before a resend, as a multiple of
+/// [`Policy::resend_gap`].
+pub(crate) const MAX_RESEND_WAIT: u32 = 4;
 
 /// A `ClientRequestToken`: 128 random bits as 32 hexadecimal characters.
 /// One token belongs to one built attempt and every resend of it.
@@ -186,7 +194,8 @@ async fn send_until_answered<A: Attempt>(
     let Some(token) = Token::fresh() else {
         return Answer::Final(Final::Unavailable);
     };
-    let first_send = Instant::now();
+    let mut wait = policy.resend_gap;
+    let longest = policy.resend_gap.saturating_mul(MAX_RESEND_WAIT);
     let mut unknown = false;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -201,11 +210,8 @@ async fn send_until_answered<A: Attempt>(
             Sent::Done(done) => return Answer::Final(Final::Done(done)),
             Sent::Unknown => {
                 unknown = true;
-                pause((first_send + policy.resend_gap).min(deadline)).await;
-            }
-            Sent::Refused(refused) if unknown => {
-                let refused = Answer::Final(Final::Refused(refused));
-                return settle_or(policy, attempt, built, refused).await;
+                pause((Instant::now() + wait).min(deadline)).await;
+                wait = wait.saturating_mul(2).min(longest);
             }
             Sent::Refused(refused) => return Answer::Final(Final::Refused(refused)),
             Sent::Again if unknown => {

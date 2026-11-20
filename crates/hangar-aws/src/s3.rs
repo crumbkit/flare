@@ -4,6 +4,7 @@
 //! `files/<share id>/<file id>`, and the store never replaces or deletes an
 //! object.
 
+mod fault;
 mod files;
 mod keys;
 
