@@ -73,7 +73,7 @@ fn allowed(step: Step) -> Result<(), ShareError> {
         Step::Refuse(refusal) => Err(refusal.into()),
         // Only a grant or a revoke reads a target; any other action that
         // asks for one is refused.
-        Step::ReadTarget => Err(ShareError::Forbidden),
+        Step::ReadTarget(_) => Err(ShareError::Forbidden),
     }
 }
 
@@ -128,6 +128,12 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
     }
 
     /// Creates a share owned by the caller, with `content` as its version 1.
+    ///
+    /// The caller draws `id` at random on the server and never takes it
+    /// from a client. This method answers [`ShareError::IdTaken`] for an id
+    /// that exists whatever the caller's standing in that share, so an id a
+    /// client chose would let anyone signed in learn whether a share
+    /// exists. On `IdTaken`, the caller draws a new id and tries again.
     ///
     /// # Errors
     ///

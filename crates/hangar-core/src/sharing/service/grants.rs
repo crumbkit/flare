@@ -8,7 +8,7 @@ use crate::name::PrincipalId;
 use crate::share::{Share, ShareId};
 use crate::sharing::error::ShareError;
 use crate::sharing::{
-    ShareAction, Standing, Step, Target, TargetAction, decide_actor, decide_target,
+    Authority, ShareAction, Standing, Step, Target, TargetAction, decide_actor, decide_target,
 };
 use crate::store::{GrantStore, ShareStore};
 use crate::time::Timestamp;
@@ -29,7 +29,8 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
     }
 
     /// Decides a grant or a revoke of `person` by `actor`, after the actor
-    /// step, and answers the target's role as it was read.
+    /// step, and answers the authority the actor acts under and the
+    /// target's role as it was read.
     async fn decide_on_target(
         &self,
         actor: &PrincipalId,
@@ -37,18 +38,18 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
         action: ShareAction,
         on: TargetAction,
         person: &PrincipalId,
-    ) -> Result<(Standing, Option<Role>), ShareError> {
+    ) -> Result<(Authority, Option<Role>), ShareError> {
         let (share, standing) = self.standing(actor, id).await?;
-        match decide_actor(standing, action) {
-            Step::ReadTarget => {}
+        let authority = match decide_actor(standing, action) {
+            Step::ReadTarget(authority) => authority,
             Step::Refuse(refusal) => return Err(refusal.into()),
             // A grant or a revoke always depends on its target.
             Step::Allow => return Err(ShareError::Forbidden),
-        }
+        };
         let target = self.target(&share, person).await?;
-        decided(decide_target(standing, on, target))?;
+        decided(decide_target(authority, on, target))?;
         match target {
-            Target::Person(role) => Ok((standing, role)),
+            Target::Person(role) => Ok((authority, role)),
             Target::Owner => Err(ShareError::OwnerCannotBeChanged),
         }
     }
@@ -76,12 +77,12 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
         let actor = actor(who)?;
         let person = grantee.principal_id();
         let on = TargetAction::Grant(role);
-        let (standing, expected) = self
+        let (authority, expected) = self
             .decide_on_target(&actor, id, ShareAction::Grant, on, &person)
             .await?;
-        let by = match standing {
-            Standing::Owner => Granter::Owner(actor),
-            _ => Granter::Admin(actor),
+        let by = match authority {
+            Authority::Owner => Granter::Owner(actor),
+            Authority::Admin => Granter::Admin(actor),
         };
         let write = GrantWrite::new(id.clone(), person, role, expected, by, at);
         Ok(self.grants.grant(write).await?)
@@ -108,7 +109,7 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
         if person == actor {
             return self.leave(&actor, id).await;
         }
-        let (standing, current) = self
+        let (authority, current) = self
             .decide_on_target(
                 &actor,
                 id,
@@ -118,9 +119,9 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
             )
             .await?;
         let expected = current.ok_or(ShareError::GrantNotFound)?;
-        let by = match standing {
-            Standing::Owner => Revoker::Owner(actor),
-            _ => Revoker::Admin(actor),
+        let by = match authority {
+            Authority::Owner => Revoker::Owner(actor),
+            Authority::Admin => Revoker::Admin(actor),
         };
         let revoke = GrantRevoke::new(id.clone(), person, expected, by);
         Ok(self.grants.revoke(revoke).await?)

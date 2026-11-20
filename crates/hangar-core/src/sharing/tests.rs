@@ -1,7 +1,7 @@
 //! Unit tests of the decision tables.
 
 use super::{
-    Decision, Refusal, ShareAction, Standing, Step, Target, TargetAction, decide_actor,
+    Authority, Decision, Refusal, ShareAction, Standing, Step, Target, TargetAction, decide_actor,
     decide_target,
 };
 use crate::grant::Role;
@@ -31,8 +31,8 @@ fn decide(
     match decide_actor(standing, action) {
         Step::Allow => Decision::Allow,
         Step::Refuse(refusal) => Decision::Refuse(refusal),
-        Step::ReadTarget => match target {
-            Some((on_target, target)) => decide_target(standing, on_target, target),
+        Step::ReadTarget(authority) => match target {
+            Some((on_target, target)) => decide_target(authority, on_target, target),
             None => Decision::Refuse(Refusal::Forbidden),
         },
     }
@@ -181,10 +181,10 @@ fn an_admin_may_grant_a_reader_and_not_an_admin_and_the_owner_gets_the_opposite_
     let none = Target::Person(None);
     let reader = TargetAction::Grant(Role::Reader);
     let admin = TargetAction::Grant(Role::Admin);
-    assert_eq!(decide_target(Standing::Admin, reader, none), ALLOW);
-    assert_eq!(decide_target(Standing::Admin, admin, none), FORBIDDEN);
-    assert_eq!(decide_target(Standing::Owner, reader, none), ALLOW);
-    assert_eq!(decide_target(Standing::Owner, admin, none), ALLOW);
+    assert_eq!(decide_target(Authority::Admin, reader, none), ALLOW);
+    assert_eq!(decide_target(Authority::Admin, admin, none), FORBIDDEN);
+    assert_eq!(decide_target(Authority::Owner, reader, none), ALLOW);
+    assert_eq!(decide_target(Authority::Owner, admin, none), ALLOW);
 }
 
 #[test]

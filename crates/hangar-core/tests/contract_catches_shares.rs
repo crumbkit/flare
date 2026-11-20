@@ -170,14 +170,17 @@ grant_catches! {
         WrongTruncation => AListShowsItsTruncationAndOrder by a_list_shows_its_truncation_and_order;
     a_grant_store_that_lists_the_oldest_first_fails_the_truncation_and_order_clause:
         WrongOrder => AListShowsItsTruncationAndOrder by a_list_shows_its_truncation_and_order;
-    a_grant_store_that_caches_an_admin_fails_the_admin_revoke_race_clause:
+    a_grant_store_that_caches_an_admin_fails_the_grant_after_an_admin_revoke_clause:
         CachesAdminAuthority => AnAdminsGrantNeverLandsAfterTheirRevoke by an_admins_grant_never_lands_after_their_revoke (&Threads);
 }
 
 #[test]
 fn a_grant_store_that_caches_an_admin_passes_the_single_stale_admin_clause() {
-    // The admitted twin: a cache that never saw the admin catches nothing
-    // here, so only the race clause tells the two stores apart.
+    // The admitted twin: this clause revokes the admin before any grant
+    // under them, so the cache never holds the admin and the store passes.
+    // The clause an_admins_grant_never_lands_after_their_revoke grants under
+    // the admin first, which fills the cache, and its sequential grant after
+    // the revoke then lands; that grant is what tells the two stores apart.
     let fixture = GrantFixture::standard().unwrap();
     let store = FlawedGrants::new(GrantFlaw::CachesAdminAuthority);
     block_on(grant_store::a_grant_under_a_stale_admin_is_refused(

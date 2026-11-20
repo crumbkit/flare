@@ -100,11 +100,24 @@ pub async fn a_revoke_under_a_stale_admin_is_refused<G: GrantStore>(
     )
 }
 
-/// A grant under an admin and the revoke of that admin, run together by
-/// `runner`, never leave a grant that the admin wrote after the revoke:
-/// the admin's grants before the pair apply, the revoke applies, and every
-/// grant under the admin after the pair answers `StaleAuthority`. The
-/// clause runs several rounds, each with an admin of its own.
+/// A store stops honouring an admin's authority once the admin's grant is
+/// revoked, even when it honoured that authority just before.
+///
+/// Each round grants an admin, applies a grant under that admin, then runs
+/// a second grant under the admin and the revoke of the admin together by
+/// `runner`. The clause accepts either order for the pair: the racing grant
+/// may answer `Ok` or `StaleAuthority`, and the revoke must apply. After
+/// the pair, a grant under the admin must answer `StaleAuthority` and write
+/// nothing. That sequential grant is the check that fails: it catches a
+/// store that remembers an admin it once saw, or otherwise honours the
+/// admin after the revoke. The clause runs several rounds, each with an
+/// admin of its own.
+///
+/// The clause cannot observe how the pair interleaved inside the store. A
+/// store that checks the admin's grant in one step and writes in another
+/// passes it whenever its end state matches the order in which the grant
+/// came first, so such a store needs a test of its own that the check and
+/// the write are one atomic operation.
 ///
 /// # Errors
 ///

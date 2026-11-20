@@ -25,6 +25,13 @@ impl Principal {
 
     /// Builds a principal from its id and the email address that its
     /// sign-in verified.
+    ///
+    /// `email` must be an address that the identity provider reported as
+    /// verified for this sign-in, and only an [`Authenticator`] calls this
+    /// function. The share service trusts the address without checking it
+    /// and opens every share granted to it, so a principal built with an
+    /// address from any other source, such as a request header or an
+    /// unverified claim, gets the shares granted to that address.
     #[must_use]
     pub fn with_email(id: PrincipalId, email: Email) -> Self {
         Self {

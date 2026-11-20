@@ -12,7 +12,9 @@ use hangar_core::{
     MAX_VERSIONS, MediaType, NewFile, Principal, PrincipalId, Role, ShareContent, ShareError,
     ShareId, ShareTitle, ShareVersion, Shares, Standing, Timestamp,
 };
-use sharing_stores::{BrokenFiles, BrokenGrants, BrokenShares, InterleavingGrants, Shared};
+use sharing_stores::{
+    BrokenFiles, BrokenGrants, BrokenShares, InterleavingGrants, Shared, VersionlessShares,
+};
 use std::sync::Arc;
 
 type Memory = Shares<MemoryShareStore, MemoryGrantStore>;
@@ -167,6 +169,28 @@ fn a_reader_asking_for_a_version_above_the_latest_gets_version_not_found_and_a_s
     let stranger = block_on(shares.open(&person("eve@example.com"), &id(1), above));
     assert_eq!(reader.unwrap_err(), ShareError::VersionNotFound);
     assert_eq!(stranger.unwrap_err(), ShareError::NotFound);
+}
+
+#[test]
+fn a_reader_whose_version_read_fails_gets_unavailable() {
+    let grant_store = Shared(Arc::new(MemoryGrantStore::new()));
+    let share_store = Shared(Arc::new(MemoryShareStore::new()));
+    let working = Shares::new(share_store.clone(), grant_store.clone());
+    block_on(working.create(&alice(), id(1), title(), doc("# One\n"), at(1))).unwrap();
+    block_on(working.grant(
+        &alice(),
+        &id(1),
+        &email("bob@example.com"),
+        Role::Reader,
+        at(2),
+    ))
+    .unwrap();
+    let failing = Shares::new(VersionlessShares(share_store), grant_store);
+    let bob = person("bob@example.com");
+    let latest = block_on(failing.open(&bob, &id(1), None));
+    let first = block_on(failing.open(&bob, &id(1), Some(ShareVersion::first())));
+    assert_eq!(latest.unwrap_err(), ShareError::Unavailable);
+    assert_eq!(first.unwrap_err(), ShareError::Unavailable);
 }
 
 #[test]
@@ -368,6 +392,37 @@ fn a_revoked_admin_cannot_grant_and_a_grant_by_an_admin_revoked_between_read_and
         at(4),
     ));
     assert_eq!(later.unwrap_err(), ShareError::NotFound);
+}
+
+#[test]
+fn an_admin_demoted_between_read_and_revoke_is_refused_and_the_readers_grant_remains() {
+    let (shares, arming, other) = interleaved();
+    for (grantee, role) in [
+        ("dave@example.com", Role::Admin),
+        ("bob@example.com", Role::Reader),
+    ] {
+        block_on(other.grant(&alice(), &id(1), &email(grantee), role, at(2))).unwrap();
+    }
+    let racing = Arc::clone(&other);
+    arming.0.arm(move || {
+        block_on(racing.grant(
+            &alice(),
+            &id(1),
+            &email("dave@example.com"),
+            Role::Reader,
+            at(3),
+        ))
+        .unwrap();
+    });
+    let dave = person("dave@example.com");
+    let answer = block_on(shares.revoke(&dave, &id(1), &email("bob@example.com")));
+    assert_eq!(answer, Err(ShareError::Forbidden));
+    let bob = block_on(other.grants(&alice(), &id(1)))
+        .unwrap()
+        .into_iter()
+        .find(|grant| grant.grantee().as_str() == "bob@example.com")
+        .map(|grant| grant.role());
+    assert_eq!(bob, Some(Role::Reader));
 }
 
 #[test]

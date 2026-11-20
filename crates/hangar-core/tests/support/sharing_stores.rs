@@ -1,6 +1,7 @@
 //! Stores for the tests of the `Shares` service: a handle that lets two
 //! services share one store, a grant store that runs an action between the
-//! service's read and its write, and stores whose every method fails.
+//! service's read and its write, a share store whose version reads fail, and
+//! stores whose every method fails.
 
 use hangar_core::{
     FileId, FileStore, FileStoreError, Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite,
@@ -164,6 +165,40 @@ impl ShareStore for BrokenShares {
 
     async fn owned_by(&self, _owner: &PrincipalId) -> Result<Listing<Share>, ShareStoreError> {
         Err(ShareStoreError::Unavailable)
+    }
+}
+
+/// A share store that delegates every method except `version`, which
+/// answers `Unavailable`.
+pub(crate) struct VersionlessShares<S>(pub(crate) S);
+
+impl<S: ShareStore> ShareStore for VersionlessShares<S> {
+    async fn create(&self, new: NewShare) -> Result<Share, ShareStoreError> {
+        self.0.create(new).await
+    }
+
+    async fn get(&self, id: &ShareId) -> Result<Share, ShareStoreError> {
+        self.0.get(id).await
+    }
+
+    async fn publish(
+        &self,
+        id: &ShareId,
+        version: NewVersion,
+    ) -> Result<ShareVersion, ShareStoreError> {
+        self.0.publish(id, version).await
+    }
+
+    async fn version(
+        &self,
+        _id: &ShareId,
+        _number: ShareVersion,
+    ) -> Result<SharedVersion, ShareStoreError> {
+        Err(ShareStoreError::Unavailable)
+    }
+
+    async fn owned_by(&self, owner: &PrincipalId) -> Result<Listing<Share>, ShareStoreError> {
+        self.0.owned_by(owner).await
     }
 }
 

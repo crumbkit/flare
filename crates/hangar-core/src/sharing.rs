@@ -129,10 +129,20 @@ pub(crate) enum Step {
     /// The request may go ahead.
     Allow,
     /// The request depends on the target, so read it and run
-    /// [`decide_target`].
-    ReadTarget,
+    /// [`decide_target`] under this authority.
+    ReadTarget(Authority),
     /// The request is refused.
     Refuse(Refusal),
+}
+
+/// The standing under which an actor grants or revokes: the owner, or an
+/// admin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Authority {
+    /// The actor owns the share.
+    Owner,
+    /// The actor holds an Admin grant.
+    Admin,
 }
 
 /// The second step's answer.
@@ -155,30 +165,29 @@ pub(crate) fn decide_actor(standing: Standing, action: ShareAction) -> Step {
         (Standing::Reader, ListGrants | Publish | Grant | Revoke) | (Standing::Admin, Publish) => {
             Step::Refuse(Refusal::Forbidden)
         }
-        (Standing::Owner | Standing::Admin, Grant | Revoke) => Step::ReadTarget,
+        (Standing::Owner, Grant | Revoke) => Step::ReadTarget(Authority::Owner),
+        (Standing::Admin, Grant | Revoke) => Step::ReadTarget(Authority::Admin),
         (Standing::Owner, Leave) => Step::Refuse(Refusal::OwnerCannotBeChanged),
     }
 }
 
-/// Decides a grant or a revoke by `standing` once its target is known.
-pub(crate) fn decide_target(standing: Standing, action: TargetAction, target: Target) -> Decision {
+/// Decides a grant or a revoke under `authority` once its target is known.
+pub(crate) fn decide_target(
+    authority: Authority,
+    action: TargetAction,
+    target: Target,
+) -> Decision {
     use Role::{Admin, Reader};
     let refuse = Decision::Refuse;
-    match (standing, action, target) {
-        (Standing::Stranger, _, _) => refuse(Refusal::NotFound),
-        (Standing::Reader, _, _) => refuse(Refusal::Forbidden),
-        (Standing::Owner | Standing::Admin, _, Target::Owner) => {
-            refuse(Refusal::OwnerCannotBeChanged)
-        }
-        (Standing::Owner | Standing::Admin, TargetAction::Revoke, Target::Person(None)) => {
-            refuse(Refusal::GrantNotFound)
-        }
-        (Standing::Owner, _, Target::Person(_))
-        | (Standing::Admin, TargetAction::Grant(Reader), Target::Person(None | Some(Reader)))
-        | (Standing::Admin, TargetAction::Revoke, Target::Person(Some(Reader))) => Decision::Allow,
-        (Standing::Admin, TargetAction::Grant(Admin), Target::Person(_))
-        | (Standing::Admin, TargetAction::Grant(Reader), Target::Person(Some(Admin)))
-        | (Standing::Admin, TargetAction::Revoke, Target::Person(Some(Admin))) => {
+    match (authority, action, target) {
+        (_, _, Target::Owner) => refuse(Refusal::OwnerCannotBeChanged),
+        (_, TargetAction::Revoke, Target::Person(None)) => refuse(Refusal::GrantNotFound),
+        (Authority::Owner, _, Target::Person(_))
+        | (Authority::Admin, TargetAction::Grant(Reader), Target::Person(None | Some(Reader)))
+        | (Authority::Admin, TargetAction::Revoke, Target::Person(Some(Reader))) => Decision::Allow,
+        (Authority::Admin, TargetAction::Grant(Admin), Target::Person(_))
+        | (Authority::Admin, TargetAction::Grant(Reader), Target::Person(Some(Admin)))
+        | (Authority::Admin, TargetAction::Revoke, Target::Person(Some(Admin))) => {
             refuse(Refusal::Forbidden)
         }
     }
