@@ -71,11 +71,15 @@ here.
 
 Cargo builds flare without Node. When `ui/flare/dist` holds no bundle, the
 build script warns, and pages show plain code and diagram source. To build
-the bundle, run `pnpm install` and `pnpm run build` in `ui/`. A release
-build sets `FLARE_REQUIRE_UI=1`, which makes a missing bundle fail the
-build. A test fails when any built file is over 5 MB, because AWS Lambda,
-which serves the hosted site, refuses a response over 6 MB; the remedy is to
-split the chunk in `ui/flare/vite.config.ts`.
+the bundle, run `pnpm install` and `pnpm run build` in `ui/`. With
+`FLARE_REQUIRE_UI=1`, a missing bundle fails the build. CI's reading job
+sets it. The repository has no release workflow yet, so a build that will
+serve readers, such as one for a hosted deployment, must set it itself;
+without it, Cargo only warns and the reading pages load no script.
+
+A test fails when any built file is over 5 MB, because AWS Lambda, which
+serves the hosted site, refuses a response over 6 MB; the remedy is to split
+the chunk in `ui/flare/vite.config.ts`.
 
 ## Acceptance journey
 

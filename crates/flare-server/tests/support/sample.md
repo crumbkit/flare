@@ -16,16 +16,13 @@ A gust that is more than 5 knots above the limit cancels the sailing at once, wi
 
 ```mermaid
 flowchart LR
-  forecast([Forecast arrives]) --> gust{Peak gust above<br/>the vessel limit?}
-  gust -- no --> sail[Sailing stays on]
+  gust{Forecast gust<br/>over the limit?} -- no --> sail[Sailing stays on]
   gust -- yes --> hold[Hold the sailing]
   subgraph review [Duty master review]
-    hold --> confirm{Confirmed within<br/>40 minutes?}
+    hold --> confirm{Confirmed in<br/>40 minutes?}
   end
   confirm -- no --> sail
-  confirm -- yes --> cancel[Cancel the sailing]
-  cancel --> notify[Notify passengers]
-  cancel --> rebook[Offer the next sailing]
+  confirm -- yes --> cancel[Cancel and rebook]
 ```
 
 Figure 1. What happens to one sailing when a forecast arrives.

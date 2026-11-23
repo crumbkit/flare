@@ -97,6 +97,19 @@ function fail(figure: Figure, error: unknown): void {
   figure.figure.dataset.diagram = "failed";
 }
 
+// The smallest size a 14 px label may shrink to when a drawing is scaled
+// to fit the column. A wider drawing keeps this size and scrolls in its box.
+const SMALLEST_LABEL_PX = 10.5;
+const LABEL_PX = 14;
+
+/** The width below which `svg` would draw its labels under the smallest size. */
+function floorWidth(svg: string, document: Document): number | undefined {
+  const holder = document.createElement("div");
+  holder.innerHTML = svg;
+  const width = holder.querySelector("svg")?.viewBox.baseVal?.width;
+  return width ? Math.ceil((width * SMALLEST_LABEL_PX) / LABEL_PX) : undefined;
+}
+
 /** Puts the light and the dark drawing in place of the figure's source. */
 function show(figure: Figure, drawings: { light: string; dark: string }): void {
   const document = figure.figure.ownerDocument;
@@ -120,6 +133,10 @@ function show(figure: Figure, drawings: { light: string; dark: string }): void {
     holder.className = name;
     holder.innerHTML = svg;
     box.append(holder);
+  }
+  const floor = floorWidth(drawings.light, document);
+  if (floor !== undefined) {
+    box.style.minWidth = `${floor}px`;
   }
   scroll.append(box);
   figure.source.before(scroll);

@@ -36,7 +36,7 @@ body.reading { background: var(--app); color: var(--fg); font-family: var(--font
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .screen { padding: 28px 32px 36px; display: flex; flex-direction: column; gap: 22px; }
 .reading .doc { width: 100%; margin-inline: auto; }
-.reading .doc > p:first-of-type { font-size: 18px; color: var(--muted); }
+.reading .doc > h1 + p { font-size: 18px; color: var(--muted); }
 .share-meta { display: flex; flex-direction: column; gap: 8px; }
 .share-meta .line { font-size: 13px; color: var(--muted); display: flex; gap: 6px 10px; align-items: center; flex-wrap: wrap; }
 .share-meta b { color: var(--fg); font-weight: 600; }

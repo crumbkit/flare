@@ -4,8 +4,9 @@
 //!
 //! With no bundle, which is the case when Node has not run, the build warns
 //! and embeds nothing, so pages show plain code and diagram source. With
-//! `FLARE_REQUIRE_UI=1`, which release builds set, a missing bundle fails the
-//! build.
+//! `FLARE_REQUIRE_UI=1` a missing bundle fails the build. CI's reading job
+//! sets it; the repository has no release workflow yet, so a build that will
+//! serve readers must set it itself.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};

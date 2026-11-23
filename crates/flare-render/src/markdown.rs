@@ -16,7 +16,9 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser,
 
 /// The Mermaid diagram types a page may draw. A Mermaid fence whose source
 /// starts with any other word, such as a `%%{init}%%` directive or front
-/// matter that could change Mermaid's configuration, renders as code.
+/// matter, renders as code. A directive on a later line still reaches
+/// Mermaid; the page is safe because Mermaid keeps `securityLevel` among its
+/// secure keys, which no directive can change.
 pub(crate) const DIAGRAM_TYPES: [&str; 8] = [
     "flowchart",
     "graph",

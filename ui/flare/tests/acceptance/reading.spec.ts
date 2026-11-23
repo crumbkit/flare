@@ -70,7 +70,23 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   await expect(figure.locator("figcaption")).toHaveText(
     "Figure 1. What happens to one sailing when a forecast arrives.",
   );
-  await expect(figure.locator(".mm svg").filter({ visible: true })).toHaveCount(1);
+  const drawing = figure.locator(".mm svg").filter({ visible: true });
+  await expect(drawing).toHaveCount(1);
+  // Figure 1 draws the mockup's five nodes, and its 14 px labels show at
+  // about 11 px, as in the mockup, once the drawing is scaled into the
+  // column. On a phone the drawing keeps that size and scrolls.
+  await expect(drawing.locator("g.node")).toHaveText([
+    "Forecast gustover the limit?",
+    "Sailing stays on",
+    "Hold the sailing",
+    "Confirmed in40 minutes?",
+    "Cancel and rebook",
+  ]);
+  const label = await drawing.evaluate((svg) => {
+    const width = svg instanceof SVGSVGElement ? svg.viewBox.baseVal.width : 0;
+    return (14 * svg.getBoundingClientRect().width) / width;
+  });
+  expect(label).toBeGreaterThanOrEqual(10.5);
   await expect(page.locator(".code pre.shiki")).toHaveCount(1);
   await expect(page.locator(".code button[data-copy]")).toBeVisible();
 

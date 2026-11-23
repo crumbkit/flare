@@ -1,5 +1,5 @@
 //! The embedded files. A build with no bundle embeds none; a build with
-//! `FLARE_REQUIRE_UI=1`, as in CI's reading job and in release builds,
+//! `FLARE_REQUIRE_UI=1`, as in CI's reading job,
 //! checks every file Vite wrote.
 
 use super::*;
