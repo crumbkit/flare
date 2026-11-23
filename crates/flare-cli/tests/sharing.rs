@@ -155,6 +155,49 @@ fn a_second_login_keeps_the_first_logins_label_so_the_server_revokes_the_old_tok
 }
 
 #[test]
+fn a_login_whose_exchange_answer_is_lost_gives_its_label_to_the_next_login() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    api.route("POST", "/api/tokens/exchange", 502, &json!("lost"));
+    home.sharing(&["login", &api.origin])
+        .assert_failed("flare::network::bad_answer");
+    api.issue();
+    home.sharing(&["login", &api.origin]).assert_ok();
+    let labels: Vec<Value> = api
+        .requests_to("/api/tokens/exchange")
+        .iter()
+        .map(|request| request.json()["label"].clone())
+        .collect();
+    assert_eq!(labels.len(), 2);
+    assert_eq!(labels[0], labels[1]);
+}
+
+#[test]
+fn a_login_whose_keychain_refuses_the_token_gives_its_label_to_the_next_login() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    let refusing = home.script("refusing-security", "exit 1\n");
+    api.issue();
+    #[expect(clippy::disallowed_methods, reason = "the tests run the built binary")]
+    let refused = home
+        .command(&["login", &api.origin])
+        .env("FLARE_KEYCHAIN", refusing)
+        .env("FLARE_OPENER", home.login_opener(None))
+        .output()
+        .unwrap();
+    run::Ran::from(refused).assert_failed("flare::keychain::unavailable");
+    api.issue();
+    home.sharing(&["login", &api.origin]).assert_ok();
+    let labels: Vec<Value> = api
+        .requests_to("/api/tokens/exchange")
+        .iter()
+        .map(|request| request.json()["label"].clone())
+        .collect();
+    assert_eq!(labels.len(), 2);
+    assert_eq!(labels[0], labels[1]);
+}
+
+#[test]
 fn share_sends_the_file_with_each_recipient_and_flare_and_the_saved_token() {
     let api = FakeApi::start();
     let home = logged_in(&api);

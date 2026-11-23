@@ -3,9 +3,11 @@
 //! `flare login <server>` listens on a loopback port, opens the browser at
 //! the server's `/cli/login`, takes the login code that the signed-in
 //! browser brings back, exchanges it for a token, saves the token in the
-//! Keychain and saves the login. The label is the saved login's label for
-//! that server, else a new `flare-cli-<8 hex>`, so a second login on this
-//! computer makes the server revoke the first login's token. `flare
+//! Keychain and saves the login. The label is `--label`, else the label of
+//! the last login to that server, else a new `flare-cli-<8 hex>`, and it is
+//! recorded before the exchange, so a second login on this computer makes
+//! the server revoke the first login's token, even one the first login
+//! never received. `flare
 //! logout` revokes the token on the server and forgets it here.
 
 mod callback;
@@ -75,15 +77,17 @@ fn random_hex(env_problem: &str) -> Result<String, Failed> {
 /// Returns the failure that stopped it.
 pub(crate) async fn login(args: &LoginArgs, env: &Snapshot) -> Result<LoggedIn, Failed> {
     let origin = origin(&args.server)?;
-    let earlier = saved::load(env)?.filter(|saved| saved.server == origin);
-    let label = match (&args.label, earlier) {
+    let label = match (&args.label, saved::label(env, &origin)?) {
         (Some(label), _) => label.clone(),
-        (None, Some(earlier)) => earlier.label,
+        (None, Some(earlier)) => earlier,
         (None, None) => format!(
             "flare-cli-{}",
             random_hex("the label")?.get(..8).unwrap_or("0")
         ),
     };
+    // Recorded before the exchange, so a token whose answer is lost or that
+    // the Keychain refuses is revoked by the next login with this label.
+    saved::remember_label(env, &origin, &label)?;
     let state = random_hex("the login state")?;
     let callback = Callback::bind().await?;
     let url = format!("{origin}/cli/login?port={}&state={state}", callback.port());
