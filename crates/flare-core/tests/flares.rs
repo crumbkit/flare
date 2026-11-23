@@ -572,3 +572,19 @@ fn a_grant_whose_first_write_is_a_refused_owner_grant_answers_the_refusal_and_wr
     assert_eq!(refused, FlareError::Share(ShareError::TooManyGrants));
     assert!(activity(&flares, &alice(), 0).unwrap().items.is_empty());
 }
+
+#[test]
+fn a_creator_whose_principal_id_differs_from_their_address_gets_no_grant_on_a_response_to_their_own_flare()
+ {
+    let flares = memory();
+    let alice = Principal::with_email(
+        PrincipalId::try_from("google:a").unwrap(),
+        email("alice@example.com"),
+    );
+    block_on(flares.share(&alice, flare(1, &[], &[]), at(1))).unwrap();
+    block_on(flares.share(&alice, flare(2, &[], &[id(1)]), at(2))).unwrap();
+    assert!(grants_on(&flares, &alice, 2).is_empty());
+    block_on(flares.share(&alice, flare(3, &[], &[]), at(3))).unwrap();
+    block_on(flares.grant(&alice, &id(3), &[], &[id(1)], at(4))).unwrap();
+    assert!(grants_on(&flares, &alice, 3).is_empty());
+}

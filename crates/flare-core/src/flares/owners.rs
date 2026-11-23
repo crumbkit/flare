@@ -28,9 +28,12 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
         flares: &[Responded],
         at: Timestamp,
     ) -> Result<(), ShareError> {
+        // The response's owner is the caller's address-derived id, which
+        // can differ from `who.id()` when the sign-in names its own id.
+        let caller = who.email().map(Email::principal_id);
         let mut owners: Vec<&PrincipalId> = Vec::new();
         for flare in flares {
-            if &flare.owner != who.id() && !owners.contains(&&flare.owner) {
+            if Some(&flare.owner) != caller.as_ref() && !owners.contains(&&flare.owner) {
                 owners.push(&flare.owner);
             }
         }
