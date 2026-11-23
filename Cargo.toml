@@ -121,6 +121,14 @@ http-body-util = "0.1.5"
 html5ever = "0.40.1"
 # Test-only: flare-render's property tests.
 proptest = "1.12.0"
+# Test-only: flare-cli's hosted_stores test makes a CA and a leaf certificate
+# for `localhost` on each run and serves its fake OpenID provider over TLS,
+# because the shipped `flare serve` accepts only an https issuer. Neither
+# crate is in the flare command's normal or build tree. Evaluated in
+# /evals/hangar-rcgen-test-certificates and
+# /evals/hangar-tokio-rustls-test-provider.
+rcgen = { version = "=0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["aws_lc_rs"] }
 
 # BASE-27: an integer overflow panics in a release build as it does in a
 # debug build.
