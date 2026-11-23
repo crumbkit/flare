@@ -68,9 +68,25 @@ fn listed(args: &[&str], field: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Each span between backticks in the skill's text.
+/// Each span between backticks in the skill's text. It pairs backticks by
+/// position, so it reads inline spans only, and
+/// `the_skill_holds_only_inline_code_spans` fails when the skill gains a
+/// fenced block or an unpaired backtick that would shift the pairs.
 fn backticked() -> Vec<&'static str> {
     SKILL.split('`').skip(1).step_by(2).collect()
+}
+
+#[test]
+fn the_skill_holds_only_inline_code_spans() {
+    assert!(
+        !SKILL.contains("```") && !SKILL.contains("~~~"),
+        "the skill holds a fenced code block, which the command and document tests cannot read"
+    );
+    assert_eq!(
+        SKILL.matches('`').count() % 2,
+        0,
+        "the skill holds an unpaired backtick"
+    );
 }
 
 #[test]

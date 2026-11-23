@@ -31,8 +31,9 @@ const CODE_CHARS: usize = 43;
 /// The page the browser shows after a callback.
 const SIGNED_IN: &str = "flare is signed in. You can close this tab.\n";
 
-fn failed(problem: impl Into<String>) -> Failed {
+fn failed(server: &str, problem: impl Into<String>) -> Failed {
     SharingFailed::LoginFailed {
+        server: server.to_owned(),
         problem: problem.into(),
     }
     .into()
@@ -79,23 +80,28 @@ impl Callback {
         self.port
     }
 
-    /// Waits up to `wait` for the callback with `state` and answers the
-    /// login code.
+    /// Waits up to `wait` for the callback with `state` from the sign-in to
+    /// `server` and answers the login code.
     ///
     /// # Errors
     ///
     /// Returns [`SharingFailed::LoginFailed`] when the wait ends, the state
     /// differs, or the callback holds no code.
-    pub(crate) async fn code(&self, state: &str, wait: Duration) -> Result<SecretString, Failed> {
+    pub(crate) async fn code(
+        &self,
+        server: &str,
+        state: &str,
+        wait: Duration,
+    ) -> Result<SecretString, Failed> {
         let deadline = Instant::now() + wait;
         loop {
             let accepted = timeout_at(deadline, self.listener.accept())
                 .await
                 .map_err(|_| {
-                    failed(format!(
-                        "no browser came back within {} seconds",
-                        wait.as_secs()
-                    ))
+                    failed(
+                        server,
+                        format!("no browser came back within {} seconds", wait.as_secs()),
+                    )
                 })?;
             let Ok((mut stream, _)) = accepted else {
                 continue;
@@ -121,7 +127,10 @@ impl Callback {
                     "This sign-in is not the one flare started.\n",
                 )
                 .await;
-                return Err(failed("the browser came back with another login's state"));
+                return Err(failed(
+                    server,
+                    "the browser came back with another login's state",
+                ));
             }
             let code = value("code").filter(|code| {
                 code.len() == CODE_CHARS
@@ -131,7 +140,7 @@ impl Callback {
             });
             let Some(code) = code else {
                 answer(&mut stream, 400, "The sign-in gave flare no login code.\n").await;
-                return Err(failed("the browser came back with no login code"));
+                return Err(failed(server, "the browser came back with no login code"));
             };
             let code = SecretString::from(code.to_owned());
             answer(&mut stream, 200, SIGNED_IN).await;

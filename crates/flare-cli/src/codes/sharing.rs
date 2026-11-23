@@ -32,15 +32,17 @@ pub const FILES_UNKNOWN_FORMAT: Code<'static> = Code::from_spelling("flare::file
 pub enum SharingFailed {
     /// No login is saved, or its token is gone from the Keychain.
     #[error("no flare login is saved on this computer{}", for_server(server.as_deref()))]
-    #[failure(code = LOGIN_NEEDED, recovery = Recovery::Run(Call::new(&["login"]).arg("server")))]
+    #[failure(code = LOGIN_NEEDED, recovery = sign_in(server.as_deref()))]
     LoginNeeded {
         /// The server of the saved login, when there is one.
         server: Option<String>,
     },
     /// The browser sign-in did not hand back a login code.
     #[error("the browser sign-in did not finish: {problem}")]
-    #[failure(code = LOGIN_FAILED, recovery = Recovery::Run(Call::new(&["login"]).arg("server")))]
+    #[failure(code = LOGIN_FAILED, recovery = sign_in(Some(server)))]
     LoginFailed {
+        /// The server the sign-in was for.
+        server: String,
         /// What went wrong.
         problem: String,
     },
@@ -175,15 +177,31 @@ impl Failure for Refused {
     }
 
     /// The API's recovery for the code. A `run` recovery is `flare login`
-    /// with the server, the only command the API names.
+    /// with the server, the only command the API names, which only a person
+    /// can finish, so it prints as a `terminal` recovery.
     fn recovery(&self) -> Recovery {
         match self.code.recovery(&self.server) {
-            ApiRecovery::Run { .. } => {
-                Recovery::Run(Call::new(&["login"]).value("server", self.server.clone()))
-            }
+            ApiRecovery::Run { .. } => sign_in(Some(&self.server)),
             ApiRecovery::Retry => Recovery::Retry,
             ApiRecovery::Hint { text } => Recovery::hint(text),
         }
+    }
+}
+
+/// The recovery of a failure that needs a new sign-in. Only a person can
+/// finish the browser sign-in, so with a known server it is a `terminal`
+/// recovery for `flare login <server>`. crumbkit renders a terminal call
+/// only when every argument has a value, and with no saved login flare does
+/// not know the server, so in that case the recovery is a hint that names
+/// the command and the server's address the person supplies.
+fn sign_in(server: Option<&str>) -> Recovery {
+    match server {
+        Some(server) => {
+            Recovery::Terminal(Call::new(&["login"]).value("server", server.to_owned()))
+        }
+        None => Recovery::hint(
+            "a person runs flare login with their flare server's address, such as https://flare.example.org, in a terminal",
+        ),
     }
 }
 

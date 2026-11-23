@@ -1,6 +1,6 @@
 ---
 name: flare
-description: Share a Markdown document with named people through a flare server with the `flare` command, read a share, grant it to more people, list shares and follow the responses to a flare. Use it when someone asks you to share, publish or send a document with flare, to read a flare someone shared, or to check who responded to one.
+description: Share a Markdown document with named people through a flare server with the `flare` command, read a share, grant it to more people, list shares and follow the responses to a flare. Use it when someone asks you to share or send a document with flare, to read a flare someone shared, or to check who responded to one.
 ---
 
 # flare
@@ -15,11 +15,25 @@ called flares, and the owners of those flares can then read it.
 - Pass `--json` to every command and read the JSON document it prints on
   standard output. Pass `--no-input` too, so a command fails in place of
   asking a question that nobody can answer.
-- When a command fails, the JSON has a `failures` list. Read each
-  failure's `code`, such as `flare::login::needed`, and its `recovery`.
-  When the recovery's `kind` is `run`, run the command in its `call`,
-  filling in any value it names, and then run the original command again.
-  When it is `retry`, run the original command again.
+- When a command fails, it exits with 1 and prints one
+  `flare/failure/v1` document, with `code`, `message` and `recovery` at
+  the top level, such as `flare::login::needed` for `code`. A command
+  that takes many ids, such as `flare schemas show`, instead prints its
+  rows under `data` and a failure for each id it could not serve under
+  `failures`, each in the same shape.
+- Act on the failure's `recovery` by its `kind`:
+  - `run`: run the command in `call`, then run the original command
+    again.
+  - `terminal`: only a person can run the command in `call`, such as a
+    browser sign-in. Ask the person to run it, and wait for them before
+    you run the original command again.
+  - `retry`: run the original command again.
+  - `hint`: follow the advice in `text`. When it names a step for a
+    person, ask the person.
+  - `none`: flare offers no next step. Tell the person the failure's
+    `message` and the recovery's `reason`.
+  - A failure may also list `alternatives`, other recoveries of the same
+    kinds, to use when the first one does not apply.
 - `flare schemas show <id>` prints the JSON Schema of a document, such as
   `flare schemas show flare/shares/v1`. `flare schemas list` lists every
   document id.
@@ -29,10 +43,10 @@ called flares, and the owners of those flares can then read it.
 ## Sign in
 
 `flare login <server>` opens the browser to sign in to a flare server and
-keeps a token in the macOS Keychain. Only a person can finish the sign-in.
-When a command fails with `flare::login::needed`, ask the person to run
-`flare login <server>` with their server's address, and wait for them. Do
-not look for, print or copy the token.
+keeps a token in the macOS Keychain. Only a person can finish the sign-in,
+so a failure that needs a new sign-in, such as `flare::login::needed`,
+gives a `terminal` recovery, or a `hint` when flare does not know the
+server. Never look for, print or copy the token.
 
 ## Share a document
 

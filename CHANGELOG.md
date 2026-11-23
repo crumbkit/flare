@@ -184,6 +184,14 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- A failure that needs a new sign-in now gives a `terminal` recovery for
+  `flare login <server>` with the server filled in, because only a person
+  can finish the browser sign-in. This covers `flare::login::needed` with a
+  saved login, `flare::login::failed`, and the server's
+  `flare::tokens::sign_in_needed`, `flare::tokens::code_refused` and
+  `flare::shares::no_email`. With no saved login flare does not know the
+  server, so `flare::login::needed` gives a hint that names `flare login`.
+  These recoveries were `run` recoveries before.
 - The project is renamed from hangar to flare. The crates are `flare-core`,
   `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
   `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.
