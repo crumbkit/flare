@@ -12,7 +12,7 @@ use crate::documents::{ActivityRow, Next, ShareOut, ShareRow, SharedOut, Shown};
 use crate::env::Snapshot;
 use crate::keychain;
 use crate::login::saved;
-use crumbkit::Listing;
+use crumbkit::{Call, Listing, Step};
 use flare_contract::{
     ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, OpenedShare, Role,
     ShareList, ShareRequest, ShareSummary, Shared, VersionRequest,
@@ -293,6 +293,23 @@ fn activity_row(item: ActivityItem) -> Option<ActivityRow> {
     }
 }
 
+/// The step that reads the responses after `next`: `flare activity` with
+/// each of `flares`, in the order given, and the cursor of the last page.
+fn next_step(flares: &[ShareId], next: &Next) -> Step {
+    let sentence = if next.more {
+        "Read the responses that wait past this page."
+    } else {
+        "Read the responses that arrive after these."
+    };
+    let call = flares
+        .iter()
+        .fold(Call::new(&["activity"]), |call, flare| {
+            call.value("flares", flare.as_str())
+        })
+        .value("since", next.cursor.clone());
+    Step::new(sentence).call(call)
+}
+
 /// Runs `flare activity`. With `--all` it follows the cursor until the
 /// server has no more.
 ///
@@ -305,11 +322,13 @@ pub(crate) async fn activity(
 ) -> Result<Listing<ActivityRow, Next>, Failed> {
     let api = session(env)?;
     let mut query = String::new();
+    let mut flares = Vec::with_capacity(args.flares.len());
     for flare in &args.flares {
         let id = share_id(&api, flare)?;
         query.push_str("flare=");
         query.push_str(id.as_str());
         query.push('&');
+        flares.push(id);
     }
     let mut since = match &args.since {
         Some(text) => Some(
@@ -335,9 +354,11 @@ pub(crate) async fn activity(
         };
         if args.page.limit().is_some() || !next.more {
             let more = next.more;
+            let step = next_step(&flares, &next);
             return Ok(Listing::uncounted(rows, more)
                 .described("responses")
-                .summary(next));
+                .summary(next)
+                .step(step));
         }
         since = Some(next.cursor);
     }
