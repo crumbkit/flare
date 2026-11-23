@@ -18,5 +18,5 @@ pub use time::utc;
 pub use wire::{
     ActivityItem, ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread,
     ExchangeRequest, FlareRef, Format, GrantRequest, NamedCursor, NewComment, OpenedShare, Reply,
-    Role, ShareList, ShareRequest, ShareSummary, Shared, TokenIssued,
+    Role, ShareList, ShareRequest, ShareSummary, Shared, TokenIssued, VersionRequest,
 };

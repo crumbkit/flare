@@ -131,6 +131,49 @@ fn the_hosted_site_serves_its_seven_routes_and_none_of_the_local_ones() {
 }
 
 #[test]
+fn a_share_id_followed_by_versions_finds_the_publish_route_and_names_the_id() {
+    let found = find(
+        &Method::POST,
+        "/api/shares/abc123/versions",
+        SiteKind::Hosted,
+    );
+    let Found::Route(route, name) = found else {
+        panic!("no route: {found:?}");
+    };
+    assert_eq!(route.pattern, "/api/shares/<name>/versions");
+    assert_eq!(name, "abc123");
+}
+
+#[test]
+fn the_publish_route_takes_one_segment_for_the_id_and_only_post() {
+    for path in ["/api/shares//versions", "/api/shares/a/b/versions"] {
+        assert!(
+            !matches!(
+                find(&Method::POST, path, SiteKind::Hosted),
+                Found::Route(route, _) if route.pattern.ends_with("/versions")
+            ),
+            "{path}"
+        );
+    }
+    assert!(matches!(
+        find(
+            &Method::PUT,
+            "/api/shares/abc123/versions",
+            SiteKind::Hosted
+        ),
+        Found::MethodNotAllowed
+    ));
+    assert!(matches!(
+        find(
+            &Method::POST,
+            "/api/shares/abc123/versions",
+            SiteKind::Local
+        ),
+        Found::Nothing
+    ));
+}
+
+#[test]
 fn only_the_comment_routes_and_activity_take_the_session_cookie() {
     let mut taking: Vec<(String, &str)> = ROUTES
         .iter()

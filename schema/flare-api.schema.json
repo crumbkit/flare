@@ -877,6 +877,25 @@
         "expires"
       ],
       "type": "object"
+    },
+    "VersionRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/shares/{id}/versions`: the next version of a share, which\nonly its owner may publish. A new version changes the content and\nnothing else.",
+      "properties": {
+        "content": {
+          "description": "The content, at most 256 KiB.",
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/Format",
+          "description": "The markup of `content`."
+        }
+      },
+      "required": [
+        "format",
+        "content"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

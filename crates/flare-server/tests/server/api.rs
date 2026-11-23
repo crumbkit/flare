@@ -385,12 +385,20 @@ async fn activity_omits_a_response_the_caller_cannot_open_and_shows_it_once_gran
     let api = Api::start().await;
     let alice = api.token_for("alice").await;
     let bob = api.token_for("bob").await;
-    let flare = api.share(&alice, "Plan", &["bob@example.com"], &[]).await;
+    let carol = api.token_for("carol").await;
+    let flare = api
+        .share(
+            &alice,
+            "Plan",
+            &["bob@example.com", "carol@example.com"],
+            &[],
+        )
+        .await;
     let response = api
-        .share(&bob, "Counter-plan", &["carol@example.com"], &[&flare])
+        .share(&bob, "Counter-plan", &["alice@example.com"], &[&flare])
         .await;
     let path = format!("/api/activity?flare={flare}");
-    let (status, hidden) = api.read("GET", &path, Some(&alice)).await;
+    let (status, hidden) = api.read("GET", &path, Some(&carol)).await;
     assert_eq!(status, 200);
     assert_eq!(hidden["items"], json!([]));
     assert!(hidden.get("hidden").is_none() && hidden.get("count").is_none());
@@ -399,10 +407,10 @@ async fn activity_omits_a_response_the_caller_cannot_open_and_shows_it_once_gran
             "POST",
             &format!("/api/grants/{response}"),
             Some(&bob),
-            json!({"with": ["alice@example.com"]}),
+            json!({"with": ["carol@example.com"]}),
         )
         .await;
-    let (_, shown) = api.read("GET", &path, Some(&alice)).await;
+    let (_, shown) = api.read("GET", &path, Some(&carol)).await;
     let item = &shown["items"][0];
     assert_eq!(item["kind"], "response");
     assert_eq!(item["flare"], flare.as_str());
@@ -665,4 +673,16 @@ async fn the_api_answers_404_on_a_hosted_site_without_the_share_api() {
             .0,
         200
     );
+}
+
+#[tokio::test]
+async fn a_response_from_someone_else_opens_for_the_flares_owner_without_naming_them() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let flare = api.share(&alice, "Plan", &["bob@example.com"], &[]).await;
+    let bob = api.token_for("bob").await;
+    let response = api.share(&bob, "Answer", &[], &[&flare]).await;
+    let path = format!("/api/shares/{response}");
+    let (status, body) = api.read("GET", &path, Some(&alice)).await;
+    assert_eq!(status, 200, "{body}");
 }

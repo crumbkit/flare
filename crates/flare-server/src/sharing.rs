@@ -23,6 +23,7 @@ pub(crate) use tokens::{LoginRedirect, bearer_of};
 use flare_auth_oidc::Admit;
 use flare_contract::{
     ApiCode, CommentEdit, ExchangeRequest, GrantRequest, NamedCursor, NewComment, ShareRequest,
+    VersionRequest,
 };
 use flare_core::{Email, Flares, Principal, Timestamp};
 use secrecy::SecretString;
@@ -82,6 +83,8 @@ pub(crate) enum Call {
     List { scope: Scope, limit: usize },
     /// `GET /api/shares/{id}`.
     Open(String),
+    /// `POST /api/shares/{id}/versions`.
+    Publish(String, VersionRequest),
     /// `POST /api/grants/{id}`.
     Grant(String, GrantRequest),
     /// `GET /api/activity`.

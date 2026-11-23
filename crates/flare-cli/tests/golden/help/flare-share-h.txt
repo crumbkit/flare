@@ -8,12 +8,14 @@ Arguments:
 Options:
       --title <TITLE>   The share's title; without it, the file's name without its ending
       --with <ADDRESS>  The addresses to grant Reader, repeated or separated by commas
-      --re <ID>         The flares this share responds to, repeated or separated by commas
+      --re <ID>         The flares this share responds to, repeated or separated by commas; their owners become Readers of it
+      --update <ID>     Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
   -h, --help            Print help (see more with '--help')
 
 Examples:
   flare share review.md --with ana@example.org,jo@example.org
   flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 
 Effects: additive, not idempotent, closed-world.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare share --help` describes them.

@@ -45,6 +45,18 @@ pub struct ShareRequest {
     pub re: Vec<String>,
 }
 
+/// `POST /api/shares/{id}/versions`: the next version of a share, which
+/// only its owner may publish. A new version changes the content and
+/// nothing else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VersionRequest {
+    /// The markup of `content`.
+    pub format: Format,
+    /// The content, at most 256 KiB.
+    pub content: String,
+}
+
 /// `POST /api/shares/{id}/grants`: more people, or more flares the share
 /// responds to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -203,23 +203,126 @@ fn a_response_lists_under_its_flare_with_the_version_it_responds_to() {
 #[test]
 fn activity_omits_a_response_the_caller_cannot_open_even_when_they_can_open_the_flare() {
     let flares = with_flare();
-    // Bob responds and shares the response with carol only.
-    block_on(flares.share(&bob(), flare(2, &["carol@example.com"], &[id(1)]), at(3))).unwrap();
-    let hidden = activity(&flares, &alice(), 0).unwrap();
+    block_on(flares.grant(&alice(), &id(1), &[email("carol@example.com")], &[], at(2))).unwrap();
+    // Bob responds and shares the response with alice only.
+    block_on(flares.share(&bob(), flare(2, &["alice@example.com"], &[id(1)]), at(3))).unwrap();
+    let hidden = activity(&flares, &carol(), 0).unwrap();
     assert!(hidden.items.is_empty());
-    // The admitted twin: once alice may open the response, she sees it.
-    block_on(flares.grant(&bob(), &id(2), &[email("alice@example.com")], &[], at(4))).unwrap();
-    let shown = activity(&flares, &alice(), 0).unwrap();
+    // The admitted twin: once carol may open the response, she sees it.
+    block_on(flares.grant(&bob(), &id(2), &[email("carol@example.com")], &[], at(4))).unwrap();
+    let shown = activity(&flares, &carol(), 0).unwrap();
     assert_eq!(shown.items.len(), 1);
+}
+
+fn grants_on(flares: &Memory, who: &Principal, share: u8) -> Vec<(String, Role)> {
+    let mut grants: Vec<_> = block_on(flares.shares().grants(who, &id(share)))
+        .unwrap()
+        .iter()
+        .map(|grant| (grant.grantee().as_str().to_owned(), grant.role()))
+        .collect();
+    grants.sort_by(|a, b| a.0.cmp(&b.0));
+    grants
+}
+
+#[test]
+fn a_response_is_shared_with_the_owner_of_the_flare_without_naming_them() {
+    let flares = with_flare();
+    block_on(flares.share(&bob(), flare(2, &[], &[id(1)]), at(3))).unwrap();
+    assert!(block_on(flares.shares().open(&alice(), &id(2), None)).is_ok());
+    let with_me = block_on(flares.shares().shared_with_me(&alice())).unwrap();
+    assert_eq!(with_me.items().len(), 1);
+    assert_eq!(activity(&flares, &alice(), 0).unwrap().items.len(), 1);
+}
+
+#[test]
+fn granting_a_response_to_a_flare_shares_it_with_the_flare_owner() {
+    let flares = with_flare();
+    block_on(flares.share(&bob(), flare(2, &[], &[]), at(2))).unwrap();
+    assert!(block_on(flares.shares().open(&alice(), &id(2), None)).is_err());
+    block_on(flares.grant(&bob(), &id(2), &[], &[id(1)], at(3))).unwrap();
+    assert!(block_on(flares.shares().open(&alice(), &id(2), None)).is_ok());
+    assert_eq!(activity(&flares, &alice(), 0).unwrap().items.len(), 1);
+}
+
+#[test]
+fn a_response_to_flares_with_two_owners_grants_each_once_and_one_owner_once() {
+    let flares = with_flare();
+    block_on(flares.share(&carol(), flare(5, &["bob@example.com"], &[]), at(2))).unwrap();
+    block_on(flares.share(&alice(), flare(6, &["bob@example.com"], &[]), at(2))).unwrap();
+    block_on(flares.share(&bob(), flare(2, &[], &[id(1), id(5), id(6)]), at(3))).unwrap();
+    let readers = vec![
+        ("alice@example.com".to_owned(), Role::Reader),
+        ("carol@example.com".to_owned(), Role::Reader),
+    ];
+    assert_eq!(grants_on(&flares, &bob(), 2), readers);
+}
+
+#[test]
+fn an_owner_named_or_already_admin_keeps_one_grant_at_their_role() {
+    let flares = with_flare();
+    block_on(flares.share(&bob(), flare(2, &["alice@example.com"], &[id(1)]), at(3))).unwrap();
+    assert_eq!(
+        grants_on(&flares, &bob(), 2),
+        vec![("alice@example.com".to_owned(), Role::Reader)]
+    );
+    block_on(flares.share(&bob(), flare(3, &[], &[]), at(4))).unwrap();
+    block_on(flares.shares().grant(
+        &bob(),
+        &id(3),
+        &email("alice@example.com"),
+        Role::Admin,
+        at(5),
+    ))
+    .unwrap();
+    block_on(flares.grant(&bob(), &id(3), &[], &[id(1)], at(6))).unwrap();
+    assert_eq!(
+        grants_on(&flares, &bob(), 3),
+        vec![("alice@example.com".to_owned(), Role::Admin)]
+    );
+}
+
+#[test]
+fn the_owner_responding_to_their_own_flare_gets_no_extra_grant() {
+    let flares = with_flare();
+    block_on(flares.share(&alice(), flare(2, &[], &[id(1)]), at(3))).unwrap();
+    assert!(grants_on(&flares, &alice(), 2).is_empty());
+}
+
+#[test]
+fn a_refused_owner_grant_leaves_the_response_unlinked_and_a_repeat_finishes_it() {
+    let flares = with_flare();
+    let with: Vec<String> = (0..MAX_GRANTS)
+        .map(|n| format!("p{n}@example.com"))
+        .collect();
+    let with: Vec<&str> = with.iter().map(String::as_str).collect();
+    let refused = block_on(flares.share(&bob(), flare(2, &with, &[id(1)]), at(3))).unwrap_err();
+    assert_eq!(
+        refused,
+        FlareError::PartlyShared {
+            share: id(2),
+            granted: MAX_GRANTS,
+            cause: ShareError::TooManyGrants,
+        }
+    );
+    assert!(activity(&flares, &alice(), 0).unwrap().items.is_empty());
+    block_on(
+        flares
+            .shares()
+            .revoke(&bob(), &id(2), &email("p0@example.com")),
+    )
+    .unwrap();
+    block_on(flares.grant(&bob(), &id(2), &[], &[id(1)], at(4))).unwrap();
+    assert_eq!(activity(&flares, &alice(), 0).unwrap().items.len(), 1);
 }
 
 #[test]
 fn activity_reports_no_count_of_hidden_responses_and_moves_its_cursor_as_it_would_without_them() {
     let flares = with_flare();
-    let before = activity(&flares, &alice(), 0).unwrap();
-    block_on(flares.share(&bob(), flare(2, &["carol@example.com"], &[id(1)]), at(3))).unwrap();
+    block_on(flares.grant(&alice(), &id(1), &[email("carol@example.com")], &[], at(2))).unwrap();
+    let before = activity(&flares, &carol(), 0).unwrap();
+    block_on(flares.share(&bob(), flare(2, &[], &[id(1)]), at(3))).unwrap();
     block_on(flares.share(&carol(), flare(3, &[], &[]), at(4))).unwrap();
-    let after = activity(&flares, &alice(), before.last.get()).unwrap();
+    let after = activity(&flares, &carol(), before.last.get()).unwrap();
     assert!(after.items.is_empty());
     assert!(!after.more);
     // The cursor is the store's head, which any share anywhere moves, so
@@ -423,21 +526,22 @@ fn pages(flares: &Memory, who: &Principal, ids: &[ShareId], limit: usize) -> Vec
     }
 }
 
-/// Bob responds to `to` with share `byte`, shared with alice when
-/// `visible` and with carol only otherwise.
+/// Bob responds to `to` with share `byte`, shared with carol when
+/// `visible` and with nobody else otherwise. The flare's owner, alice,
+/// always sees it.
 fn respond(flares: &Memory, byte: u8, to: ShareId, visible: bool) {
-    let with = if visible {
-        "alice@example.com"
-    } else {
-        "carol@example.com"
-    };
-    block_on(flares.share(&bob(), flare(byte, &[with], &[to]), at(3))).unwrap();
+    let with: &[&str] = if visible { &["carol@example.com"] } else { &[] };
+    block_on(flares.share(&bob(), flare(byte, with, &[to]), at(3))).unwrap();
 }
 
 #[test]
 fn activity_across_two_flares_returns_every_visible_response_when_hidden_ones_cut_a_read() {
     let flares = with_flare();
     block_on(flares.share(&alice(), flare(5, &["bob@example.com"], &[]), at(2))).unwrap();
+    for flare in [id(1), id(5)] {
+        block_on(flares.grant(&alice(), &flare, &[email("carol@example.com")], &[], at(2)))
+            .unwrap();
+    }
     // Flare 1 holds two hidden responses and then two visible ones, so a
     // read of three links from flare 1 is cut; flare 5's response is newer.
     respond(&flares, 2, id(1), false);
@@ -445,7 +549,7 @@ fn activity_across_two_flares_returns_every_visible_response_when_hidden_ones_cu
     respond(&flares, 4, id(1), true);
     respond(&flares, 6, id(1), true);
     respond(&flares, 7, id(5), true);
-    let pages = pages(&flares, &alice(), &[id(1), id(5)], 2);
+    let pages = pages(&flares, &carol(), &[id(1), id(5)], 2);
     let seen: Vec<ShareId> = pages.concat();
     assert_eq!(seen, vec![id(4), id(6), id(7)]);
     // The admitted twin: bob, who can open every response, sees all five.
@@ -456,11 +560,12 @@ fn activity_across_two_flares_returns_every_visible_response_when_hidden_ones_cu
 #[test]
 fn a_page_that_says_more_follow_is_never_empty_when_hidden_responses_fill_a_read() {
     let flares = with_flare();
+    block_on(flares.grant(&alice(), &id(1), &[email("carol@example.com")], &[], at(2))).unwrap();
     for byte in 2..=4 {
         respond(&flares, byte, id(1), false);
     }
     respond(&flares, 5, id(1), true);
-    let page = block_on(flares.activity(&alice(), &[id(1)], Position::new(0), 2)).unwrap();
+    let page = block_on(flares.activity(&carol(), &[id(1)], Position::new(0), 2)).unwrap();
     let ids: Vec<_> = page
         .items
         .iter()
@@ -469,4 +574,38 @@ fn a_page_that_says_more_follow_is_never_empty_when_hidden_responses_fill_a_read
         .collect();
     assert_eq!(ids, vec![id(5)]);
     assert!(!page.more);
+}
+
+#[test]
+fn a_grant_whose_first_write_is_a_refused_owner_grant_answers_the_refusal_and_writes_nothing() {
+    let flares = with_flare();
+    block_on(flares.share(&bob(), flare(2, &[], &[]), at(2))).unwrap();
+    for n in 0..MAX_GRANTS {
+        let reader = email(&format!("p{n}@example.com"));
+        block_on(
+            flares
+                .shares()
+                .grant(&bob(), &id(2), &reader, Role::Reader, at(3)),
+        )
+        .unwrap();
+    }
+    let refused = block_on(flares.grant(&bob(), &id(2), &[], &[id(1)], at(4))).unwrap_err();
+    assert_eq!(refused, FlareError::Share(ShareError::TooManyGrants));
+    assert!(activity(&flares, &alice(), 0).unwrap().items.is_empty());
+}
+
+#[test]
+fn a_creator_whose_principal_id_differs_from_their_address_gets_no_grant_on_a_response_to_their_own_flare()
+ {
+    let flares = memory();
+    let alice = Principal::with_email(
+        PrincipalId::try_from("google:a").unwrap(),
+        email("alice@example.com"),
+    );
+    block_on(flares.share(&alice, flare(1, &[], &[]), at(1))).unwrap();
+    block_on(flares.share(&alice, flare(2, &[], &[id(1)]), at(2))).unwrap();
+    assert!(grants_on(&flares, &alice, 2).is_empty());
+    block_on(flares.share(&alice, flare(3, &[], &[]), at(3))).unwrap();
+    block_on(flares.grant(&alice, &id(3), &[], &[id(1)], at(4))).unwrap();
+    assert!(grants_on(&flares, &alice, 3).is_empty());
 }

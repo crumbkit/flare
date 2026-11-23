@@ -132,7 +132,7 @@ pub(crate) const LOGOUT: Document<LoggedOut> = Document::new(
     "The server and the label of the token that was revoked and deleted.",
 );
 
-/// A share that `flare share` made or `flare grant` granted.
+/// A share that `flare share` made or updated, or `flare grant` granted.
 #[derive(Debug, Serialize, JsonSchema, Row)]
 pub(crate) struct SharedOut {
     /// The share's id.
@@ -141,12 +141,15 @@ pub(crate) struct SharedOut {
     /// The share's title.
     #[row(column)]
     pub(crate) title: String,
-    /// The addresses that now hold a role on it.
+    /// The share's latest version.
     #[row(column)]
-    pub(crate) granted: Vec<String>,
-    /// The flares it responds to.
+    pub(crate) version: u32,
+    /// The addresses that now hold a role on it; none after `--update`, which does not report them.
     #[row(column)]
-    pub(crate) responds_to: Vec<String>,
+    pub(crate) granted: Option<Vec<String>>,
+    /// The flares it responds to; none after `--update`, which does not report them.
+    #[row(column)]
+    pub(crate) responds_to: Option<Vec<String>>,
 }
 
 /// The document of `flare share`.
@@ -154,7 +157,7 @@ pub(crate) const SHARE: Document<SharedOut> = Document::new(
     "flare",
     "share",
     1,
-    "The new share, the people it is granted to and the flares it responds to.",
+    "The share, its latest version, the people it is granted to and the flares it responds to.",
 );
 
 /// The document of `flare grant`.

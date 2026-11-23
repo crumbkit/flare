@@ -34,6 +34,8 @@ pub(crate) enum ApiRoute {
     ListShares,
     /// `GET /api/shares/{id}`.
     OpenShare,
+    /// `POST /api/shares/{id}/versions`.
+    PublishVersion,
     /// `POST /api/grants/{id}`.
     Grant,
     /// `GET /api/activity`.
@@ -240,6 +242,9 @@ where
 {
     Ok(match route {
         ApiRoute::CreateShare => body_of(ctx, body).await?.map(Call::Create),
+        ApiRoute::PublishVersion => body_of(ctx, body)
+            .await?
+            .map(|request| Call::Publish(name.to_owned(), request)),
         ApiRoute::Grant => body_of(ctx, body)
             .await?
             .map(|request| Call::Grant(name.to_owned(), request)),

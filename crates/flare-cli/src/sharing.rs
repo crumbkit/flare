@@ -12,7 +12,7 @@ use crate::login::saved;
 use crumbkit::Listing;
 use flare_contract::{
     ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, NamedCursor, Role,
-    ShareList, ShareRequest, Shared,
+    ShareList, ShareRequest, ShareSummary, Shared, VersionRequest,
 };
 use flare_core::{CursorName, ShareId};
 use reqwest::Method;
@@ -66,8 +66,9 @@ fn shared_out(shared: Shared) -> SharedOut {
     SharedOut {
         id: shared.share.id,
         title: shared.share.title,
-        granted: shared.granted,
-        responds_to: shared.responds_to,
+        version: shared.share.version,
+        granted: Some(shared.granted),
+        responds_to: Some(shared.responds_to),
     }
 }
 
@@ -111,6 +112,9 @@ pub(crate) async fn share(args: &ShareArgs, env: &Snapshot) -> Result<SharedOut,
     let format = format(&args.file)?;
     let api = session(env)?;
     let content = read_file(&args.file, MAX_FILE)?;
+    if let Some(id) = &args.update {
+        return update(&api, id, VersionRequest { format, content }).await;
+    }
     let title = args.title.clone().unwrap_or_else(|| {
         args.file
             .file_stem()
@@ -127,6 +131,22 @@ pub(crate) async fn share(args: &ShareArgs, env: &Snapshot) -> Result<SharedOut,
         .send(Method::POST, "/api/shares", Some(&request))
         .await?;
     Ok(shared_out(body(&api, answer)?))
+}
+
+/// Publishes `request` as the next version of the share `id`. The server
+/// answers with the share's summary, whose version is the new number.
+async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<SharedOut, Failed> {
+    let id = share_id(api, id)?;
+    let target = format!("/api/shares/{}/versions", id.as_str());
+    let answer: Option<ShareSummary> = api.send(Method::POST, &target, Some(&request)).await?;
+    let share = body(api, answer)?;
+    Ok(SharedOut {
+        id: share.id,
+        title: share.title,
+        version: share.version,
+        granted: None,
+        responds_to: None,
+    })
 }
 
 /// Runs `flare grant`.

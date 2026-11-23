@@ -20,6 +20,10 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare share <file> --update <id>` publishes the file as the next version
+  of a share you own, through `POST /api/shares/<id>/versions`. Readers
+  open the new content at once, and `flare share` and `flare grant` print
+  the share's version. The option refuses `--title`, `--with` and `--re`.
 - `flare comments`, `flare comment`, `flare reply`, `flare comment-edit` and
   `flare comment-delete` let a person comment on a flare they can open,
   reply to a comment, and change or delete their own. A comment is 1 to
@@ -47,6 +51,8 @@ This file records the notable changes to flare. The format follows
   and list the responses to flares. A flare the caller may not read answers
   exactly as a missing one, and activity gives no count of hidden
   responses.
+  A response is also shared with the owner of each flare it responds to,
+  as Reader, unless they already hold a role on it.
 - `flare serve` serves the share API on a hosted site whose config has
   `hosted.stores`. `hosted.creators` lists who may share, and the admit
   rule `{ "anyone": true }` admits every verified address.

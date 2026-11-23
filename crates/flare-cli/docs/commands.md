@@ -225,7 +225,8 @@ Share a Markdown file with people, or as a response to flares
 - `<FILE>`: The file to share: .md for Markdown. Required.
 - `--title <TITLE>`: The share's title; without it, the file's name without its ending
 - `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
-- `--re <ID>`: The flares this share responds to, repeated or separated by commas. Takes more than one value.
+- `--re <ID>`: The flares this share responds to, repeated or separated by commas; their owners become Readers of it. Takes more than one value.
+- `--update <ID>`: Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
 
 ### Examples
 
@@ -241,12 +242,19 @@ Share answer.md as a response to a flare.
 flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 ```
 
+Publish review.md as the next version of a share you own.
+
+```sh
+flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
 ### Columns
 
 - `id`: The share's id.
 - `title`: The share's title.
-- `granted`: The addresses that now hold a role on it.
-- `responds_to`: The flares it responds to.
+- `version`: The share's latest version.
+- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
 
@@ -258,7 +266,7 @@ Grant an existing share to more people
 
 - `<ID>`: The share to grant. Required.
 - `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
-- `--re <ID>`: The flares the share responds to, repeated or separated by commas; only its owner may add them. Takes more than one value.
+- `--re <ID>`: The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it. Takes more than one value.
 
 ### Examples
 
@@ -272,8 +280,9 @@ flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
 
 - `id`: The share's id.
 - `title`: The share's title.
-- `granted`: The addresses that now hold a role on it.
-- `responds_to`: The flares it responds to.
+- `version`: The share's latest version.
+- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
 

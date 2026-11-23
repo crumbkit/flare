@@ -39,9 +39,12 @@ pub(crate) struct ShareArgs {
     /// The addresses to grant Reader, repeated or separated by commas
     #[arg(long, value_name = "ADDRESS", value_delimiter = ',')]
     pub(crate) with: Vec<String>,
-    /// The flares this share responds to, repeated or separated by commas
+    /// The flares this share responds to, repeated or separated by commas; their owners become Readers of it
     #[arg(long, value_name = "ID", value_delimiter = ',')]
     pub(crate) re: Vec<String>,
+    /// Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+    #[arg(long, value_name = "ID", conflicts_with_all = ["title", "with", "re"])]
+    pub(crate) update: Option<String>,
 }
 
 /// The arguments of `flare grant`.
@@ -53,7 +56,7 @@ pub(crate) struct GrantArgs {
     /// The addresses to grant Reader, repeated or separated by commas
     #[arg(long, value_name = "ADDRESS", value_delimiter = ',')]
     pub(crate) with: Vec<String>,
-    /// The flares the share responds to, repeated or separated by commas; only its owner may add them
+    /// The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it
     #[arg(long, value_name = "ID", value_delimiter = ',')]
     pub(crate) re: Vec<String>,
 }

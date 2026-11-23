@@ -15,14 +15,22 @@
 //! recipient, and writes the response links. A grant or link that fails
 //! after the share exists answers [`FlareError::PartlyShared`], which names
 //! the share, so the owner finishes with [`Flares::grant`].
+//!
+//! A response is always shared with the owner of each flare it responds
+//! to: before the links are written, the owner of each `--re` flare is
+//! granted Reader on the response, unless they already hold a role or own
+//! it. The responder never has to name them with `--with`.
 
 mod activity;
 mod comments;
+mod owners;
 mod people;
 
 pub use activity::{ActivityItem, ActivityPage, CommentActivity, ResponseActivity};
 pub use comments::{CommentDraft, CommentThread, Posted};
-pub use people::{AddressesOnly, Creators, RecipientError, Recipients};
+pub use people::{
+    AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
+};
 
 use crate::auth::Principal;
 use crate::email::Email;
@@ -31,7 +39,7 @@ use crate::share::{Share, ShareContent, ShareId, ShareTitle};
 use crate::sharing::{ShareError, Shares, Standing};
 use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
 use crate::time::Timestamp;
-use crate::{Role, ShareVersion};
+use crate::{PrincipalId, Role, ShareVersion};
 
 /// The most flares one share responds to, and one activity call reads.
 pub const MAX_FLARES: usize = 16;
@@ -135,6 +143,13 @@ pub struct Flared {
     pub responds_to: Vec<ShareId>,
 }
 
+/// A flare a share responds to, as the caller opened it.
+struct Responded {
+    flare: ShareId,
+    version: ShareVersion,
+    owner: PrincipalId,
+}
+
 /// The service: [`Shares`] with the creators rule and the response store.
 #[derive(Debug)]
 pub struct Flares<S, G, R, C, U> {
@@ -212,7 +227,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         &self,
         who: &Principal,
         re: &[ShareId],
-    ) -> Result<Vec<(ShareId, ShareVersion)>, FlareError> {
+    ) -> Result<Vec<Responded>, FlareError> {
         if re.len() > MAX_FLARES {
             return Err(FlareError::TooManyFlares);
         }
@@ -223,7 +238,11 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 .open(who, flare, None)
                 .await
                 .map_err(flare_refused)?;
-            versions.push((flare.clone(), opened.share.latest()));
+            versions.push(Responded {
+                flare: flare.clone(),
+                version: opened.share.latest(),
+                owner: opened.share.owner().clone(),
+            });
         }
         Ok(versions)
     }
@@ -232,10 +251,10 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     async fn link(
         &self,
         response: &ShareId,
-        flares: &[(ShareId, ShareVersion)],
+        flares: &[Responded],
         at: Timestamp,
     ) -> Result<(), ()> {
-        for (flare, version) in flares {
+        for Responded { flare, version, .. } in flares {
             let link = NewLink::new(response.clone(), flare.clone(), *version, at);
             self.responses.link(link).await.map_err(|_| ())?;
         }
@@ -284,6 +303,9 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 Ok(_) => granted.push(person),
                 Err(cause) => return Err(partly(granted.len(), cause)),
             }
+        }
+        if let Err(cause) = self.grant_owners(who, share.id(), &flares, at).await {
+            return Err(partly(granted.len(), cause));
         }
         if self.link(share.id(), &flares, at).await.is_err() {
             return Err(partly(granted.len(), ShareError::Unavailable));
@@ -357,6 +379,16 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                     }
                 }
             }
+        }
+        if let Err(cause) = self.grant_owners(who, id, &flares, at).await {
+            if granted.is_empty() {
+                return Err(FlareError::Share(cause));
+            }
+            return Err(FlareError::PartlyShared {
+                share: id.clone(),
+                granted: granted.len(),
+                cause,
+            });
         }
         if self.link(id, &flares, at).await.is_err() {
             return Err(FlareError::PartlyShared {
