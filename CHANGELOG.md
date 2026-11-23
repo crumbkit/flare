@@ -8,6 +8,14 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare serve` writes one CloudWatch Embedded Metric Format line on
+  standard error for each request, created share, page view, sign-in,
+  refused sign-in, token exchange and refused token when its config sets
+  `"log": { "metrics": true }`. The setting is off when the config leaves
+  it out. The lines hold counts only: a page view is one page response,
+  no line names a person, a token, a session or a share, and no route
+  serves the counts. `flare metrics [<file>...]` totals the lines of a log
+  by day and by metric. `docs/metrics.md` lists every metric.
 - `flare share <file> --update <id>` publishes the file as the next version
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print

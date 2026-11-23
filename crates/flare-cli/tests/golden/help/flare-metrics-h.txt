@@ -1,0 +1,17 @@
+Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+
+Usage: flare metrics [OPTIONS] [FILE]...
+
+Arguments:
+  [FILE]...  The log files to read, oldest first; without them, standard input
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Examples:
+  flare metrics flare.log
+  flare metrics flare.log.1 flare.log --json
+
+Effects: read-only, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare metrics --help` describes them.
+Next: flare metrics --help explains each column.

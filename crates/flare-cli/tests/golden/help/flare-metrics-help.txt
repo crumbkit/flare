@@ -1,0 +1,39 @@
+Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+
+The counts come from the metric lines that flare serve writes on standard error when its config sets log.metrics to true. A page view is one page response, so one person who reloads a page counts twice. Lines that are not metric lines are skipped and counted.
+
+Usage: flare metrics [OPTIONS] [FILE]...
+
+Arguments:
+  [FILE]...
+          The log files to read, oldest first; without them, standard input
+
+Options:
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare metrics flare.log
+          Count the metric lines in flare.log by day
+
+  flare metrics flare.log.1 flare.log --json
+          Count the metric lines of a rotated log and its newer file as JSON
+
+Columns:
+  day     The day, as `YYYY-MM-DD` in UTC.
+  metric  The metric's name, such as `PagesViewed`.
+  count   The number of events the metric counted that day.
+
+Effects: read-only, closed-world.

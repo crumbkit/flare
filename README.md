@@ -34,6 +34,7 @@ through which `flare share` shares files with named people.
 | `flare shares [--with-me]` | Lists your shares, or those granted to you. |
 | `flare activity <flare>... [--since <cursor>]` | Lists the responses to flares, oldest first. |
 | `flare logout --yes` | Revokes the token and deletes it. |
+| `flare metrics [<file>...]` | Counts the shares, page views, sign-ins and refusals in a server's log, by day. |
 
 [crates/flare-cli/docs/commands.md](crates/flare-cli/docs/commands.md) lists
 every argument. Every failure prints a code, such as
@@ -65,6 +66,11 @@ or `{ "anyone": true, "reach": ... }`. `reach` is `"everything"` or a list of
 entries. Register `http://localhost:8740/auth/oidc/callback` as the redirect
 URI. [docs/hosting.md](docs/hosting.md) gives the hosted config, and
 [docs/tokens.md](docs/tokens.md) the life of a CLI token.
+
+`"log": { "metrics": true }` makes `flare serve` write a metric line on
+standard error for each request, share, page view, sign-in and refusal.
+It is off without the key. [docs/metrics.md](docs/metrics.md) lists the
+metrics and how to read them.
 
 ### The slots file
 

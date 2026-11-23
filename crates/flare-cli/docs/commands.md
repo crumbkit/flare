@@ -18,6 +18,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare grant`](#flare-grant): Grant an existing share to more people
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
 - [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
+- [`flare metrics`](#flare-metrics): Count the shares, page views, sign-ins and refusals in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare self`](#flare-self): Review flare's own use
 
@@ -352,6 +353,38 @@ flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
 - `version`: The version of the flare it responds to.
 - `at`: When it named the flare, in RFC 3339 UTC.
 - `also`: The other flares it responds to that the caller can open.
+
+Effects: read-only, closed-world.
+
+## `flare metrics`
+
+Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+
+The counts come from the metric lines that flare serve writes on standard error when its config sets log.metrics to true. A page view is one page response, so one person who reloads a page counts twice. Lines that are not metric lines are skipped and counted.
+
+### Arguments
+
+- `<FILE>`: The log files to read, oldest first; without them, standard input. Takes more than one value.
+
+### Examples
+
+Count the metric lines in flare.log by day.
+
+```sh
+flare metrics flare.log
+```
+
+Count the metric lines of a rotated log and its newer file as JSON.
+
+```sh
+flare metrics flare.log.1 flare.log --json
+```
+
+### Columns
+
+- `day`: The day, as `YYYY-MM-DD` in UTC.
+- `metric`: The metric's name, such as `PagesViewed`.
+- `count`: The number of events the metric counted that day.
 
 Effects: read-only, closed-world.
 
