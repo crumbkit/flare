@@ -137,7 +137,8 @@ Routes:
 - A flare the caller may not read answers exactly as a missing one, 404
   `flare::shares::not_found`.
 - Activity shows only responses the caller may read. It gives no count of
-  the others.
+  the others. It reads a per-reader index that
+  [activity.md](activity.md) describes.
 - The activity cursor is `fc1.` and a base64url position. A cursor flare did
   not write answers 400 `flare::activity::bad_cursor`.
 

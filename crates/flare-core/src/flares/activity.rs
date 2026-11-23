@@ -1,24 +1,37 @@
 //! [`Flares::activity`]: the responses to one or more flares since a
 //! position, oldest first.
 //!
-//! A call reads the response store's head first and then the links up to
-//! it, so a link written during the call is left for the next call and
-//! none is skipped. Each call opens every named flare and every response
-//! again, so a cursor grants nothing by itself. A response the caller
-//! cannot open is left out without a trace: the page holds no count of
-//! hidden responses, and when the page is not cut short its cursor is the
-//! store's head, which every response to any flare moves. A call that
-//! reads past hidden responses reads on until its page holds `limit`
-//! items or every response up to the head is read, so a page that says
-//! more items follow is full.
+//! A call reads the caller's own activity index (see the `index` module),
+//! which holds an entry only for a response the caller could open when the
+//! entry was written, so it never reads a response someone else hid from
+//! the caller. A call reads the response store's head first and then the
+//! entries up to it, so an entry written during the call is left for the
+//! next call and none is skipped. Each call opens every named flare and
+//! every response again, so neither a cursor nor an entry grants anything
+//! by itself, and an entry whose response the caller can no longer open is
+//! skipped without a trace. The page holds no count of hidden responses,
+//! and when the page is not cut short its cursor is the store's head,
+//! which every link and entry anywhere moves.
+//!
+//! An entry's position is its own, so a response the caller gains access
+//! to after their cursor shows as new activity, even when its link is
+//! older than the cursor.
+//!
+//! One call examines at most [`MAX_EXAMINED`] entries. Only entries the
+//! caller can no longer open can fill that many without filling the page,
+//! so a page cut by it can be short and say that more follow.
 
 use super::{FlareError, Flares, MAX_FLARES, flare_refused, once_each};
 use crate::auth::Principal;
-use crate::response::{MAX_PAGE, Position, ResponseLink};
+use crate::response::{IndexEntry, MAX_PAGE, Position, Reader};
 use crate::share::{Share, ShareId, ShareVersion};
 use crate::sharing::ShareError;
 use crate::store::{GrantStore, ResponseStore, ShareStore};
 use crate::time::Timestamp;
+
+/// The most index entries one activity call examines before it answers
+/// the items it found, with `more` set.
+pub const MAX_EXAMINED: usize = 1_000;
 
 /// One response to a flare that the caller can open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +94,11 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
                 .map_err(flare_refused)?;
         }
         let limit = limit.clamp(1, MAX_PAGE);
+        let reader = Reader::Person(
+            who.email()
+                .map(crate::Email::principal_id)
+                .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))?,
+        );
         let head = self
             .responses
             .head()
@@ -88,25 +106,30 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
             .map_err(|_| FlareError::ResponsesUnavailable)?;
         let mut items = Vec::new();
         let mut last = after;
+        let mut examined = 0_usize;
         loop {
-            let (links, cut_at) = self.read(&flares, last, head, limit).await?;
-            for link in links {
-                if items.len() == limit {
+            let (entries, cut_at) = self.read(&reader, &flares, last, head, limit).await?;
+            for entry in entries {
+                if items.len() == limit || examined == MAX_EXAMINED {
                     return Ok(ActivityPage {
                         items,
                         last,
                         more: true,
                     });
                 }
-                last = link.position;
-                if let Some(item) = self.item(who, link).await? {
+                examined = examined.saturating_add(1);
+                last = entry.position;
+                if let Some(item) = self.item(who, entry).await? {
                     items.push(item);
                 }
             }
             match cut_at {
-                // A cut read leaves links above `cut_at`, so the call reads
-                // on from there until the page fills or no read is cut.
-                Some(position) if items.len() < limit => last = position,
+                // A cut read leaves entries above `cut_at`, so the call
+                // reads on from there until the page fills, the call has
+                // examined its most, or no read is cut.
+                Some(position) if items.len() < limit && examined < MAX_EXAMINED => {
+                    last = position;
+                }
                 Some(position) => {
                     return Ok(ActivityPage {
                         items,
@@ -125,59 +148,60 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
         }
     }
 
-    /// The links to `flares` above `after` and up to `head`, oldest first,
-    /// with the position where the earliest cut read stopped. Each flare's
-    /// read stops after `limit + 1` links, so only the links at or below
-    /// that position are complete across every flare, and the rest are
-    /// dropped for the next read.
+    /// The caller's entries on `flares` above `after` and up to `head`,
+    /// oldest first, with the position where the earliest cut read
+    /// stopped. Each flare's read stops after `limit + 1` entries, so only
+    /// the entries at or below that position are complete across every
+    /// flare, and the rest are dropped for the next read.
     async fn read(
         &self,
+        reader: &Reader,
         flares: &[ShareId],
         after: Position,
         head: Position,
         limit: usize,
-    ) -> Result<(Vec<ResponseLink>, Option<Position>), FlareError> {
-        let mut links: Vec<ResponseLink> = Vec::new();
+    ) -> Result<(Vec<IndexEntry>, Option<Position>), FlareError> {
+        let mut entries: Vec<IndexEntry> = Vec::new();
         let mut cut_at: Option<Position> = None;
         for flare in flares {
             let read = self
                 .responses
-                .to_flare(flare, after, head, limit.saturating_add(1))
+                .visible(reader, flare, after, head, limit.saturating_add(1))
                 .await
                 .map_err(|_| FlareError::ResponsesUnavailable)?;
             if read.len() > limit
-                && let Some(stop) = read.last().map(|link| link.position)
+                && let Some(stop) = read.last().map(|entry| entry.position)
             {
                 cut_at = Some(cut_at.map_or(stop, |known| known.min(stop)));
             }
-            links.extend(read);
+            entries.extend(read);
         }
         if let Some(stop) = cut_at {
-            links.retain(|link| link.position <= stop);
+            entries.retain(|entry| entry.position <= stop);
         }
-        links.sort_by_key(|link| link.position);
-        Ok((links, cut_at))
+        entries.sort_by_key(|entry| entry.position);
+        Ok((entries, cut_at))
     }
 
-    /// The item for `link`, or `None` when the caller cannot open the
+    /// The item for `entry`, or `None` when the caller cannot open the
     /// response.
     async fn item(
         &self,
         who: &Principal,
-        link: ResponseLink,
+        entry: IndexEntry,
     ) -> Result<Option<ActivityItem>, FlareError> {
-        let response = match self.shares.open(who, &link.response, None).await {
+        let response = match self.shares.open(who, &entry.response, None).await {
             Ok(opened) => opened.share,
             Err(ShareError::NotFound) => return Ok(None),
             Err(other) => return Err(FlareError::Share(other)),
         };
         let others = self
             .responses
-            .of_response(&link.response)
+            .of_response(&entry.response)
             .await
             .map_err(|_| FlareError::ResponsesUnavailable)?;
         let mut also = Vec::new();
-        for other in others.iter().filter(|other| other.flare != link.flare) {
+        for other in others.iter().filter(|other| other.flare != entry.flare) {
             match self.shares.open(who, &other.flare, None).await {
                 Ok(opened) => also.push(opened.share),
                 Err(ShareError::NotFound) => {}
@@ -185,12 +209,12 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
             }
         }
         Ok(Some(ActivityItem {
-            flare: link.flare,
+            flare: entry.flare,
             response,
-            version: link.version,
-            at: link.at,
+            version: entry.version,
+            at: entry.at,
             also,
-            position: link.position,
+            position: entry.position,
         }))
     }
 }

@@ -1,5 +1,6 @@
 //! [`DynamoResponseStore`], flare-core's `ResponseStore` on the table.
 
+mod index;
 mod items;
 
 use crate::dynamodb::Table;
@@ -9,7 +10,10 @@ use crate::dynamodb::keys::{Key, flare_partition, link_sort_key, response_partit
 use crate::dynamodb::retry::{Attempt, Final, Sent, Settled, Token, run};
 use crate::dynamodb::settle::malformed;
 use crate::dynamodb::transact::Transaction;
-use flare_core::{NewLink, Position, ResponseLink, ResponseStore, ResponseStoreError, ShareId};
+use flare_core::{
+    IndexEntry, NewEntry, NewLink, Position, Reader, ResponseLink, ResponseStore,
+    ResponseStoreError, ShareId,
+};
 use items::{PAIRS, head_from, link_from};
 
 /// The most links a read of one response's links returns. A response names
@@ -18,12 +22,14 @@ use items::{PAIRS, head_from, link_from};
 /// with its first 1,000 only; reading the rest needs a paged read.
 const MAX_RESPONSE_LINKS: usize = 1_000;
 
-/// Keeps the links from responses to flares in the table, with one counter
-/// that gives each link its position.
+/// Keeps the links from responses to flares, and each reader's activity
+/// index, in the table, with one counter that gives each link and entry its
+/// position.
 ///
-/// Every link moves the one counter, so links are written one at a time
-/// across the whole table. A link that meets another link's move of the
-/// counter reads the counter again and takes the next position.
+/// Every link and every index transaction moves the one counter, so they
+/// are written one at a time across the whole table. A write that meets
+/// another write's move of the counter reads the counter again and takes
+/// the next position.
 #[derive(Debug, Clone)]
 pub struct DynamoResponseStore {
     table: Table,
@@ -192,5 +198,45 @@ impl ResponseStore for DynamoResponseStore {
         let mut found = links(read)?;
         found.sort_by_key(|link| link.position);
         Ok(found)
+    }
+
+    async fn pairs(
+        &self,
+        responses: &[ShareId],
+        flare: &ShareId,
+    ) -> Result<Vec<ResponseLink>, ResponseStoreError> {
+        let keys: Vec<Key> = responses
+            .iter()
+            .map(|response| Key::pair(response, flare))
+            .collect();
+        let found = links(self.table.get_many(&keys, ItemKind::Link).await)?;
+        Ok(responses
+            .iter()
+            .filter_map(|response| {
+                found
+                    .iter()
+                    .find(|link| &link.response == response)
+                    .cloned()
+            })
+            .collect())
+    }
+
+    async fn index(&self, entries: Vec<NewEntry>) -> Result<(), ResponseStoreError> {
+        index::index(&self.table, entries).await
+    }
+
+    async fn unindex(&self, reader: &Reader, response: &ShareId) -> Result<(), ResponseStoreError> {
+        index::unindex(&self.table, reader, response).await
+    }
+
+    async fn visible(
+        &self,
+        reader: &Reader,
+        flare: &ShareId,
+        after: Position,
+        upto: Position,
+        limit: usize,
+    ) -> Result<Vec<IndexEntry>, ResponseStoreError> {
+        index::visible(&self.table, reader, flare, (after, upto), limit).await
     }
 }

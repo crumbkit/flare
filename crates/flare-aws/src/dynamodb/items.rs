@@ -61,6 +61,8 @@ pub(crate) enum ItemKind {
     LabelSlot,
     Link,
     Sequence,
+    IndexEntry,
+    IndexMarker,
 }
 
 impl ItemKind {
@@ -78,6 +80,8 @@ impl ItemKind {
             Self::LabelSlot => "token label",
             Self::Link => "response link",
             Self::Sequence => "response sequence",
+            Self::IndexEntry => "activity index entry",
+            Self::IndexMarker => "activity index marker",
         }
     }
 }

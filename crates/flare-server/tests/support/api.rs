@@ -48,6 +48,7 @@ impl Api {
                 MemoryGrantStore::new(),
                 FaultyResponses {
                     fail: switches.responses.clone(),
+                    fail_index: switches.index.clone(),
                     ..FaultyResponses::default()
                 },
                 creators,

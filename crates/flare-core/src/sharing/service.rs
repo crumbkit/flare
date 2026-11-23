@@ -92,6 +92,18 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
         Self { shares, grants }
     }
 
+    /// The share store, for reads that work out who can open a share
+    /// without a caller to check.
+    pub(crate) fn share_store(&self) -> &S {
+        &self.shares
+    }
+
+    /// The grant store, for reads that work out who can open a share
+    /// without a caller to check.
+    pub(crate) fn grant_store(&self) -> &G {
+        &self.grants
+    }
+
     /// Reads the share and works out what `actor` is to it.
     async fn standing(
         &self,

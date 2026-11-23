@@ -12,9 +12,10 @@
 //! `share` checks in this order and writes nothing until every check has
 //! passed: a verified address, the creators rule, then that the caller can
 //! open each `--re` flare. It then creates the share, grants each
-//! recipient, and writes the response links. A grant or link that fails
-//! after the share exists answers [`FlareError::PartlyShared`], which names
-//! the share, so the owner finishes with [`Flares::grant`].
+//! recipient, and writes the response links and their activity index
+//! entries. A write that fails after the share exists answers
+//! [`FlareError::PartlyShared`], which names the share, so the owner
+//! finishes with [`Flares::grant`].
 //!
 //! A response is always shared with the owner of each flare it responds
 //! to: before the links are written, the owner of each `--re` flare is
@@ -22,10 +23,12 @@
 //! it. The responder never has to name them with `--with`.
 
 mod activity;
+mod index;
 mod owners;
 mod people;
+mod revoke;
 
-pub use activity::{ActivityItem, ActivityPage};
+pub use activity::{ActivityItem, ActivityPage, MAX_EXAMINED};
 pub use people::{
     AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
 };
@@ -38,6 +41,7 @@ use crate::sharing::{ShareError, Shares, Standing};
 use crate::store::{GrantStore, ResponseStore, ShareStore};
 use crate::time::Timestamp;
 use crate::{PrincipalId, Role, ShareVersion};
+use index::Unfinished;
 
 /// The most flares one share responds to, and one activity call reads.
 pub const MAX_FLARES: usize = 16;
@@ -165,10 +169,18 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
         }
     }
 
-    /// The share service, for reads, lists and grant changes.
+    /// The share service, for reads and lists. A grant or a revoke made
+    /// through it writes no activity index entry; use [`Flares::grant`]
+    /// and [`Flares::revoke`].
     #[must_use]
     pub fn shares(&self) -> &Shares<S, G> {
         &self.shares
+    }
+
+    /// The response store, for reads.
+    #[must_use]
+    pub fn responses(&self) -> &R {
+        &self.responses
     }
 
     /// Checks that `who` has a verified address and is a creator.
@@ -209,16 +221,19 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
         Ok(versions)
     }
 
-    /// Writes a link from `response` to each flare.
+    /// Writes a link from `response` to each flare, then the index entries
+    /// of each link. A repeated link keeps its first position, and its
+    /// entries are written again where they are missing.
     async fn link(
         &self,
         response: &ShareId,
         flares: &[Responded],
         at: Timestamp,
-    ) -> Result<(), ()> {
+    ) -> Result<(), Unfinished> {
         for Responded { flare, version, .. } in flares {
             let link = NewLink::new(response.clone(), flare.clone(), *version, at);
-            self.responses.link(link).await.map_err(|_| ())?;
+            let stored = self.responses.link(link).await.map_err(|_| Unfinished)?;
+            self.index_link(&stored).await?;
         }
         Ok(())
     }
@@ -315,13 +330,14 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
             self.openable(who, &re).await?
         };
         let mut granted = Vec::new();
-        if !with.is_empty() {
+        let named = once_each(with.to_vec());
+        if !named.is_empty() {
             let current = self
                 .shares
                 .grants(who, id)
                 .await
                 .map_err(FlareError::Share)?;
-            for person in once_each(with.to_vec()) {
+            for person in &named {
                 let held = current
                     .iter()
                     .any(|grant| grant.grantee() == &person.principal_id());
@@ -329,8 +345,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
                 if held || owner {
                     continue;
                 }
-                match self.shares.grant(who, id, &person, Role::Reader, at).await {
-                    Ok(_) => granted.push(person),
+                match self.shares.grant(who, id, person, Role::Reader, at).await {
+                    Ok(_) => granted.push(person.clone()),
                     Err(cause) if granted.is_empty() => return Err(FlareError::Share(cause)),
                     Err(cause) => {
                         return Err(FlareError::PartlyShared {
@@ -340,6 +356,17 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
                         });
                     }
                 }
+            }
+        }
+        // Every named person is indexed again, including those who already
+        // held a grant, so repeating a grant repairs missing entries.
+        for person in &named {
+            if self.index_grant(&person.principal_id(), id).await.is_err() {
+                return Err(FlareError::PartlyShared {
+                    share: id.clone(),
+                    granted: granted.len(),
+                    cause: ShareError::Unavailable,
+                });
             }
         }
         if let Err(cause) = self.grant_owners(who, id, &flares, at).await {

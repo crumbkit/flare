@@ -158,6 +158,16 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- `flare activity` reads a per-reader index that flare writes when a
+  response is linked and when a share is granted, so one call reads only
+  responses the caller can open. A flare's readers can no longer stall its
+  owner's activity by posting thousands of responses the owner cannot open.
+  A response granted to you after your cursor now shows as new activity.
+  `flare grant` indexes every named person again, so repeating a grant
+  repairs entries that a failed write left out. One call examines at most
+  1,000 entries. Responses linked before this change are not listed until
+  their owner repeats `flare grant <response> --re <flare>`.
+  [docs/activity.md](docs/activity.md) describes the index.
 - The project is renamed from hangar to flare. The crates are `flare-core`,
   `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
   `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.
