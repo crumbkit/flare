@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/grants/v1",
-  "description": "The grants of a share to people, teams and everyone, oldest first.",
+  "description": "The grants of a share to people, teams and everyone, dormant grants first.",
   "type": "object",
   "properties": {
     "cut": {

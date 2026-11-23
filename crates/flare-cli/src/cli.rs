@@ -13,7 +13,7 @@ pub(crate) use sharing::{
 pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
 use crate::documents::{
-    ACTIVITY, BIND, GRANT, GRANTS, LOGIN, LOGOUT, OPEN, PUBLISH, REVOKE, SERVE, SHARE, SHARES, SHOW,
+    ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
 };
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
@@ -55,11 +55,11 @@ pub(crate) enum Verb {
     Login(LoginArgs),
     /// Revoke this computer's token for the flare server and delete it
     Logout(LogoutArgs),
-    /// Share a Markdown file with readers, or respond to flares
+    /// Share a Markdown file
     Share(ShareArgs),
     /// Show one version of a share you can open, or its latest
     Show(ShowArgs),
-    /// Grant a share to more readers
+    /// Grant a share to readers
     Grant(GrantArgs),
     /// End grants on a share
     Revoke(RevokeArgs),
@@ -71,14 +71,21 @@ pub(crate) enum Verb {
         #[command(subcommand)]
         command: TeamsVerb,
     },
-    /// List your shares or the shares granted to you
+    /// List your shares or those granted to you
     ///
     /// The server lists at most 500 shares in one answer and has no cursor
     /// for the rest, so --all lists at most 500 shares and says more follow
     /// when there are more.
     Shares(SharesArgs),
-    /// List the responses to flares since a cursor, oldest first
+    /// List the responses to flares, oldest first
     Activity(ActivityArgs),
+    /// Count the metric lines in a flare server's log, by day
+    ///
+    /// The counts come from the metric lines that flare serve writes on
+    /// standard error when its config sets log.metrics to true. A page
+    /// view is one page response, so one person who reloads a page counts
+    /// twice. Lines that are not metric lines are skipped and counted.
+    Metrics(MetricsArgs),
     /// Explore flare's commands
     Commands {
         /// What to do with the commands.
@@ -193,8 +200,16 @@ pub(crate) struct BindArgs {
     pub(crate) dry_run: DryRun,
 }
 
+/// The arguments of `flare metrics`.
+#[derive(Debug, Args)]
+pub(crate) struct MetricsArgs {
+    /// The log files to read, oldest first; without them, standard input
+    #[arg(value_name = "FILE")]
+    pub(crate) files: Vec<PathBuf>,
+}
+
 /// Why flare's commands are verbs at the root.
-const ROOT: &str = "each command names what a person does with the board flare serves or the server flare shares through";
+const ROOT: &str = "each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes";
 
 /// flare's help and failures.
 pub const TOOL: Tool = Tool::new()
@@ -203,7 +218,7 @@ pub const TOOL: Tool = Tool::new()
             .root_verbs(
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "show",
-                    "grant", "revoke", "grants", "shares", "activity",
+                    "grant", "revoke", "grants", "shares", "activity", "metrics",
                 ],
                 ROOT,
             )
@@ -310,26 +325,8 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::additive())
         .document(GRANT),
-    Leaf::new(&["revoke"])
-        .examples(&[
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
-                "End one person's grant on a share",
-            ),
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
-                "Close a share you own to everyone signed in",
-            ),
-        ])
-        .effects(Effects::destructive())
-        .document(REVOKE),
-    Leaf::new(&["grants"])
-        .examples(&[Example::new(
-            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
-            "List the people, teams and everyone grants of a share",
-        )])
-        .effects(Effects::read_only())
-        .document(GRANTS),
+    sharing::REVOKE_LEAF,
+    sharing::GRANTS_LEAF,
     teams::CREATE_LEAF,
     teams::ADD_LEAF,
     teams::REMOVE_LEAF,
@@ -359,6 +356,16 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::read_only())
         .document(ACTIVITY),
+    Leaf::new(&["metrics"])
+        .examples(&[
+            Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),
+            Example::new(
+                &["flare.log.1", "flare.log", "--json"],
+                "Count the metric lines of a rotated log and its newer file as JSON",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(METRICS),
                 Leaf::new(&["commands", "list"])
                     .examples(&[
                         Example::new(&[], "List every command"),

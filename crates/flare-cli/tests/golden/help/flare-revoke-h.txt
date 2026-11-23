@@ -12,8 +12,8 @@ Options:
   -h, --help        Print help (see more with '--help')
 
 Examples:
-  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
-  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org --yes
+  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone --yes
 
 Effects: destructive, not idempotent, closed-world.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare revoke --help` describes them.

@@ -21,6 +21,7 @@ up around it.
 ```json
 {
   "hosted": { "origin": "https://flare.example.com", "listen": "127.0.0.1:8080" },
+  "log": { "metrics": true },
   "oidc": {
     "issuer": "https://accounts.google.com",
     "client_id": "<from the Google console>",
@@ -59,6 +60,12 @@ up around it.
   restart the server.
 - Register `<origin>/auth/oidc/callback` as the redirect URI of the Google
   client, such as `https://flare.example.com/auth/oidc/callback`.
+- `log.metrics` set to `true` writes a CloudWatch metric line on standard
+  error for each request, share, page view, sign-in and refusal. A hosted
+  site sets it, so its operator can count use in CloudWatch; it is off
+  when the config leaves it out. The counts hold no person, token or
+  share, and no route of the site serves them.
+  [metrics.md](metrics.md) lists the metrics.
 - A config error exits with `flare::config::invalid` and names the key.
 
 ## The share API

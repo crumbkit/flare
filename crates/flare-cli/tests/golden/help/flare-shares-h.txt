@@ -1,4 +1,4 @@
-List your shares or the shares granted to you
+List your shares or those granted to you
 
 Usage: flare shares [OPTIONS]
 

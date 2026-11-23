@@ -1,7 +1,9 @@
 //! The arguments and help of `flare login`, `logout`, `share`, `show`,
-//! `grant`, `shares` and `activity`.
+//! `grant`, `revoke`, `grants`, `shares` and `activity`.
 
+use crate::documents::{GRANTS, REVOKE};
 use clap::Args;
+use crumbkit::help::{Effects, Example, Leaf};
 use crumbkit::{DryRun, Page, Yes};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -136,3 +138,32 @@ pub(crate) struct GrantsArgs {
     #[arg(value_name = "ID")]
     pub(crate) id: String,
 }
+
+/// The help of `flare revoke`.
+pub(super) const REVOKE_LEAF: Leaf = Leaf::new(&["revoke"])
+    .examples(&[
+        Example::new(
+            &[
+                "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+                "--with",
+                "mei@example.org",
+                "--yes",
+            ],
+            "End one person's grant on a share",
+        ),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone", "--yes"],
+            "Close a share you own to everyone signed in",
+        ),
+    ])
+    .effects(Effects::destructive())
+    .document(REVOKE);
+
+/// The help of `flare grants`.
+pub(super) const GRANTS_LEAF: Leaf = Leaf::new(&["grants"])
+    .examples(&[Example::new(
+        &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+        "List the people, teams and everyone grants of a share",
+    )])
+    .effects(Effects::read_only())
+    .document(GRANTS);

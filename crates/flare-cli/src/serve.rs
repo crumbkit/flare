@@ -31,7 +31,9 @@ use flare_aws::{
 };
 use flare_board::BoardStore;
 use flare_core::{FlareTeams, Flares, NamedRecipients};
-use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Sharing, Site, Stopped};
+use flare_server::{
+    App, BindError, Gate, Limits, Listeners, Metrics, ServeError, Sharing, Site, Stopped,
+};
 use std::path::Path;
 use std::sync::OnceLock;
 use tokio::signal::unix::{SignalKind, signal};
@@ -131,9 +133,10 @@ impl Signals {
 pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
     let (root, store) = board::checked_store(&args.board, env).await?;
     let config = config::load(args.config.as_deref(), env)?;
+    let metrics = Metrics::new(config.metrics);
     match config.site {
-        Configured::Local { oidc } => local(args, env, (&root, store), oidc).await,
-        Configured::Hosted(hosted) => self::hosted(&root, store, hosted).await,
+        Configured::Local { oidc } => local(args, env, (&root, store), oidc, metrics).await,
+        Configured::Hosted(hosted) => self::hosted(&root, store, hosted, metrics).await,
     }
 }
 
@@ -150,6 +153,7 @@ async fn local(
     env: &Snapshot,
     (root, store): (&Path, BoardStore),
     oidc: Option<LocalOidc>,
+    metrics: Metrics,
 ) -> Result<(Served, Stop), Failed> {
     let oidc = match oidc {
         Some(LocalOidc { config, secret }) => Some(connect(config, &secret).await?),
@@ -172,7 +176,7 @@ async fn local(
         gate: Gate::new(loopback, oidc),
         state,
     };
-    let app = App::new(store.clone(), store.clone(), store, site, limits);
+    let app = App::new(store.clone(), store.clone(), store, site, limits).with_metrics(metrics);
     log::start();
     tracing::info!(
         board = %root.display(),
@@ -183,7 +187,12 @@ async fn local(
 
 /// Serves the hosted site: reads the secret file, draws the sealing key
 /// and discovers the provider before it binds.
-async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Served, Stop), Failed> {
+async fn hosted(
+    root: &Path,
+    store: BoardStore,
+    hosted: Hosted,
+    metrics: Metrics,
+) -> Result<(Served, Stop), Failed> {
     let Hosted {
         origin,
         listen,
@@ -211,7 +220,8 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
         "flare serves this board as a hosted site behind a TLS proxy"
     );
     let site = Site::Hosted { origin, oidc };
-    let app = App::new(store.clone(), store.clone(), store, site, Limits::default());
+    let app = App::new(store.clone(), store.clone(), store, site, Limits::default())
+        .with_metrics(metrics);
     let app = match sharing {
         Some(sharing) => app.with_sharing(sharing),
         None => app,

@@ -18,6 +18,7 @@ use super::Ctx;
 use crate::checks;
 use crate::cookies;
 use crate::handover::Handed;
+use crate::metrics::{Event, Reason};
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
@@ -74,6 +75,7 @@ where
                     }
                     match ctx.shared.site.gate() {
                         Some(gate) => {
+                            ctx.shared.count(Event::SignedIn);
                             let origin = gate.loopback().launch_host().origin();
                             Ok(Reply::see_other(secret::finish_url(&origin, &issued.code)))
                         }
@@ -82,11 +84,19 @@ where
                 }
                 None => {
                     oidc.sign_out(signed_in.session());
+                    ctx.shared.count(Event::SignInRefused {
+                        reason: Reason::NoHandoverSlot,
+                    });
                     Err(Code::OidcUnavailable)
                 }
             }
         }
-        Err(refusal) => Err(refused(refusal)),
+        Err(refusal) => {
+            ctx.shared.count(Event::SignInRefused {
+                reason: Reason::of(refusal),
+            });
+            Err(refused(refusal))
+        }
     };
     match answer {
         Ok(reply) => Ok(reply.cookie(CLEAR_KEPT.to_owned())),
@@ -142,8 +152,14 @@ where
     let kept = cookies::kept_state(ctx.headers, HOSTED_KEPT_COOKIE);
     let query = ctx.uri.query().unwrap_or_default();
     let answer = match oidc.complete(query, kept.as_ref(), old).await {
-        Ok(signed_in) => Ok(signed_in_reply(&signed_in)),
+        Ok(signed_in) => {
+            ctx.shared.count(Event::SignedIn);
+            Ok(signed_in_reply(&signed_in))
+        }
         Err(refusal) => {
+            ctx.shared.count(Event::SignInRefused {
+                reason: Reason::of(refusal),
+            });
             let code = refused(refusal);
             tracing::info!(code = code.text(), refusal = ?refusal, "a sign-in was refused");
             Err(code)

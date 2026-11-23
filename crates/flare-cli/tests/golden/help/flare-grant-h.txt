@@ -1,4 +1,4 @@
-Grant a share to more readers
+Grant a share to readers
 
 Usage: flare grant [OPTIONS] <ID>
 

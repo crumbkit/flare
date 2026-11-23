@@ -1,4 +1,4 @@
-List the responses to flares since a cursor, oldest first
+List the responses to flares, oldest first
 
 Usage: flare activity [OPTIONS] <FLARE>...
 

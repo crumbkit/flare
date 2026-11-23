@@ -12,8 +12,8 @@ use flare_cli::{Cli, TOOL};
 
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
 /// The tool record declares the root verbs `serve`, `open`, `publish`,
-/// `bind`, `login`, `logout`, `share`, `grant`, `shares` and `activity`
-/// with their reason, so they need no opt-out here. `show` is crumbkit's
+/// `bind`, `login`, `logout`, `share`, `grant`, `shares`, `activity` and
+/// `metrics` with their reason, so they need no opt-out here. `show` is crumbkit's
 /// built-in verb.
 const ALLOW: &[Allow] = &[Allow::new(
     Rule::ShowIds,
@@ -31,7 +31,7 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
-        "activity", "usage", "revoke", "grants", "create", "add", "remove", "delete",
+        "activity", "metrics", "usage", "revoke", "grants", "create", "add", "remove", "delete",
     ])
     .examples(EXAMPLES)
     .skip(

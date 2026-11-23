@@ -14,14 +14,15 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare bind`](#flare-bind): Save a binding that fills a page's slots with records
 - [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
 - [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
-- [`flare share`](#flare-share): Share a Markdown file with readers, or respond to flares
+- [`flare share`](#flare-share): Share a Markdown file
 - [`flare show`](#flare-show): Show one version of a share you can open, or its latest
-- [`flare grant`](#flare-grant): Grant a share to more readers
+- [`flare grant`](#flare-grant): Grant a share to readers
 - [`flare revoke`](#flare-revoke): End grants on a share
 - [`flare grants`](#flare-grants): List a share's grants
 - [`flare teams`](#flare-teams): Manage teams
-- [`flare shares`](#flare-shares): List your shares or the shares granted to you
-- [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
+- [`flare shares`](#flare-shares): List your shares or those granted to you
+- [`flare activity`](#flare-activity): List the responses to flares, oldest first
+- [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
 - [`flare self`](#flare-self): Review flare's own use
@@ -218,7 +219,7 @@ Effects: destructive, not idempotent, closed-world.
 
 ## `flare share`
 
-Share a Markdown file with readers, or respond to flares
+Share a Markdown file
 
 ### Arguments
 
@@ -308,7 +309,7 @@ Children: The version's Markdown follows the share, one line of text for each li
 
 ## `flare grant`
 
-Grant a share to more readers
+Grant a share to readers
 
 ### Arguments
 
@@ -363,13 +364,13 @@ End grants on a share
 End one person's grant on a share.
 
 ```sh
-flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org --yes
 ```
 
 Close a share you own to everyone signed in.
 
 ```sh
-flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone --yes
 ```
 
 ### Columns
@@ -584,7 +585,7 @@ Effects: destructive, not idempotent, closed-world.
 
 ## `flare shares`
 
-List your shares or the shares granted to you
+List your shares or those granted to you
 
 The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
 
@@ -622,7 +623,7 @@ Effects: read-only, closed-world.
 
 ## `flare activity`
 
-List the responses to flares since a cursor, oldest first
+List the responses to flares, oldest first
 
 ### Arguments
 
@@ -654,6 +655,38 @@ flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
 - `version`: The version of the flare it responds to.
 - `at`: When it named the flare, in RFC 3339 UTC.
 - `also`: The other flares it responds to that the caller can open.
+
+Effects: read-only, closed-world.
+
+## `flare metrics`
+
+Count the metric lines in a flare server's log, by day
+
+The counts come from the metric lines that flare serve writes on standard error when its config sets log.metrics to true. A page view is one page response, so one person who reloads a page counts twice. Lines that are not metric lines are skipped and counted.
+
+### Arguments
+
+- `<FILE>`: The log files to read, oldest first; without them, standard input. Takes more than one value.
+
+### Examples
+
+Count the metric lines in flare.log by day.
+
+```sh
+flare metrics flare.log
+```
+
+Count the metric lines of a rotated log and its newer file as JSON.
+
+```sh
+flare metrics flare.log.1 flare.log --json
+```
+
+### Columns
+
+- `day`: The day, as `YYYY-MM-DD` in UTC.
+- `metric`: The metric's name, such as `PagesViewed`.
+- `count`: The number of events the metric counted that day.
 
 Effects: read-only, closed-world.
 

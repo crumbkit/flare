@@ -32,10 +32,10 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org --yes
           End one person's grant on a share
 
-  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone --yes
           Close a share you own to everyone signed in
 
 Columns:

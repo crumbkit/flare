@@ -1,7 +1,10 @@
 //! The documents that `flare`'s commands print (CLI-2). None holds a
 //! token, a login code, a launch host or a launch URL.
 
+mod grants;
 pub(crate) mod teams;
+
+pub(crate) use grants::{GRANTS, GrantRow, REVOKE, RevokedOut};
 
 use crumbkit::{Document, Listing, Row};
 use schemars::JsonSchema;
@@ -232,60 +235,6 @@ pub(crate) const GRANT: Document<SharedOut> = Document::new(
     "The share, the people this grant added and the flares it now responds to.",
 );
 
-/// The grants that `flare revoke` ended.
-#[derive(Debug, Serialize, JsonSchema, Row)]
-pub(crate) struct RevokedOut {
-    /// The share's id.
-    #[row(column)]
-    pub(crate) id: String,
-    /// The addresses, `team:<name>` and `everyone` whose grant ended; one that held no grant is left out.
-    #[row(column)]
-    pub(crate) revoked: Vec<String>,
-}
-
-/// The document of `flare revoke`.
-pub(crate) const REVOKE: Document<RevokedOut> = Document::new(
-    "flare",
-    "revoke",
-    1,
-    "The share and the grants this command ended.",
-);
-
-/// One grant in `flare grants`.
-#[derive(Debug, Serialize, JsonSchema, Row)]
-pub(crate) struct GrantRow {
-    /// The person's address, `team:<name>` or `everyone`.
-    #[row(column)]
-    pub(crate) grantee: String,
-    /// Who the grant is to: `person`, `team` or `everyone`.
-    #[row(column)]
-    pub(crate) kind: String,
-    /// The grant's role: `admin` or `reader`.
-    #[row(column)]
-    pub(crate) role: String,
-    /// `active`, or `dormant` for a grant to a deleted team, which opens nothing until the share's owner revokes it.
-    #[row(column, warning_by = |row: &Self| row.state == "dormant")]
-    pub(crate) state: String,
-    /// Who wrote the grant's current role.
-    #[row(long)]
-    pub(crate) granted_by: String,
-    /// When the grant was first written, in RFC 3339 UTC.
-    #[row(long)]
-    pub(crate) created: String,
-    /// For an everyone grant, the mail domain it opens to, or `admitted` for the server's email list.
-    #[row(long)]
-    pub(crate) audience: Option<String>,
-}
-
-/// The document of `flare grants`.
-pub(crate) const GRANTS: Document<Listing<GrantRow>> = Document::new(
-    "flare",
-    "grants",
-    1,
-    "The grants of a share to people, teams and everyone, oldest first.",
-)
-.when_empty("No grants.");
-
 /// One share in `flare shares`.
 #[derive(Debug, Serialize, JsonSchema, Row)]
 pub(crate) struct ShareRow {
@@ -371,3 +320,59 @@ pub(crate) const ACTIVITY: Document<Listing<ActivityRow, Next>> = Document::new(
     "The responses to the named flares, oldest first, and the cursor of the next call.",
 )
 .when_empty("No new responses.");
+
+/// The count of one metric on one day in `flare metrics`.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct MetricRow {
+    /// The day, as `YYYY-MM-DD` in UTC.
+    #[row(column)]
+    pub(crate) day: String,
+    /// The metric's name, such as `PagesViewed`.
+    #[row(column)]
+    pub(crate) metric: String,
+    /// The number of events the metric counted that day.
+    #[row(column)]
+    pub(crate) count: u64,
+}
+
+/// The count of one metric over every day in `flare metrics`.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct MetricTotal {
+    /// The metric's name.
+    pub(crate) metric: String,
+    /// The number of events the metric counted.
+    pub(crate) count: u64,
+}
+
+/// The totals of `flare metrics` and the lines it read.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct MetricTotals {
+    /// The count of each metric over every day, ordered by name.
+    pub(crate) totals: Vec<MetricTotal>,
+    /// The number of lines read.
+    pub(crate) lines: u64,
+    /// The number of lines skipped because they are not Flare metric lines.
+    pub(crate) skipped: u64,
+}
+
+impl std::fmt::Display for MetricTotals {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for total in &self.totals {
+            writeln!(formatter, "{}: {}", total.metric, total.count)?;
+        }
+        write!(
+            formatter,
+            "Read {} lines and skipped {} that are not Flare metric lines.",
+            self.lines, self.skipped
+        )
+    }
+}
+
+/// The document of `flare metrics`.
+pub(crate) const METRICS: Document<Listing<MetricRow, MetricTotals>> = Document::new(
+    "flare",
+    "metrics",
+    1,
+    "The count of each Flare metric on each day in UTC, the total of each metric, and the lines read and skipped.",
+)
+.when_empty("No Flare metric lines.");

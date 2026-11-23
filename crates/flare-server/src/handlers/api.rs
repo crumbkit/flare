@@ -11,17 +11,22 @@
 
 use super::Ctx;
 use super::edit::read_body;
+use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument};
-use flare_core::{Credential, PageStore, Principal, RecordStore, ShareVersion, Timestamp};
+use flare_core::{Credential, PageStore, Principal, RecordStore, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::time::UNIX_EPOCH;
+
+mod query;
+
+use query::{every, flag, number, version};
 
 /// The share API's routes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,57 +100,6 @@ fn timestamp<P, R, S, K: OidcClock>(ctx: &Ctx<'_, P, R, S, K>) -> Timestamp {
     Timestamp::from_secs(seconds)
 }
 
-/// A number in the query between 1 and `max`, or `default` when absent.
-fn number<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
-    max: usize,
-    default: usize,
-) -> Result<usize, Refusal>
-where
-    P: PageStore,
-    R: RecordStore,
-    S: Schemas,
-    K: OidcClock,
-{
-    match ctx.query("limit") {
-        None => Ok(default),
-        Some(text) => text
-            .parse::<usize>()
-            .ok()
-            .filter(|value| (1..=max).contains(value))
-            .ok_or_else(|| ApiCode::BadQuery.into()),
-    }
-}
-
-/// The share version that `version` in the query names, or `None` when
-/// absent. A value that is not a number from 1 is a bad query.
-fn version<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Option<ShareVersion>, Refusal>
-where
-    P: PageStore,
-    R: RecordStore,
-    S: Schemas,
-    K: OidcClock,
-{
-    match ctx.query("version") {
-        None => Ok(None),
-        Some(text) => text
-            .parse::<u32>()
-            .ok()
-            .and_then(|number| ShareVersion::try_from(number).ok())
-            .map(Some)
-            .ok_or_else(|| ApiCode::BadQuery.into()),
-    }
-}
-
-/// Every value of `name` in the query, decoded.
-fn every(ctx_uri: &http::Uri, name: &str) -> Vec<String> {
-    let query = ctx_uri.query().unwrap_or_default();
-    form_urlencoded::parse(query.as_bytes())
-        .filter(|(key, _)| key == name)
-        .map(|(_, value)| value.into_owned())
-        .collect()
-}
-
 /// Reads and parses a JSON body.
 async fn body_of<T, P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
@@ -189,7 +143,8 @@ where
     }
 }
 
-/// Answers one route of the share API.
+/// Answers one route of the share API, and counts its token event from
+/// the final answer's status.
 pub(crate) async fn handle<P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
     route: ApiRoute,
@@ -206,6 +161,43 @@ where
     let Some(api) = ctx.shared.sharing.as_deref() else {
         return Err(Code::NotFound.into());
     };
+    let reply = answer(ctx, api, route, name, credential, body)
+        .await
+        .unwrap_or_else(|problem| problem.reply(ctx.headers));
+    if let Some(event) = token_event(route, reply.status()) {
+        ctx.shared.count(event);
+    }
+    Ok(reply)
+}
+
+/// The token event an answer of `route` with `status` counts: an exchange
+/// that answered 2xx traded a code, one that answered 4xx refused it, and
+/// any other `/api/` route that answered 401 refused the request's
+/// credential. A 5xx, such as a token store that is down, counts nothing.
+fn token_event(route: ApiRoute, status: StatusCode) -> Option<Event> {
+    match route {
+        ApiRoute::Exchange if status.is_success() => Some(Event::TokenExchanged),
+        ApiRoute::Exchange if status.is_client_error() => Some(Event::TokenRefused),
+        ApiRoute::Exchange | ApiRoute::CliLogin => None,
+        _ => (status == StatusCode::UNAUTHORIZED).then_some(Event::TokenRefused),
+    }
+}
+
+/// The answer of one route of the share API from `api`.
+async fn answer<P, R, S, K>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    api: &dyn Api,
+    route: ApiRoute,
+    name: &str,
+    credential: Option<Credential>,
+    body: Incoming,
+) -> Result<Reply, Problem>
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
     let origin = ctx
         .shared
         .site
@@ -225,7 +217,13 @@ where
         _ => match caller(ctx, api, credential.as_ref(), now).await {
             Err(refusal) => Err(refusal),
             Ok(who) => match call(ctx, route, name, body).await? {
-                Ok(call) => api.run(&who, call, now).await,
+                Ok(call) => {
+                    let answer = api.run(&who, call, now).await;
+                    if route == ApiRoute::CreateShare && answer.is_ok() {
+                        ctx.shared.count(Event::ShareCreated);
+                    }
+                    answer
+                }
                 Err(refusal) => Err(refusal),
             },
         },
@@ -285,11 +283,7 @@ where
                 Some("with-me") => Ok(Scope::WithMe),
                 _ => Err(ApiCode::BadQuery.into()),
             };
-            let everyone: Result<bool, Refusal> = match ctx.query("everyone").as_deref() {
-                None | Some("false") => Ok(false),
-                Some("true") => Ok(true),
-                Some(_) => Err(ApiCode::BadQuery.into()),
-            };
+            let everyone = flag(ctx, "everyone");
             scope.and_then(|scope| {
                 let everyone = everyone?;
                 number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List {
