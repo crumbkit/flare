@@ -276,6 +276,8 @@ Effects: additive, not idempotent, closed-world.
 
 List your shares or the shares granted to you
 
+The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+
 ### Arguments
 
 - `--with-me`: List the shares granted to you in place of your own

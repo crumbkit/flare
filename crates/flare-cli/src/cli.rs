@@ -50,6 +50,10 @@ pub(crate) enum Verb {
     /// Grant an existing share to more people
     Grant(GrantArgs),
     /// List your shares or the shares granted to you
+    ///
+    /// The server lists at most 500 shares in one answer and has no cursor
+    /// for the rest, so --all lists at most 500 shares and says more follow
+    /// when there are more.
     Shares(SharesArgs),
     /// List the responses to flares since a cursor, oldest first
     Activity(ActivityArgs),

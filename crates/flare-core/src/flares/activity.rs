@@ -7,7 +7,10 @@
 //! again, so a cursor grants nothing by itself. A response the caller
 //! cannot open is left out without a trace: the page holds no count of
 //! hidden responses, and when the page is not cut short its cursor is the
-//! store's head, which every response to any flare moves.
+//! store's head, which every response to any flare moves. A call that
+//! reads past hidden responses reads on until its page holds `limit`
+//! items or every response up to the head is read, so a page that says
+//! more items follow is full.
 
 use super::{FlareError, Flares, MAX_FLARES, flare_refused, once_each};
 use crate::auth::Principal;
@@ -78,44 +81,82 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
                 .map_err(flare_refused)?;
         }
         let limit = limit.clamp(1, MAX_PAGE);
-        let unavailable = |_| FlareError::ResponsesUnavailable;
-        let head = self.responses.head().await.map_err(unavailable)?;
+        let head = self
+            .responses
+            .head()
+            .await
+            .map_err(|_| FlareError::ResponsesUnavailable)?;
+        let mut items = Vec::new();
+        let mut last = after;
+        loop {
+            let (links, cut_at) = self.read(&flares, last, head, limit).await?;
+            for link in links {
+                if items.len() == limit {
+                    return Ok(ActivityPage {
+                        items,
+                        last,
+                        more: true,
+                    });
+                }
+                last = link.position;
+                if let Some(item) = self.item(who, link).await? {
+                    items.push(item);
+                }
+            }
+            match cut_at {
+                // A cut read leaves links above `cut_at`, so the call reads
+                // on from there until the page fills or no read is cut.
+                Some(position) if items.len() < limit => last = position,
+                Some(position) => {
+                    return Ok(ActivityPage {
+                        items,
+                        last: position,
+                        more: true,
+                    });
+                }
+                None => {
+                    return Ok(ActivityPage {
+                        items,
+                        last: head.max(after),
+                        more: false,
+                    });
+                }
+            }
+        }
+    }
+
+    /// The links to `flares` above `after` and up to `head`, oldest first,
+    /// with the position where the earliest cut read stopped. Each flare's
+    /// read stops after `limit + 1` links, so only the links at or below
+    /// that position are complete across every flare, and the rest are
+    /// dropped for the next read.
+    async fn read(
+        &self,
+        flares: &[ShareId],
+        after: Position,
+        head: Position,
+        limit: usize,
+    ) -> Result<(Vec<ResponseLink>, Option<Position>), FlareError> {
         let mut links: Vec<ResponseLink> = Vec::new();
-        let mut cut = false;
-        for flare in &flares {
+        let mut cut_at: Option<Position> = None;
+        for flare in flares {
             let read = self
                 .responses
                 .to_flare(flare, after, head, limit.saturating_add(1))
                 .await
-                .map_err(unavailable)?;
-            cut |= read.len() > limit;
+                .map_err(|_| FlareError::ResponsesUnavailable)?;
+            if read.len() > limit
+                && let Some(stop) = read.last().map(|link| link.position)
+            {
+                cut_at = Some(cut_at.map_or(stop, |known| known.min(stop)));
+            }
             links.extend(read);
         }
-        links.sort_by_key(|link| link.position);
-        let mut items = Vec::new();
-        let mut last = after;
-        for link in links {
-            if items.len() == limit {
-                return Ok(ActivityPage {
-                    items,
-                    last,
-                    more: true,
-                });
-            }
-            last = link.position;
-            if let Some(item) = self.item(who, link).await? {
-                items.push(item);
-            }
+        if let Some(stop) = cut_at {
+            links.retain(|link| link.position <= stop);
         }
-        // When a flare's read was cut, links may lie between the last one
-        // read and the head, so the next call starts after the last one
-        // read.
-        let last = if cut { last } else { head.max(after) };
-        Ok(ActivityPage {
-            items,
-            last,
-            more: cut,
-        })
+        links.sort_by_key(|link| link.position);
+        Ok((links, cut_at))
     }
 
     /// The item for `link`, or `None` when the caller cannot open the

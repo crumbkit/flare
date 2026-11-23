@@ -381,3 +381,71 @@ fn a_principal_with_no_verified_email_cannot_share() {
         FlareError::Share(ShareError::NoVerifiedEmail)
     );
 }
+
+/// The response ids on each page of activity across `ids`, read `limit`
+/// at a time from the start until a page says no more follow.
+fn pages(flares: &Memory, who: &Principal, ids: &[ShareId], limit: usize) -> Vec<Vec<ShareId>> {
+    let mut pages = Vec::new();
+    let mut after = Position::new(0);
+    loop {
+        let page = block_on(flares.activity(who, ids, after, limit)).unwrap();
+        pages.push(
+            page.items
+                .iter()
+                .map(|item| item.response.id().clone())
+                .collect(),
+        );
+        after = page.last;
+        if !page.more {
+            return pages;
+        }
+        assert!(pages.len() < 10, "activity paging did not end");
+    }
+}
+
+/// Bob responds to `to` with share `byte`, shared with alice when
+/// `visible` and with carol only otherwise.
+fn respond(flares: &Memory, byte: u8, to: ShareId, visible: bool) {
+    let with = if visible {
+        "alice@example.com"
+    } else {
+        "carol@example.com"
+    };
+    block_on(flares.share(&bob(), flare(byte, &[with], &[to]), at(3))).unwrap();
+}
+
+#[test]
+fn activity_across_two_flares_returns_every_visible_response_when_hidden_ones_cut_a_read() {
+    let flares = with_flare();
+    block_on(flares.share(&alice(), flare(5, &["bob@example.com"], &[]), at(2))).unwrap();
+    // Flare 1 holds two hidden responses and then two visible ones, so a
+    // read of three links from flare 1 is cut; flare 5's response is newer.
+    respond(&flares, 2, id(1), false);
+    respond(&flares, 3, id(1), false);
+    respond(&flares, 4, id(1), true);
+    respond(&flares, 6, id(1), true);
+    respond(&flares, 7, id(5), true);
+    let pages = pages(&flares, &alice(), &[id(1), id(5)], 2);
+    let seen: Vec<ShareId> = pages.concat();
+    assert_eq!(seen, vec![id(4), id(6), id(7)]);
+    // The admitted twin: bob, who can open every response, sees all five.
+    let bob_seen = self::pages(&flares, &bob(), &[id(1), id(5)], 2).concat();
+    assert_eq!(bob_seen, vec![id(2), id(3), id(4), id(6), id(7)]);
+}
+
+#[test]
+fn a_page_that_says_more_follow_is_never_empty_when_hidden_responses_fill_a_read() {
+    let flares = with_flare();
+    for byte in 2..=4 {
+        respond(&flares, byte, id(1), false);
+    }
+    respond(&flares, 5, id(1), true);
+    let page = block_on(flares.activity(&alice(), &[id(1)], Position::new(0), 2)).unwrap();
+    let ids: Vec<_> = page
+        .items
+        .iter()
+        .map(|item| item.response.id().clone())
+        .collect();
+    assert_eq!(ids, vec![id(5)]);
+    assert!(!page.more);
+}
