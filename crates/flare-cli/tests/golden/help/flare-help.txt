@@ -18,6 +18,7 @@ Verbs
 Commands
   commands  Explore flare's commands
   schemas   Explore the JSON documents that flare prints
+  skills    Give coding agents flare's skill
   self      Review flare's own use
 
 Options:

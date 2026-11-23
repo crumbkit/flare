@@ -2,8 +2,10 @@
 
 mod schemas;
 mod sharing;
+mod skills;
 
 pub(crate) use schemas::SchemasCommand;
+pub(crate) use skills::{FlareSkills, SKILL};
 
 pub(crate) use sharing::{
     ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs, ShowArgs,
@@ -77,6 +79,12 @@ pub(crate) enum Verb {
         /// What to do with the documents.
         #[command(subcommand)]
         command: SchemasCommand,
+    },
+    /// Give coding agents flare's skill
+    Skills {
+        /// What to do with the skill.
+        #[command(subcommand)]
+        command: FlareSkills,
     },
     /// Review flare's own use
     #[command(name = "self")]
@@ -323,6 +331,9 @@ pub const TOOL: Tool = Tool::new()
                     .examples(&[Example::new(&[], "Report the findings of the last 7 days")])
                     .effects(Effects::read_only())
                     .document(SELF_USAGE),
+                FlareSkills::install_leaf(&["skills", "install"]),
+                FlareSkills::check_leaf(&["skills", "check"]),
+                FlareSkills::print_leaf(&["skills", "print"]),
             ]),
     )
     .failures(

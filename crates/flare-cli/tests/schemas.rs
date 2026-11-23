@@ -30,8 +30,8 @@ use std::path::Path;
 /// flare declares.
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/schemas");
 
-/// The documents that crumbkit, crumbkit-usage and the schema commands
-/// declare, which flare prints under its own name and crumbkit-test does
+/// The documents that crumbkit, crumbkit-usage, crumbkit-skills and the
+/// schema commands declare, which flare prints under its own name and crumbkit-test does
 /// not pin in flare's golden files.
 const CRUMBKIT_DOCUMENTS: &[&str] = &[
     "flare/failure/v1",
@@ -39,6 +39,9 @@ const CRUMBKIT_DOCUMENTS: &[&str] = &[
     "flare/self-usage/v1",
     "flare/schemas-list/v1",
     "flare/schemas-show/v1",
+    "flare/skills-install/v1",
+    "flare/skills-check/v1",
+    "flare/skills-print/v1",
 ];
 
 /// Each golden file's document id, such as `flare/shares/v1` for
