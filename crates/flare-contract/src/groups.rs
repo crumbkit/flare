@@ -54,7 +54,9 @@ pub enum GrantState {
 /// One grant of a share.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct GrantEntry {
-    /// The person's identifier, `team:<name>` or `everyone`.
+    /// The person's identifier, `team:<name>` or `everyone`. A grant to a
+    /// team that the caller, a share admin, does not belong to shows
+    /// `team:*`, so no one outside a team learns its name.
     pub grantee: String,
     /// Who the grant is to.
     pub kind: GranteeKind,

@@ -140,6 +140,7 @@ pub(super) fn teams_error(error: TeamsError) -> ApiCode {
     match error {
         TeamsError::NotFound => ApiCode::TeamNotFound,
         TeamsError::Forbidden => ApiCode::TeamForbidden,
+        TeamsError::OwnerCannotLeave => ApiCode::TeamOwnerCannotLeave,
         TeamsError::NotACreator => ApiCode::TeamNotACreator,
         TeamsError::Taken => ApiCode::TeamNameTaken,
         TeamsError::TooManyMembers => ApiCode::TooManyMembers,
@@ -165,16 +166,25 @@ pub(super) fn team_summary(team: &Team, caller: &Email) -> TeamSummary {
     }
 }
 
+/// What a listing shows in place of the name of a team that the caller
+/// does not belong to. `*` cannot occur in a team's name.
+const HIDDEN_TEAM: &str = "team:*";
+
 /// The contract's entry for one listed grant.
 pub(super) fn grant_entry(listed: &ListedGrant) -> GrantEntry {
     let grant = &listed.grant;
+    let grantee = if listed.hidden {
+        HIDDEN_TEAM.to_owned()
+    } else {
+        grant.grantee().as_str().to_owned()
+    };
     let kind = match Group::of_grantee(grant.grantee()) {
         Some(Group::Team(_)) => GranteeKind::Team,
         Some(Group::Everyone) => GranteeKind::Everyone,
         None => GranteeKind::Person,
     };
     GrantEntry {
-        grantee: grant.grantee().as_str().to_owned(),
+        grantee,
         kind,
         role: role(grant.role()),
         state: if listed.dormant {

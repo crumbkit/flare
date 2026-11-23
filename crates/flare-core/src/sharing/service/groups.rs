@@ -8,8 +8,8 @@ use crate::email::Email;
 use crate::grant::{Grant, Role};
 use crate::name::PrincipalId;
 use crate::share::{Listing, MAX_LISTED, ShareId};
-use crate::sharing::ShareAction;
 use crate::sharing::error::ShareError;
+use crate::sharing::{ShareAction, Standing};
 use crate::store::{GrantStore, ShareStore, ShareStoreError};
 use crate::teams::{Group, TeamName, Teams};
 use std::cmp::Reverse;
@@ -162,7 +162,9 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     }
 
     /// The grants of a share, for its owner and its admins, each marked
-    /// dormant when it is a grant to a deleted team.
+    /// dormant when it is a grant to a deleted team. For an admin, a grant
+    /// to a team the admin does not belong to is marked hidden, so no one
+    /// outside a team learns its name.
     ///
     /// # Errors
     ///
@@ -175,7 +177,13 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         id: &ShareId,
     ) -> Result<Vec<ListedGrant>, ShareError> {
         let actor = actor(who)?;
-        self.admit(&actor, id, ShareAction::ListGrants).await?;
+        let (_, standing) = self.admit(&actor, id, ShareAction::ListGrants).await?;
+        let mine = if standing == Standing::Owner {
+            None
+        } else {
+            let person = address(&actor).ok_or(ShareError::NoVerifiedEmail)?;
+            Some(self.active_teams(&person).await?)
+        };
         let grants = self
             .grants
             .of_share(id)
@@ -183,15 +191,23 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             .map_err(|_| ShareError::Unavailable)?;
         let mut listed = Vec::with_capacity(grants.len());
         for grant in grants {
-            let dormant = match Group::of_grantee(grant.grantee()) {
-                Some(Group::Team(name)) => !self
-                    .teams
-                    .exists(&name)
-                    .await
-                    .map_err(|_| ShareError::Unavailable)?,
-                _ => false,
+            let (dormant, hidden) = match Group::of_grantee(grant.grantee()) {
+                Some(Group::Team(name)) => {
+                    let dormant = !self
+                        .teams
+                        .exists(&name)
+                        .await
+                        .map_err(|_| ShareError::Unavailable)?;
+                    let hidden = mine.as_ref().is_some_and(|mine| !mine.contains(&name));
+                    (dormant, hidden)
+                }
+                _ => (false, false),
             };
-            listed.push(ListedGrant { grant, dormant });
+            listed.push(ListedGrant {
+                grant,
+                dormant,
+                hidden,
+            });
         }
         Ok(listed)
     }

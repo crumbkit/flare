@@ -63,6 +63,12 @@ async fn a_creator_creates_a_team_and_its_summary_names_them_as_owner() {
             json!({"name": "design"}),
         )
         .await;
+    assert_eq!(status, 201, "{taken}");
+    assert_eq!(taken["members"], 1);
+    let bob = api.token_for("bob").await;
+    let (status, taken) = api
+        .json("POST", "/api/teams", Some(&bob), json!({"name": "design"}))
+        .await;
     assert_eq!(status, 409);
     assert_eq!(code(&taken), "flare::teams::name_taken");
     let (status, invalid) = api
@@ -121,6 +127,21 @@ async fn only_the_owner_adds_members_and_a_member_leaves() {
     assert_eq!(status, 200, "{left}");
     assert_eq!(left["changed"], json!(["bob@example.com"]));
     assert_eq!(left["team"]["members"], 1);
+}
+
+#[tokio::test]
+async fn the_owner_leaving_their_own_team_answers_owner_cannot_leave() {
+    let (api, alice, _bob, _carol) = with_design().await;
+    let (status, refused) = api
+        .json(
+            "DELETE",
+            "/api/teams/design/members",
+            Some(&alice),
+            json!({"with": ["alice@example.com"]}),
+        )
+        .await;
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(code(&refused), "flare::teams::owner_cannot_leave");
 }
 
 #[tokio::test]

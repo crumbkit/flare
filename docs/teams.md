@@ -13,7 +13,8 @@ gives the life of a team, of a member and of a group grant.
   `flare revoke <id> --with team:<name> --yes`.
 - A team name is never reused. No one can create a team with the name of a
   deleted team, so no new team can take over the old team's grants.
-- `flare teams delete` says both facts in its output.
+- `flare teams delete` says both facts in its output, and its next step
+  is `flare revoke <ID> --with team:<name>`.
 
 ## Commands and routes
 
@@ -38,6 +39,16 @@ gives the life of a team, of a member and of a group grant.
   through their active teams. It adds the shares granted to everyone only
   with `--everyone`.
 - A revoke of a grantee that holds no grant changes nothing and succeeds.
+- `flare grants` and `GET /api/grants/<id>` show a share's Admin the grant
+  to a team the Admin does not belong to as `team:*`, so no one outside a
+  team learns its name. The share's owner sees every name.
+- A name that is not a team the caller belongs to answers
+  `flare::teams::not_found` (404). The CLI's recovery is
+  `flare teams list`, and its alternative is to ask the team's owner to add
+  the caller.
+- The owner who tries to leave their own team gets
+  `flare::teams::owner_cannot_leave` (409). The owner deletes the team
+  instead.
 
 ## Limits
 
@@ -48,8 +59,9 @@ gives the life of a team, of a member and of a group grant.
 | 32 teams joined | The active teams one person belongs to | `flare::teams::too_many_joined` (409); the add writes nothing |
 
 - The owner frees room by removing members or deleting a team.
-- The owned and joined counts are read before the write. Two writes that
-  race can each pass the check, so a person can end one over a limit.
+- The owned and joined counts are read before the write. Writes that race
+  can each pass the check, and each racing write can take the person one
+  team over the limit.
 
 ## Who a group grant opens a share to
 
@@ -88,8 +100,8 @@ gives the life of a team, of a member and of a group grant.
 | present | The create adds the owner, or the owner adds the person | absent | `TEAM#<name>` `M#<email>` and `MEMBER#<email>` `T#<name>`, written in one transaction with the member count |
 | absent | The owner removes the person, the person leaves, or the team is deleted | present, after a new add to an active team | Both items deleted in one transaction with the member count |
 
-- The owner cannot leave their own team. The owner deletes the team
-  instead.
+- The owner cannot leave their own team, and the attempt answers
+  `flare::teams::owner_cannot_leave`. The owner deletes the team instead.
 
 ## Group grant
 
@@ -104,13 +116,16 @@ gives the life of a team, of a member and of a group grant.
 
 1. A create whose outcome is unknown is repeated. The team item and the
    owner's member pair go in one transaction, so a repeat finds the team
-   whole or finds nothing.
+   whole or finds nothing. A repeat by the team's owner answers the active
+   team as it is. A create by anyone else of a used name answers
+   `flare::teams::name_taken`.
 2. An add or remove whose outcome is unknown is repeated. The two pair
    items and the count change together, so they never disagree, and a
    repeat of a finished add or remove changes nothing.
 3. A delete that marks the team deleted and stops before removing the
-   member pairs leaves the grants dormant already. The owner repeats the
-   delete, which removes the remaining pairs.
+   member pairs answers `flare::teams::unavailable` and leaves the grants
+   dormant already. The owner repeats the delete, which removes the
+   remaining pairs.
 4. A grant and its listing entry are written in one transaction, and a
    revoke deletes both in one transaction, so a listing entry never
    outlives its grant.

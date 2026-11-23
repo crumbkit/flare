@@ -160,7 +160,7 @@
           "type": "string"
         },
         "grantee": {
-          "description": "The person's identifier, `team:<name>` or `everyone`.",
+          "description": "The person's identifier, `team:<name>` or `everyone`. A grant to a\nteam that the caller, a share admin, does not belong to shows\n`team:*`, so no one outside a team learns its name.",
           "type": "string"
         },
         "kind": {

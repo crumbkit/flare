@@ -132,6 +132,10 @@ fn teams_delete_says_the_grants_stay_dormant_and_the_name_is_never_reused() {
         "{text}"
     );
     assert!(text.contains("never used again"), "{text}");
+    assert!(
+        text.contains("Next:") && text.contains("flare revoke <ID> --with team:design"),
+        "{text}"
+    );
     api.route("DELETE", "/api/teams/design", 200, &deleted);
     let json = home.sharing(&["teams", "delete", "design", "--yes", "--json"]);
     json.assert_ok();
@@ -291,4 +295,24 @@ fn shares_with_me_everyone_asks_for_the_shares_open_to_everyone_too() {
         "{target}"
     );
     assert!(target.ends_with("&everyone=true"), "{target}");
+}
+
+#[test]
+fn a_missing_team_recovers_by_listing_teams_and_offers_asking_the_owner_as_the_alternative() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/teams/design",
+        404,
+        &problem("flare::teams::not_found", 404, &api.origin),
+    );
+    let ran = home.sharing(&["teams", "show", "design", "--json"]);
+    ran.assert_failed("flare::teams::not_found");
+    let text = ran.all();
+    assert!(
+        text.contains(r#""recovery":{"kind":"run","call":"flare teams list"}"#),
+        "{text}"
+    );
+    assert!(text.contains("ask the team's owner to add you"), "{text}");
 }

@@ -1,16 +1,18 @@
-//! Unit tests of the token check against the admit rule.
+//! Unit tests of the token check against the admit rule, of the share
+//! and version checks, and of what an admin sees of a team's grant.
 
 use super::tokens::{digest, new_secret, token_text};
 use super::{Api, Call, Sharing, TokenCheck};
 use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
 use flare_contract::{ApiCode, Format, VersionRequest};
+use flare_core::memory::MemoryTeamStore;
 use flare_core::memory::{
     MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTokenStore,
 };
 use flare_core::{
-    AddressesOnly, Creators, DocumentText, Email, Flares, NewFlare, NewToken, Principal,
-    PrincipalId, Role, ShareContent, ShareId, ShareTitle, Timestamp, TokenId, TokenLabel,
-    TokenStore as _,
+    AddressesOnly, Creators, DocumentText, Email, FlareTeams, Flares, Group, NewFlare, NewToken,
+    Principal, PrincipalId, Role, ShareContent, ShareId, ShareTitle, TeamName, Timestamp, TokenId,
+    TokenLabel, TokenStore as _,
 };
 use secrecy::SecretString;
 
@@ -217,4 +219,57 @@ fn the_version_checks_refuse_html_and_empty_content_and_admit_markdown() {
     assert_eq!(code(Format::Html, "<p>x</p>"), Err(ApiCode::KindNotServed));
     assert_eq!(code(Format::Markdown, ""), Err(ApiCode::ShareInvalid));
     assert_eq!(code(Format::Markdown, "# Plan\n"), Ok(()));
+}
+
+#[tokio::test]
+async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_and_the_owner_sees_the_name()
+{
+    let person =
+        |address: &str| Principal::with_email(email(address).principal_id(), email(address));
+    let (ana, bob) = (person("ana@example.org"), person("bob@example.org"));
+    let flares = Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        Creators::Everyone,
+    )
+    .with_teams(FlareTeams::new(MemoryTeamStore::new()));
+    let design = TeamName::try_from("design").unwrap();
+    flares.create_team(&ana, design.clone(), NOW).await.unwrap();
+    let id = ShareId::try_from("0123456789abcdef0123456789abcdef").unwrap();
+    let new = NewFlare::new(
+        id.clone(),
+        ShareTitle::try_from("Plan").unwrap(),
+        ShareContent::Document(DocumentText::try_from("# Plan\n").unwrap()),
+        Vec::new(),
+        Vec::new(),
+    )
+    .with_groups(vec![Group::Team(design)]);
+    flares.share(&ana, new, NOW).await.unwrap();
+    flares
+        .shares()
+        .grant(&ana, &id, &email("bob@example.org"), Role::Admin, NOW)
+        .await
+        .unwrap();
+    let api = Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        AddressesOnly,
+        listing(&["ana@example.org", "bob@example.org"]),
+    );
+    let grantees = |answer: Option<String>| -> Vec<String> {
+        let list: serde_json::Value = serde_json::from_str(&answer.unwrap()).unwrap();
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entry| entry["kind"] == "team")
+            .map(|entry| entry["grantee"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let call = || Call::ListGrants(id.as_str().to_owned());
+    let (_, by_admin) = api.run(&bob, call(), NOW).await.unwrap();
+    assert_eq!(grantees(by_admin), vec!["team:*".to_owned()]);
+    let (_, by_owner) = api.run(&ana, call(), NOW).await.unwrap();
+    assert_eq!(grantees(by_owner), vec!["team:design".to_owned()]);
 }

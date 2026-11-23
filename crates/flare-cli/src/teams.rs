@@ -6,7 +6,7 @@ use crate::codes::{Failed, Refused};
 use crate::documents::teams::{MemberRow, MembersOut, TeamDeletedRow, TeamRow};
 use crate::env::Snapshot;
 use crate::sharing::{body, session};
-use crumbkit::Listing;
+use crumbkit::{Call, Listing, Step};
 use flare_contract::{
     ApiCode, MembersChanged, MembersRequest, TeamDeleted, TeamList, TeamRequest, TeamRole,
     TeamShown, TeamSummary,
@@ -129,13 +129,21 @@ pub(crate) async fn delete(name: &str, env: &Snapshot) -> Result<Listing<TeamDel
     let answer: Option<TeamDeleted> = api.send(Method::DELETE, &target, None::<&()>).await?;
     let deleted = body(&api, answer)?;
     let note = format!(
-        "The team {team} is deleted. Its grants stay on each flare and open nothing; each flare's owner removes one with flare revoke <id> --with team:{team}. The name {team} is never used again, so no new team can take over those grants.",
+        "The team {team} is deleted. Its grants stay on each flare and open nothing. The name {team} is never used again, so no new team can take over those grants.",
         team = deleted.team
+    );
+    let step = Step::new("Each flare's owner removes the dormant grant from their flare.").call(
+        Call::new(&["revoke"])
+            .arg("id")
+            .value("with", format!("team:{}", deleted.team)),
     );
     let rows = vec![TeamDeletedRow {
         team: deleted.team,
         grants_dormant: deleted.grants_dormant,
         name_reusable: deleted.name_reusable,
     }];
-    Ok(Listing::from_all(rows, None).described("teams").note(note))
+    Ok(Listing::from_all(rows, None)
+        .described("teams")
+        .note(note)
+        .step(step))
 }

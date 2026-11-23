@@ -175,14 +175,30 @@ impl Failure for Refused {
     }
 
     /// The API's recovery for the code. A `run` recovery is `flare login`
-    /// with the server, the only command the API names.
+    /// with the server, the only command the API names. A missing team
+    /// recovers with `flare teams list`, which shows the teams the caller
+    /// belongs to.
     fn recovery(&self) -> Recovery {
+        if self.code == ApiCode::TeamNotFound {
+            return Recovery::Run(Call::new(&["teams", "list"]));
+        }
         match self.code.recovery(&self.server) {
             ApiRecovery::Run { .. } => {
                 Recovery::Run(Call::new(&["login"]).value("server", self.server.clone()))
             }
             ApiRecovery::Retry => Recovery::Retry,
             ApiRecovery::Hint { text } => Recovery::hint(text),
+        }
+    }
+
+    /// For a missing team, the API's own hint: ask the team's owner to add
+    /// the caller.
+    fn alternatives(&self) -> Vec<Recovery> {
+        match self.code.recovery(&self.server) {
+            ApiRecovery::Hint { text } if self.code == ApiCode::TeamNotFound => {
+                vec![Recovery::hint(text)]
+            }
+            _ => Vec::new(),
         }
     }
 }

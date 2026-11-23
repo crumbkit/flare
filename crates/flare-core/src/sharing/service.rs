@@ -40,6 +40,10 @@ pub struct ListedGrant {
     pub grant: crate::grant::Grant,
     /// Whether the grant is to a deleted team, so it opens nothing.
     pub dormant: bool,
+    /// Whether the grant is to a team that the caller neither belongs to
+    /// nor owns the share of, so a listing shows a placeholder in place of
+    /// the team's name.
+    pub hidden: bool,
 }
 
 /// A share that another person granted to the caller.

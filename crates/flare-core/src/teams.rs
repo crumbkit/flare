@@ -58,6 +58,10 @@ pub enum TeamsError {
     /// The caller is a member and only the owner may make the change.
     #[error("only the team's owner may make this change")]
     Forbidden,
+    /// The team's owner tried to leave it. The owner stays a member while
+    /// the team exists and deletes the team instead.
+    #[error("the team's owner cannot leave the team")]
+    OwnerCannotLeave,
     /// The caller is not one of the deployment's creators.
     #[error("only the deployment's creators may create a team")]
     NotACreator,
@@ -130,7 +134,8 @@ pub trait Teams: Send + Sync {
     ) -> impl Future<Output = Result<Vec<Email>, TeamsError>> + Send;
 
     /// Creates a team owned by `owner`, who becomes its first member. The
-    /// caller has checked that `owner` is a creator.
+    /// caller has checked that `owner` is a creator. A repeat by the owner
+    /// of an active team answers that team as it is.
     ///
     /// # Errors
     ///
@@ -170,7 +175,8 @@ pub trait Teams: Send + Sync {
     /// # Errors
     ///
     /// Returns [`TeamsError::NotFound`], [`TeamsError::Forbidden`],
-    /// [`TeamsError::ManagedElsewhere`] and [`TeamsError::Unavailable`].
+    /// [`TeamsError::OwnerCannotLeave`], [`TeamsError::ManagedElsewhere`]
+    /// and [`TeamsError::Unavailable`].
     fn remove(
         &self,
         _actor: &Email,

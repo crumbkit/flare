@@ -10,13 +10,15 @@ use crate::time::Timestamp;
 /// Teams kept in a [`TeamStore`].
 ///
 /// The owner alone adds members, removes them and deletes the team. A
-/// member may leave, and the owner may not. A member and the owner read
+/// member may leave, and the owner may not. A repeated create by the
+/// team's owner answers the active team as it is. A member and the owner read
 /// the member list; anyone else gets [`TeamsError::NotFound`], the same as
 /// for a missing team.
 ///
 /// Shortcut: the owned and joined limits are checked by reading before the
-/// write, so two creates or adds that run together for one person can pass
-/// a limit by one each. The member limit is a condition of the store's
+/// write, so creates or adds that run together for one person can each
+/// pass the check, and each racing write can take the person one team over
+/// the limit. The member limit is a condition of the store's
 /// write and always holds.
 #[derive(Debug)]
 pub struct FlareTeams<S> {
@@ -86,8 +88,14 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         team: TeamName,
         at: Timestamp,
     ) -> Result<Team, TeamsError> {
-        if self.store.get(&team).await?.is_some() {
-            return Err(TeamsError::Taken);
+        match self.store.get(&team).await? {
+            // A repeat by the owner of a create whose answer was lost finds
+            // the team whole.
+            Some(found) if found.owner() == owner && found.state() == TeamState::Active => {
+                return Ok(found);
+            }
+            Some(_) => return Err(TeamsError::Taken),
+            None => {}
         }
         let joined = self.store.teams_of(owner).await?;
         if joined.len() >= MAX_TEAMS_JOINED {
@@ -138,7 +146,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         if member == actor && owner {
             // The owner stays a member while the team exists, so that a
             // team always has someone who manages it.
-            return Err(TeamsError::Forbidden);
+            return Err(TeamsError::OwnerCannotLeave);
         }
         if member != actor && !owner {
             return Err(TeamsError::Forbidden);

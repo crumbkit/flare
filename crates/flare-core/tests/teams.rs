@@ -137,6 +137,19 @@ fn a_team_name_is_never_reused_even_after_the_team_is_deleted() {
 }
 
 #[test]
+fn a_repeated_create_by_the_teams_owner_answers_the_team_whole_and_keeps_its_members() {
+    let flares = with_design();
+    let again = block_on(flares.create_team(&alice(), team("design"), at(5))).unwrap();
+    assert_eq!(again.owner(), &email("alice@example.com"));
+    assert_eq!(again.members(), 2);
+    assert_eq!(again.created(), at(1));
+    let teams = flares.shares().teams();
+    block_on(teams.delete(&email("alice@example.com"), &team("design"))).unwrap();
+    let after_delete = block_on(flares.create_team(&alice(), team("design"), at(6)));
+    assert_eq!(after_delete, Err(TeamsError::Taken));
+}
+
+#[test]
 fn only_the_owner_adds_or_removes_members_and_a_stranger_sees_no_team() {
     let flares = with_design();
     let teams = flares.shares().teams();
@@ -170,7 +183,7 @@ fn a_member_may_leave_and_the_owner_may_not() {
     let alice_address = email("alice@example.com");
     assert_eq!(
         block_on(teams.remove(&alice_address, &team("design"), &alice_address)),
-        Err(TeamsError::Forbidden)
+        Err(TeamsError::OwnerCannotLeave)
     );
 }
 
@@ -513,4 +526,41 @@ fn the_default_teams_answer_managed_elsewhere_for_every_change() {
     );
     let refused = block_on(flares.create_team(&alice(), team("design"), at(1)));
     assert_eq!(refused, Err(TeamsError::ManagedElsewhere));
+}
+
+#[test]
+fn a_share_admin_outside_a_team_sees_its_grant_hidden_and_a_member_admin_sees_the_name() {
+    let flares = with_design();
+    block_on(flares.share(
+        &alice(),
+        flare(1, &["carol@example.com"], vec![design()]),
+        at(1),
+    ))
+    .unwrap();
+    block_on(flares.shares().grant(
+        &alice(),
+        &id(1),
+        &email("carol@example.com"),
+        Role::Admin,
+        at(2),
+    ))
+    .unwrap();
+    let hidden = |who: &Principal| -> Vec<bool> {
+        block_on(flares.shares().listed_grants(who, &id(1)))
+            .unwrap()
+            .iter()
+            .filter(|entry| Group::of_grantee(entry.grant.grantee()).is_some())
+            .map(|entry| entry.hidden)
+            .collect()
+    };
+    assert_eq!(hidden(&carol()), vec![true]);
+    assert_eq!(hidden(&alice()), vec![false]);
+    let teams = flares.shares().teams();
+    block_on(teams.add(
+        &email("alice@example.com"),
+        &team("design"),
+        &email("carol@example.com"),
+    ))
+    .unwrap();
+    assert_eq!(hidden(&carol()), vec![false]);
 }

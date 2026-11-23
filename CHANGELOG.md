@@ -15,8 +15,8 @@ This file records the notable changes to flare. The format follows
   lists them. Deleting a team leaves its grants as dormant grants that open
   nothing, and a team name is never reused. An everyone grant opens the
   share only to the people the `admit` rule admits, and an `anyone` admit
-  rule refuses it. `docs/teams.md` gives the life of teams and group
-  grants.
+  rule refuses it. A share's Admin sees a grant to a team they are not in
+  as `team:*`. `docs/teams.md` gives the life of teams and group grants.
 - `flare schemas list` lists the JSON documents that flare prints, and
   `flare schemas show <id>...` prints the JSON Schema of each of 1 to 100
   ids, so an agent learns the shape of `flare ... --json` from flare
