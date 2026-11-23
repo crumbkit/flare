@@ -19,7 +19,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare grant`](#flare-grant): Grant an existing share to more people
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
 - [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
-- [`flare metrics`](#flare-metrics): Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+- [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
 - [`flare self`](#flare-self): Review flare's own use
@@ -408,7 +408,7 @@ Effects: read-only, closed-world.
 
 ## `flare metrics`
 
-Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+Count the metric lines in a flare server's log, by day
 
 The counts come from the metric lines that flare serve writes on standard error when its config sets log.metrics to true. A page view is one page response, so one person who reloads a page counts twice. Lines that are not metric lines are skipped and counted.
 

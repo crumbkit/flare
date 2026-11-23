@@ -1,4 +1,4 @@
-Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+Count the metric lines in a flare server's log, by day
 
 Usage: flare metrics [OPTIONS] [FILE]...
 

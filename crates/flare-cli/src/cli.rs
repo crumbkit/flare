@@ -66,7 +66,7 @@ pub(crate) enum Verb {
     Shares(SharesArgs),
     /// List the responses to flares since a cursor, oldest first
     Activity(ActivityArgs),
-    /// Count the shares, page views, sign-ins and refusals in a flare server's log, by day
+    /// Count the metric lines in a flare server's log, by day
     ///
     /// The counts come from the metric lines that flare serve writes on
     /// standard error when its config sets log.metrics to true. A page
