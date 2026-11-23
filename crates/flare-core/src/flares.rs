@@ -343,6 +343,9 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
             }
         }
         if let Err(cause) = self.grant_owners(who, id, &flares, at).await {
+            if granted.is_empty() {
+                return Err(FlareError::Share(cause));
+            }
             return Err(FlareError::PartlyShared {
                 share: id.clone(),
                 granted: granted.len(),

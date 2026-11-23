@@ -554,3 +554,21 @@ fn a_page_that_says_more_follow_is_never_empty_when_hidden_responses_fill_a_read
     assert_eq!(ids, vec![id(5)]);
     assert!(!page.more);
 }
+
+#[test]
+fn a_grant_whose_first_write_is_a_refused_owner_grant_answers_the_refusal_and_writes_nothing() {
+    let flares = with_flare();
+    block_on(flares.share(&bob(), flare(2, &[], &[]), at(2))).unwrap();
+    for n in 0..MAX_GRANTS {
+        let reader = email(&format!("p{n}@example.com"));
+        block_on(
+            flares
+                .shares()
+                .grant(&bob(), &id(2), &reader, Role::Reader, at(3)),
+        )
+        .unwrap();
+    }
+    let refused = block_on(flares.grant(&bob(), &id(2), &[], &[id(1)], at(4))).unwrap_err();
+    assert_eq!(refused, FlareError::Share(ShareError::TooManyGrants));
+    assert!(activity(&flares, &alice(), 0).unwrap().items.is_empty());
+}
