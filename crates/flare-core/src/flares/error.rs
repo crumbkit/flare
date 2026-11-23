@@ -4,7 +4,7 @@ use super::MAX_FLARES;
 use crate::ShareId;
 use crate::sharing::ShareError;
 
-/// Why [`Flares`] refused a request.
+/// Why [`Flares`](super::Flares) refused a request.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum FlareError {
