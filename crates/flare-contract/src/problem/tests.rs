@@ -5,6 +5,7 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
     let areas = [
         "shares",
         "grants",
+        "versions",
         "recipients",
         "tokens",
         "activity",
