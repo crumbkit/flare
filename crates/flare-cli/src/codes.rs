@@ -61,6 +61,8 @@ pub const OPENER_FAILED: Code<'static> = Code::from_spelling("flare::opener::fai
 pub const STATE_UNUSABLE: Code<'static> = Code::from_spelling("flare::state::unusable");
 /// The share API's table or bucket is missing or cannot be read.
 pub const STORES_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::stores::unavailable");
+/// A log that `flare metrics` was given could not be read.
+pub const METRICS_UNREADABLE: Code<'static> = Code::from_spelling("flare::metrics::unreadable");
 /// The operating system refused a socket, a thread or random bytes.
 pub const SYSTEM_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::system::unavailable");
 
@@ -310,6 +312,19 @@ pub enum Failed {
     )]
     StoresUnavailable {
         /// What the check found, as flare-aws says it.
+        problem: String,
+    },
+    /// A log that `flare metrics` was given could not be read.
+    #[error("{path} could not be read: {problem}")]
+    #[failure(
+        code = METRICS_UNREADABLE,
+        hint = "pass a readable log file, or pipe the log to flare metrics",
+        field(path = path)
+    )]
+    MetricsUnreadable {
+        /// The file, or `standard input`.
+        path: String,
+        /// What went wrong.
         problem: String,
     },
     /// The operating system refused a socket, a thread or random bytes.

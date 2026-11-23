@@ -1,4 +1,4 @@
-Give coding agents flare's skill
+Install flare's agent skill
 
 Usage: flare skills [OPTIONS] <COMMAND>
 
