@@ -36,9 +36,12 @@ owners = [
   "crates/flare-server/src/secret.rs",
   "crates/flare-server/src/sharing/tokens.rs",
   "crates/flare-cli/src/open.rs",
+  "crates/flare-cli/src/client.rs",
+  "crates/flare-cli/src/keychain.rs",
+  "crates/flare-cli/src/login.rs",
 ]
 checks = ["review: expose_secret appears only in the files listed in owners"]
-note = "flare-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. flare-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL, to seal a pending sign-in into the kept state and to read the sealed kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. flare-auth-loopback calls it only in secret.rs, which digests and compares the token, launch codes and session secrets, computes the probe's proof, composes the launch URL, opener page, cookie and server file from a secret, and hands the server file's bytes to the atomic writer. Its tests also call it, to read back what the code under test returned. flare-render holds the form token in FormToken, a SecretString, and calls it only in token.rs: to write the token into a form's hidden input and in FormToken's ExposeSecret implementation, which the server uses to look the token up. Its tests call it to read back the token a post carried. flare-server calls it only in secret.rs, which digests the hand-over codes and form tokens, compares digests in constant time, writes the session and kept-state cookies of both sites, including the hosted site's `__Host-` cookies, and composes the finish URL. Its share API calls it only in sharing/tokens.rs, to digest a new token's secret or a login code, to split a presented token into its id and secret, to write a new token into the exchange's answer and to write a login code into the redirect to the CLI's loopback listener. flare-cli calls it only in open.rs, to put the server's token in the bearer header of the code request after the server has proved that it holds the token."
+note = "flare-core holds a credential's secret in a secrecy::SecretString inside Credential, and its source code never calls expose_secret. The test double FixedAuthenticator calls it once, to compare a presented bearer secret with the secret that the test gave it. flare-auth-oidc calls it in flow.rs to put the state, nonce and PKCE challenge in the authorisation URL, to seal a pending sign-in into the kept state and to read the sealed kept state, in session.rs to hash a session secret, and in token.rs to put the code, the PKCE verifier and the client secret in the token request body and to read the ID token. Its tests also call it, to read back what the code under test returned. flare-auth-loopback calls it only in secret.rs, which digests and compares the token, launch codes and session secrets, computes the probe's proof, composes the launch URL, opener page, cookie and server file from a secret, and hands the server file's bytes to the atomic writer. Its tests also call it, to read back what the code under test returned. flare-render holds the form token in FormToken, a SecretString, and calls it only in token.rs: to write the token into a form's hidden input and in FormToken's ExposeSecret implementation, which the server uses to look the token up. Its tests call it to read back the token a post carried. flare-server calls it only in secret.rs, which digests the hand-over codes and form tokens, compares digests in constant time, writes the session and kept-state cookies of both sites, including the hosted site's `__Host-` cookies, and composes the finish URL. Its share API calls it only in sharing/tokens.rs, to digest a new token's secret or a login code, to split a presented token into its id and secret, to write a new token into the exchange's answer and to write a login code into the redirect to the CLI's loopback listener. flare-cli calls it in open.rs, to put the server's token in the bearer header of the code request after the server has proved that it holds the token; in client.rs, to put the CLI token in the bearer header of a share API request; in keychain.rs, to write the CLI token to the standard input of /usr/bin/security; and in login.rs, to put the login code in the exchange's body."
 
 [[binding]]
 rule = "SVC-1"
@@ -47,7 +50,7 @@ checks = [
   "clippy disallowed_methods (clippy.toml)",
   "the shutdown test in crates/flare-server/tests/server/process.rs (SVC-2)",
 ]
-note = "tasks.rs holds the JoinSet that owns each connection task and the sweep task; serve drains it within Limits::drain and aborts what remains. flare-auth-oidc's keychain.rs starts one reader thread per secret read, which ends when the child's output closes, and says so in its #[expect]. Tests that start a task or a thread say in their #[expect] who joins it."
+note = "tasks.rs holds the JoinSet that owns each connection task and the sweep task; serve drains it within Limits::drain and aborts what remains. flare-auth-oidc's keychain.rs starts one reader thread per secret read, which ends when the child's output closes, and says so in its #[expect]. flare-cli's login.rs runs the browser opener on one blocking thread while it waits for the callback, joins it on every path before it returns, and says so in its #[expect]. Tests that start a task or a thread say in their #[expect] who joins it."
 
 [[binding]]
 rule = "PROC-1"
@@ -56,7 +59,16 @@ checks = [
   "clippy disallowed_methods and disallowed_types (clippy.toml)",
   "the open tests in crates/flare-cli/tests/serve.rs, which run a recording script in place of the opener (PROC-2)",
 ]
-note = "Opening the opener file in the browser is the flare command's one process operation: /usr/bin/open on macOS, xdg-open elsewhere, or FLARE_OPENER. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline (PROC-3)."
+note = "Opening the opener file, or the server's /cli/login URL, in the browser is one of the flare command's two process operations: /usr/bin/open on macOS, xdg-open elsewhere, or FLARE_OPENER. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline (PROC-3)."
+
+[[binding]]
+rule = "PROC-1"
+owners = ["crates/flare-cli/src/keychain.rs"]
+checks = [
+  "clippy disallowed_methods and disallowed_types (clippy.toml)",
+  "the login and logout tests in crates/flare-cli/tests/sharing.rs, which run a recording script in place of /usr/bin/security (PROC-2)",
+]
+note = "Saving, reading and deleting the CLI token through /usr/bin/security, or FLARE_KEYCHAIN, is the flare command's other process operation. A save writes the token to the program's standard input, never to its command line. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline or the output limit (PROC-3)."
 
 [[binding]]
 rule = "PROC-1"
@@ -84,6 +96,15 @@ checks = [
   "the reader-during-writes test in crates/flare-auth-loopback/tests/state.rs",
 ]
 note = "crumbkit-durable writes the server file to .server.json.<pid>.<n>.tmp with mode 0600, syncs it, renames it over server.json and syncs the directory. The openers are new files of mode 0600 written with create_new in state/files.rs, without a rename. flare takes no file lock, so the DUR-2 entries of clippy.toml name no lock module."
+
+[[binding]]
+rule = "DUR-1"
+owners = ["crates/flare-cli/src/login/saved.rs"]
+checks = [
+  "clippy disallowed_methods (clippy.toml)",
+  "the login tests in crates/flare-cli/tests/sharing.rs",
+]
+note = "crumbkit-durable replaces the saved login, login.json in flare's state directory, whole with mode 0600, so a reader sees the old login or the new one. The file names the server, the token's id and label, and the owner; the token is only in the Keychain."
 
 [[binding]]
 rule = "DUR-4"

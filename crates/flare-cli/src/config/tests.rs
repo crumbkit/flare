@@ -177,3 +177,80 @@ fn a_local_config_may_name_a_client_secret_file_and_otherwise_uses_the_keychain(
     };
     assert_eq!(keychain.secret, Secret::Keychain);
 }
+
+const STORES: &str =
+    r#""stores":{"region":"eu-west-1","table":"flare-shares","bucket":"flare-files"}"#;
+
+/// The hosted config with `extra` added to its hosted section.
+fn hosted_with(extra: &str) -> String {
+    HOSTED.replacen("\"origin\"", &format!("{extra},\"origin\""), 1)
+}
+
+/// The hosted config with `extra` in its hosted section, admitting anyone.
+fn anyone_with(extra: &str) -> String {
+    hosted_with(extra).replace(
+        r#"{"domain":"example.com","reach":"everything"}"#,
+        r#"{"anyone":true,"reach":"everything"}"#,
+    )
+}
+
+#[test]
+fn a_hosted_section_with_stores_serves_the_share_api_and_every_admitted_person_may_share() {
+    let Site::Hosted(hosted) = parse(&hosted_with(STORES)).unwrap().site else {
+        panic!("a hosted config");
+    };
+    let sharing = hosted.sharing.expect("the share API");
+    assert_eq!(sharing.stores.table().as_str(), "flare-shares");
+    assert_eq!(sharing.creators, flare_core::Creators::Everyone);
+}
+
+#[test]
+fn a_hosted_section_without_stores_serves_no_share_api() {
+    let Site::Hosted(hosted) = parse(HOSTED).unwrap().site else {
+        panic!("a hosted config");
+    };
+    assert!(hosted.sharing.is_none());
+}
+
+#[test]
+fn creators_limit_who_may_share() {
+    let text = hosted_with(&format!(r#"{STORES},"creators":["ana@example.org"]"#));
+    let Site::Hosted(hosted) = parse(&text).unwrap().site else {
+        panic!("a hosted config");
+    };
+    let creators = hosted.sharing.expect("the share API").creators;
+    let ana = flare_core::Email::try_from("ana@example.org").unwrap();
+    assert_eq!(creators, flare_core::Creators::only(vec![ana]));
+}
+
+#[test]
+fn admitting_anyone_without_a_creators_list_is_refused_naming_hosted_creators() {
+    let message = invalid(&anyone_with(STORES));
+    assert!(message.contains("hosted.creators"), "{message}");
+}
+
+#[test]
+fn admitting_anyone_with_a_creators_list_is_admitted() {
+    let text = anyone_with(&format!(r#"{STORES},"creators":["ana@example.org"]"#));
+    assert!(matches!(parse(&text).unwrap().site, Site::Hosted(_)));
+}
+
+#[test]
+fn creators_without_stores_are_refused_naming_hosted_stores() {
+    let message = invalid(&hosted_with(r#""creators":["ana@example.org"]"#));
+    assert!(message.contains("hosted.stores"), "{message}");
+}
+
+#[test]
+fn a_creator_that_is_not_an_address_is_refused() {
+    let message = invalid(&hosted_with(&format!(r#"{STORES},"creators":["ana"]"#)));
+    assert!(message.contains("hosted.creators"), "{message}");
+}
+
+#[test]
+fn a_credential_in_the_stores_section_is_refused() {
+    let text = hosted_with(
+        r#""stores":{"region":"eu-west-1","table":"flare-shares","bucket":"flare-files","secret_access_key":"x"}"#,
+    );
+    assert!(matches!(parse(&text), Err(Problem::Invalid(_))));
+}

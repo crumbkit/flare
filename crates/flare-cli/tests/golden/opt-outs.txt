@@ -5,7 +5,7 @@ suite/skip: Check::PathWeights
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 suite/skip: Check::Examples
-  Reason: Every example needs a board and the board program, `serve` does not exit and `open` needs a running server, so no example has fixed output; tests/pages.rs and tests/serve.rs run each command on a scratch board.
+  Reason: Every example needs a board and the board program, `serve` does not exit, and `open` and the sharing commands need a running server, so no example has fixed output; tests/pages.rs, tests/serve.rs and tests/sharing.rs run each command on a scratch board or a fake server.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 suite/skip: Check::OutputBudget
@@ -13,15 +13,15 @@ suite/skip: Check::OutputBudget
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 suite/skip: Check::Recoveries
-  Reason: The recovery of server::not_running is `flare serve`, which does not exit, and the other recoveries need a scratch board; tests/open.rs and tests/serve.rs assert each failure and the command its recovery names.
+  Reason: The recovery of server::not_running is `flare serve`, which does not exit, the other recoveries need a scratch board, and the sharing commands' recoveries need a flare server; tests/open.rs, tests/serve.rs and tests/sharing.rs assert each failure and the command its recovery names.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 suite/skip: Check::Twins
-  Reason: Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs and tests/open.rs pair each refused command line with its admitted twin.
+  Reason: Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs, tests/open.rs and tests/sharing.rs pair each refused command line with its admitted twin.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 flare has 1 declaration.
 
-root-verbs: flare serve, flare open, flare publish, flare bind
+root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare grant, flare shares, flare activity
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
-  Reason: flare has one resource, the board it serves, so each command names what a person does to it
+  Reason: each command names what a person does with the board flare serves or the server flare shares through

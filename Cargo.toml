@@ -82,6 +82,7 @@ url = "2.5.8"
 # The crates that flare-server and the flare binary build on.
 flare-contract = { path = "crates/flare-contract", version = "0.1.0" }
 flare-auth-loopback = { path = "crates/flare-auth-loopback", version = "0.1.0" }
+flare-aws = { path = "crates/flare-aws", version = "0.1.0" }
 flare-auth-oidc = { path = "crates/flare-auth-oidc", version = "0.1.0" }
 flare-board = { path = "crates/flare-board", version = "0.1.0" }
 flare-render = { path = "crates/flare-render", version = "0.1.0" }

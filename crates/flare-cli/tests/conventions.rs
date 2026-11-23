@@ -11,8 +11,9 @@ use crumbkit_test::{Allow, Check, Examples, Suite};
 use flare_cli::{Cli, TOOL};
 
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
-/// The tool record declares the root verbs `serve`, `open`, `publish` and
-/// `bind` with their reason, so they need no opt-out here.
+/// The tool record declares the root verbs `serve`, `open`, `publish`,
+/// `bind`, `login`, `logout`, `share`, `grant`, `shares` and `activity`
+/// with their reason, so they need no opt-out here.
 const ALLOW: &[Allow] = &[];
 
 /// flare's built binary and the directory of its golden files.
@@ -23,11 +24,14 @@ const EXAMPLES: Examples<'_> =
 /// each check.
 const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
-    .verbs(&["serve", "open", "publish", "bind", "usage"])
+    .verbs(&[
+        "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
+        "activity", "usage",
+    ])
     .examples(EXAMPLES)
     .skip(
         Check::Examples,
-        "Every example needs a board and the board program, `serve` does not exit and `open` needs a running server, so no example has fixed output; tests/pages.rs and tests/serve.rs run each command on a scratch board.",
+        "Every example needs a board and the board program, `serve` does not exit, and `open` and the sharing commands need a running server, so no example has fixed output; tests/pages.rs, tests/serve.rs and tests/sharing.rs run each command on a scratch board or a fake server.",
     )
     .skip(
         Check::OutputBudget,
@@ -39,11 +43,11 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     )
     .skip(
         Check::Recoveries,
-        "The recovery of server::not_running is `flare serve`, which does not exit, and the other recoveries need a scratch board; tests/open.rs and tests/serve.rs assert each failure and the command its recovery names.",
+        "The recovery of server::not_running is `flare serve`, which does not exit, the other recoveries need a scratch board, and the sharing commands' recoveries need a flare server; tests/open.rs, tests/serve.rs and tests/sharing.rs assert each failure and the command its recovery names.",
     )
     .skip(
         Check::Twins,
-        "Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs and tests/open.rs pair each refused command line with its admitted twin.",
+        "Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs, tests/open.rs and tests/sharing.rs pair each refused command line with its admitted twin.",
     );
 
 crumbkit_test::conventions!(SUITE);
