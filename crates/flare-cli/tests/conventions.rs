@@ -7,14 +7,19 @@
 #![cfg(test)]
 
 use clap::CommandFactory as _;
-use crumbkit_test::{Allow, Check, Examples, Suite};
+use crumbkit_test::{Allow, Check, Examples, Rule, Suite};
 use flare_cli::{Cli, TOOL};
 
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
 /// The tool record declares the root verbs `serve`, `open`, `publish`,
 /// `bind`, `login`, `logout`, `share`, `grant`, `shares` and `activity`
-/// with their reason, so they need no opt-out here.
-const ALLOW: &[Allow] = &[];
+/// with their reason, so they need no opt-out here. `show` is crumbkit's
+/// built-in verb.
+const ALLOW: &[Allow] = &[Allow::new(
+    Rule::ShowIds,
+    "show",
+    "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
+)];
 
 /// flare's built binary and the directory of its golden files.
 const EXAMPLES: Examples<'_> =

@@ -1,4 +1,4 @@
-Share a Markdown file with people, teams or everyone, or as a response to flares
+Share a Markdown file with people, teams or everyone, or respond to flares
 
 Usage: flare share [OPTIONS] <FILE>
 
@@ -6,17 +6,21 @@ Arguments:
   <FILE>  The file to share: .md for Markdown
 
 Options:
-      --title <TITLE>  The share's title; without it, the file's name without its ending
-      --with <WHO>     Who to grant Reader, repeated or separated by commas: an address, team:<name> for a team you belong to, or everyone
-      --re <ID>        The flares this share responds to, repeated or separated by commas; their owners become Readers of it
-      --update <ID>    Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+      --title <TITLE>  The title; without it, the file name without its ending
+      --with <WHO>     Readers, comma-separated: addresses, team:<name>, everyone
+      --re <ID>        The flares it responds to, whose owners become Readers; repeated or comma-separated
+      --update <ID>    Publish the file as your share's next version
+      --dry-run        Report what the command would change, and change nothing
+      --out <PATH>     With --dry-run, write the HTML here
   -h, --help           Print help (see more with '--help')
 
 Examples:
   flare share review.md --with ana@example.org,jo@example.org
   flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
   flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  flare share review.md --dry-run --out review.html
 
 Effects: additive, not idempotent, closed-world.
+Children: A dry run lists its checks.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare share --help` describes them.
 Next: flare share --help explains each column.

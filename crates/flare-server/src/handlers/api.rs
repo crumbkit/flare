@@ -17,7 +17,7 @@ use crate::schemas::Schemas;
 use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument};
-use flare_core::{Credential, PageStore, Principal, RecordStore, Timestamp};
+use flare_core::{Credential, PageStore, Principal, RecordStore, ShareVersion, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
@@ -30,7 +30,8 @@ pub(crate) enum ApiRoute {
     CreateShare,
     /// `GET /api/shares`.
     ListShares,
-    /// `GET /api/shares/{id}`.
+    /// `GET /api/shares/{id}`, with `?version=n` for a version other than
+    /// the latest.
     OpenShare,
     /// `POST /api/shares/{id}/versions`.
     PublishVersion,
@@ -112,6 +113,26 @@ where
             .parse::<usize>()
             .ok()
             .filter(|value| (1..=max).contains(value))
+            .ok_or_else(|| ApiCode::BadQuery.into()),
+    }
+}
+
+/// The share version that `version` in the query names, or `None` when
+/// absent. A value that is not a number from 1 is a bad query.
+fn version<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Option<ShareVersion>, Refusal>
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
+    match ctx.query("version") {
+        None => Ok(None),
+        Some(text) => text
+            .parse::<u32>()
+            .ok()
+            .and_then(|number| ShareVersion::try_from(number).ok())
+            .map(Some)
             .ok_or_else(|| ApiCode::BadQuery.into()),
     }
 }
@@ -256,7 +277,7 @@ where
         ApiRoute::ListTeams => Ok(Call::ListTeams),
         ApiRoute::ShowTeam => Ok(Call::ShowTeam(name.to_owned())),
         ApiRoute::DeleteTeam => Ok(Call::DeleteTeam(name.to_owned())),
-        ApiRoute::OpenShare => Ok(Call::Open(name.to_owned())),
+        ApiRoute::OpenShare => version(ctx).map(|number| Call::Open(name.to_owned(), number)),
         ApiRoute::RevokeToken => Ok(Call::Revoke(name.to_owned())),
         ApiRoute::ListShares => {
             let scope = match ctx.query("scope").as_deref() {

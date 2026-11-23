@@ -26,7 +26,7 @@ gives the life of a team, of a member and of a group grant.
 | `flare teams show <names>` | `GET /api/teams/<name>` | The team's owner and members |
 | `flare teams delete <name> --yes` | `DELETE /api/teams/<name>` | The team's owner |
 | `flare share` or `flare grant` with `--with team:<name>` | `POST /api/shares`, `POST /api/grants/<id>` | The share's owner; an Admin who is a member of the team |
-| `flare share` or `flare grant` with `--everyone` | the same, with `everyone: true` | The share's owner |
+| `flare share` or `flare grant` with `--with everyone`, or `flare grant` with `--everyone` | the same | The share's owner |
 | `flare revoke <id> --with <who> --yes` | `DELETE /api/grants/<id>` | The owner for any grant; a person for their own grant; an Admin for the person grants an Admin may end and for a team the Admin belongs to |
 | `flare grants <id>` | `GET /api/grants/<id>` | The share's owner and its Admins |
 | `flare shares --with-me --everyone` | `GET /api/shares?scope=with-me&everyone=true` | Anyone signed in |

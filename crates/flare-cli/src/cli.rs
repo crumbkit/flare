@@ -5,6 +5,7 @@ mod teams;
 
 pub(crate) use sharing::{
     ActivityArgs, GrantArgs, GrantsArgs, LoginArgs, LogoutArgs, RevokeArgs, ShareArgs, SharesArgs,
+    ShowArgs,
 };
 pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
@@ -12,7 +13,7 @@ use crate::documents::teams::{
     TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
 };
 use crate::documents::{
-    ACTIVITY, BIND, GRANT, GRANTS, LOGIN, LOGOUT, OPEN, PUBLISH, REVOKE, SERVE, SHARE, SHARES,
+    ACTIVITY, BIND, GRANT, GRANTS, LOGIN, LOGOUT, OPEN, PUBLISH, REVOKE, SERVE, SHARE, SHARES, SHOW,
 };
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
@@ -54,15 +55,17 @@ pub(crate) enum Verb {
     Login(LoginArgs),
     /// Revoke this computer's token for the flare server and delete it
     Logout(LogoutArgs),
-    /// Share a Markdown file with people, teams or everyone, or as a response to flares
+    /// Share a Markdown file with people, teams or everyone, or respond to flares
     Share(ShareArgs),
+    /// Show one version of a share you can open, or its latest
+    Show(ShowArgs),
     /// Grant a share to more people, teams or everyone
     Grant(GrantArgs),
     /// End grants on a share
     Revoke(RevokeArgs),
     /// List a share's grants
     Grants(GrantsArgs),
-    /// Manage the teams that shares are granted to
+    /// Manage teams
     Teams {
         /// What to do with teams.
         #[command(subcommand)]
@@ -193,8 +196,8 @@ pub const TOOL: Tool = Tool::new()
         Help::new()
             .root_verbs(
                 &[
-                    "serve", "open", "publish", "bind", "login", "logout", "share", "grant",
-                    "revoke", "grants", "shares", "activity",
+                    "serve", "open", "publish", "bind", "login", "logout", "share", "show",
+                    "grant", "revoke", "grants", "shares", "activity",
                 ],
                 ROOT,
             )
@@ -264,9 +267,26 @@ pub const TOOL: Tool = Tool::new()
                 &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Publish review.md as the next version of a share you own",
             ),
+            Example::new(
+                &["review.md", "--dry-run", "--out", "review.html"],
+                "Check review.md as the server would and write its HTML to review.html, sharing nothing",
+            ),
         ])
         .effects(Effects::additive())
         .document(SHARE),
+    Leaf::new(&["show"])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Show the latest version of a share",
+            ),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--version", "1"],
+                "Show the first version of a share",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(SHOW),
     Leaf::new(&["grant"])
         .examples(&[
             Example::new(

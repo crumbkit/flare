@@ -1,4 +1,4 @@
-Manage the teams that shares are granted to
+Manage teams
 
 Usage: flare teams [OPTIONS] <COMMAND>
 

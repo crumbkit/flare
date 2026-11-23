@@ -11,12 +11,28 @@ This file records the notable changes to flare. The format follows
 - `flare teams create`, `add`, `remove`, `list`, `show` and `delete` manage
   named teams of people. `flare share` and `flare grant` grant a share to a
   team with `--with team:<name>`, and the owner grants it to everyone
-  signed in with `--everyone`. `flare revoke` ends grants and `flare grants`
+  signed in with `--with everyone`. `flare revoke` ends grants and `flare grants`
   lists them. Deleting a team leaves its grants as dormant grants that open
   nothing, and a team name is never reused. An everyone grant opens the
   share only to the people the `admit` rule admits, and an `anyone` admit
   rule refuses it. `docs/teams.md` gives the life of teams and group
   grants.
+- Each tagged release attaches `flare` for macOS on Apple silicon and for
+  Linux on arm64 and x86_64, and `brew install crumbkit/tap/flare` installs
+  it. `docs/releasing.md` says how to install flare and how a release is
+  cut.
+- `flare show <id> [--version n]` prints one version of a share you can
+  open, with its title, owner, your role, the latest version and the
+  Markdown. `GET /api/shares/<id>` takes `?version=n`, and its answer
+  names the version it holds.
+- `flare share <file> --dry-run` checks the file with the server's own
+  checks and renders it with flare-render, with no login and no request,
+  and prints what it checked. `--out <path>` writes the rendered HTML.
+  It also works with `--update`.
+  flare has had no release, so the `flare/share/v1` document changes in
+  place under the pre-release exemption of crumbkit's ADR-0007: `id`,
+  `title` and `version` may be null, which a dry run prints, and the
+  document gains a `checks` list.
 - `flare share <file> --update <id>` publishes the file as the next version
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print

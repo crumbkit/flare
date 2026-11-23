@@ -1,19 +1,25 @@
-//! `flare share`, `grant`, `revoke`, `grants`, `shares` and `activity`:
-//! each reads the saved
-//! login and its token from the Keychain, and calls the server's share API.
+//! `flare share`, `show`, `grant`, `revoke`, `grants`, `shares` and
+//! `activity`: each reads the saved login and its token from the Keychain,
+//! and calls the server's share API. `flare share --dry-run` is the
+//! exception: `dry_run.rs` checks and renders the file and reads neither the
+//! login nor the Keychain.
 
-use crate::cli::{ActivityArgs, GrantArgs, GrantsArgs, RevokeArgs, ShareArgs, SharesArgs};
+mod dry_run;
+mod grants;
+
+pub(crate) use grants::{grants, revoke};
+
+use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, SharesArgs, ShowArgs};
 use crate::client::Api;
 use crate::codes::{Failed, Refused, SharingFailed};
-use crate::documents::{ActivityRow, GrantRow, Next, RevokedOut, ShareRow, SharedOut};
+use crate::documents::{ActivityRow, Next, ShareOut, ShareRow, SharedOut, Shown};
 use crate::env::Snapshot;
 use crate::keychain;
 use crate::login::saved;
 use crumbkit::Listing;
 use flare_contract::{
-    ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantList, GrantRequest, GrantState,
-    GranteeKind, RevokeRequest, Revoked, Role, ShareList, ShareRequest, ShareSummary, Shared,
-    VersionRequest,
+    ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, OpenedShare, Role,
+    ShareList, ShareRequest, ShareSummary, Shared, VersionRequest,
 };
 use flare_core::ShareId;
 use reqwest::Method;
@@ -104,50 +110,122 @@ fn read_file(path: &Path) -> Result<String, Failed> {
     Ok(text)
 }
 
-/// Runs `flare share`.
-///
-/// # Errors
-///
-/// Returns the failure that stopped it.
-pub(crate) async fn share(args: &ShareArgs, env: &Snapshot) -> Result<SharedOut, Failed> {
+/// What `flare share` sends: a new share, or the next version of one.
+enum Outgoing {
+    /// `POST /api/shares`.
+    Create(ShareRequest),
+    /// `POST /api/shares/{id}/versions`.
+    Update(String, VersionRequest),
+}
+
+/// The request that `args` describes, read from its file.
+fn outgoing(args: &ShareArgs) -> Result<Outgoing, Failed> {
     let format = format(&args.file)?;
-    let api = session(env)?;
     let content = read_file(&args.file)?;
     if let Some(id) = &args.update {
-        return update(&api, id, VersionRequest { format, content }).await;
+        return Ok(Outgoing::Update(
+            id.clone(),
+            VersionRequest { format, content },
+        ));
     }
     let title = args.title.clone().unwrap_or_else(|| {
         args.file
             .file_stem()
             .map_or_else(String::new, |stem| stem.to_string_lossy().into_owned())
     });
-    let request = ShareRequest {
+    Ok(Outgoing::Create(ShareRequest {
         title,
         format,
         content,
         with: args.with.clone(),
         re: args.re.clone(),
-    };
-    let answer = api
-        .send(Method::POST, "/api/shares", Some(&request))
-        .await?;
-    Ok(shared_out(body(&api, answer)?))
+    }))
+}
+
+/// Runs `flare share`. A dry run checks and renders the file, and reads
+/// neither the saved login nor the Keychain.
+///
+/// # Errors
+///
+/// Returns the failure that stopped it.
+pub(crate) async fn share(
+    args: &ShareArgs,
+    dry_run: bool,
+    env: &Snapshot,
+) -> Result<ShareOut, Failed> {
+    let outgoing = outgoing(args)?;
+    if dry_run {
+        return dry_run::check(args, outgoing);
+    }
+    let api = session(env)?;
+    match outgoing {
+        Outgoing::Update(id, request) => update(&api, &id, request).await,
+        Outgoing::Create(request) => {
+            let answer = api
+                .send(Method::POST, "/api/shares", Some(&request))
+                .await?;
+            let shared: Shared = body(&api, answer)?;
+            Ok(ShareOut {
+                id: Some(shared.share.id),
+                title: Some(shared.share.title),
+                version: Some(shared.share.version),
+                granted: Some(shared.granted),
+                responds_to: Some(shared.responds_to),
+                checks: Vec::new(),
+            })
+        }
+    }
 }
 
 /// Publishes `request` as the next version of the share `id`. The server
 /// answers with the share's summary, whose version is the new number.
-async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<SharedOut, Failed> {
+async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<ShareOut, Failed> {
     let id = share_id(api, id)?;
     let target = format!("/api/shares/{}/versions", id.as_str());
     let answer: Option<ShareSummary> = api.send(Method::POST, &target, Some(&request)).await?;
     let share = body(api, answer)?;
-    Ok(SharedOut {
-        id: share.id,
-        title: share.title,
-        version: share.version,
+    Ok(ShareOut {
+        id: Some(share.id),
+        title: Some(share.title),
+        version: Some(share.version),
         granted: None,
         responds_to: None,
+        checks: Vec::new(),
     })
+}
+
+/// Runs `flare show`: one version of a share, or its latest.
+///
+/// # Errors
+///
+/// Returns the failure that stopped it.
+pub(crate) async fn show(args: &ShowArgs, env: &Snapshot) -> Result<Shown, Failed> {
+    let api = session(env)?;
+    let id = share_id(&api, &args.id)?;
+    let query = args
+        .version
+        .map_or_else(String::new, |number| format!("?version={number}"));
+    let target = format!("/api/shares/{}{query}", id.as_str());
+    let answer: Option<OpenedShare> = api.send(Method::GET, &target, None::<&()>).await?;
+    let opened = body(&api, answer)?;
+    Ok(Shown {
+        id: opened.share.id,
+        title: opened.share.title,
+        owner: opened.share.owner,
+        role: role_name(opened.share.role).to_owned(),
+        version: opened.version,
+        latest: opened.share.version,
+        content: opened.content,
+    })
+}
+
+/// The name of `role` as the commands print it.
+fn role_name(role: Role) -> &'static str {
+    match role {
+        Role::Owner => "owner",
+        Role::Admin => "admin",
+        Role::Reader => "reader",
+    }
 }
 
 /// Runs `flare grant`.
@@ -194,72 +272,6 @@ pub(crate) async fn shares(args: &SharesArgs, env: &Snapshot) -> Result<Listing<
         })
         .collect();
     Ok(Listing::uncounted(rows, list.more).described("shares"))
-}
-
-fn role_name(role: Role) -> &'static str {
-    match role {
-        Role::Owner => "owner",
-        Role::Admin => "admin",
-        Role::Reader => "reader",
-    }
-}
-
-/// Runs `flare revoke`.
-///
-/// # Errors
-///
-/// Returns the failure that stopped it.
-pub(crate) async fn revoke(args: &RevokeArgs, env: &Snapshot) -> Result<RevokedOut, Failed> {
-    let api = session(env)?;
-    let id = share_id(&api, &args.id)?;
-    let request = RevokeRequest {
-        with: args.with.clone(),
-        everyone: args.everyone,
-    };
-    let target = format!("/api/grants/{}", id.as_str());
-    let answer: Option<Revoked> = api.send(Method::DELETE, &target, Some(&request)).await?;
-    let revoked = body(&api, answer)?;
-    Ok(RevokedOut {
-        id: revoked.share,
-        revoked: revoked.revoked,
-    })
-}
-
-/// Runs `flare grants`. Dormant grants, to deleted teams, are listed
-/// first.
-///
-/// # Errors
-///
-/// Returns the failure that stopped it.
-pub(crate) async fn grants(args: &GrantsArgs, env: &Snapshot) -> Result<Listing<GrantRow>, Failed> {
-    let api = session(env)?;
-    let id = share_id(&api, &args.id)?;
-    let target = format!("/api/grants/{}", id.as_str());
-    let answer: Option<GrantList> = api.send(Method::GET, &target, None::<&()>).await?;
-    let mut items = body(&api, answer)?.items;
-    items.sort_by_key(|entry| entry.state != GrantState::Dormant);
-    let rows = items
-        .into_iter()
-        .map(|entry| GrantRow {
-            grantee: entry.grantee,
-            kind: match entry.kind {
-                GranteeKind::Person => "person",
-                GranteeKind::Team => "team",
-                GranteeKind::Everyone => "everyone",
-            }
-            .to_owned(),
-            role: role_name(entry.role).to_owned(),
-            state: match entry.state {
-                GrantState::Active => "active",
-                GrantState::Dormant => "dormant",
-            }
-            .to_owned(),
-            granted_by: entry.granted_by,
-            created: entry.created,
-            audience: entry.audience,
-        })
-        .collect();
-    Ok(Listing::from_all(rows, None).described("grants"))
 }
 
 fn activity_row(item: ActivityItem) -> Option<ActivityRow> {

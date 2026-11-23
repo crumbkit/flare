@@ -1,4 +1,8 @@
-flare has 5 opt-outs from the conventions.
+flare has 6 opt-outs from the conventions.
+
+listings/show-ids: flare show
+  Reason: flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id
+  Cost: An agent runs the command once for each id.
 
 suite/skip: Check::PathWeights
   Reason: The path weights read the example golden files, which the Examples skip leaves out.
@@ -20,8 +24,14 @@ suite/skip: Check::Twins
   Reason: Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs, tests/open.rs and tests/sharing.rs pair each refused command line with its admitted twin.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
-flare has 1 declaration.
+flare has 3 declarations.
 
-root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare grant, flare revoke, flare grants, flare shares, flare activity
+root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
   Reason: each command names what a person does with the board flare serves or the server flare shares through
+
+children: flare share
+  Declares: The text prints lines under each row for its checks, and help describes them as: A dry run lists its checks.
+
+children: flare show
+  Declares: The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file.

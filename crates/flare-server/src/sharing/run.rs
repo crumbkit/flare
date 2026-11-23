@@ -1,16 +1,18 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
-use super::convert::{content_error, flare_error, item, role, share_error, standing, summary};
+use super::convert::{flare_error, item, role, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
-use super::{Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck};
+use super::{
+    Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck, check_share, check_version,
+};
 use flare_contract::{
-    ActivityPage, ApiCode, Cursor, ExchangeRequest, Format, OpenedShare, Role as WireRole,
-    ShareList, ShareRequest, Shared, TokenIssued, VersionRequest, utc,
+    ActivityPage, ApiCode, Cursor, ExchangeRequest, OpenedShare, Role as WireRole, ShareList,
+    ShareRequest, Shared, TokenIssued, VersionRequest, utc,
 };
 use flare_core::{
-    DocumentText, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position,
-    Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareTitle, Teams, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position, Principal,
+    Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore, ShareVersion, Teams,
+    Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -68,12 +70,7 @@ where
     M: Teams,
 {
     async fn create(&self, who: &Principal, request: ShareRequest, now: Timestamp) -> Answer {
-        if request.format == Format::Html {
-            return Err(ApiCode::KindNotServed.into());
-        }
-        let title = ShareTitle::try_from(request.title.as_str()).map_err(|e| content_error(&e))?;
-        let text =
-            DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
+        let (title, text) = check_share(&request)?;
         let (with, groups) = self.named(&request.with, false).await?;
         let re = request
             .re
@@ -109,11 +106,7 @@ where
         now: Timestamp,
     ) -> Answer {
         let id = share_id(id)?;
-        if request.format == Format::Html {
-            return Err(ApiCode::KindNotServed.into());
-        }
-        let text =
-            DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
+        let text = check_version(&request)?;
         // This does less than an idempotent publish would: it takes no key,
         // so a client that repeats a post whose answer was lost writes a
         // second version with the same content. The owner finds the number
@@ -164,20 +157,31 @@ where
         json(200, &ShareList { items, more })
     }
 
-    async fn open(&self, who: &Principal, id: &str) -> Answer {
+    /// Opens version `number` of a share, or its latest. A number above
+    /// the latest answers `flare::shares::not_found`, as a share the caller
+    /// cannot open does, after the caller's standing is checked.
+    async fn open(&self, who: &Principal, id: &str, number: Option<ShareVersion>) -> Answer {
         let id = share_id(id)?;
         let opened = self
             .flares
             .shares()
-            .open(who, &id, None)
+            .open(who, &id, number)
             .await
             .map_err(share_error)?;
         let content = match opened.version.content() {
             ShareContent::Document(text) => text.as_str().to_owned(),
             _ => return Err(ApiCode::KindNotServed.into()),
         };
+        let version = opened.version.number().get();
         let share = summary(&opened.share, standing(opened.standing));
-        json(200, &OpenedShare { share, content })
+        json(
+            200,
+            &OpenedShare {
+                share,
+                version,
+                content,
+            },
+        )
     }
 
     async fn activity(
@@ -342,7 +346,7 @@ where
                     limit,
                     everyone,
                 } => self.list(who, scope, limit, everyone).await,
-                Call::Open(id) => self.open(who, &id).await,
+                Call::Open(id, number) => self.open(who, &id, number).await,
                 Call::Publish(id, request) => self.publish(who, &id, request, now).await,
                 Call::Grant(id, request) => self.grant(who, &id, request, now).await,
                 Call::ListGrants(id) => self.list_grants(who, &id).await,

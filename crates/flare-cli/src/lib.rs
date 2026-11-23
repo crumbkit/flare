@@ -8,9 +8,9 @@
 //! The command is thin. [`run`] parses with crumbkit, reads the environment
 //! once into a snapshot, and each command builds flare-board's store,
 //! flare-auth-loopback's state and flare-auth-oidc's authenticator and
-//! calls flare-server. `login`, `logout`, `share`, `grant`, `shares` and
-//! `activity` call a flare server's share API with the token that `login`
-//! keeps in the Keychain. `serve` is the only long-running command; the
+//! calls flare-server. `login`, `logout`, `share`, `show`, `grant`,
+//! `shares` and `activity` call a flare server's share API with the token
+//! that `login` keeps in the Keychain; `share --dry-run` calls no server. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
 
 mod bind;
@@ -89,8 +89,13 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             crumbkit::finish(run, documents::LOGOUT, result)
         }
         Verb::Share(args) => {
-            let result = block_on(false, sharing::share(&args, &env));
+            let dry_run = run.is_dry_run();
+            let result = block_on(false, sharing::share(&args, dry_run, &env));
             crumbkit::finish(run, documents::SHARE, result)
+        }
+        Verb::Show(args) => {
+            let result = block_on(false, sharing::show(&args, &env));
+            crumbkit::finish(run, documents::SHOW, result)
         }
         Verb::Grant(args) => {
             let result = block_on(false, sharing::grant(&args, &env));
