@@ -29,7 +29,7 @@ use flare_aws::{
     DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{AddressesOnly, Flares};
+use flare_core::{Flares, NamedRecipients};
 use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Sharing, Site, Stopped};
 use std::path::Path;
 use std::sync::OnceLock;
@@ -193,7 +193,7 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
     let admit = oidc.admit().clone();
     let oidc = connect(oidc, &Secret::File(secret_file)).await?;
     let sharing = match sharing {
-        Some(config) => Some(share_api(config, admit).await?),
+        Some(config) => Some(share_api(*config, admit).await?),
         None => None,
     };
     let mut signals = Signals::install()?;
@@ -219,7 +219,7 @@ type HostedSharing = Sharing<
     DynamoGrantStore,
     DynamoResponseStore,
     DynamoTokenStore,
-    AddressesOnly,
+    NamedRecipients,
 >;
 
 /// The share API on the configured table and bucket, which it checks
@@ -238,7 +238,12 @@ async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing,
         stores.responses,
         config.creators,
     );
-    Ok(Sharing::new(flares, stores.tokens, AddressesOnly, admit))
+    Ok(Sharing::new(
+        flares,
+        stores.tokens,
+        config.recipients,
+        admit,
+    ))
 }
 
 /// Serves `app` until a signal or, on the local site, the idle exit.
