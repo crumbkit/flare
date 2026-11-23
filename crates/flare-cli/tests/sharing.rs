@@ -321,7 +321,8 @@ fn share_update_posts_the_file_as_the_next_version_and_prints_the_share_with_its
     assert_eq!(printed["data"]["id"], FLARE, "{}", ran.all());
     assert_eq!(printed["data"]["title"], "review");
     assert_eq!(printed["data"]["version"], 2);
-    assert_eq!(printed["data"]["granted"], json!([]));
+    assert!(printed["data"]["granted"].is_null(), "{}", ran.all());
+    assert!(printed["data"]["responds_to"].is_null(), "{}", ran.all());
     let sent = &api.requests_to(&format!("/api/shares/{FLARE}/versions"))[0];
     assert_eq!(
         sent.headers.get("authorization").map(String::as_str),

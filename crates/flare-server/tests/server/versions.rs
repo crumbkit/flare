@@ -100,6 +100,28 @@ async fn a_reader_is_forbidden_and_a_stranger_and_an_unknown_id_get_the_same_not
 }
 
 #[tokio::test]
+async fn a_share_at_the_version_limit_names_versions_and_does_not_offer_an_operator_raise() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let id = api.share(&alice, "Plan", &[], &[]).await;
+    for number in 2..=100 {
+        let body = version_body(&format!("v{number}\n"));
+        api.json("POST", &path(&id), Some(&alice), body).await;
+    }
+    let (_, refused) = api
+        .json("POST", &path(&id), Some(&alice), version_body("v101\n"))
+        .await;
+    assert!(
+        refused["title"].as_str().unwrap().contains("version"),
+        "{refused}"
+    );
+    assert!(
+        !refused["recovery"].to_string().contains("operator"),
+        "{refused}"
+    );
+}
+
+#[tokio::test]
 async fn a_post_with_no_token_or_a_refused_token_writes_nothing() {
     let api = Api::start().await;
     let alice = api.token_for("alice").await;
@@ -197,7 +219,7 @@ async fn a_share_at_one_hundred_versions_refuses_another_and_stays_unchanged() {
     let (status, refused) = api
         .json("POST", &path(&id), Some(&alice), version_body("v101\n"))
         .await;
-    assert_eq!((status, code(&refused)), (409, "flare::shares::too_many"));
+    assert_eq!((status, code(&refused)), (409, "flare::versions::too_many"));
     let (_, opened) = api
         .read("GET", &format!("/api/shares/{id}"), Some(&alice))
         .await;

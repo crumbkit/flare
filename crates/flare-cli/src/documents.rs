@@ -144,12 +144,12 @@ pub(crate) struct SharedOut {
     /// The share's latest version.
     #[row(column)]
     pub(crate) version: u32,
-    /// The addresses that now hold a role on it.
+    /// The addresses that now hold a role on it; none after `--update`, which does not report them.
     #[row(column)]
-    pub(crate) granted: Vec<String>,
-    /// The flares it responds to.
+    pub(crate) granted: Option<Vec<String>>,
+    /// The flares it responds to; none after `--update`, which does not report them.
     #[row(column)]
-    pub(crate) responds_to: Vec<String>,
+    pub(crate) responds_to: Option<Vec<String>>,
 }
 
 /// The document of `flare share`.

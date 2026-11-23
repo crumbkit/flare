@@ -70,7 +70,8 @@ pub(super) fn share_error(error: ShareError) -> ApiCode {
         ShareError::Forbidden | ShareError::OwnerCannotBeChanged => ApiCode::ShareForbidden,
         ShareError::GrantChanged => ApiCode::GrantChanged,
         ShareError::TooManyGrants => ApiCode::TooManyGrants,
-        ShareError::TooManyShares | ShareError::TooManyVersions => ApiCode::TooManyShares,
+        ShareError::TooManyShares => ApiCode::TooManyShares,
+        ShareError::TooManyVersions => ApiCode::TooManyVersions,
         ShareError::NoVerifiedEmail => ApiCode::NoVerifiedEmail,
         _ => ApiCode::SharesUnavailable,
     }

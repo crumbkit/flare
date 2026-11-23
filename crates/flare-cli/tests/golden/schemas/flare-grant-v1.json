@@ -26,8 +26,11 @@
       "type": "object",
       "properties": {
         "granted": {
-          "description": "The addresses that now hold a role on it.",
-          "type": "array",
+          "description": "The addresses that now hold a role on it; none after `--update`, which does not report them.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           }
@@ -37,8 +40,11 @@
           "type": "string"
         },
         "responds_to": {
-          "description": "The flares it responds to.",
-          "type": "array",
+          "description": "The flares it responds to; none after `--update`, which does not report them.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           }

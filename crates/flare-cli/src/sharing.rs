@@ -66,8 +66,8 @@ fn shared_out(shared: Shared) -> SharedOut {
         id: shared.share.id,
         title: shared.share.title,
         version: shared.share.version,
-        granted: shared.granted,
-        responds_to: shared.responds_to,
+        granted: Some(shared.granted),
+        responds_to: Some(shared.responds_to),
     }
 }
 
@@ -143,8 +143,8 @@ async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<SharedOu
         id: share.id,
         title: share.title,
         version: share.version,
-        granted: Vec::new(),
-        responds_to: Vec::new(),
+        granted: None,
+        responds_to: None,
     })
 }
 

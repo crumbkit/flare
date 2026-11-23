@@ -248,8 +248,8 @@ flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 - `id`: The share's id.
 - `title`: The share's title.
 - `version`: The share's latest version.
-- `granted`: The addresses that now hold a role on it.
-- `responds_to`: The flares it responds to.
+- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
 
@@ -276,8 +276,8 @@ flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
 - `id`: The share's id.
 - `title`: The share's title.
 - `version`: The share's latest version.
-- `granted`: The addresses that now hold a role on it.
-- `responds_to`: The flares it responds to.
+- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
 
