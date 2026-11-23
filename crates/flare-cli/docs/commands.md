@@ -4,7 +4,7 @@ This reference is generated from the help of `flare`. Edit the help in the tool'
 
 ## `flare`
 
-Serve a board's pages and bindings on this machine, open them in a browser, publish pages and save bindings
+Serve a board's pages and bindings on this machine, open them in a browser, publish pages and save bindings, and share files through a flare server
 
 ### Commands
 
@@ -12,6 +12,12 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare open`](#flare-open): Open the running server's index, a page or a binding in a browser
 - [`flare publish`](#flare-publish): Publish a new version of a page from an HTML or Markdown file
 - [`flare bind`](#flare-bind): Save a binding that fills a page's slots with records
+- [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
+- [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
+- [`flare share`](#flare-share): Share a Markdown file with named people, or as a response to flares
+- [`flare grant`](#flare-grant): Grant an existing share to more people
+- [`flare shares`](#flare-shares): List your shares or the shares granted to you
+- [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare self`](#flare-self): Review flare's own use
 
@@ -155,6 +161,190 @@ flare bind task-card --name kitchen task=/tasks/tap
 Effects: additive, not idempotent, closed-world.
 
 Writes: applies all items or none.
+
+## `flare login`
+
+Sign in to a flare server in the browser and keep its token in the Keychain
+
+### Arguments
+
+- `<SERVER>`: The flare server, such as https://flare.example.org. Required.
+- `--label <LABEL>`: The token's label; without it, the label of this computer's earlier login to the server, else a new flare-cli-\<hex\>
+
+### Examples
+
+Sign in to a flare server in the browser and keep its token in the Keychain.
+
+```sh
+flare login https://flare.example.org
+```
+
+### Columns
+
+- `server`: The server's origin.
+- `owner`: The address the token signs in as.
+- `label`: The token's label.
+- `expires`: When the token expires, in RFC 3339 UTC.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare logout`
+
+Revoke this computer's token for the flare server and delete it
+
+### Arguments
+
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+Revoke this computer's token and delete it from the Keychain.
+
+```sh
+flare logout
+```
+
+### Columns
+
+- `server`: The server's origin.
+- `label`: The label of the revoked token.
+
+Effects: destructive, not idempotent, closed-world.
+
+## `flare share`
+
+Share a Markdown file with named people, or as a response to flares
+
+### Arguments
+
+- `<FILE>`: The file to share: .md for Markdown. Required.
+- `--title <TITLE>`: The share's title; without it, the file's name without its ending
+- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
+- `--re <ID>`: The flares this share responds to, repeated or separated by commas. Takes more than one value.
+
+### Examples
+
+Share review.md with two people.
+
+```sh
+flare share review.md --with ana@example.org,jo@example.org
+```
+
+Share answer.md as a response to a flare.
+
+```sh
+flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+### Columns
+
+- `id`: The share's id.
+- `title`: The share's title.
+- `granted`: The addresses that now hold a role on it.
+- `responds_to`: The flares it responds to.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare grant`
+
+Grant an existing share to more people
+
+### Arguments
+
+- `<ID>`: The share to grant. Required.
+- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
+- `--re <ID>`: The flares the share responds to, repeated or separated by commas; only its owner may add them. Takes more than one value.
+
+### Examples
+
+Grant a share to one more person.
+
+```sh
+flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+```
+
+### Columns
+
+- `id`: The share's id.
+- `title`: The share's title.
+- `granted`: The addresses that now hold a role on it.
+- `responds_to`: The flares it responds to.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare shares`
+
+List your shares or the shares granted to you
+
+The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+
+### Arguments
+
+- `--with-me`: List the shares granted to you in place of your own
+- `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
+- `--all`: Print every row
+
+### Examples
+
+List your shares, newest first.
+
+```sh
+flare shares
+```
+
+List the 20 newest shares granted to you.
+
+```sh
+flare shares --with-me --limit 20
+```
+
+### Columns
+
+- `id`: The share's id.
+- `title`: The share's title.
+- `owner`: The owner's identifier.
+- `role`: The caller's role: `owner`, `admin` or `reader`.
+- `version`: The latest version.
+- `created`: When it was created, in RFC 3339 UTC.
+
+Effects: read-only, closed-world.
+
+## `flare activity`
+
+List the responses to flares since a cursor, oldest first
+
+### Arguments
+
+- `<FLARE>`: The flares whose responses to list, at most 16. Required. Takes more than one value.
+- `--since <CURSOR>`: List only responses after this cursor, which an earlier call printed
+- `--limit <N>`: Print at most this many rows, up to 100. Default: `50`.
+- `--all`: Print every row
+
+### Examples
+
+List the responses to a flare, oldest first.
+
+```sh
+flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+List the responses after the cursor an earlier call printed.
+
+```sh
+flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
+```
+
+### Columns
+
+- `flare`: The flare it responds to.
+- `share`: The responding share's id.
+- `title`: The responding share's title.
+- `by`: The responder's identifier.
+- `version`: The version of the flare it responds to.
+- `at`: When it named the flare, in RFC 3339 UTC.
+- `also`: The other flares it responds to that the caller can open.
+
+Effects: read-only, closed-world.
 
 ## `flare commands`
 

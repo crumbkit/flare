@@ -1,0 +1,49 @@
+List your shares or the shares granted to you
+
+The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+
+Usage: flare shares [OPTIONS]
+
+Options:
+      --with-me
+          List the shares granted to you in place of your own
+
+      --limit <N>
+          Print at most this many rows, up to 500
+          
+          [default: 50]
+
+      --all
+          Print every row
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare shares
+          List your shares, newest first
+
+  flare shares --with-me --limit 20
+          List the 20 newest shares granted to you
+
+Columns:
+  id       The share's id.
+  title    The share's title.
+  owner    The owner's identifier.
+  role     The caller's role: `owner`, `admin` or `reader`.
+  version  The latest version.
+  created  When it was created, in RFC 3339 UTC.
+
+Effects: read-only, closed-world.

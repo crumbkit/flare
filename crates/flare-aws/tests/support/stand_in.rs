@@ -23,6 +23,9 @@ pub const ACCESS_KEY_ID: &str = "flaretest";
 /// The made-up secret key that the stand-ins accept.
 pub const SECRET_ACCESS_KEY: &str = "flaretestsecret";
 
+/// The attribute that the table's TTL reads, as the template names it.
+pub const TTL_ATTRIBUTE: &str = "expires_at";
+
 /// The CloudFormation template that defines the table and the bucket.
 pub const TEMPLATE: &str = include_str!("../../../../infra/flare-stores.template.json");
 

@@ -193,7 +193,7 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
     /// write, and denies everything else. Under [`Admit::Emails`] the
     /// principal must be on the allow-list. Under [`Admit::Domain`] it must
     /// hold a live session of this authenticator, and the rule's reach
-    /// applies. Makes no request.
+    /// applies; [`Admit::Anyone`] is decided the same way. Makes no request.
     async fn authorize(
         &self,
         principal: &Principal,
@@ -207,6 +207,10 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
             Admit::Domain(rule) => {
                 lock(&self.sessions).holds(principal.id(), self.clock.now())
                     && rule.reach().reaches(resource)
+            }
+            Admit::Anyone(reach) => {
+                lock(&self.sessions).holds(principal.id(), self.clock.now())
+                    && reach.reaches(resource)
             }
         };
         Ok(if reaches {

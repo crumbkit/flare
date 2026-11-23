@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/share/v1",
+  "description": "The new share, the people it is granted to and the flares it responds to.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/SharedOut"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/share/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "SharedOut": {
+      "description": "A share that `flare share` made or `flare grant` granted.",
+      "type": "object",
+      "properties": {
+        "granted": {
+          "description": "The addresses that now hold a role on it.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "The share's id.",
+          "type": "string"
+        },
+        "responds_to": {
+          "description": "The flares it responds to.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "description": "The share's title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "granted",
+        "responds_to"
+      ]
+    }
+  }
+}

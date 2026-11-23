@@ -15,8 +15,9 @@ from `FLARE_TEST_DYNAMODB` and `FLARE_TEST_S3`.
 - Write the test first, named as a sentence (BASE-36).
 - Give each new dependency a reason in `Cargo.toml` (BASE-23).
 - A new implementation of `Authenticator`, `PageStore`, `RecordStore`,
-  `ShareStore`, `GrantStore` or `FileStore` calls every function of the
-  matching suite in `flare_core::contract` from its own tests.
+  `ShareStore`, `GrantStore`, `FileStore`, `TokenStore` or `ResponseStore`
+  calls every function of the matching suite in `flare_core::contract` from
+  its own tests.
 
 ## Writing
 

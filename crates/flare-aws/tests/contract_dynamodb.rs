@@ -1,7 +1,9 @@
-//! Runs every function of flare-core's share and grant suites against
-//! `DynamoShareStore` and `DynamoGrantStore` on the DynamoDB stand-in, as
+//! Runs every function of flare-core's share, grant, token and response
+//! suites against `DynamoShareStore`, `DynamoGrantStore`,
+//! `DynamoTokenStore` and `DynamoResponseStore` on the DynamoDB stand-in, as
 //! flare's AGENTS.md asks of each new store, and checks what only a
-//! durable table shows: a second store on the same table sees every write.
+//! durable table shows: a second store on the same table sees every write,
+//! and a login code carries the expiry that the table's TTL reads.
 #![cfg(test)]
 
 #[path = "support/stand_in.rs"]
@@ -13,12 +15,15 @@ pub mod stand_in;
 
 use flare_aws::Stores;
 use flare_core::contract::grant_store::{self, GrantFixture};
+use flare_core::contract::response_store::{self, ResponseFixture};
 use flare_core::contract::share_store::{self, ShareFixture};
+use flare_core::contract::token_store::{self, TokenFixture};
 use flare_core::{
-    DocumentText, Email, GrantStore, Principal, Role, ShareContent, ShareId, ShareStore,
-    ShareTitle, ShareVersion, Shares, Timestamp,
+    CODE_LIFE, Digest, DocumentText, Email, GrantStore, LoginCode, NewLink, NewToken, Position,
+    Principal, ResponseStore, Role, ShareContent, ShareId, ShareStore, ShareTitle, ShareVersion,
+    Shares, Timestamp, TokenId, TokenLabel, TokenStore,
 };
-use stand_in::{Joined, endpoints, fresh, fresh_config};
+use stand_in::{Joined, dynamodb_client, endpoints, fresh, fresh_config};
 
 macro_rules! suite {
     ($module:ident, $field:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
@@ -95,6 +100,43 @@ mod grants {
         a_grant_and_a_revoke_together_leave_a_consistent_state,
         an_admins_grant_never_lands_after_their_revoke,
         concurrent_grants_at_the_limit_give_one_too_many,
+    );
+}
+
+mod tokens {
+    use super::*;
+
+    suite!(token_store, tokens, TokenFixture;
+        a_code_is_used_once,
+        an_expired_code_is_refused,
+        an_unknown_code_is_refused,
+        a_token_reads_back,
+        an_unknown_token_is_not_found,
+        a_revoke_keeps_its_first_time,
+        a_revoke_by_another_owner_is_not_found,
+        a_new_token_with_the_same_label_revokes_the_old,
+    );
+
+    concurrent_suite!(token_store, tokens, TokenFixture;
+        concurrent_uses_of_one_code_give_one_success,
+    );
+}
+
+mod responses {
+    use super::*;
+
+    suite!(response_store, responses, ResponseFixture;
+        a_link_reads_back_under_its_flare,
+        positions_increase_and_the_head_follows,
+        a_repeated_link_keeps_its_first_position,
+        a_flares_list_holds_only_newer_links_up_to_the_bound,
+        a_flares_list_holds_only_its_links,
+        a_responses_list_names_every_flare,
+        the_limit_bounds_a_list_oldest_first,
+    );
+
+    concurrent_suite!(response_store, responses, ResponseFixture;
+        concurrent_links_get_distinct_positions,
     );
 }
 
@@ -195,4 +237,70 @@ async fn a_document_of_the_largest_size_in_multi_byte_characters_is_stored_and_r
     assert_eq!(second, ShareVersion::try_from(2).unwrap());
     let opened = shares.open(&owner, &id, Some(second)).await.unwrap();
     assert_eq!(opened.version.content(), &document(&text));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_store_on_the_same_table_sees_a_token_its_revoke_and_a_response_link() {
+    let config = fresh_config().await;
+    let first = Stores::connect_at(&config, &endpoints());
+    let second = Stores::connect_at(&config, &endpoints());
+    let (_, owner) = person("owner@x.com");
+    let id = TokenId::from_random([3; 16]);
+    let token = NewToken::new(
+        id.clone(),
+        Digest::from_bytes([4; 32]),
+        owner.clone(),
+        TokenLabel::try_from("laptop").unwrap(),
+        Timestamp::from_secs(10),
+    );
+    first.tokens.create(token.clone()).await.unwrap();
+    assert_eq!(second.tokens.get(&id).await, Ok(token.stored()));
+    first
+        .tokens
+        .revoke(&id, &owner, Timestamp::from_secs(20))
+        .await
+        .unwrap();
+    assert_eq!(
+        second.tokens.get(&id).await.unwrap().revoked(),
+        Some(Timestamp::from_secs(20))
+    );
+
+    let link = NewLink::new(
+        ShareId::from_random([5; 16]),
+        ShareId::from_random([6; 16]),
+        ShareVersion::try_from(1).unwrap(),
+        Timestamp::from_secs(30),
+    );
+    let stored = first.responses.link(link.clone()).await.unwrap();
+    assert_eq!(second.responses.head().await, Ok(stored.position));
+    let listed = second
+        .responses
+        .to_flare(&link.flare, Position::new(0), stored.position, 10)
+        .await
+        .unwrap();
+    assert_eq!(listed, vec![stored]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_login_code_item_carries_its_expiry_in_the_tables_ttl_attribute() {
+    let config = fresh_config().await;
+    let stores = Stores::connect_at(&config, &endpoints());
+    let (_, owner) = person("owner@x.com");
+    let issued = Timestamp::from_secs(1_000);
+    let code = LoginCode::new(Digest::from_bytes([7; 32]), owner, 4000, issued);
+    stores.tokens.issue_code(code).await.unwrap();
+
+    let scanned = dynamodb_client()
+        .scan()
+        .table_name(config.table().as_str())
+        .send()
+        .await
+        .unwrap();
+    let expiries: Vec<String> = scanned
+        .items()
+        .iter()
+        .filter_map(|item| item.get(stand_in::TTL_ATTRIBUTE))
+        .map(|value| value.as_n().unwrap().clone())
+        .collect();
+    assert_eq!(expiries, vec![(1_000 + CODE_LIFE).to_string()]);
 }

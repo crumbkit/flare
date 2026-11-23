@@ -4,7 +4,7 @@
   "Parameters": {
     "TableName": {
       "Type": "String",
-      "Description": "The table that holds shares, versions, grants and list entries.",
+      "Description": "The table that holds shares, versions, grants, list entries, login codes, CLI tokens and response links.",
       "MinLength": 3,
       "MaxLength": 255,
       "AllowedPattern": "[A-Za-z0-9_.-]+"
@@ -34,6 +34,7 @@
           { "AttributeName": "sk", "KeyType": "RANGE" }
         ],
         "PointInTimeRecoverySpecification": { "PointInTimeRecoveryEnabled": true },
+        "TimeToLiveSpecification": { "AttributeName": "expires_at", "Enabled": true },
         "DeletionProtectionEnabled": true
       }
     },

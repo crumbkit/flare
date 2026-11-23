@@ -8,11 +8,13 @@ use crate::handover::Handover;
 use crate::limits::Limits;
 use crate::problem::{Code, Problem};
 use crate::schemas::Schemas;
+use crate::sharing::{Api, Sharing};
 use crate::site::{Site, SiteKind};
 use crate::tasks;
 use bytes_alias::Body;
 use flare_auth_loopback::StateError;
 use flare_auth_oidc::{Clock as OidcClock, SystemClock as OidcSystemClock};
+use flare_core::{GrantStore, Recipients, ResponseStore, ShareStore, TokenStore};
 use flare_core::{PageStore, RecordStore};
 use hyper::body::Incoming;
 use hyper::{Request, Response};
@@ -70,6 +72,7 @@ pub(crate) struct Shared<P, R, S, K: OidcClock> {
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) forms: Forms,
     pub(crate) handover: Handover,
+    pub(crate) sharing: Option<Arc<dyn Api>>,
     pub(crate) in_work: Semaphore,
     token_calls: Semaphore,
     /// Callbacks that hold or wait for a slot of `token_calls`: at most
@@ -106,6 +109,7 @@ where
                     .saturating_add(limits.token_waiters)
                     .min(Semaphore::MAX_PERMITS),
             ),
+            sharing: None,
             pages,
             records,
             schemas,
@@ -127,6 +131,24 @@ where
     pub fn with_clock(mut self, clock: impl Clock) -> Self {
         if let Some(shared) = Arc::get_mut(&mut self.shared) {
             shared.clock = Arc::new(clock);
+        }
+        self
+    }
+
+    /// The same app serving the share API from `sharing` on the hosted
+    /// site. Call it before cloning the app; on a cloned app it changes
+    /// nothing.
+    #[must_use]
+    pub fn with_sharing<SS, G, RS, T, X>(mut self, sharing: Sharing<SS, G, RS, T, X>) -> Self
+    where
+        SS: ShareStore + 'static,
+        G: GrantStore + 'static,
+        RS: ResponseStore + 'static,
+        T: TokenStore + 'static,
+        X: Recipients + 'static,
+    {
+        if let Some(shared) = Arc::get_mut(&mut self.shared) {
+            shared.sharing = Some(Arc::new(sharing));
         }
         self
     }

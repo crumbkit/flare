@@ -7,21 +7,30 @@
 //! never prints the launch host, a launch URL or the token. With one, it
 //! serves the hosted site on the configured address behind a TLS proxy,
 //! reads the client secret from the configured file, writes no server file
-//! and has no idle exit.
+//! and has no idle exit. When the hosted section names its stores, it checks
+//! the DynamoDB table and the S3 bucket before it binds and serves the share
+//! API from them.
 
 use crate::board;
 use crate::cli::ServeArgs;
 use crate::codes::Failed;
-use crate::config::{self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Site as Configured};
+use crate::config::{
+    self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig, Site as Configured,
+};
 use crate::documents::Served;
 use crate::env::Snapshot;
 use crate::{log, open};
 use flare_auth_loopback::{Loopback, Served as Reach, local_principal};
 use flare_auth_oidc::{
-    ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator, OidcConfig,
+    Admit, ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator,
+    OidcConfig,
+};
+use flare_aws::{
+    DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
 };
 use flare_board::BoardStore;
-use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Site, Stopped};
+use flare_core::{AddressesOnly, Flares};
+use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Sharing, Site, Stopped};
 use std::path::Path;
 use std::sync::OnceLock;
 use tokio::signal::unix::{SignalKind, signal};
@@ -179,8 +188,14 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
         listen,
         oidc,
         secret_file,
+        sharing,
     } = hosted;
+    let admit = oidc.admit().clone();
     let oidc = connect(oidc, &Secret::File(secret_file)).await?;
+    let sharing = match sharing {
+        Some(config) => Some(share_api(config, admit).await?),
+        None => None,
+    };
     let mut signals = Signals::install()?;
     let listeners = Listeners::bind_hosted(listen).map_err(bind_failed)?;
     log::start();
@@ -191,7 +206,39 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
     );
     let site = Site::Hosted { origin, oidc };
     let app = App::new(store.clone(), store.clone(), store, site, Limits::default());
+    let app = match sharing {
+        Some(sharing) => app.with_sharing(sharing),
+        None => app,
+    };
     serve(root, listeners, app, &mut signals).await
+}
+
+/// The share API on the hosted site's table and bucket.
+type HostedSharing = Sharing<
+    DynamoShareStore,
+    DynamoGrantStore,
+    DynamoResponseStore,
+    DynamoTokenStore,
+    AddressesOnly,
+>;
+
+/// The share API on the configured table and bucket, which it checks
+/// first, accepting a token only while `admit` admits its owner.
+async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing, Failed> {
+    let stores = Stores::connect(&config.stores).await;
+    stores
+        .check()
+        .await
+        .map_err(|error| Failed::StoresUnavailable {
+            problem: error.to_string(),
+        })?;
+    let flares = Flares::new(
+        stores.shares,
+        stores.grants,
+        stores.responses,
+        config.creators,
+    );
+    Ok(Sharing::new(flares, stores.tokens, AddressesOnly, admit))
 }
 
 /// Serves `app` until a signal or, on the local site, the idle exit.

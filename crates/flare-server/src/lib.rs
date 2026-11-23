@@ -25,8 +25,21 @@
 //! Authorization header), then the same cross-site rule, and serves only
 //! the routes that name the hosted site: `/up`, the stylesheet, `/`,
 //! `/flare/`, `/pages/<name>`, `/auth/oidc/start` and
-//! `/auth/oidc/callback`. It has no write route. It sets only `__Host-`
-//! cookies, writes no file and has no idle exit.
+//! `/auth/oidc/callback`. It writes no board record. It sets only
+//! `__Host-` cookies, writes no file and has no idle exit.
+//!
+//! # The share API
+//!
+//! [`App::with_sharing`] adds the share API to the hosted site:
+//! `/cli/login`, which hands a signed-in browser's one-use login code to
+//! the `flare` command's loopback listener, `POST /api/tokens/exchange`,
+//! which trades the code for a bearer token, and the token routes under
+//! `/api/` that share a file, grant it, list and open shares, read the
+//! responses to flares since a cursor and revoke a token. For an `/api/`
+//! path the hosted checks read no cookie and require no Origin; the
+//! credential is the one `Authorization: Bearer` header. Without
+//! [`Sharing`] these routes answer 404. The lifecycle of login codes and
+//! tokens is in `docs/tokens.md`.
 //!
 //! Every reply, refusals included, carries the threat model's
 //! Content-Security-Policy and six other headers (`reply.rs`), and every
@@ -192,8 +205,10 @@
 //!     `HttpOnly` and `Path=/`, and clears them with the same attributes.
 //! 13. The hosted site serves none of `/b/<name>`, `/ready`, `/launch`,
 //!     `/launch/codes`, `/launch/probe` and `/auth/oidc/finish`, writes no
-//!     file, has no write route, and stores nothing server-side for an
-//!     anonymous request.
+//!     file or board record, and stores nothing server-side for an
+//!     anonymous request. Its only routes with another method than GET
+//!     are under `/api/`, and each takes a bearer token, or a login code
+//!     for the exchange, and never a cookie.
 //! 14. At most [`Limits::token_calls`] callbacks are in work at once. The
 //!     next waits for a slot, in arrival order, for up to
 //!     [`Limits::token_wait`], and at most [`Limits::token_waiters`] wait
@@ -203,6 +218,9 @@
 //! 15. A hosted flare runs as one process, because its sessions and
 //!     sealing key live in that process's memory. A second process behind
 //!     the same origin refuses the first one's kept values and sessions.
+//! 16. The server never stores a raw token or login code, and never logs
+//!     one: the token store keeps SHA-256 digests, and a token's text
+//!     leaves the process only in the exchange's answer.
 
 mod app;
 mod auth;
@@ -224,6 +242,7 @@ mod reply;
 mod routes;
 mod schemas;
 mod secret;
+mod sharing;
 mod site;
 mod tasks;
 
@@ -239,4 +258,5 @@ pub use clock::{Clock, SystemClock};
 pub use limits::Limits;
 pub use listen::{BindError, Listeners, ServeError, Stopped};
 pub use schemas::Schemas;
+pub use sharing::Sharing;
 pub use site::{OriginError, PublicOrigin, Site};

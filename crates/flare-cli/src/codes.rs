@@ -1,8 +1,12 @@
 //! Every failure of the `flare` command, with its stable code and the next
-//! step it names (CLI-3). No message holds a token, a launch host, a launch
-//! URL or a client secret.
+//! step it names (CLI-3). No message holds a token, a login code, a launch
+//! host, a launch URL or a client secret.
 
 use crumbkit::{Call, Code, Failure, Recovery};
+
+pub mod sharing;
+
+pub use sharing::{Refused, SharingFailed};
 
 /// No server answers for the board.
 pub const SERVER_NOT_RUNNING: Code<'static> = Code::from_spelling("flare::server::not_running");
@@ -55,6 +59,8 @@ pub const BINDINGS_INVALID: Code<'static> = Code::from_spelling("flare::bindings
 pub const OPENER_FAILED: Code<'static> = Code::from_spelling("flare::opener::failed");
 /// flare's state directory cannot be used.
 pub const STATE_UNUSABLE: Code<'static> = Code::from_spelling("flare::state::unusable");
+/// The share API's table or bucket is missing or cannot be read.
+pub const STORES_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::stores::unavailable");
 /// The operating system refused a socket, a thread or random bytes.
 pub const SYSTEM_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::system::unavailable");
 
@@ -296,6 +302,16 @@ pub enum Failed {
         /// What is wrong, as flare-auth-loopback says it.
         problem: String,
     },
+    /// The share API's table or bucket is missing or cannot be read.
+    #[error("the share API's stores cannot be used: {problem}")]
+    #[failure(
+        code = STORES_UNAVAILABLE,
+        hint = "create the table and the bucket from infra/flare-stores.template.json, and give flare serve credentials that may use them"
+    )]
+    StoresUnavailable {
+        /// What the check found, as flare-aws says it.
+        problem: String,
+    },
     /// The operating system refused a socket, a thread or random bytes.
     #[error("the operating system refused: {problem}")]
     #[failure(code = SYSTEM_UNAVAILABLE, recovery = Recovery::Retry)]
@@ -303,7 +319,40 @@ pub enum Failed {
         /// What it refused.
         problem: String,
     },
+    /// A sharing command failed before or after the server answered.
+    #[error(transparent)]
+    #[failure(forward)]
+    Sharing(#[from] SharingFailed),
+    /// The share API refused the request.
+    #[error(transparent)]
+    #[failure(forward)]
+    Refused(#[from] Refused),
 }
 
-/// Every code that `flare` declares.
-pub const CODES: &[Code<'static>] = Failed::CODES;
+const LOCAL: usize = Failed::CODES.len();
+const SHARING: usize = SharingFailed::CODES.len();
+const API: usize = sharing::API_CODES.len();
+
+/// Every code that `flare` declares: its own, its sharing commands' and
+/// the share API's, which a refusal carries.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "each loop's bound keeps its index inside both arrays, and a const block cannot call get"
+)]
+pub const CODES: &[Code<'static>] = &{
+    let mut codes = [SERVER_NOT_RUNNING; LOCAL + SHARING + API];
+    let mut index = 0;
+    while index < LOCAL {
+        codes[index] = Failed::CODES[index];
+        index += 1;
+    }
+    while index < LOCAL + SHARING {
+        codes[index] = SharingFailed::CODES[index - LOCAL];
+        index += 1;
+    }
+    while index < LOCAL + SHARING + API {
+        codes[index] = sharing::API_CODES[index - LOCAL - SHARING];
+        index += 1;
+    }
+    codes
+};

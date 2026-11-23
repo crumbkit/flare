@@ -1,6 +1,6 @@
 [package]
 name = "flare-cli"
-description = "The flare command: serve pages and bindings from a board, open them, publish pages and save bindings"
+description = "The flare command: serve pages and bindings from a board, open them, publish pages, save bindings and share files"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,11 +21,18 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 crumbkit.workspace = true
+# crumbkit-durable replaces the saved login file whole (DUR-1).
+crumbkit-durable.workspace = true
 crumbkit-process.workspace = true
 crumbkit-usage.workspace = true
 flare-auth-loopback.workspace = true
 flare-auth-oidc.workspace = true
 flare-board.workspace = true
+# The DynamoDB and S3 stores behind the hosted site's share API.
+flare-aws.workspace = true
+# The share API's request, response and problem types, which the sharing
+# commands send and read.
+flare-contract.workspace = true
 flare-core.workspace = true
 flare-render.workspace = true
 flare-server.workspace = true

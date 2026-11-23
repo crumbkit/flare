@@ -162,7 +162,7 @@ where
 }
 
 /// Reads the body through the 1 MiB limit within the read time.
-async fn read_body<P, R, S, K: OidcClock>(
+pub(crate) async fn read_body<P, R, S, K: OidcClock>(
     ctx: &Ctx<'_, P, R, S, K>,
     body: Incoming,
 ) -> Result<Bytes, Problem> {

@@ -1,0 +1,117 @@
+//! Unit tests of the token check against the admit rule.
+
+use super::tokens::{digest, new_secret, token_text};
+use super::{Api, Sharing, TokenCheck};
+use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
+use flare_contract::ApiCode;
+use flare_core::memory::{
+    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTokenStore,
+};
+use flare_core::{
+    AddressesOnly, Creators, Email, Flares, NewToken, PrincipalId, Timestamp, TokenId, TokenLabel,
+    TokenStore as _,
+};
+use secrecy::SecretString;
+
+const NOW: Timestamp = Timestamp::from_secs(1_800_000_000);
+
+fn email(text: &str) -> Email {
+    Email::try_from(text).unwrap()
+}
+
+/// An admit rule that lists `addresses`.
+fn listing(addresses: &[&str]) -> Admit {
+    let entries = addresses
+        .iter()
+        .map(|address| {
+            AllowEntry::new(
+                email(address),
+                PrincipalId::try_from(*address).unwrap(),
+                Reach::Everything,
+            )
+        })
+        .collect();
+    Admit::Emails(AllowList::new(entries).unwrap())
+}
+
+/// A token of `owner`: its id, its secret and the token's text.
+struct Minted {
+    id: TokenId,
+    secret: SecretString,
+    owner: Email,
+    text: SecretString,
+}
+
+fn mint(id: &str, owner: &str) -> Minted {
+    let id = TokenId::try_from(id).unwrap();
+    let secret = new_secret().unwrap();
+    let text = SecretString::from(token_text(&id, &secret));
+    Minted {
+        id,
+        secret,
+        owner: email(owner),
+        text,
+    }
+}
+
+/// The share API over a token store that holds `tokens`, admitting the
+/// people `admit` names, as a server started with that rule runs it.
+async fn sharing(
+    tokens: &[&Minted],
+    admit: Admit,
+) -> Sharing<MemoryShareStore, MemoryGrantStore, MemoryResponseStore, MemoryTokenStore, AddressesOnly>
+{
+    let store = MemoryTokenStore::default();
+    for minted in tokens {
+        let token = NewToken::new(
+            minted.id.clone(),
+            digest(&minted.secret),
+            minted.owner.clone(),
+            TokenLabel::try_from("test").unwrap(),
+            NOW,
+        );
+        store.create(token).await.unwrap();
+    }
+    let flares = Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        Creators::Everyone,
+    );
+    Sharing::new(flares, store, AddressesOnly, admit)
+}
+
+fn owner_of(check: TokenCheck) -> Option<Email> {
+    match check {
+        TokenCheck::Principal(principal) => principal.email().cloned(),
+        _ => None,
+    }
+}
+
+#[tokio::test]
+async fn a_token_whose_owner_left_the_admit_list_answers_sign_in_needed_and_a_listed_owner_still_signs_in()
+ {
+    let ana = mint("0123456789abcdef0123456789abcdef", "ana@example.org");
+    let bob = mint("fedcba9876543210fedcba9876543210", "bob@example.org");
+    let before = sharing(
+        &[&ana, &bob],
+        listing(&["ana@example.org", "bob@example.org"]),
+    )
+    .await;
+    assert_eq!(
+        owner_of(before.authenticate(&ana.text, NOW).await),
+        Some(ana.owner.clone())
+    );
+
+    // The operator takes ana off the list and restarts the server.
+    let after = sharing(&[&ana, &bob], listing(&["bob@example.org"])).await;
+    assert!(matches!(
+        after.authenticate(&ana.text, NOW).await,
+        TokenCheck::Refused(ApiCode::SignInNeeded)
+    ));
+    // The admitted twin: bob, still on the list, signs in with his token.
+    assert_eq!(
+        owner_of(after.authenticate(&bob.text, NOW).await),
+        Some(bob.owner.clone())
+    );
+}

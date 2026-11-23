@@ -1,7 +1,7 @@
 //! The documents that `flare`'s commands print (CLI-2). None holds a
-//! token, a launch host or a launch URL.
+//! token, a login code, a launch host or a launch URL.
 
-use crumbkit::{Document, Row};
+use crumbkit::{Document, Listing, Row};
 use schemars::JsonSchema;
 use serde::Serialize;
 
@@ -87,3 +87,166 @@ pub(crate) const BIND: Document<Bound> = Document::new(
     1,
     "The binding that was saved and the page version it is pinned to.",
 );
+
+/// What `flare login` saved.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct LoggedIn {
+    /// The server's origin.
+    #[row(column)]
+    pub(crate) server: String,
+    /// The address the token signs in as.
+    #[row(column)]
+    pub(crate) owner: String,
+    /// The token's label.
+    #[row(column)]
+    pub(crate) label: String,
+    /// When the token expires, in RFC 3339 UTC.
+    #[row(column)]
+    pub(crate) expires: String,
+}
+
+/// The document of `flare login`.
+pub(crate) const LOGIN: Document<LoggedIn> = Document::new(
+    "flare",
+    "login",
+    1,
+    "The server, the person and the label of the token that the Keychain now holds.",
+);
+
+/// What `flare logout` forgot.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct LoggedOut {
+    /// The server's origin.
+    #[row(column)]
+    pub(crate) server: String,
+    /// The label of the revoked token.
+    #[row(column)]
+    pub(crate) label: String,
+}
+
+/// The document of `flare logout`.
+pub(crate) const LOGOUT: Document<LoggedOut> = Document::new(
+    "flare",
+    "logout",
+    1,
+    "The server and the label of the token that was revoked and deleted.",
+);
+
+/// A share that `flare share` made or `flare grant` granted.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct SharedOut {
+    /// The share's id.
+    #[row(column)]
+    pub(crate) id: String,
+    /// The share's title.
+    #[row(column)]
+    pub(crate) title: String,
+    /// The addresses that now hold a role on it.
+    #[row(column)]
+    pub(crate) granted: Vec<String>,
+    /// The flares it responds to.
+    #[row(column)]
+    pub(crate) responds_to: Vec<String>,
+}
+
+/// The document of `flare share`.
+pub(crate) const SHARE: Document<SharedOut> = Document::new(
+    "flare",
+    "share",
+    1,
+    "The new share, the people it is granted to and the flares it responds to.",
+);
+
+/// The document of `flare grant`.
+pub(crate) const GRANT: Document<SharedOut> = Document::new(
+    "flare",
+    "grant",
+    1,
+    "The share, the people this grant added and the flares it now responds to.",
+);
+
+/// One share in `flare shares`.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct ShareRow {
+    /// The share's id.
+    #[row(column)]
+    pub(crate) id: String,
+    /// The share's title.
+    #[row(column)]
+    pub(crate) title: String,
+    /// The owner's identifier.
+    #[row(column)]
+    pub(crate) owner: String,
+    /// The caller's role: `owner`, `admin` or `reader`.
+    #[row(column)]
+    pub(crate) role: String,
+    /// The latest version.
+    #[row(column)]
+    pub(crate) version: u32,
+    /// When it was created, in RFC 3339 UTC.
+    #[row(column)]
+    pub(crate) created: String,
+}
+
+/// The document of `flare shares`.
+pub(crate) const SHARES: Document<Listing<ShareRow>> = Document::new(
+    "flare",
+    "shares",
+    1,
+    "The caller's shares, or the shares granted to the caller, newest first.",
+)
+.when_empty("No shares.");
+
+/// One response in `flare activity`.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct ActivityRow {
+    /// The flare it responds to.
+    #[row(column)]
+    pub(crate) flare: String,
+    /// The responding share's id.
+    #[row(column)]
+    pub(crate) share: String,
+    /// The responding share's title.
+    #[row(column)]
+    pub(crate) title: String,
+    /// The responder's identifier.
+    #[row(column)]
+    pub(crate) by: String,
+    /// The version of the flare it responds to.
+    #[row(column)]
+    pub(crate) version: u32,
+    /// When it named the flare, in RFC 3339 UTC.
+    #[row(column)]
+    pub(crate) at: String,
+    /// The other flares it responds to that the caller can open.
+    #[row(column)]
+    pub(crate) also: Vec<String>,
+}
+
+/// Where the next `flare activity` starts.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct Next {
+    /// The cursor to pass as `--since`.
+    pub(crate) cursor: String,
+    /// Whether newer responses wait past this page.
+    pub(crate) more: bool,
+}
+
+impl std::fmt::Display for Next {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "Next: --since {}", self.cursor)?;
+        if self.more {
+            formatter.write_str(" (more responses wait)")?;
+        }
+        Ok(())
+    }
+}
+
+/// The document of `flare activity`.
+pub(crate) const ACTIVITY: Document<Listing<ActivityRow, Next>> = Document::new(
+    "flare",
+    "activity",
+    1,
+    "The responses to the named flares, oldest first, and the cursor of the next call.",
+)
+.when_empty("No new responses.");

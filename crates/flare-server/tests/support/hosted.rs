@@ -5,8 +5,8 @@
 
 use crate::fake_provider::{DOMAIN, Fake, HOME, connect, connect_domain, connect_with_deadline};
 use crate::harness::{
-    BINDING, Call, Pages, RECORD, Records, Reply, Switches, cookie_pair, schemas, seed_page_in,
-    stores,
+    BINDING, Call, FixedSchemas, Pages, RECORD, Records, Reply, Switches, TestTime, cookie_pair,
+    schemas, seed_page_in, stores,
 };
 use flare_auth_oidc::{OidcAuthenticator, TestClock};
 use flare_core::PageStore as _;
@@ -22,6 +22,9 @@ use url::Url;
 pub const SESSION: &str = "__Host-flare_session";
 /// The kept-state cookie's name on a hosted server.
 pub const KEPT: &str = "__Host-flare_oidc_state";
+
+/// The app a hosted test server runs.
+pub type HostedApp = App<Pages, Records, FixedSchemas, TestClock>;
 
 /// Who the fake admits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +54,8 @@ pub struct Hosted {
     pub fake: Fake,
     /// The authenticator's clock.
     pub clock: TestClock,
+    /// The server's clock.
+    pub time: TestTime,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<Result<Stopped, ServeError>>>,
 }
@@ -67,12 +72,22 @@ impl Hosted {
     pub async fn start_with_deadline(deadline: Duration, limits: Limits) -> Self {
         let fake = Fake::start().await;
         let (oidc, clock) = connect_with_deadline(&fake, deadline).await;
-        Self::serve(oidc, fake, clock, Some(limits)).await
+        Self::serve(oidc, fake, clock, Some(limits), |app| app).await
     }
 
     /// A hosted server that admits `admits`, with `limits` or the default
     /// ones, and the page `home` published.
     pub async fn start_with(admits: Admits, limits: Option<Limits>) -> Self {
+        Self::start_attached(admits, limits, |app| app).await
+    }
+
+    /// A hosted server that admits `admits`, whose app `attach` finishes,
+    /// such as by adding the share API.
+    pub async fn start_attached(
+        admits: Admits,
+        limits: Option<Limits>,
+        attach: impl FnOnce(HostedApp) -> HostedApp,
+    ) -> Self {
         let fake = Fake::start().await;
         let (oidc, clock) = match admits {
             Admits::AllowList => connect(&fake).await,
@@ -81,7 +96,7 @@ impl Hosted {
                 connect_domain(&fake).await
             }
         };
-        Self::serve(oidc, fake, clock, limits).await
+        Self::serve(oidc, fake, clock, limits, attach).await
     }
 
     async fn serve(
@@ -89,6 +104,7 @@ impl Hosted {
         fake: Fake,
         clock: TestClock,
         limits: Option<Limits>,
+        attach: impl FnOnce(HostedApp) -> HostedApp,
     ) -> Self {
         let listeners = Listeners::bind_hosted(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
         let port = listeners.port();
@@ -106,6 +122,8 @@ impl Hosted {
             },
             limits.unwrap_or_default(),
         );
+        let time = TestTime::default();
+        let app = attach(app.with_clock(time.clone()));
         let (sender, receiver) = oneshot::channel::<()>();
         #[expect(
             clippy::disallowed_methods,
@@ -123,6 +141,7 @@ impl Hosted {
             records,
             fake,
             clock,
+            time,
             shutdown: Some(sender),
             task: Some(task),
         };

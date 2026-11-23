@@ -1,5 +1,6 @@
 //! The `flare` command: serve a board's pages and bindings on this machine,
-//! open them in a browser, publish pages and save bindings.
+//! open them in a browser, publish pages and save bindings, and share files
+//! through a flare server's share API.
 //!
 //! The library holds the whole command, so its tests can pass the parser
 //! and the tool record to crumbkit-test. The binary calls [`run`].
@@ -7,23 +8,29 @@
 //! The command is thin. [`run`] parses with crumbkit, reads the environment
 //! once into a snapshot, and each command builds flare-board's store,
 //! flare-auth-loopback's state and flare-auth-oidc's authenticator and
-//! calls flare-server. `serve` is the only long-running command; the
+//! calls flare-server. `login`, `logout`, `share`, `grant`, `shares` and
+//! `activity` call a flare server's share API with the token that `login`
+//! keeps in the Keychain. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
 
 mod bind;
 mod board;
 mod cli;
+mod client;
 pub mod codes;
 mod config;
 mod documents;
 mod duration;
 mod env;
+mod keychain;
 mod log;
+mod login;
 mod open;
 mod opener;
 mod pages;
 mod publish;
 mod serve;
+mod sharing;
 
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
@@ -67,6 +74,34 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             let dry_run = run.is_dry_run();
             let result = block_on(false, bind::run(&args, dry_run, &env));
             crumbkit::finish(run, documents::BIND, result)
+        }
+        Verb::Login(args) => {
+            let result = block_on(false, login::login(&args, &env));
+            crumbkit::finish(run, documents::LOGIN, result)
+        }
+        Verb::Logout(args) => {
+            let question = "Revoke this computer's flare token and delete it from the Keychain?";
+            if let Err(refused) = run.confirm(args.yes, question) {
+                return crumbkit::finish(run, documents::LOGOUT, Err(refused));
+            }
+            let result = block_on(false, login::logout(&env));
+            crumbkit::finish(run, documents::LOGOUT, result)
+        }
+        Verb::Share(args) => {
+            let result = block_on(false, sharing::share(&args, &env));
+            crumbkit::finish(run, documents::SHARE, result)
+        }
+        Verb::Grant(args) => {
+            let result = block_on(false, sharing::grant(&args, &env));
+            crumbkit::finish(run, documents::GRANT, result)
+        }
+        Verb::Shares(args) => {
+            let result = block_on(false, sharing::shares(&args, &env));
+            crumbkit::finish(run, documents::SHARES, result)
+        }
+        Verb::Activity(args) => {
+            let result = block_on(false, sharing::activity(&args, &env));
+            crumbkit::finish(run, documents::ACTIVITY, result)
         }
         Verb::Commands {
             command: CommandsVerb::List(args),

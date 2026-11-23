@@ -4,7 +4,9 @@
 //! A missing file means the local site with loopback sign-in only. A
 //! `hosted` section makes `flare serve` serve the hosted site, behind a
 //! TLS proxy, and needs an `oidc` section with `client_secret_file`,
-//! because a host has no Keychain. Every object refuses unknown keys, and a
+//! because a host has no Keychain. A `stores` key in the hosted section
+//! adds the share API, which `creators` limits. Every object refuses
+//! unknown keys, and a
 //! `client_secret` key anywhere is refused, because the secret lives only
 //! in the Keychain or in the file `client_secret_file` names. A refusal
 //! names the key, and no message repeats a value from the file.
@@ -23,8 +25,11 @@ use std::io::Read as _;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+mod sharing;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use sharing::Sharing;
 
 /// The local site's only redirect URI: the sign-in host's callback.
 const REDIRECT: &str = "http://localhost:8740/auth/oidc/callback";
@@ -83,6 +88,8 @@ pub(crate) struct Hosted {
     pub(crate) oidc: OidcConfig,
     /// The file that holds the client secret.
     pub(crate) secret_file: PathBuf,
+    /// The share API's settings, when the section names its stores.
+    pub(crate) sharing: Option<Sharing>,
 }
 
 /// Why a config's text was refused.
@@ -104,6 +111,8 @@ struct File {
 struct HostedSection {
     origin: String,
     listen: String,
+    stores: Option<flare_aws::HostedConfig>,
+    creators: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -120,6 +129,14 @@ struct OidcSection {
 enum AdmitSection {
     Emails(EmailsSection),
     Domain(DomainSection),
+    Anyone(AnyoneSection),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AnyoneSection {
+    anyone: bool,
+    reach: ReachSection,
 }
 
 #[derive(Deserialize)]
@@ -289,6 +306,8 @@ fn hosted(section: HostedSection, oidc_section: OidcSection) -> Result<Hosted, S
             );
         }
     };
+    let anyone = matches!(oidc_section.admit, AdmitSection::Anyone(_));
+    let sharing = sharing::sharing(section.stores, section.creators, anyone)?;
     let redirect =
         RedirectUri::try_from(origin.redirect_uri().as_str()).map_err(|error| error.to_string())?;
     Ok(Hosted {
@@ -296,6 +315,7 @@ fn hosted(section: HostedSection, oidc_section: OidcSection) -> Result<Hosted, S
         origin,
         listen,
         secret_file,
+        sharing,
     })
 }
 
@@ -330,6 +350,13 @@ fn oidc(section: OidcSection, redirect: RedirectUri) -> Result<OidcConfig, Strin
             let domain = WorkspaceDomain::try_from(rule.domain.as_str())
                 .map_err(|error| error.to_string())?;
             Admit::Domain(DomainRule::new(domain, reach(rule.reach)?))
+        }
+        AdmitSection::Anyone(rule) if rule.anyone => Admit::Anyone(reach(rule.reach)?),
+        AdmitSection::Anyone(_) => {
+            return Err(
+                "oidc.admit.anyone must be true; to admit fewer people, list emails or a domain"
+                    .to_owned(),
+            );
         }
     };
     Ok(OidcConfig::new(issuer, client, redirect, admit))

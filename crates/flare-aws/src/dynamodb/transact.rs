@@ -33,6 +33,13 @@ pub(crate) enum ItemRole {
     GrantItem,
     GranteeEntry,
     GrantCount,
+    CodeItem,
+    TokenItem,
+    LabelSlot,
+    OldToken,
+    Sequence,
+    PairItem,
+    LinkItem,
 }
 
 /// The items of one transaction, with the role of each.
@@ -43,7 +50,7 @@ pub(crate) struct Transaction {
 }
 
 impl Transaction {
-    fn push(&mut self, role: ItemRole, item: TransactWriteItem) {
+    pub(crate) fn push(&mut self, role: ItemRole, item: TransactWriteItem) {
         self.items.push(item);
         self.roles.push(role);
     }
@@ -77,34 +84,34 @@ pub(crate) struct RevokePlan<'a> {
     pub(crate) read: &'a Rev,
 }
 
-const ABSENT: &str = "attribute_not_exists(pk)";
+pub(crate) const ABSENT: &str = "attribute_not_exists(pk)";
 const PRESENT: &str = "attribute_exists(pk)";
 const SAME_REV: &str = "#rev = :read_rev";
 const IS_ADMIN: &str = "#r = :admin";
 const BELOW_MAX: &str = "attribute_not_exists(#n) OR #n < :max";
 
-fn key_map(key: &Key) -> Item {
+pub(crate) fn key_map(key: &Key) -> Item {
     HashMap::from([
         (attr::PK.to_owned(), text(&key.pk)),
         (attr::SK.to_owned(), text(&key.sk)),
     ])
 }
 
-fn names(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+pub(crate) fn names(pairs: &[(&str, &str)]) -> HashMap<String, String> {
     pairs
         .iter()
         .map(|(placeholder, name)| ((*placeholder).to_owned(), (*name).to_owned()))
         .collect()
 }
 
-fn values(pairs: Vec<(&str, aws_sdk_dynamodb::types::AttributeValue)>) -> Item {
+pub(crate) fn values(pairs: Vec<(&str, aws_sdk_dynamodb::types::AttributeValue)>) -> Item {
     pairs
         .into_iter()
         .map(|(placeholder, value)| (placeholder.to_owned(), value))
         .collect()
 }
 
-fn put(table: &str, item: Item, condition: Option<&str>) -> Option<TransactWriteItem> {
+pub(crate) fn put(table: &str, item: Item, condition: Option<&str>) -> Option<TransactWriteItem> {
     let put = Put::builder()
         .table_name(table)
         .set_item(Some(item))

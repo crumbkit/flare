@@ -3,9 +3,13 @@
 //! Every key starts with a fixed prefix that names its kind and puts its
 //! one variable part of unknown length last, so no two kinds of item share
 //! a key. Share ids are 32 lower-case hexadecimal characters, version
-//! numbers are 10 digits and times are 20 digits.
+//! numbers are 10 digits and times are 20 digits. A login code's digest is
+//! 64 hexadecimal characters, a token id is 32 and a response position is
+//! 20 digits.
 
-use flare_core::{PrincipalId, ShareId, ShareVersion, Timestamp};
+use flare_core::{
+    Digest, Email, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
+};
 
 /// The sort key prefix of an owner or grantee entry. A list is a query of
 /// the sort keys that start with it.
@@ -13,6 +17,13 @@ pub(crate) const ENTRY_PREFIX: &str = "E#";
 
 /// The sort key prefix of a grant item.
 pub(crate) const GRANT_PREFIX: &str = "G#";
+
+/// The sort key prefix of a response's link to a flare, under the
+/// response's partition.
+pub(crate) const PAIR_PREFIX: &str = "F#";
+
+/// The sort key prefix of a link under a flare's partition.
+pub(crate) const LINK_PREFIX: &str = "P#";
 
 /// The digits of an inverted time in an entry's sort key.
 const TIME_DIGITS: usize = 20;
@@ -70,6 +81,60 @@ impl Key {
     pub(crate) fn grantee_entry(grantee: &PrincipalId, created: Timestamp, id: &ShareId) -> Self {
         Self::new(grantee_partition(grantee), entry_sort_key(created, id))
     }
+}
+
+impl Key {
+    /// A login code, by the digest of its text.
+    pub(crate) fn code(digest: &Digest) -> Self {
+        Self::new(format!("CODE#{}", digest.to_hex()), "CODE")
+    }
+
+    /// A token, by its id.
+    pub(crate) fn token(id: &TokenId) -> Self {
+        Self::new(format!("TOKEN#{}", id.as_str()), "TOKEN")
+    }
+
+    /// The slot that names an owner's latest token with one label. The
+    /// label is the sort key's variable last part.
+    pub(crate) fn label_slot(owner: &Email, label: &TokenLabel) -> Self {
+        Self::new(
+            format!("LABELS#{}", owner.as_str()),
+            format!("L#{}", label.as_str()),
+        )
+    }
+
+    /// The counter of response positions, which holds the head.
+    pub(crate) fn sequence() -> Self {
+        Self::new("SEQ#responses".to_owned(), "SEQ")
+    }
+
+    /// A response's link to `flare`, under the response's partition.
+    pub(crate) fn pair(response: &ShareId, flare: &ShareId) -> Self {
+        Self::new(
+            response_partition(response),
+            format!("{PAIR_PREFIX}{}", flare.as_str()),
+        )
+    }
+
+    /// The link at `position`, under the flare's partition.
+    pub(crate) fn link(flare: &ShareId, position: Position) -> Self {
+        Self::new(flare_partition(flare), link_sort_key(position))
+    }
+}
+
+/// The partition of the links from a response.
+pub(crate) fn response_partition(response: &ShareId) -> String {
+    format!("RESP#{}", response.as_str())
+}
+
+/// The partition of the links to a flare.
+pub(crate) fn flare_partition(flare: &ShareId) -> String {
+    format!("RE#{}", flare.as_str())
+}
+
+/// `P#<position>` in 20 digits, so sort key order is position order.
+pub(crate) fn link_sort_key(position: Position) -> String {
+    format!("{LINK_PREFIX}{:020}", position.get())
 }
 
 /// The partition of a share's items.

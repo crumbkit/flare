@@ -31,6 +31,20 @@ pub(crate) mod attr {
     pub(crate) const GRANTED_BY: &str = "granted_by";
     pub(crate) const REV: &str = "rev";
     pub(crate) const COUNT: &str = "n";
+    pub(crate) const PORT: &str = "port";
+    pub(crate) const EXPIRES: &str = "expires";
+    /// The attribute that the table's TTL reads, which only login codes
+    /// carry.
+    pub(crate) const TTL: &str = "expires_at";
+    pub(crate) const USED_BY: &str = "used_by";
+    pub(crate) const DIGEST: &str = "digest";
+    pub(crate) const LABEL: &str = "label";
+    pub(crate) const REVOKED: &str = "revoked";
+    pub(crate) const TOKEN: &str = "token";
+    pub(crate) const RESPONSE: &str = "response";
+    pub(crate) const FLARE: &str = "flare";
+    pub(crate) const VERSION: &str = "version";
+    pub(crate) const POSITION: &str = "position";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.
@@ -42,6 +56,11 @@ pub(crate) enum ItemKind {
     OwnerEntry,
     GranteeEntry,
     Object,
+    Code,
+    Token,
+    LabelSlot,
+    Link,
+    Sequence,
 }
 
 impl ItemKind {
@@ -54,6 +73,11 @@ impl ItemKind {
             Self::OwnerEntry => "owner entry",
             Self::GranteeEntry => "grantee entry",
             Self::Object => "object",
+            Self::Code => "login code",
+            Self::Token => "token",
+            Self::LabelSlot => "token label",
+            Self::Link => "response link",
+            Self::Sequence => "response sequence",
         }
     }
 }
@@ -101,7 +125,10 @@ pub(crate) fn number(value: u64) -> AttributeValue {
     AttributeValue::N(value.to_string())
 }
 
-fn keyed(key: &Key, attributes: impl IntoIterator<Item = (&'static str, AttributeValue)>) -> Item {
+pub(crate) fn keyed(
+    key: &Key,
+    attributes: impl IntoIterator<Item = (&'static str, AttributeValue)>,
+) -> Item {
     let mut item = Item::from([
         (attr::PK.to_owned(), text(&key.pk)),
         (attr::SK.to_owned(), text(&key.sk)),
@@ -131,7 +158,11 @@ pub(crate) fn role_name(role: Role) -> &'static str {
 }
 
 /// Reads the text attribute `name`.
-fn read_text<'a>(item: &'a Item, name: &str, kind: ItemKind) -> Result<&'a str, Malformed> {
+pub(crate) fn read_text<'a>(
+    item: &'a Item,
+    name: &str,
+    kind: ItemKind,
+) -> Result<&'a str, Malformed> {
     match item.get(name) {
         Some(AttributeValue::S(value)) => Ok(value),
         _ => Err(Malformed(kind)),
@@ -139,7 +170,7 @@ fn read_text<'a>(item: &'a Item, name: &str, kind: ItemKind) -> Result<&'a str, 
 }
 
 /// Reads the number attribute `name`.
-fn read_number(item: &Item, name: &str, kind: ItemKind) -> Result<u64, Malformed> {
+pub(crate) fn read_number(item: &Item, name: &str, kind: ItemKind) -> Result<u64, Malformed> {
     match item.get(name) {
         Some(AttributeValue::N(value)) => value.parse().map_err(|_| Malformed(kind)),
         _ => Err(Malformed(kind)),

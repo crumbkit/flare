@@ -12,6 +12,13 @@
 //!    that is not ASCII, so a cookie set by a sibling domain cannot lock a
 //!    browser out.
 //!
+//! For a path under `/api/`, checks 2 and 3 are replaced: the share API
+//! takes only a bearer token, so no Origin is required, no cookie is read,
+//! and at most one `Authorization: Bearer <token>` header is the
+//! credential, or 401 `auth::bad_credential`. A page on another site can
+//! make a browser send cookies, and never an Authorization header, so the
+//! API cannot be driven through a signed-in browser.
+//!
 //! The checks read no `X-Forwarded-*` or `Forwarded` header and take no
 //! peer address: behind a proxy every peer is the proxy.
 
@@ -39,10 +46,14 @@ fn one<'h>(headers: &'h HeaderMap, name: &HeaderName) -> Option<&'h [u8]> {
 pub(crate) fn check(
     origin: &PublicOrigin,
     method: &Method,
+    path: &str,
     headers: &HeaderMap,
 ) -> Result<Option<Credential>, Code> {
     if one(headers, &HOST) != Some(origin.authority().as_bytes()) {
         return Err(Code::Host);
+    }
+    if path.starts_with("/api/") {
+        return bearer(headers);
     }
     if method != Method::GET && method != Method::HEAD {
         let same_origin = one(headers, &ORIGIN) == Some(origin.as_str().as_bytes());
@@ -59,6 +70,20 @@ pub(crate) fn check(
         Cookie::One(value) => Ok(Some(Credential::session(value))),
         Cookie::Bad => Err(Code::BadCredential),
     }
+}
+
+/// The one bearer token of an API request, if it carries one.
+fn bearer(headers: &HeaderMap) -> Result<Option<Credential>, Code> {
+    if !headers.contains_key(AUTHORIZATION) {
+        return Ok(None);
+    }
+    let value = one(headers, &AUTHORIZATION).ok_or(Code::BadCredential)?;
+    let token = std::str::from_utf8(value)
+        .ok()
+        .and_then(|text| text.strip_prefix("Bearer "))
+        .filter(|token| !token.is_empty() && token.bytes().all(|byte| byte.is_ascii_graphic()))
+        .ok_or(Code::BadCredential)?;
+    Ok(Some(Credential::bearer(token)))
 }
 
 #[cfg(test)]

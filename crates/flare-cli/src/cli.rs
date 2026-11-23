@@ -1,6 +1,10 @@
 //! `flare`'s command-line grammar and tool record.
 
-use crate::documents::{BIND, OPEN, PUBLISH, SERVE};
+mod sharing;
+
+pub(crate) use sharing::{ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs};
+
+use crate::documents::{ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, OPEN, PUBLISH, SERVE, SHARE, SHARES};
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
 use crumbkit::help::{Effects, Example, Help, Leaf};
@@ -10,7 +14,8 @@ use crumbkit_usage::{SELF_USAGE, SelfUsage};
 use std::path::PathBuf;
 
 /// Serve a board's pages and bindings on this machine, open them in a
-/// browser, publish pages and save bindings.
+/// browser, publish pages and save bindings, and share files through a
+/// flare server.
 #[derive(Debug, Parser)]
 #[command(name = "flare", version)]
 pub struct Cli {
@@ -36,6 +41,22 @@ pub(crate) enum Verb {
     Publish(PublishArgs),
     /// Save a binding that fills a page's slots with records
     Bind(BindArgs),
+    /// Sign in to a flare server in the browser and keep its token in the Keychain
+    Login(LoginArgs),
+    /// Revoke this computer's token for the flare server and delete it
+    Logout(LogoutArgs),
+    /// Share a Markdown file with named people, or as a response to flares
+    Share(ShareArgs),
+    /// Grant an existing share to more people
+    Grant(GrantArgs),
+    /// List your shares or the shares granted to you
+    ///
+    /// The server lists at most 500 shares in one answer and has no cursor
+    /// for the rest, so --all lists at most 500 shares and says more follow
+    /// when there are more.
+    Shares(SharesArgs),
+    /// List the responses to flares since a cursor, oldest first
+    Activity(ActivityArgs),
     /// Explore flare's commands
     Commands {
         /// What to do with the commands.
@@ -145,14 +166,19 @@ pub(crate) struct BindArgs {
 }
 
 /// Why flare's commands are verbs at the root.
-const ROOT: &str =
-    "flare has one resource, the board it serves, so each command names what a person does to it";
+const ROOT: &str = "each command names what a person does with the board flare serves or the server flare shares through";
 
 /// flare's help and failures.
 pub const TOOL: Tool = Tool::new()
     .help(
         Help::new()
-            .root_verbs(&["serve", "open", "publish", "bind"], ROOT)
+            .root_verbs(
+                &[
+                    "serve", "open", "publish", "bind", "login", "logout", "share", "grant",
+                    "shares", "activity",
+                ],
+                ROOT,
+            )
             .leaves(&[
                 Leaf::new(&["serve"])
                     .examples(&[
@@ -191,6 +217,63 @@ pub const TOOL: Tool = Tool::new()
                     )])
                     .effects(Effects::additive().all_or_none())
                     .document(BIND),
+    Leaf::new(&["login"])
+        .examples(&[Example::new(
+            &["https://flare.example.org"],
+            "Sign in to a flare server in the browser and keep its token in the Keychain",
+        )])
+        .effects(Effects::additive())
+        .document(LOGIN),
+    Leaf::new(&["logout"])
+        .examples(&[Example::new(
+            &[],
+            "Revoke this computer's token and delete it from the Keychain",
+        )])
+        .effects(Effects::destructive())
+        .document(LOGOUT),
+    Leaf::new(&["share"])
+        .examples(&[
+            Example::new(
+                &["review.md", "--with", "ana@example.org,jo@example.org"],
+                "Share review.md with two people",
+            ),
+            Example::new(
+                &["answer.md", "--re", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Share answer.md as a response to a flare",
+            ),
+        ])
+        .effects(Effects::additive())
+        .document(SHARE),
+    Leaf::new(&["grant"])
+        .examples(&[Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
+            "Grant a share to one more person",
+        )])
+        .effects(Effects::additive())
+        .document(GRANT),
+    Leaf::new(&["shares"])
+        .examples(&[
+            Example::new(&[], "List your shares, newest first"),
+            Example::new(
+                &["--with-me", "--limit", "20"],
+                "List the 20 newest shares granted to you",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(SHARES),
+    Leaf::new(&["activity"])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "List the responses to a flare, oldest first",
+            ),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
+                "List the responses after the cursor an earlier call printed",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(ACTIVITY),
                 Leaf::new(&["commands", "list"])
                     .examples(&[
                         Example::new(&[], "List every command"),

@@ -11,6 +11,9 @@
 //! opens to the people a grant names. [`Shares`] decides every request
 //! about a share from the caller's verified [`Email`], the share and its
 //! grants, and is the only caller of the share and grant stores.
+//! [`Flares`] wraps it with the creators rule and the response links that
+//! `--re` writes, and reads the responses to a flare since a cursor.
+//! [`TokenStore`] keeps the digests of CLI tokens and login codes.
 
 mod auth;
 mod binding;
@@ -18,22 +21,29 @@ pub mod contract;
 mod email;
 mod error;
 mod file;
+mod flares;
 mod grant;
 pub mod memory;
 mod name;
 mod page;
 mod provenance;
 mod record;
+mod response;
 mod share;
 mod sharing;
 mod store;
 mod time;
+mod token;
 
 pub use auth::{Access, AuthError, Authenticator, Credential, Decision, Principal, Resource};
 pub use binding::Binding;
 pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
+pub use flares::{
+    ActivityItem, ActivityPage, AddressesOnly, Creators, FlareError, Flared, Flares, MAX_FLARES,
+    NewFlare, RecipientError, Recipients,
+};
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
 pub use page::{
@@ -41,6 +51,7 @@ pub use page::{
 };
 pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
+pub use response::{MAX_PAGE, NewLink, Position, ResponseLink};
 pub use share::{
     DocumentText, Listing, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewShare, NewVersion,
     Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion, SharedVersion,
@@ -48,6 +59,10 @@ pub use share::{
 pub use sharing::{Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
     FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, MoveError, PageStore,
-    PageStoreError, ReadError, RecordStore, Rejection, ShareStore, ShareStoreError, WriteError,
+    PageStoreError, ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError,
+    ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
 };
 pub use time::Timestamp;
+pub use token::{
+    CODE_LIFE, Digest, LoginCode, NewToken, StoredToken, TOKEN_LIFE, TokenId, TokenLabel, UsedCode,
+};

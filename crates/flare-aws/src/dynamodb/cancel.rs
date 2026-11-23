@@ -66,9 +66,17 @@ const RETRIED: [&str; 3] = [
 fn rank(role: ItemRole) -> u8 {
     match role {
         ItemRole::AdminCheck => 0,
-        ItemRole::GrantItem | ItemRole::ShareItem => 1,
-        ItemRole::GrantCount | ItemRole::ShareCount => 2,
-        ItemRole::Version | ItemRole::OwnerEntry | ItemRole::GranteeEntry => 3,
+        ItemRole::GrantItem
+        | ItemRole::ShareItem
+        | ItemRole::CodeItem
+        | ItemRole::TokenItem
+        | ItemRole::PairItem => 1,
+        ItemRole::GrantCount
+        | ItemRole::ShareCount
+        | ItemRole::LabelSlot
+        | ItemRole::OldToken
+        | ItemRole::Sequence => 2,
+        ItemRole::Version | ItemRole::OwnerEntry | ItemRole::GranteeEntry | ItemRole::LinkItem => 3,
     }
 }
 

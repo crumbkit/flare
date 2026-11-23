@@ -11,6 +11,8 @@ up around it.
 - The stylesheet, `/` and `/flare/`, the index of pages.
 - `/pages/<name>`, the newest version of a page.
 - `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in.
+- The share API, when the config has `hosted.stores`. The share API
+  section below lists its routes.
 - Every other path answers 404, including bindings and forms, which only
   the local site serves.
 
@@ -35,7 +37,9 @@ up around it.
 - `oidc.client_secret_file` is required with a `hosted` section. It is an
   absolute path.
 - `admit` is the same rule the local site uses; the root README describes
-  it.
+  it. A hosted site also takes `{ "anyone": true, "reach": ... }`, which
+  admits every Google account with a verified address and needs
+  `hosted.creators`.
 - An `emails` admit rule admits any Google account that says a listed
   address is verified, whatever Workspace domain the account belongs to.
   A personal Google account can be created on an address at any domain and
@@ -43,9 +47,78 @@ up around it.
   domain where someone else, such as a former employee, could have created
   one lets that account sign in. A `domain` rule admits only accounts of
   the Workspace domain, so it avoids this.
+- Under a `domain` rule, a CLI token keeps working after its owner's
+  account is suspended or leaves the Workspace domain, until the token
+  expires up to 90 days after it was issued. The server checks only the
+  owner's address on each request, and an address alone does not show
+  that the account left. To end such a person's access sooner, delete
+  their token items from the table: each has the partition key
+  `TOKEN#<id>`, the sort key `TOKEN` and the person's address in `owner`.
+  A deleted token answers 401 `flare::tokens::sign_in_needed`. The other
+  remedy is to switch to an `emails` rule that leaves the person off and
+  restart the server.
 - Register `<origin>/auth/oidc/callback` as the redirect URI of the Google
   client, such as `https://flare.example.com/auth/oidc/callback`.
 - A config error exits with `flare::config::invalid` and names the key.
+
+## The share API
+
+The share API lets people share Markdown files with named people from the
+`flare` command. The site serves it when the config's `hosted` section has
+`stores`.
+
+```json
+"hosted": {
+  "origin": "https://flare.example.com",
+  "listen": "127.0.0.1:8080",
+  "stores": { "region": "eu-west-1", "table": "flare-shares", "bucket": "flare-files" },
+  "creators": ["ana@example.com", "sam@example.com"]
+}
+```
+
+- `stores` names the DynamoDB table and the S3 bucket. The template
+  `infra/flare-stores.template.json` creates both, with the table's
+  time-to-live on `expires_at` and a managed policy that grants what flare
+  needs.
+- flare reads AWS credentials from the AWS SDK's default chain, such as
+  the environment, a profile or an instance role. They are never in the
+  config.
+- `flare serve` checks the table and the bucket at start and exits with
+  `flare::stores::unavailable` when it cannot read them.
+- `creators` lists the addresses that may share and respond. Without it,
+  everyone the `admit` rule admits may. `creators` without `stores` is
+  refused, and an `anyone` admit rule without `creators` is refused.
+- A person who is not a creator gets 403 `flare::shares::not_a_creator`.
+
+Routes:
+
+- `GET /cli/login` sends a signed-in browser back to `flare login` with a
+  login code.
+- `POST /api/tokens/exchange` trades a login code for a token.
+  [tokens.md](tokens.md) gives the life of codes and tokens.
+- `DELETE /api/tokens/<id>` revokes the caller's token.
+- `POST /api/shares` creates a share, with its grants and the flares it
+  responds to.
+- `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
+- `GET /api/shares/<id>` reads a share.
+- `POST /api/grants/<id>` grants a share to more addresses.
+- `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
+  responses to flares that the caller may read, oldest first, at most 100
+  a page.
+
+- Every `/api/` route except the exchange needs a bearer token. A missing,
+  expired or revoked token answers 401 `flare::tokens::sign_in_needed`.
+  Under an `emails` admit rule, so does the token of an owner whom the
+  list no longer names. Under a `domain` or `anyone` rule a token works
+  until it expires or is revoked.
+- Every refusal is an RFC 9457 problem document with a `code` such as
+  `flare::shares::not_found`.
+- A flare the caller may not read answers exactly as a missing one, 404
+  `flare::shares::not_found`.
+- Activity shows only responses the caller may read. It gives no count of
+  the others.
+- The activity cursor is `fc1.` and a base64url position. A cursor flare did
+  not write answers 400 `flare::activity::bad_cursor`.
 
 ## The client secret file
 
@@ -67,15 +140,16 @@ forwards plain HTTP to `hosted.listen`.
 - The proxy must pass the Host header through unchanged. flare refuses a
   request whose Host is not the origin's host with 403
   `request::host`.
-- The proxy must not add an Authorization header. flare refuses a request
-  that has one with 401 `auth::bad_credential`.
+- The proxy must pass the Authorization header of `/api/` requests through
+  unchanged and must not add one to any request. flare refuses an
+  Authorization header outside `/api/` with 401 `auth::bad_credential`.
 - flare reads no `X-Forwarded-*` or `Forwarded` header, and it does not
   use the peer address.
 - Only the proxy may reach `hosted.listen`. Bind it to a loopback or
   private address, or firewall it. A client that reaches it directly
   skips the proxy's rate limits.
-- Rate-limit `/auth/oidc/start` and `/auth/oidc/callback` per client at the
-  proxy. flare cannot tell clients apart behind the proxy. It lets 4
+- Rate-limit `/auth/oidc/start`, `/auth/oidc/callback` and
+  `/api/tokens/exchange` per client at the proxy. flare cannot tell clients apart behind the proxy. It lets 4
   callbacks wait on Google at once. The next 16 callbacks queue for a
   slot in the order they arrived, for up to 10 seconds each, and answer
   503 `server::busy` when the wait runs out. A callback that finds 16
@@ -147,6 +221,8 @@ is the only limit on sign-in requests:
 
 - Sessions and the key that seals pending sign-ins live in the memory of
   one process. Run exactly one flare process behind an origin.
+- Shares, login codes and CLI tokens live in the table and the bucket, so
+  a restart keeps them.
 - A second process, or an old and a new process that overlap during a
   deploy, fail sign-ins at random and honour each session on only one of
   them. Stop the old process before starting the new one.

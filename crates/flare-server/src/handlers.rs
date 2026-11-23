@@ -3,8 +3,11 @@
 //! handler answers a [`Reply`] or a [`Problem`], and `handle` turns both
 //! into one reply.
 
+mod api;
 mod edit;
 mod oidc;
+
+pub(crate) use api::ApiRoute;
 mod view;
 
 use crate::app::{Kind, Shared};
@@ -177,7 +180,7 @@ where
     S: Schemas,
     K: OidcClock,
 {
-    match hosted::check(origin, method, ctx.headers) {
+    match hosted::check(origin, method, ctx.uri.path(), ctx.headers) {
         Ok(credential) => routed(ctx, method, credential, body, SiteKind::Hosted).await,
         Err(code) => (Err(code.into()), "-"),
     }
@@ -226,7 +229,7 @@ where
     S: Schemas,
     K: OidcClock,
 {
-    if need == Need::Nothing {
+    if matches!(need, Need::Nothing | Need::Token) {
         return Ok(None);
     }
     let credential = credential.ok_or_else(|| ctx.sign_in_needed())?;
@@ -260,6 +263,9 @@ where
     match route.handler {
         Handler::OidcStart => return oidc::hosted_start(ctx),
         Handler::OidcCallback => return oidc::hosted_callback(ctx, credential.as_ref()).await,
+        Handler::Api(api_route) => {
+            return api::handle(ctx, api_route, name, credential, body).await;
+        }
         _ => {}
     }
     let signed_in = admitted.map(|admitted| (admitted, credential));

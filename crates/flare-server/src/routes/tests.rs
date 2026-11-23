@@ -1,4 +1,4 @@
-use super::{Found, ROUTES, Sites, find};
+use super::{Found, Need, ROUTES, Sites, find};
 use crate::site::SiteKind;
 use flare_core::Access;
 use http::Method;
@@ -24,10 +24,11 @@ fn no_get_route_writes_on_either_site() {
 }
 
 #[test]
-fn no_route_with_a_write_handler_or_another_method_than_get_serves_the_hosted_site() {
+fn no_board_write_serves_the_hosted_site_and_its_other_methods_are_api_routes_that_read_no_cookie()
+{
     for route in &ROUTES {
         let writes = route.handler.writes() || route.access == Some(Access::Write);
-        if writes || route.method != Method::GET {
+        if writes {
             assert_eq!(
                 route.sites,
                 Sites::Local,
@@ -36,8 +37,43 @@ fn no_route_with_a_write_handler_or_another_method_than_get_serves_the_hosted_si
                 route.pattern
             );
         }
+        if route.method != Method::GET && route.sites.serves(SiteKind::Hosted) {
+            assert!(
+                route.pattern.starts_with("/api/"),
+                "{} {}",
+                route.method,
+                route.pattern
+            );
+            let exchange = route.pattern == "/api/tokens/exchange";
+            assert!(
+                route.credential == Need::Token || (exchange && route.credential == Need::Nothing),
+                "{} {}",
+                route.method,
+                route.pattern
+            );
+        }
     }
     assert!(ROUTES.iter().any(|route| route.handler.writes()));
+}
+
+#[test]
+fn the_share_api_is_served_only_on_the_hosted_site() {
+    for (method, path) in [
+        (Method::POST, "/api/shares"),
+        (Method::GET, "/api/shares"),
+        (Method::GET, "/api/activity"),
+        (Method::POST, "/api/tokens/exchange"),
+        (Method::GET, "/cli/login"),
+    ] {
+        assert!(
+            matches!(find(&method, path, SiteKind::Hosted), Found::Route(..)),
+            "{path}"
+        );
+        assert!(
+            matches!(find(&method, path, SiteKind::Local), Found::Nothing),
+            "{path}"
+        );
+    }
 }
 
 #[test]

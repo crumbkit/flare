@@ -1,0 +1,47 @@
+Share a Markdown file with named people, or as a response to flares
+
+Usage: flare share [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>
+          The file to share: .md for Markdown
+
+Options:
+      --title <TITLE>
+          The share's title; without it, the file's name without its ending
+
+      --with <ADDRESS>
+          The addresses to grant Reader, repeated or separated by commas
+
+      --re <ID>
+          The flares this share responds to, repeated or separated by commas
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare share review.md --with ana@example.org,jo@example.org
+          Share review.md with two people
+
+  flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+          Share answer.md as a response to a flare
+
+Columns:
+  id           The share's id.
+  title        The share's title.
+  granted      The addresses that now hold a role on it.
+  responds_to  The flares it responds to.
+
+Effects: additive, not idempotent, closed-world.

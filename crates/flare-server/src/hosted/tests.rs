@@ -40,7 +40,7 @@ fn the_checks_read_no_peer_or_forwarded_header_so_a_request_from_any_address_pas
         ("forwarded", b"for=192.0.2.1;host=evil.example"),
     ]);
     assert_eq!(
-        check(&public(), &Method::GET, &map).map(secret_of),
+        check(&public(), &Method::GET, "/pages/home", &map).map(secret_of),
         Ok(None)
     );
 }
@@ -53,7 +53,7 @@ fn the_host_is_checked_before_the_origin_and_the_origin_before_the_credential() 
         ("authorization", b"Bearer x"),
     ]);
     assert_eq!(
-        check(&public(), &Method::POST, &everything_wrong).map(secret_of),
+        check(&public(), &Method::POST, "/pages/home", &everything_wrong).map(secret_of),
         Err(Code::Host)
     );
     let origin_and_credential_wrong = headers(&[
@@ -62,7 +62,13 @@ fn the_host_is_checked_before_the_origin_and_the_origin_before_the_credential() 
         ("authorization", b"Bearer x"),
     ]);
     assert_eq!(
-        check(&public(), &Method::POST, &origin_and_credential_wrong).map(secret_of),
+        check(
+            &public(),
+            &Method::POST,
+            "/pages/home",
+            &origin_and_credential_wrong
+        )
+        .map(secret_of),
         Err(Code::Origin)
     );
     let credential_wrong = headers(&[
@@ -72,7 +78,7 @@ fn the_host_is_checked_before_the_origin_and_the_origin_before_the_credential() 
         ("authorization", b"Bearer x"),
     ]);
     assert_eq!(
-        check(&public(), &Method::POST, &credential_wrong).map(secret_of),
+        check(&public(), &Method::POST, "/pages/home", &credential_wrong).map(secret_of),
         Err(Code::BadCredential)
     );
     let right = headers(&[
@@ -82,7 +88,7 @@ fn the_host_is_checked_before_the_origin_and_the_origin_before_the_credential() 
         ("cookie", b"__Host-flare_session=abc"),
     ]);
     assert_eq!(
-        check(&public(), &Method::POST, &right).map(secret_of),
+        check(&public(), &Method::POST, "/pages/home", &right).map(secret_of),
         Ok(Some("abc".to_owned()))
     );
 }
@@ -91,11 +97,14 @@ fn the_host_is_checked_before_the_origin_and_the_origin_before_the_credential() 
 fn a_get_or_head_needs_no_origin_and_any_other_method_does() {
     let bare = headers(&[("host", AUTHORITY.as_bytes())]);
     for method in [Method::GET, Method::HEAD] {
-        assert_eq!(check(&public(), &method, &bare).map(secret_of), Ok(None));
+        assert_eq!(
+            check(&public(), &method, "/pages/home", &bare).map(secret_of),
+            Ok(None)
+        );
     }
     for method in [Method::POST, Method::PUT, Method::DELETE, Method::PATCH] {
         assert_eq!(
-            check(&public(), &method, &bare).map(secret_of),
+            check(&public(), &method, "/pages/home", &bare).map(secret_of),
             Err(Code::Origin),
             "{method}"
         );
@@ -113,7 +122,7 @@ fn the_session_cookie_is_read_from_any_cookie_header_beside_unparseable_pairs() 
         ),
     ]);
     assert_eq!(
-        check(&public(), &Method::GET, &map).map(secret_of),
+        check(&public(), &Method::GET, "/pages/home", &map).map(secret_of),
         Ok(Some("tok-en_1".to_owned()))
     );
 }

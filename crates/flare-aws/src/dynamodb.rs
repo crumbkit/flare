@@ -1,4 +1,5 @@
-//! The DynamoDB share and grant stores, and the one table they share.
+//! The DynamoDB share, grant, token and response stores, and the one table
+//! they share.
 //!
 //! [`Table`] is the only holder of the DynamoDB client. Every read is a
 //! consistent `GetItem` or `Query`, and every write is one
@@ -9,13 +10,17 @@ mod grants;
 pub(crate) mod items;
 mod keys;
 mod read;
+mod responses;
 pub(crate) mod retry;
 mod settle;
 mod shares;
+mod tokens;
 pub(crate) mod transact;
 
 pub use grants::DynamoGrantStore;
+pub use responses::DynamoResponseStore;
 pub use shares::DynamoShareStore;
+pub use tokens::DynamoTokenStore;
 
 use crate::dynamodb::cancel::{Classified, Failure, Reason, classify};
 use crate::dynamodb::retry::{Policy, Token};
