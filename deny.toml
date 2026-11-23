@@ -43,9 +43,9 @@ allow-wildcard-paths = true
 # { crate = "aws-sdk-dynamodb", wrappers = ["ticket-store"], reason = "SVC-12: only ticket-store uses DynamoDB" }.
 # A third-party crate that depends on the SDK crate is listed in `wrappers` too.
 deny = [
-  { crate = "aws-config", wrappers = ["hangar-aws"], reason = "SVC-12: only hangar-aws loads the AWS config and credentials" },
-  { crate = "aws-sdk-dynamodb", wrappers = ["hangar-aws"], reason = "SVC-12: only hangar-aws uses DynamoDB" },
-  { crate = "aws-sdk-s3", wrappers = ["hangar-aws"], reason = "SVC-12: only hangar-aws uses S3" },
+  { crate = "aws-config", wrappers = ["flare-aws"], reason = "SVC-12: only flare-aws loads the AWS config and credentials" },
+  { crate = "aws-sdk-dynamodb", wrappers = ["flare-aws"], reason = "SVC-12: only flare-aws uses DynamoDB" },
+  { crate = "aws-sdk-s3", wrappers = ["flare-aws"], reason = "SVC-12: only flare-aws uses S3" },
 ]
 
 [sources]

@@ -1,0 +1,46 @@
+[package]
+name = "flare-cli"
+description = "The flare command: serve pages and bindings from a board, open them, publish pages and save bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+# The library holds the whole command, so the convention tests can pass its
+# parser and tool record to crumbkit-test beside the built binary. The
+# binary calls `flare_cli::run`.
+[lib]
+name = "flare_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "flare"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+crumbkit.workspace = true
+crumbkit-process.workspace = true
+crumbkit-usage.workspace = true
+flare-auth-loopback.workspace = true
+flare-auth-oidc.workspace = true
+flare-board.workspace = true
+flare-core.workspace = true
+flare-render.workspace = true
+flare-server.workspace = true
+reqwest.workspace = true
+schemars.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+crumbkit-test.workspace = true
+
+[lints]
+workspace = true

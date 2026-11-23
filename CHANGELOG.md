@@ -1,7 +1,7 @@
 # Changelog
 
-This file records the notable changes to hangar. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and hangar follows
+This file records the notable changes to flare. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and flare follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
@@ -117,6 +117,21 @@ This file records the notable changes to hangar. The format follows
 
 ### Changed
 
+- The project is renamed from hangar to flare. The crates are `flare-core`,
+  `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
+  `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.
+  Failure codes start with `flare::`. The cookies are `flare_session` and
+  `flare_oidc_state`, with the `__Host-` prefix on the hosted site. The
+  config file is `flare/config.json` under `$XDG_CONFIG_HOME` or
+  `~/.config`, the state directory is `$XDG_STATE_HOME/flare`, the Keychain
+  service is `flare-oidc-google`, and the environment variables start with
+  `FLARE_`. The record types are `flare/page/v1`, `flare/binding/v1` and
+  `flare/edit/v1`, and the home path is `/flare/`. flare reads none of the
+  old names: a browser signs in again, a config file moves from
+  `~/.config/hangar` to `~/.config/flare`, a running `hangar serve` is
+  stopped and `flare serve` started, and each page that hangar published is
+  published again with `flare publish`. The entries above and below this
+  one use the names of the time they were written.
 - `Email` moves from `hangar-auth-oidc` to `hangar-core`, which
   `hangar-auth-oidc` re-exports. Parsing one answers a `ParseError`, and
   `ConfigError::Email` is gone.

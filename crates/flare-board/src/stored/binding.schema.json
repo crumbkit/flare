@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`flare/binding/v1`: a named pin of a flare page version and the records that fill its slots.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$type", "page", "version", "fills", "made_by", "made_from", "sources", "last_move"],
+  "properties": {
+    "$type": {"const": "flare/binding/v1"},
+    "page": {"type": "string", "description": "The pinned page's name."},
+    "version": {"type": "string", "description": "The pinned version: the commit that made it."},
+    "fills": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}, "description": "Each filled slot's record, by path."},
+    "made_by": {"type": "string", "description": "The id of the principal who saved the binding."},
+    "made_from": {
+      "description": "What the binding was made from.",
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "original"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "page", "version"], "properties": {"kind": {"const": "page"}, "page": {"type": "string"}, "version": {"type": "string"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "binding"], "properties": {"kind": {"const": "binding"}, "binding": {"type": "string"}}}
+      ]
+    },
+    "sources": {"type": "array", "maxItems": 64, "items": {"type": "string"}},
+    "last_move": {
+      "description": "Who moved the pin last, through which binding and from which record blob, or null when no move changed it.",
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["based_on", "made_by", "through"],
+          "properties": {"based_on": {"type": "string"}, "made_by": {"type": "string"}, "through": {"type": "string"}}
+        }
+      ]
+    }
+  }
+}
