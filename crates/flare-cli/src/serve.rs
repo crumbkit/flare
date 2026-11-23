@@ -192,6 +192,11 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
     } = hosted;
     let admit = oidc.admit().clone();
     let oidc = connect(oidc, &Secret::File(secret_file)).await?;
+    if sharing.as_ref().is_some_and(|config| config.open_to_anyone) {
+        tracing::warn!(
+            "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
+        );
+    }
     let sharing = match sharing {
         Some(config) => Some(share_api(*config, admit).await?),
         None => None,

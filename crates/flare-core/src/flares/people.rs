@@ -55,10 +55,8 @@ impl CreatorDomain {
 pub enum Creators {
     /// Everyone the sign-in admits, by their verified address.
     Everyone,
-    /// Only these verified addresses.
-    Only(Vec<Email>),
-    /// These verified addresses and everyone at these domains.
-    Listed {
+    /// Only these verified addresses and everyone at these domains.
+    Only {
         /// The addresses.
         addresses: Vec<Email>,
         /// The domains.
@@ -70,17 +68,13 @@ impl Creators {
     /// Only the people with these addresses.
     #[must_use]
     pub fn only(addresses: Vec<Email>) -> Self {
-        Self::Only(addresses)
+        Self::listed(addresses, Vec::new())
     }
 
     /// The people with these addresses and everyone at these domains.
     #[must_use]
     pub fn listed(addresses: Vec<Email>, domains: Vec<CreatorDomain>) -> Self {
-        if domains.is_empty() {
-            Self::Only(addresses)
-        } else {
-            Self::Listed { addresses, domains }
-        }
+        Self::Only { addresses, domains }
     }
 
     /// Whether `who` may create a share. A principal with no verified
@@ -90,8 +84,7 @@ impl Creators {
         match (self, who.email()) {
             (_, None) => false,
             (Self::Everyone, Some(_)) => true,
-            (Self::Only(addresses), Some(email)) => addresses.contains(email),
-            (Self::Listed { addresses, domains }, Some(email)) => {
+            (Self::Only { addresses, domains }, Some(email)) => {
                 addresses.contains(email) || domains.iter().any(|domain| domain.holds(email))
             }
         }

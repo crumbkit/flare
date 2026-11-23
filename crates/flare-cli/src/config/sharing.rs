@@ -26,6 +26,10 @@ pub(crate) struct Sharing {
     pub(crate) creators: Creators,
     /// How `--with` turns an identifier into an address.
     pub(crate) recipients: NamedRecipients,
+    /// Whether any account the issuer verifies, which with Google is any
+    /// Google account, can sign in and share: `"anyone admitted"` under an
+    /// `anyone` admit rule.
+    pub(crate) open_to_anyone: bool,
 }
 
 /// The hosted section's share API keys, as the file gave them.
@@ -73,10 +77,12 @@ pub(crate) fn sharing(keys: Keys, anyone: bool) -> Result<Option<Sharing>, Strin
         None => Creators::Everyone,
     };
     let recipients = recipients_from(names.unwrap_or_default())?;
+    let open_to_anyone = anyone && creators == Creators::Everyone;
     Ok(Some(Sharing {
         stores,
         creators,
         recipients,
+        open_to_anyone,
     }))
 }
 
@@ -103,13 +109,15 @@ fn creators_from(value: &Value) -> Result<Creators, String> {
 }
 
 fn recipients_from(names: BTreeMap<String, String>) -> Result<NamedRecipients, String> {
-    let bad = "hosted.names must map each lower-case username, which is not empty and has no @, to an email address";
+    let bad = "hosted.names must map each username, which is lower-case letters, digits, dots, hyphens and underscores, to an email address";
     let mut pairs = Vec::with_capacity(names.len());
     for (name, address) in names {
         let plain = !name.is_empty()
-            && !name.contains('@')
-            && name.bytes().all(|byte| byte.is_ascii_graphic())
-            && name == name.to_ascii_lowercase();
+            && name.bytes().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || matches!(byte, b'.' | b'-' | b'_')
+            });
         let email = Email::try_from(address.as_str()).map_err(|_| bad.to_owned())?;
         if !plain {
             return Err(bad.to_owned());

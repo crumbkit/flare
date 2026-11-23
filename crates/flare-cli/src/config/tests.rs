@@ -332,6 +332,7 @@ fn a_bad_names_entry_is_refused_naming_the_key() {
         r#"{"":"ana@example.com"}"#,
         r#"{"a@b":"ana@example.com"}"#,
         r#"{"Ana":"ana@example.com"}"#,
+        r#"{"team:x":"ana@example.com"}"#,
     ] {
         let message = invalid(&hosted_with(&format!(r#"{STORES},"names":{names}"#)));
         assert!(message.contains("hosted.names"), "{message}");
@@ -342,4 +343,25 @@ fn a_bad_names_entry_is_refused_naming_the_key() {
 fn names_without_stores_are_refused_naming_hosted_stores() {
     let message = invalid(&hosted_with(r#""names":{"ana":"ana@example.com"}"#));
     assert!(message.contains("hosted.stores"), "{message}");
+}
+
+fn open_to_anyone(text: &str) -> bool {
+    let Site::Hosted(hosted) = parse(text).unwrap().site else {
+        panic!("not hosted");
+    };
+    hosted.sharing.expect("the share API").open_to_anyone
+}
+
+#[test]
+fn anyone_admitted_under_an_anyone_admit_rule_is_marked_open_to_anyone() {
+    let text = anyone_with(&format!(r#"{STORES},"creators":"anyone admitted""#));
+    assert!(open_to_anyone(&text));
+}
+
+#[test]
+fn other_creators_settings_are_not_marked_open_to_anyone() {
+    let listed = anyone_with(&format!(r#"{STORES},"creators":["ana@example.org"]"#));
+    assert!(!open_to_anyone(&listed));
+    let domain_rule = hosted_with(&format!(r#"{STORES},"creators":"anyone admitted""#));
+    assert!(!open_to_anyone(&domain_rule));
 }
