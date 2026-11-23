@@ -4,8 +4,9 @@
 //! a caller sees `flare::shares::not_a_creator` whether it reads the API or
 //! the command. No message holds a token or a login code.
 
-use crumbkit::{Call, Code, Failure, Recovery};
+use crumbkit::{Call, Code, Failure, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
+use flare_core::ShareId;
 use std::fmt;
 
 /// No login is saved, or the Keychain holds no token for it.
@@ -83,7 +84,7 @@ pub enum SharingFailed {
     #[error("{server} answered with something flare cannot read: {problem}")]
     #[failure(
         code = NETWORK_BAD_ANSWER,
-        hint = "check that the server runs flare with the share API, then try again",
+        recovery = Recovery::after("check that the server runs flare with the share API", Then::Retry),
         field(server = server)
     )]
     BadAnswer {
@@ -137,6 +138,9 @@ pub struct Refused {
     code: ApiCode,
     detail: Option<String>,
     server: String,
+    /// The share that a partly finished share created, when the server
+    /// named one that parses as a share id.
+    share: Option<ShareId>,
 }
 
 impl Refused {
@@ -146,6 +150,35 @@ impl Refused {
             code,
             detail,
             server: server.to_owned(),
+            share: None,
+        }
+    }
+
+    /// The same refusal naming the share that the problem document's
+    /// `share` field names. A value that is not a share id is dropped, and
+    /// the recovery then names the share with a placeholder.
+    pub(crate) fn naming(mut self, share: Option<&str>) -> Self {
+        self.share = share.and_then(|text| ShareId::try_from(text).ok());
+        self
+    }
+
+    /// The typed call that replaces the API's hint for `partly_shared` and
+    /// `bad_cursor`, whose hints name `flare grant` and `flare activity` in
+    /// prose for API callers, or `None` for every other code. crumbkit
+    /// renders the call against flare's commands, so a renamed command or
+    /// flag fails the tests in place of printing a stale command.
+    fn typed_call(&self) -> Option<Recovery> {
+        match self.code {
+            ApiCode::PartlyShared => {
+                let grant = Call::new(&["grant"]);
+                let grant = match &self.share {
+                    Some(share) => grant.value("id", share.as_str()),
+                    None => grant.arg("id"),
+                };
+                Some(Recovery::Run(grant.arg("with").arg("re")))
+            }
+            ApiCode::BadCursor => Some(Recovery::Run(Call::new(&["activity"]).arg("flares"))),
+            _ => None,
         }
     }
 }
@@ -177,12 +210,27 @@ impl Failure for Refused {
     /// The API's recovery for the code. A `run` recovery is `flare login`
     /// with the server, the only command the API names.
     fn recovery(&self) -> Recovery {
+        if let Some(typed) = self.typed_call() {
+            return typed;
+        }
         match self.code.recovery(&self.server) {
             ApiRecovery::Run { .. } => {
                 Recovery::Run(Call::new(&["login"]).value("server", self.server.clone()))
             }
             ApiRecovery::Retry => Recovery::Retry,
             ApiRecovery::Hint { text } => Recovery::hint(text),
+        }
+    }
+
+    /// A bad cursor can also be replaced by the cursor that the last `flare
+    /// activity` printed.
+    fn alternatives(&self) -> Vec<Recovery> {
+        match self.code {
+            ApiCode::BadCursor => vec![Recovery::after(
+                "find the cursor that the last flare activity printed",
+                Then::Run(Call::new(&["activity"]).arg("flares").arg("since")),
+            )],
+            _ => Vec::new(),
         }
     }
 }
@@ -204,3 +252,6 @@ pub(crate) const API_CODES: [Code<'static>; API_COUNT] = {
     }
     codes
 };
+
+#[cfg(test)]
+mod tests;
