@@ -1,6 +1,6 @@
 //! Runs every function of hangar-core's share and grant suites against
 //! `DynamoShareStore` and `DynamoGrantStore` on the DynamoDB stand-in, as
-//! hangar's AGENTS.md asks of each new store, and checks what only a
+//! flare's AGENTS.md asks of each new store, and checks what only a
 //! durable table shows: a second store on the same table sees every write.
 #![cfg(test)]
 

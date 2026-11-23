@@ -42,9 +42,9 @@ fn object(store: &BoardStore, at: &str) -> Value {
     serde_json::from_str(record.body().as_str()).unwrap()
 }
 
-/// The records under /hangar/edits, as JSON values.
+/// The records under /flare/edits, as JSON values.
 fn edits(board: &ScratchBoard) -> Vec<(String, Value)> {
-    let listed = board.board(&["ls", "--json", "--all", "--", "/hangar/edits"], "");
+    let listed = board.board(&["ls", "--json", "--all", "--", "/flare/edits"], "");
     if !listed.status.success() {
         return Vec::new();
     }
@@ -89,7 +89,7 @@ fn a_write_stores_one_edit_record_in_the_same_commit_as_the_edit() {
     assert_eq!(
         record,
         &json!({
-            "$type": "hangar/edit/v1",
+            "$type": "flare/edit/v1",
             "record": "/tasks/a",
             "based_on": before.blob().as_str(),
             "made_by": "ada",

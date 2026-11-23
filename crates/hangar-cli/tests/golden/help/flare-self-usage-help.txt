@@ -1,6 +1,6 @@
-Report the patterns in hangar's usage log where callers waste effort
+Report the patterns in flare's usage log where callers waste effort
 
-Usage: hangar self usage [OPTIONS]
+Usage: flare self usage [OPTIONS]
 
 Options:
       --since <DURATION>
@@ -30,7 +30,7 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  hangar self usage
+  flare self usage
           Report the findings of the last 7 days
 
 Columns:

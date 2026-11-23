@@ -1,5 +1,5 @@
 //! Runs every function of hangar-core's record and page suites against a
-//! `BoardStore` on a scratch board, as hangar's AGENTS.md asks of each new
+//! `BoardStore` on a scratch board, as flare's AGENTS.md asks of each new
 //! store.
 #![cfg(test)]
 

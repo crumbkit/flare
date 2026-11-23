@@ -10,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-const SERVICE: &str = "hangar-oidc-test";
+const SERVICE: &str = "flare-oidc-test";
 
 /// Writes a script named `name` with `body` after its shebang line into a
 /// directory of its own, and returns the script's path and the directory.
@@ -157,5 +157,5 @@ fn a_service_name_that_could_be_read_as_an_option_is_refused() {
             Err(SecretError::Service)
         );
     }
-    assert!(KeychainSecret::new("hangar-oidc-google").is_ok());
+    assert!(KeychainSecret::new("flare-oidc-google").is_ok());
 }

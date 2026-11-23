@@ -1,9 +1,9 @@
-Explore hangar's commands
+Explore flare's commands
 
-Usage: hangar commands [OPTIONS] <COMMAND>
+Usage: flare commands [OPTIONS] <COMMAND>
 
 Commands:
-  list  List a branch of hangar's commands with their arguments and examples
+  list  List a branch of flare's commands with their arguments and examples
 
 Options:
       --json
@@ -24,4 +24,4 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-Next: hangar commands <COMMAND> -h
+Next: flare commands <COMMAND> -h

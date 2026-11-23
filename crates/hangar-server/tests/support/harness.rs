@@ -328,7 +328,7 @@ pub struct Options {
     /// The OpenID Connect authenticator, which turns the sign-in host on.
     pub oidc: Option<OidcAuthenticator<TestClock>>,
     /// The stores and state directory of an earlier server, which this one
-    /// shares, as a new `hangar serve` process on the same board does.
+    /// shares, as a new `flare serve` process on the same board does.
     pub after: Option<Earlier>,
 }
 
@@ -511,7 +511,7 @@ impl Server {
             .unwrap()
     }
 
-    /// The launch token, as `hangar open` reads it from `server.json`.
+    /// The launch token, as `flare open` reads it from `server.json`.
     pub fn token(&self) -> String {
         self.loopback
             .server_record()
@@ -557,18 +557,18 @@ impl Server {
     }
 
     /// Signs a browser in through a launch code and returns its
-    /// `hangar_session=<secret>` cookie pair.
+    /// `flare_session=<secret>` cookie pair.
     pub async fn sign_in(&self) -> String {
         let code = self
             .loopback
-            .issue_code(ReturnPath::try_from("/hangar/").unwrap(), self.time.now())
+            .issue_code(ReturnPath::try_from("/flare/").unwrap(), self.time.now())
             .unwrap();
         let reply = self
             .get(&format!("/launch?code={}", code.secret().expose_secret()))
             .send()
             .await;
         assert_eq!(reply.status, 200, "{}", reply.body);
-        cookie_pair(&reply, "hangar_session").expect("a session cookie")
+        cookie_pair(&reply, "flare_session").expect("a session cookie")
     }
 
     /// Publishes `PAGE` with one `task` slot whose `title` is editable.

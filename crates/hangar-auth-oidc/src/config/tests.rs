@@ -50,7 +50,7 @@ fn a_client_id_of_visible_ascii_is_admitted_and_one_with_spaces_or_none_is_refus
 #[test]
 fn a_redirect_uri_over_https_or_loopback_http_is_admitted() {
     for text in [
-        "https://hangar.example.net/auth/oidc/callback",
+        "https://flare.example.net/auth/oidc/callback",
         "http://localhost:8740/auth/oidc/callback",
         "http://127.0.0.1:8740/auth/oidc/callback",
         "http://[::1]:8740/auth/oidc/callback",
@@ -62,8 +62,8 @@ fn a_redirect_uri_over_https_or_loopback_http_is_admitted() {
 #[test]
 fn a_redirect_uri_over_remote_http_or_with_a_fragment_is_refused() {
     for text in [
-        "http://hangar.example.net/auth/oidc/callback",
-        "https://hangar.example.net/callback#x",
+        "http://flare.example.net/auth/oidc/callback",
+        "https://flare.example.net/callback#x",
         "/auth/oidc/callback",
     ] {
         assert_eq!(

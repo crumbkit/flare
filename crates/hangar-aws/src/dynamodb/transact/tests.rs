@@ -7,7 +7,7 @@ use hangar_core::{
 };
 use std::collections::{HashMap, HashSet};
 
-const TABLE: &str = "hangar-test";
+const TABLE: &str = "flare-test";
 
 fn person(text: &str) -> PrincipalId {
     PrincipalId::try_from(text).unwrap()

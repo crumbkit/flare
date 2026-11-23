@@ -61,7 +61,7 @@ fn a_changed_field_is_written_and_every_other_field_stays_as_it_was_parsed() {
     }
     assert_eq!(write.path().as_str(), "/tasks/a.md");
     assert_eq!(write.based_on(), &blob('1'));
-    assert_eq!(write.through().as_str(), "hangar-plan");
+    assert_eq!(write.through().as_str(), "flare-plan");
 }
 
 /// A body whose untouched fields a parse and a rewrite would change: keys
@@ -247,7 +247,7 @@ fn the_provenance_of_a_write_carries_the_blob_and_the_binding_the_post_named() {
     assert_eq!(provenance.based_on(), &blob('1'));
     assert_eq!(
         provenance.through(),
-        &BindingName::try_from("hangar-plan").unwrap()
+        &BindingName::try_from("flare-plan").unwrap()
     );
     assert_eq!(provenance.made_by(), &ana);
 }

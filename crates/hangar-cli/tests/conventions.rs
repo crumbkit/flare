@@ -1,4 +1,4 @@
-//! Plan test 16, conformance: the `hangar` command's tree, tool record and
+//! Plan test 16, conformance: the `flare` command's tree, tool record and
 //! failure codes against crumbkit's conventions with crumbkit-test (CLI-6).
 //!
 //! They live in an integration test so the checks that read help pages can
@@ -10,14 +10,14 @@ use clap::CommandFactory as _;
 use crumbkit_test::{Allow, Check, Examples, Suite};
 use hangar_cli::{Cli, TOOL};
 
-/// hangar's opt-outs from crumbkit's conventions, which every check reads.
+/// flare's opt-outs from crumbkit's conventions, which every check reads.
 /// The tool record declares the root verbs `serve`, `open`, `publish` and
 /// `bind` with their reason, so they need no opt-out here.
 const ALLOW: &[Allow] = &[];
 
-/// hangar's built binary and the directory of its golden files.
+/// flare's built binary and the directory of its golden files.
 const EXAMPLES: Examples<'_> =
-    Examples::new(env!("CARGO_BIN_EXE_hangar"), "tests/golden/examples").allow(ALLOW);
+    Examples::new(env!("CARGO_BIN_EXE_flare"), "tests/golden/examples").allow(ALLOW);
 
 /// Everything the checks read, which `conventions!` expands to one test for
 /// each check.
@@ -39,7 +39,7 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     )
     .skip(
         Check::Recoveries,
-        "The recovery of server::not_running is `hangar serve`, which does not exit, and the other recoveries need a scratch board; tests/open.rs and tests/serve.rs assert each failure and the command its recovery names.",
+        "The recovery of server::not_running is `flare serve`, which does not exit, and the other recoveries need a scratch board; tests/open.rs and tests/serve.rs assert each failure and the command its recovery names.",
     )
     .skip(
         Check::Twins,

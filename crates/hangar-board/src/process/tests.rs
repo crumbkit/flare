@@ -35,7 +35,7 @@ fn scripted(body: &str, limits: Limits) -> (Arc<Board>, PathBuf) {
         program,
         state: directory.clone(),
         search_path: "/usr/bin:/bin".into(),
-        committer: ("hangar".into(), "hangar@example.invalid".into()),
+        committer: ("flare".into(), "flare@example.invalid".into()),
         gate: Gate::new(limits.children),
         limits,
     };
@@ -98,7 +98,7 @@ fn the_child_gets_only_the_configured_environment_and_the_paths_after_a_separato
     assert_eq!(
         row.logical,
         format!(
-            "ls --json --all -- /tasks|{}|hangar@example.invalid|1|unset",
+            "ls --json --all -- /tasks|{}|flare@example.invalid|1|unset",
             directory.display()
         )
     );

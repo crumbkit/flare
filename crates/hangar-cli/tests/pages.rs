@@ -1,5 +1,5 @@
-//! Plan test 16, the writes: `hangar publish` refuses a template with
-//! flaws, `hangar bind` refuses a record that does not fit, names that try
+//! Plan test 16, the writes: `flare publish` refuses a template with
+//! flaws, `flare bind` refuses a record that does not fit, names that try
 //! to leave their segment are refused, and `--dry-run` writes nothing.
 #![cfg(test)]
 
@@ -59,7 +59,7 @@ impl Setup {
         path
     }
 
-    fn hangar(&self, args: &[&str]) -> run::Ran {
+    fn flare(&self, args: &[&str]) -> run::Ran {
         let root = self.board.root();
         let program = self.board.program().to_path_buf();
         let mut all: Vec<&str> = args.to_vec();
@@ -80,7 +80,7 @@ impl Setup {
             args.extend(["--slots", path.to_str().unwrap()]);
         }
         args.extend(extra);
-        self.hangar(&args)
+        self.flare(&args)
     }
 }
 
@@ -90,7 +90,7 @@ fn publish_refuses_a_template_with_flaws_and_writes_nothing() {
     let before = setup.board.commits();
     setup
         .publish("<p>{{#open}}</p>", None, &[])
-        .assert_failed("hangar::pages::template_flaws");
+        .assert_failed("flare::pages::template_flaws");
     assert_eq!(setup.board.commits(), before);
 }
 
@@ -101,7 +101,7 @@ fn publish_stores_a_page_whose_template_has_no_flaws() {
     let ran = setup.publish("<h1>{{task.title}}</h1>", Some(SLOTS), &["--json"]);
     ran.assert_ok();
     assert!(
-        ran.stdout.contains("\"hangar/publish/v1\""),
+        ran.stdout.contains("\"flare/publish/v1\""),
         "{}",
         ran.stdout
     );
@@ -124,7 +124,7 @@ fn publish_with_dry_run_checks_the_page_and_writes_nothing() {
     assert_eq!(setup.board.commits(), before);
     setup
         .publish("<p>{{#open}}</p>", None, &["--dry-run"])
-        .assert_failed("hangar::pages::template_flaws");
+        .assert_failed("flare::pages::template_flaws");
 }
 
 #[test]
@@ -132,11 +132,11 @@ fn publish_refuses_a_file_that_is_neither_html_nor_markdown() {
     let setup = Setup::new();
     let page = setup.file("card.txt", "<p>x</p>");
     setup
-        .hangar(&["publish", page.to_str().unwrap(), "--name", "task-card"])
-        .assert_failed("hangar::pages::unknown_format");
+        .flare(&["publish", page.to_str().unwrap(), "--name", "task-card"])
+        .assert_failed("flare::pages::unknown_format");
     let markdown = setup.file("card.md", "# A card");
     setup
-        .hangar(&["publish", markdown.to_str().unwrap(), "--name", "task-card"])
+        .flare(&["publish", markdown.to_str().unwrap(), "--name", "task-card"])
         .assert_ok();
 }
 
@@ -145,14 +145,14 @@ fn publish_and_bind_refuse_names_that_are_not_one_segment() {
     let setup = Setup::new();
     let page = setup.file("card.html", "<p>x</p>");
     for name in ["..", "a/b", "../kitchen", "Kitchen", ""] {
-        let ran = setup.hangar(&["publish", page.to_str().unwrap(), "--name", name]);
-        ran.assert_failed("hangar::pages::invalid");
-        let ran = setup.hangar(&["bind", "task-card", "--name", name, "task=/tasks/tap"]);
-        ran.assert_failed("hangar::bindings::invalid");
+        let ran = setup.flare(&["publish", page.to_str().unwrap(), "--name", name]);
+        ran.assert_failed("flare::pages::invalid");
+        let ran = setup.flare(&["bind", "task-card", "--name", name, "task=/tasks/tap"]);
+        ran.assert_failed("flare::bindings::invalid");
     }
     for fill in ["task", "task=", "task=../tasks/tap", "=/tasks/tap"] {
-        let ran = setup.hangar(&["bind", "task-card", "--name", "kitchen", fill]);
-        ran.assert_failed("hangar::bindings::invalid");
+        let ran = setup.flare(&["bind", "task-card", "--name", "kitchen", fill]);
+        ran.assert_failed("flare::bindings::invalid");
     }
 }
 
@@ -162,8 +162,8 @@ fn bind_refuses_a_slot_that_the_page_does_not_declare() {
     setup.publish("<p>plain</p>", None, &[]).assert_ok();
     let before = setup.board.commits();
     setup
-        .hangar(&["bind", "task-card", "--name", "kitchen", "task=/tasks/tap"])
-        .assert_failed("hangar::bindings::misfit");
+        .flare(&["bind", "task-card", "--name", "kitchen", "task=/tasks/tap"])
+        .assert_failed("flare::bindings::misfit");
     assert_eq!(setup.board.commits(), before);
 }
 
@@ -173,7 +173,7 @@ fn bind_saves_a_binding_whose_records_fit_the_page() {
     setup
         .publish("<h1>{{task.title}}</h1>", Some(SLOTS), &[])
         .assert_ok();
-    let ran = setup.hangar(&[
+    let ran = setup.flare(&[
         "bind",
         "task-card",
         "--name",
@@ -182,7 +182,7 @@ fn bind_saves_a_binding_whose_records_fit_the_page() {
         "--json",
     ]);
     ran.assert_ok();
-    assert!(ran.stdout.contains("\"hangar/bind/v1\""), "{}", ran.stdout);
+    assert!(ran.stdout.contains("\"flare/bind/v1\""), "{}", ran.stdout);
     assert!(
         setup
             .board
@@ -190,8 +190,8 @@ fn bind_saves_a_binding_whose_records_fit_the_page() {
             .contains("/tasks/tap")
     );
     setup
-        .hangar(&["bind", "task-card", "--name", "kitchen", "task=/tasks/tap"])
-        .assert_failed("hangar::bindings::name_taken");
+        .flare(&["bind", "task-card", "--name", "kitchen", "task=/tasks/tap"])
+        .assert_failed("flare::bindings::name_taken");
 }
 
 #[test]
@@ -201,11 +201,11 @@ fn bind_refuses_a_record_that_does_not_exist_and_an_unknown_page() {
         .publish("<h1>{{task.title}}</h1>", Some(SLOTS), &[])
         .assert_ok();
     setup
-        .hangar(&["bind", "task-card", "--name", "kitchen", "task=/tasks/none"])
-        .assert_failed("hangar::bindings::record_not_found");
+        .flare(&["bind", "task-card", "--name", "kitchen", "task=/tasks/none"])
+        .assert_failed("flare::bindings::record_not_found");
     setup
-        .hangar(&["bind", "no-page", "--name", "kitchen", "task=/tasks/tap"])
-        .assert_failed("hangar::pages::not_found");
+        .flare(&["bind", "no-page", "--name", "kitchen", "task=/tasks/tap"])
+        .assert_failed("flare::pages::not_found");
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn bind_with_dry_run_checks_the_fit_and_writes_nothing() {
         .publish("<h1>{{task.title}}</h1>", Some(SLOTS), &[])
         .assert_ok();
     let before = setup.board.commits();
-    let ran = setup.hangar(&[
+    let ran = setup.flare(&[
         "bind",
         "task-card",
         "--name",
@@ -226,7 +226,7 @@ fn bind_with_dry_run_checks_the_fit_and_writes_nothing() {
     ran.assert_ok();
     assert_eq!(setup.board.commits(), before);
     setup
-        .hangar(&[
+        .flare(&[
             "bind",
             "task-card",
             "--name",
@@ -234,9 +234,9 @@ fn bind_with_dry_run_checks_the_fit_and_writes_nothing() {
             "other=/tasks/tap",
             "--dry-run",
         ])
-        .assert_failed("hangar::bindings::misfit");
+        .assert_failed("flare::bindings::misfit");
     setup
-        .hangar(&[
+        .flare(&[
             "bind",
             "task-card",
             "--name",
@@ -244,7 +244,7 @@ fn bind_with_dry_run_checks_the_fit_and_writes_nothing() {
             "task=/tasks/none",
             "--dry-run",
         ])
-        .assert_failed("hangar::bindings::record_not_found");
+        .assert_failed("flare::bindings::record_not_found");
     assert_eq!(setup.board.commits(), before);
 }
 

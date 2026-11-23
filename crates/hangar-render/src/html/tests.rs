@@ -64,7 +64,7 @@ fn the_stylesheet_has_board_ui_tokens_for_light_and_dark() {
 fn the_stylesheet_styles_each_class_the_crate_writes() {
     let css = stylesheet();
     for class in [
-        ".hangar-form",
+        ".flare-form",
         ".fields",
         ".field",
         ".hint",

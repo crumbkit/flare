@@ -1,0 +1,12 @@
+Review flare's own use
+
+Usage: flare self [OPTIONS] <COMMAND>
+
+Commands:
+  usage  Report the patterns in flare's usage log where callers waste effort
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Global flags: --json, --fields <FIELD>, --long, --full, --no-input. `flare self --help` describes them.
+Next: flare self <COMMAND> -h

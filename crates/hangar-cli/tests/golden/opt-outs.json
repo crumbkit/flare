@@ -1,5 +1,5 @@
 {
-  "schema": "hangar/opt-outs/v2",
+  "schema": "flare/opt-outs/v2",
   "data": [
     {
       "rule": "suite/skip",
@@ -31,7 +31,7 @@
     {
       "rule": "suite/skip",
       "applies_to": "Check::Recoveries",
-      "reason": "The recovery of server::not_running is `hangar serve`, which does not exit, and the other recoveries need a scratch board; tests/open.rs and tests/serve.rs assert each failure and the command its recovery names.",
+      "reason": "The recovery of server::not_running is `flare serve`, which does not exit, and the other recoveries need a scratch board; tests/open.rs and tests/serve.rs assert each failure and the command its recovery names.",
       "costs": [
         "No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention."
       ],
@@ -50,9 +50,9 @@
   "declarations": [
     {
       "declaration": "root-verbs",
-      "applies_to": "hangar serve, hangar open, hangar publish, hangar bind",
+      "applies_to": "flare serve, flare open, flare publish, flare bind",
       "declares": "Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.",
-      "reason": "hangar has one resource, the board it serves, so each command names what a person does to it"
+      "reason": "flare has one resource, the board it serves, so each command names what a person does to it"
     }
   ]
 }

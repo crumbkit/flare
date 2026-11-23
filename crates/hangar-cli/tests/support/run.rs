@@ -1,9 +1,9 @@
-//! Runs the built `hangar` binary in an environment of the test's own.
+//! Runs the built `flare` binary in an environment of the test's own.
 //!
 //! Each [`Home`] is a scratch directory with its own `HOME`, state and
-//! config directories, so no test reads or writes the developer's hangar
+//! config directories, so no test reads or writes the developer's flare
 //! state, usage log or config. The board program comes from
-//! `HANGAR_TEST_BOARD`, as hangar-board's tests take it.
+//! `FLARE_TEST_BOARD`, as hangar-board's tests take it.
 
 use crate::loopback_scratch::Scratch;
 use std::io::Write as _;
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 /// The built binary.
-pub const HANGAR: &str = env!("CARGO_BIN_EXE_hangar");
+pub const FLARE: &str = env!("CARGO_BIN_EXE_flare");
 
 /// A scratch `HOME` with a state directory and a config directory.
 #[derive(Debug)]
@@ -45,10 +45,10 @@ impl Home {
         self.path().join("config")
     }
 
-    /// Writes `text` to `config/hangar/config.json`, where `hangar serve`
+    /// Writes `text` to `config/flare/config.json`, where `flare serve`
     /// looks without `--config`.
     pub fn write_config(&self, text: &str) -> PathBuf {
-        let directory = self.config().join("hangar");
+        let directory = self.config().join("flare");
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("config.json");
         write(&path, text);
@@ -69,7 +69,7 @@ impl Home {
     /// given, so no test starts a browser.
     pub fn command(&self, args: &[&str]) -> Command {
         #[expect(clippy::disallowed_methods, reason = "the tests run the built binary")]
-        let mut command = Command::new(HANGAR);
+        let mut command = Command::new(FLARE);
         command
             .args(args)
             .env_clear()
@@ -78,7 +78,7 @@ impl Home {
             .env("XDG_CONFIG_HOME", self.config())
             .env("PATH", search_path())
             .env("USER", "tester")
-            .env("HANGAR_OPENER", self.opener())
+            .env("FLARE_OPENER", self.opener())
             .stdin(Stdio::null());
         command
     }
@@ -113,9 +113,9 @@ impl Home {
             .collect()
     }
 
-    /// The lines of hangar's usage log.
+    /// The lines of flare's usage log.
     pub fn usage_lines(&self) -> usize {
-        std::fs::read_to_string(self.state().join("hangar").join("usage.jsonl"))
+        std::fs::read_to_string(self.state().join("flare").join("usage.jsonl"))
             .map(|text| text.lines().count())
             .unwrap_or(0)
     }
@@ -168,7 +168,7 @@ impl Ran {
     }
 
     /// Asserts that the run failed with the failure code `code`, such as
-    /// `hangar::board::too_old`, and exit code 1.
+    /// `flare::board::too_old`, and exit code 1.
     pub fn assert_failed(&self, code: &str) {
         assert_eq!(self.code, Some(1), "{code}: {}", self.all());
         assert!(self.all().contains(code), "{code}: {}", self.all());

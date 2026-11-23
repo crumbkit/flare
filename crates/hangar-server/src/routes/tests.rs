@@ -44,9 +44,9 @@ fn no_route_with_a_write_handler_or_another_method_than_get_serves_the_hosted_si
 fn the_hosted_site_serves_its_seven_routes_and_none_of_the_local_ones() {
     let hosted = [
         "/up",
-        "/hangar/style.css",
+        "/flare/style.css",
         "/",
-        "/hangar/",
+        "/flare/",
         "/pages/home",
         "/auth/oidc/start",
         "/auth/oidc/callback",

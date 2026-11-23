@@ -35,7 +35,7 @@ async fn no_get_route_writes_a_page_a_binding_or_a_record() {
         }
         gets += 1;
         let path = concrete(pattern);
-        for query in ["", "?notice=saved", "?code=x&nonce=y&return_to=/hangar/"] {
+        for query in ["", "?notice=saved", "?code=x&nonce=y&return_to=/flare/"] {
             let reply = server
                 .get(&format!("{path}{query}"))
                 .cookie(&cookie)
@@ -126,7 +126,7 @@ async fn a_page_renders_from_its_samples_inside_a_sandboxed_srcdoc_frame() {
         "page markup outside the frame: {outside}"
     );
     assert!(outside.contains(PAGE), "the band names the page");
-    assert!(outside.contains("<link rel=\"stylesheet\" href=\"/hangar/style.css\">"));
+    assert!(outside.contains("<link rel=\"stylesheet\" href=\"/flare/style.css\">"));
 }
 
 #[tokio::test]
@@ -227,9 +227,9 @@ async fn the_index_lists_each_page_and_its_bindings_as_links() {
     let root = server.get("/").cookie(&cookie).send().await;
     assert_eq!(
         (root.status, root.header("location")),
-        (303, Some("/hangar/"))
+        (303, Some("/flare/"))
     );
-    let index = server.get("/hangar/").cookie(&cookie).send().await;
+    let index = server.get("/flare/").cookie(&cookie).send().await;
     assert_eq!(index.status, 200);
     assert!(
         index.body.contains(&format!("href=\"/pages/{PAGE}\"")),
@@ -240,9 +240,9 @@ async fn the_index_lists_each_page_and_its_bindings_as_links() {
 }
 
 #[tokio::test]
-async fn the_stylesheet_holds_hangar_renders_rules_and_the_bands() {
+async fn the_stylesheet_holds_flare_renders_rules_and_the_bands() {
     let server = Server::start().await;
-    let reply = server.get("/hangar/style.css").send().await;
+    let reply = server.get("/flare/style.css").send().await;
     assert_eq!(reply.status, 200);
     assert_eq!(
         reply.header("content-type"),

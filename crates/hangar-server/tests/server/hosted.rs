@@ -230,9 +230,9 @@ async fn a_hosted_server_reads_only_the_exact_session_cookie_and_skips_every_oth
     let secret = cookie.split_once('=').unwrap().1.to_owned();
     let page = format!("/pages/{HOME}");
     for impostor in [
-        format!("hangar_session={secret}"),
-        format!("__HOST-hangar_session={secret}"),
-        format!("__Host-hangar_session_x={secret}"),
+        format!("flare_session={secret}"),
+        format!("__HOST-flare_session={secret}"),
+        format!("__Host-flare_session_x={secret}"),
     ] {
         let reply = hosted.get(&page).cookie(&impostor).send().await;
         assert_eq!(
@@ -302,7 +302,7 @@ async fn a_hosted_server_answers_404_to_the_local_only_routes_and_reads_nothing_
             .same_origin()
             .form(&[]),
         hosted
-            .request("POST", "/launch/codes?return_to=/hangar/")
+            .request("POST", "/launch/codes?return_to=/flare/")
             .cookie(&cookie)
             .same_origin(),
     ];
@@ -351,14 +351,14 @@ async fn the_hosted_index_lists_pages_and_links_no_binding() {
     let hosted = Hosted::start_with(Admits::Domain, None).await;
     hosted.seed_binding().await;
     let cookie = hosted.sign_in_as("ada").await;
-    let index = hosted.get("/hangar/").cookie(&cookie).send().await;
+    let index = hosted.get("/flare/").cookie(&cookie).send().await;
     assert_eq!(index.status, 200, "{}", index.body);
     assert!(index.body.contains(&format!("href=\"/pages/{HOME}\"")));
     assert!(!index.body.contains("href=\"/b/"), "{}", index.body);
     let root = hosted.get("/").cookie(&cookie).send().await;
     assert_eq!(
         (root.status, root.header("location")),
-        (303, Some("/hangar/"))
+        (303, Some("/flare/"))
     );
 }
 
@@ -375,7 +375,7 @@ async fn the_hosted_401_page_links_to_the_origins_sign_in_with_the_encoded_path(
         hosted.origin
     );
     assert!(reply.body.contains(&link), "{}", reply.body);
-    assert!(!reply.body.contains("hangar open"), "{}", reply.body);
+    assert!(!reply.body.contains("flare open"), "{}", reply.body);
     let signed_in = hosted.sign_in().await;
     assert_eq!(hosted.read_home(&signed_in).await, 200);
 }

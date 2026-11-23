@@ -5,7 +5,7 @@ use super::*;
 use std::collections::HashSet;
 use std::time::{Duration, UNIX_EPOCH};
 
-const CLIENT: &str = "hangar-test-client";
+const CLIENT: &str = "flare-test-client";
 
 fn sealer(key: u8, client: &str) -> Sealer {
     Sealer::from_bytes(&[key; 32], &ClientId::try_from(client).unwrap()).unwrap()

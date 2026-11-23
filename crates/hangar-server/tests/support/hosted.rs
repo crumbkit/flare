@@ -19,9 +19,9 @@ use tokio::task::JoinHandle;
 use url::Url;
 
 /// The session cookie's name on a hosted server.
-pub const SESSION: &str = "__Host-hangar_session";
+pub const SESSION: &str = "__Host-flare_session";
 /// The kept-state cookie's name on a hosted server.
-pub const KEPT: &str = "__Host-hangar_oidc_state";
+pub const KEPT: &str = "__Host-flare_oidc_state";
 
 /// Who the fake admits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

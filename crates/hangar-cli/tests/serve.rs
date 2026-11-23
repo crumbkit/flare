@@ -1,7 +1,7 @@
-//! Plan test 16, the server's process: `hangar serve` refuses an old board
+//! Plan test 16, the server's process: `flare serve` refuses an old board
 //! program, a missing board, a directory that is not a board and a bad
 //! config before it binds; it serves until Ctrl-C, removes `server.json`
-//! and exits 130; `hangar open` finds it; and no command prints the token
+//! and exits 130; `flare open` finds it; and no command prints the token
 //! or the launch host.
 #![cfg(test)]
 
@@ -62,7 +62,7 @@ fn serve_refuses_a_board_program_that_has_no_log_at() {
     let stub = board.script("old-board", USAGE_REFUSAL);
     let (root, _) = paths(&board);
     let ran = home.run(&serve_args(&board, &root, stub.to_str().unwrap()));
-    ran.assert_failed("hangar::board::too_old");
+    ran.assert_failed("flare::board::too_old");
     assert!(ran.all().contains("e4ee3333"), "{}", ran.all());
 }
 
@@ -79,7 +79,7 @@ fn serve_refuses_a_missing_board_and_a_directory_that_is_not_a_board() {
         "--board-program",
         &program,
     ])
-    .assert_failed("hangar::board::not_found");
+    .assert_failed("flare::board::not_found");
     let plain = home.path().join("home");
     home.run(&[
         "serve",
@@ -88,7 +88,7 @@ fn serve_refuses_a_missing_board_and_a_directory_that_is_not_a_board() {
         "--board-program",
         &program,
     ])
-    .assert_failed("hangar::board::not_a_board");
+    .assert_failed("flare::board::not_a_board");
 }
 
 #[test]
@@ -98,26 +98,26 @@ fn serve_refuses_a_config_with_an_unknown_key_or_a_client_secret() {
     let (root, program) = paths(&board);
     home.write_config(r#"{"oidc":{"issuer":"https://accounts.google.com","client_id":"x","admit":{"domain":"example.com","reach":"everything"}},"colour":"blue"}"#);
     home.run(&serve_args(&board, &root, &program))
-        .assert_failed("hangar::config::invalid");
+        .assert_failed("flare::config::invalid");
     home.write_config(r#"{"oidc":{"issuer":"https://accounts.google.com","client_id":"x","client_secret":"not-here","admit":{"domain":"example.com","reach":"everything"}}}"#);
     let ran = home.run(&serve_args(&board, &root, &program));
-    ran.assert_failed("hangar::config::invalid");
-    assert!(ran.all().contains("hangar-oidc-google"), "{}", ran.all());
+    ran.assert_failed("flare::config::invalid");
+    assert!(ran.all().contains("flare-oidc-google"), "{}", ran.all());
     assert!(!ran.all().contains("not-here"), "{}", ran.all());
     home.write_config("{ not json");
     home.run(&serve_args(&board, &root, &program))
-        .assert_failed("hangar::config::invalid");
+        .assert_failed("flare::config::invalid");
     let directory = home.path().join("home");
     let mut args = serve_args(&board, &root, &program);
     args.extend(["--config", directory.to_str().unwrap()]);
-    home.run(&args).assert_failed("hangar::config::unreadable");
+    home.run(&args).assert_failed("flare::config::unreadable");
 }
 
 /// A hosted config whose secret file is `secret` and whose issuer is
 /// `issuer`.
 fn hosted_config(secret: &str, issuer: &str) -> String {
     format!(
-        r#"{{"hosted":{{"origin":"https://hangar.example.com","listen":"127.0.0.1:0"}},"oidc":{{"issuer":"{issuer}","client_id":"x","client_secret_file":"{secret}","admit":{{"domain":"example.com","reach":"everything"}}}}}}"#
+        r#"{{"hosted":{{"origin":"https://flare.example.com","listen":"127.0.0.1:0"}},"oidc":{{"issuer":"{issuer}","client_id":"x","client_secret_file":"{secret}","admit":{{"domain":"example.com","reach":"everything"}}}}}}"#
     )
 }
 
@@ -131,11 +131,11 @@ fn serve_refuses_a_hosted_config_without_its_keys_naming_each_and_admits_a_whole
     let whole = hosted_config(secret.to_str().unwrap(), "https://127.0.0.1:1");
     for (broken, key) in [
         (
-            whole.replace("https://hangar.example.com", "http://hangar.example.com"),
+            whole.replace("https://flare.example.com", "http://flare.example.com"),
             "hosted.origin",
         ),
         (
-            whole.replace("https://hangar.example.com", "https://hangar.example.com/x"),
+            whole.replace("https://flare.example.com", "https://flare.example.com/x"),
             "hosted.origin",
         ),
         (
@@ -150,21 +150,21 @@ fn serve_refuses_a_hosted_config_without_its_keys_naming_each_and_admits_a_whole
             "oidc.client_secret_file",
         ),
         (
-            r#"{"hosted":{"origin":"https://hangar.example.com","listen":"127.0.0.1:0"}}"#
+            r#"{"hosted":{"origin":"https://flare.example.com","listen":"127.0.0.1:0"}}"#
                 .to_owned(),
             "oidc",
         ),
     ] {
         home.write_config(&broken);
         let ran = home.run(&serve_args(&board, &root, &program));
-        ran.assert_failed("hangar::config::invalid");
+        ran.assert_failed("flare::config::invalid");
         assert!(ran.all().contains(key), "{key}: {}", ran.all());
     }
     // The whole config passes the config and secret checks and stops at the
     // provider, which nothing serves.
     home.write_config(&whole);
     home.run(&serve_args(&board, &root, &program))
-        .assert_failed("hangar::oidc::provider_unavailable");
+        .assert_failed("flare::oidc::provider_unavailable");
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn serve_refuses_a_hosted_secret_file_that_is_missing_or_writable_by_others_nami
         "https://127.0.0.1:1",
     ));
     let missing = home.run(&serve_args(&board, &root, &program));
-    missing.assert_failed("hangar::oidc::secret_unavailable");
+    missing.assert_failed("flare::oidc::secret_unavailable");
     assert!(
         missing.all().contains(secret.to_str().unwrap()),
         "{}",
@@ -188,7 +188,7 @@ fn serve_refuses_a_hosted_secret_file_that_is_missing_or_writable_by_others_nami
     run::write(&secret, "made-up-secret");
     std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o666)).unwrap();
     let writable = home.run(&serve_args(&board, &root, &program));
-    writable.assert_failed("hangar::oidc::secret_unavailable");
+    writable.assert_failed("flare::oidc::secret_unavailable");
     assert!(writable.all().contains("writable"), "{}", writable.all());
     assert!(
         !writable.all().contains("made-up-secret"),
@@ -197,10 +197,10 @@ fn serve_refuses_a_hosted_secret_file_that_is_missing_or_writable_by_others_nami
     );
     std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o600)).unwrap();
     home.run(&serve_args(&board, &root, &program))
-        .assert_failed("hangar::oidc::provider_unavailable");
+        .assert_failed("flare::oidc::provider_unavailable");
 }
 
-/// A running `hangar serve` and the home it runs in.
+/// A running `flare serve` and the home it runs in.
 struct Running {
     #[expect(
         clippy::disallowed_types,
@@ -217,7 +217,7 @@ impl Running {
         })
     }
 
-    /// Starts `hangar serve` and waits until `ready` holds for its state
+    /// Starts `flare serve` and waits until `ready` holds for its state
     /// directory.
     fn start_when(
         home: &Home,
@@ -243,7 +243,7 @@ impl Running {
         while !ready(&state) {
             assert!(
                 Instant::now() < deadline,
-                "hangar serve wrote no server.json"
+                "flare serve wrote no server.json"
             );
             std::thread::yield_now();
         }
@@ -297,7 +297,7 @@ fn serve_runs_until_ctrl_c_then_removes_server_json_and_exits_130() {
         state.read_server().unwrap().is_none(),
         "server.json is removed"
     );
-    assert!(ran.all().contains("hangar open"), "{}", ran.all());
+    assert!(ran.all().contains("flare open"), "{}", ran.all());
     for printed in [&ran, &opened] {
         assert!(!printed.all().contains(&token), "{}", printed.all());
         assert!(!printed.all().contains(&host), "{}", printed.all());
@@ -371,7 +371,7 @@ fn open_names_a_page_or_a_binding_and_refuses_an_unknown_name() {
     .assert_ok();
     let running = Running::start(&home, &board, &[]);
     for (name, target) in [
-        (None, "/hangar/"),
+        (None, "/flare/"),
         (Some("task-card"), "/pages/task-card"),
         (Some("kitchen"), "/b/kitchen"),
     ] {
@@ -382,7 +382,7 @@ fn open_names_a_page_or_a_binding_and_refuses_an_unknown_name() {
         assert_eq!(launch_target(&opener), target);
     }
     home.run(&["open", "no-such-page", "--board", &root])
-        .assert_failed("hangar::pages::not_found");
+        .assert_failed("flare::pages::not_found");
     running.stop("-TERM");
 }
 
@@ -394,7 +394,7 @@ fn serve_stops_on_sigterm_and_exits_0() {
     let state = running.state.clone();
     let ran = running.stop("-TERM");
     assert_eq!(ran.code, Some(0), "{}", ran.all());
-    assert!(ran.stdout.contains("\"hangar/serve/v1\""), "{}", ran.stdout);
+    assert!(ran.stdout.contains("\"flare/serve/v1\""), "{}", ran.stdout);
     assert!(state.read_server().unwrap().is_none());
 }
 
@@ -419,13 +419,13 @@ fn a_second_serve_for_the_same_board_is_refused_while_the_first_answers() {
     let running = Running::start(&home, &board, &[]);
     let (root, program) = paths(&board);
     home.run(&serve_args(&board, &root, &program))
-        .assert_failed("hangar::server::already_running");
+        .assert_failed("flare::server::already_running");
     running.stop("-TERM");
 }
 
 /// Crash point 2: a server killed while it serves leaves `server.json`
-/// stale. `hangar open` then fails with `server::not_running`, and the next
-/// `hangar serve` replaces the file with its own.
+/// stale. `flare open` then fails with `server::not_running`, and the next
+/// `flare serve` replaces the file with its own.
 #[test]
 fn the_next_serve_replaces_the_server_json_a_killed_server_left() {
     let home = Home::new();
@@ -448,7 +448,7 @@ fn the_next_serve_replaces_the_server_json_a_killed_server_left() {
         "the file is left stale"
     );
     home.run(&["open", "--board", &root])
-        .assert_failed("hangar::server::not_running");
+        .assert_failed("flare::server::not_running");
     let next = Running::start_when(&home, &board, &[], |state| {
         token(state).is_some_and(|current| current != stale)
     });
@@ -466,6 +466,6 @@ fn serve_refuses_a_port_that_another_program_holds() {
     let (root, program) = paths(&board);
     let mut args = serve_args(&board, &root, &program);
     args.extend(["--port", &port]);
-    home.run(&args).assert_failed("hangar::server::port_in_use");
+    home.run(&args).assert_failed("flare::server::port_in_use");
     drop(held);
 }

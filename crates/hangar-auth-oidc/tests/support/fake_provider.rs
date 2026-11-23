@@ -35,7 +35,7 @@ use tokio::sync::Notify;
 use url::Url;
 
 /// The client ID that the fake knows.
-pub const CLIENT_ID: &str = "hangar-test-client";
+pub const CLIENT_ID: &str = "flare-test-client";
 /// The client secret that the fake knows.
 pub const CLIENT_SECRET: &str = "fake-client-secret-7f3a";
 /// The redirect URI that the fake's client is registered with.

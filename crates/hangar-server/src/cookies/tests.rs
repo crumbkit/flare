@@ -17,14 +17,14 @@ fn kept(map: &HeaderMap, name: &str) -> Option<String> {
 
 #[test]
 fn the_kept_state_is_read_byte_by_byte_on_both_sites_and_two_are_none() {
-    let one = cookies(&[b"a=\xff; __Host-hangar_oidc_state=sealed; hangar_oidc_state=local"]);
+    let one = cookies(&[b"a=\xff; __Host-flare_oidc_state=sealed; flare_oidc_state=local"]);
     assert_eq!(kept(&one, HOSTED_KEPT_COOKIE).as_deref(), Some("sealed"));
     assert_eq!(kept(&one, KEPT_COOKIE).as_deref(), Some("local"));
-    let foreign = cookies(&[b"theme=caf\xc3\xa9", b"hangar_oidc_state=local; z=\xff"]);
+    let foreign = cookies(&[b"theme=caf\xc3\xa9", b"flare_oidc_state=local; z=\xff"]);
     assert_eq!(kept(&foreign, KEPT_COOKIE).as_deref(), Some("local"));
-    let two = cookies(&[b"hangar_oidc_state=a; hangar_oidc_state=b"]);
+    let two = cookies(&[b"flare_oidc_state=a; flare_oidc_state=b"]);
     assert!(kept(&two, KEPT_COOKIE).is_none());
-    let plain = cookies(&[b"hangar_oidc_state=sealed"]);
+    let plain = cookies(&[b"flare_oidc_state=sealed"]);
     assert!(kept(&plain, HOSTED_KEPT_COOKIE).is_none());
 }
 

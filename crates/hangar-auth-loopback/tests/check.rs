@@ -41,7 +41,7 @@ fn headers(loopback: &Loopback, extra: &[(HeaderName, &str)]) -> HeaderMap {
 }
 
 fn cookie() -> (HeaderName, String) {
-    (COOKIE, format!("hangar_session={SECRET}"))
+    (COOKIE, format!("flare_session={SECRET}"))
 }
 
 fn check(loopback: &Loopback, method: &Method, headers: &HeaderMap) -> Result<Checked, Refusal> {
@@ -264,7 +264,7 @@ fn a_get_with_a_cookie_and_no_origin_passes() {
 #[test]
 fn the_session_cookie_is_found_among_other_cookies() {
     let loopback = loopback();
-    let one_header = format!("theme=dark; hangar_session={SECRET}; lang=en");
+    let one_header = format!("theme=dark; flare_session={SECRET}; lang=en");
     let checked = check(
         &loopback,
         &Method::GET,
@@ -272,7 +272,7 @@ fn the_session_cookie_is_found_among_other_cookies() {
     )
     .unwrap();
     assert_eq!(session_of(&checked).as_deref(), Some(SECRET));
-    let session = format!("hangar_session={SECRET}");
+    let session = format!("flare_session={SECRET}");
     let split = headers(&loopback, &[(COOKIE, "theme=dark"), (COOKIE, &session)]);
     let checked = check(&loopback, &Method::GET, &split).unwrap();
     assert_eq!(session_of(&checked).as_deref(), Some(SECRET));
@@ -281,7 +281,7 @@ fn the_session_cookie_is_found_among_other_cookies() {
 #[test]
 fn two_session_cookies_are_refused() {
     let loopback = loopback();
-    let twice = format!("hangar_session={SECRET}; hangar_session={SECRET}");
+    let twice = format!("flare_session={SECRET}; flare_session={SECRET}");
     assert_eq!(
         check(
             &loopback,

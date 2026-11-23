@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 #[tokio::test]
-async fn the_probe_answers_the_proof_that_hangar_open_checks() {
+async fn the_probe_answers_the_proof_that_flare_open_checks() {
     let server = Server::start().await;
     let nonce = Nonce::new().unwrap();
     let reply = server
@@ -48,7 +48,7 @@ fn launch_path(opener: &PathBuf) -> String {
 #[tokio::test]
 async fn the_code_route_writes_an_opener_of_mode_0600_for_a_bearer_token() {
     let server = Server::start().await;
-    let opener = ask_for_code(&server, "/hangar/").await;
+    let opener = ask_for_code(&server, "/flare/").await;
     assert!(opener.starts_with(server.state.path()));
     assert_eq!(mode(&opener), 0o600);
     assert!(launch_path(&opener).starts_with("/launch?code="));
@@ -77,7 +77,7 @@ async fn the_launch_document_sets_the_session_cookie_refreshes_to_the_target_and
     assert_eq!(reply.status, 200, "{}", reply.body);
     let cookie = reply.all("set-cookie");
     assert_eq!(cookie.len(), 1);
-    assert!(cookie[0].starts_with("hangar_session="));
+    assert!(cookie[0].starts_with("flare_session="));
     assert!(cookie[0].contains("HttpOnly") && cookie[0].contains("SameSite=Strict"));
     assert!(
         reply
@@ -86,9 +86,9 @@ async fn the_launch_document_sets_the_session_cookie_refreshes_to_the_target_and
     );
     assert!(reply.body.contains("href=\"/pages/home\""));
     assert!(!opener.exists(), "the opener is removed after sign-in");
-    let session = cookie_pair(&reply, "hangar_session").unwrap();
+    let session = cookie_pair(&reply, "flare_session").unwrap();
     assert_eq!(
-        server.get("/hangar/").cookie(&session).send().await.status,
+        server.get("/flare/").cookie(&session).send().await.status,
         200
     );
     let unknown = server
@@ -102,7 +102,7 @@ async fn the_launch_document_sets_the_session_cookie_refreshes_to_the_target_and
 #[tokio::test]
 async fn a_used_code_is_refused() {
     let server = Server::start().await;
-    let opener = ask_for_code(&server, "/hangar/").await;
+    let opener = ask_for_code(&server, "/flare/").await;
     let path = launch_path(&opener);
     assert_eq!(server.get(&path).send().await.status, 200);
     let used = server.get(&path).send().await;
@@ -121,7 +121,7 @@ async fn an_opener_is_removed_once_its_code_expires() {
         ..Options::default()
     })
     .await;
-    let opener = ask_for_code(&server, "/hangar/").await;
+    let opener = ask_for_code(&server, "/flare/").await;
     let path = launch_path(&opener);
     server.time.advance(Duration::from_secs(61));
     let deadline = Instant::now() + Duration::from_secs(10);

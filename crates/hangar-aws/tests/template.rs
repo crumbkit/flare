@@ -6,7 +6,7 @@
 
 use serde_json::{Value, json};
 
-const TEMPLATE: &str = include_str!("../../../infra/hangar-stores.template.json");
+const TEMPLATE: &str = include_str!("../../../infra/flare-stores.template.json");
 
 fn template() -> Value {
     serde_json::from_str(TEMPLATE).unwrap()
@@ -26,7 +26,7 @@ fn the_template_defines_exactly_the_table_the_bucket_its_policy_and_the_managed_
         [
             "FilesBucket",
             "FilesBucketPolicy",
-            "HangarStoresPolicy",
+            "FlareStoresPolicy",
             "SharesTable"
         ]
     );
@@ -37,12 +37,12 @@ fn the_template_defines_exactly_the_table_the_bucket_its_policy_and_the_managed_
         "AWS::S3::BucketPolicy"
     );
     assert_eq!(
-        resources["HangarStoresPolicy"]["Type"],
+        resources["FlareStoresPolicy"]["Type"],
         "AWS::IAM::ManagedPolicy"
     );
     assert_eq!(
         template()["Outputs"]["PolicyArn"]["Value"],
-        json!({"Ref": "HangarStoresPolicy"})
+        json!({"Ref": "FlareStoresPolicy"})
     );
 }
 
@@ -149,7 +149,7 @@ fn the_bucket_policy_denies_requests_without_tls_and_puts_without_if_none_match(
 
 #[test]
 fn the_managed_policy_allows_exactly_the_actions_the_stores_call() {
-    let policy = resource("HangarStoresPolicy")["Properties"].clone();
+    let policy = resource("FlareStoresPolicy")["Properties"].clone();
     let statements = policy["PolicyDocument"]["Statement"].as_array().unwrap();
     assert_eq!(statements.len(), 3);
     assert!(

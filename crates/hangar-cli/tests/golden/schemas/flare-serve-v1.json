@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "hangar/serve/v1",
+  "title": "flare/serve/v1",
   "description": "The board a server served and why it stopped.",
   "type": "object",
   "properties": {
@@ -13,7 +13,7 @@
     },
     "schema": {
       "description": "The id of this document.",
-      "const": "hangar/serve/v1"
+      "const": "flare/serve/v1"
     }
   },
   "required": [
@@ -22,7 +22,7 @@
   ],
   "$defs": {
     "Served": {
-      "description": "What `hangar serve` reports when it stops.",
+      "description": "What `flare serve` reports when it stops.",
       "type": "object",
       "properties": {
         "board": {

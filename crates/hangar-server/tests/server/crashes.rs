@@ -1,6 +1,6 @@
 //! The lifecycle's crash points 3, 5, 7, 8 and 9, and the request deadline
 //! with a write in work. A later server on the same board shares the
-//! earlier one's stores and state directory, as a new `hangar serve`
+//! earlier one's stores and state directory, as a new `flare serve`
 //! process does. Crash point 2 needs a killed process, so it is in
 //! hangar-cli's tests/serve.rs.
 
@@ -169,7 +169,7 @@ async fn crash_point_9_two_servers_on_one_board_both_serve_and_the_later_file_wi
     .await;
     assert!(second.named_by_server_file());
     assert!(!first.named_by_server_file());
-    let signed_in = first.get("/hangar/").cookie(&first_cookie).send().await;
+    let signed_in = first.get("/flare/").cookie(&first_cookie).send().await;
     assert_eq!(signed_in.status, 200, "{}", signed_in.body);
     first.stop().await;
     assert!(

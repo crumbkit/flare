@@ -159,7 +159,7 @@ fn config(root: PathBuf, program: PathBuf, board: &ScratchBoard) -> BoardConfig 
         program,
         board.state(),
         scratch::search_path(),
-        Committer::new("hangar tests", "hangar-tests@example.invalid").unwrap(),
+        Committer::new("flare tests", "flare-tests@example.invalid").unwrap(),
     )
 }
 
@@ -264,6 +264,6 @@ fn a_board_program_without_log_at_is_refused_with_what_to_do() {
     );
     let text = scratch::check_board(&old).unwrap_err();
     assert!(text.contains("log --at"), "{text}");
-    assert!(text.contains("HANGAR_TEST_BOARD"), "{text}");
+    assert!(text.contains("FLARE_TEST_BOARD"), "{text}");
     assert!(scratch::check_board(board.program()).is_ok());
 }

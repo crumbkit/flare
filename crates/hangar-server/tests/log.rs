@@ -57,12 +57,12 @@ struct OidcSecrets {
 /// sign-in made.
 async fn oidc_sign_in(server: &Server, fake: &Fake) -> OidcSecrets {
     let started = server
-        .oidc_request("GET", "/auth/oidc/start?return_to=/hangar/")
+        .oidc_request("GET", "/auth/oidc/start?return_to=/flare/")
         .send()
         .await;
     assert_eq!(started.status, 303, "{}", started.body);
     let location = Url::parse(started.header("location").unwrap()).unwrap();
-    let kept = cookie_pair(&started, "hangar_oidc_state").unwrap();
+    let kept = cookie_pair(&started, "flare_oidc_state").unwrap();
     let called = server
         .oidc_request(
             "GET",
@@ -83,11 +83,11 @@ async fn oidc_sign_in(server: &Server, fake: &Fake) -> OidcSecrets {
         .send()
         .await;
     assert_eq!(finished.status, 200, "{}", finished.body);
-    let session = cookie_pair(&finished, "hangar_session").unwrap();
+    let session = cookie_pair(&finished, "flare_session").unwrap();
     OidcSecrets {
-        kept: kept.trim_start_matches("hangar_oidc_state=").to_owned(),
+        kept: kept.trim_start_matches("flare_oidc_state=").to_owned(),
         handover,
-        session: session.trim_start_matches("hangar_session=").to_owned(),
+        session: session.trim_start_matches("flare_session=").to_owned(),
     }
 }
 
@@ -127,7 +127,7 @@ async fn no_secret_reaches_the_log_or_a_debug_output() {
     let oidc = oidc_sign_in(&server, &fake).await;
     let token = server.token();
     let cookie = server.sign_in().await;
-    let session = cookie.trim_start_matches("hangar_session=").to_owned();
+    let session = cookie.trim_start_matches("flare_session=").to_owned();
     let drawn = server
         .get(&format!("/b/{BINDING}"))
         .cookie(&cookie)
@@ -137,7 +137,7 @@ async fn no_secret_reaches_the_log_or_a_debug_output() {
     let pairs = form_pairs(&drawn.body);
     let form_token = value(&pairs, "token").to_owned();
     let codes = server
-        .request("POST", "/launch/codes?return_to=/hangar/")
+        .request("POST", "/launch/codes?return_to=/flare/")
         .bearer(&token)
         .send()
         .await;

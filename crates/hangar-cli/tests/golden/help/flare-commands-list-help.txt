@@ -1,6 +1,6 @@
-List a branch of hangar's commands with their arguments and examples
+List a branch of flare's commands with their arguments and examples
 
-Usage: hangar commands list [OPTIONS] [PATH]...
+Usage: flare commands list [OPTIONS] [PATH]...
 
 Arguments:
   [PATH]...
@@ -31,11 +31,11 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  hangar commands list
+  flare commands list
           List every command
 
-  hangar commands list serve
-          List hangar serve with its arguments
+  flare commands list serve
+          List flare serve with its arguments
 
 Columns:
   path   The command line that runs the command, such as `shelf books list`.

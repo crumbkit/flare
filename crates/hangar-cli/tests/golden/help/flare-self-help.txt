@@ -1,9 +1,9 @@
-Review hangar's own use
+Review flare's own use
 
-Usage: hangar self [OPTIONS] <COMMAND>
+Usage: flare self [OPTIONS] <COMMAND>
 
 Commands:
-  usage  Report the patterns in hangar's usage log where callers waste effort
+  usage  Report the patterns in flare's usage log where callers waste effort
 
 Options:
       --json
@@ -24,4 +24,4 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-Next: hangar self <COMMAND> -h
+Next: flare self <COMMAND> -h

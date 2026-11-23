@@ -1,6 +1,6 @@
 Publish a new version of a page from an HTML or Markdown file
 
-Usage: hangar publish [OPTIONS] --name <NAME> <FILE>
+Usage: flare publish [OPTIONS] --name <NAME> <FILE>
 
 Arguments:
   <FILE>
@@ -17,7 +17,7 @@ Options:
           The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
 
       --board-program <PATH>
-          The board program; without it, HANGAR_BOARD, then the first board on PATH
+          The board program; without it, FLARE_BOARD, then the first board on PATH
 
       --dry-run
           Report what the command would change, and change nothing
@@ -38,10 +38,10 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  hangar publish card.html --name task-card --slots slots.json
+  flare publish card.html --name task-card --slots slots.json
           Publish card.html as the page task-card with the slots in slots.json
 
-  hangar publish card.md --name task-card --dry-run
+  flare publish card.md --name task-card --dry-run
           Check card.md and publish nothing
 
 Columns:

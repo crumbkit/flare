@@ -44,7 +44,7 @@ fn a_client_secret_is_refused_with_the_keychain_service_and_without_its_value() 
     let Err(Problem::Invalid(message)) = parse(&text) else {
         panic!("a client_secret key was accepted");
     };
-    assert!(message.contains("hangar-oidc-google"), "{message}");
+    assert!(message.contains("flare-oidc-google"), "{message}");
     assert!(!message.contains("s3cret-value"), "{message}");
     let top = r#"{"client_secret":"s3cret-value"}"#;
     let Err(Problem::Invalid(message)) = parse(top) else {
@@ -77,7 +77,7 @@ fn text_that_is_not_json_is_invalid() {
     assert!(matches!(parse("[]"), Err(Problem::Invalid(_))));
 }
 
-const HOSTED: &str = r#"{"hosted":{"origin":"https://Hangar.Example.com","listen":"0.0.0.0:8080"},"oidc":{"issuer":"https://accounts.google.com","client_id":"abc","client_secret_file":"/run/secrets/google","admit":{"domain":"example.com","reach":"everything"}}}"#;
+const HOSTED: &str = r#"{"hosted":{"origin":"https://Flare.Example.com","listen":"0.0.0.0:8080"},"oidc":{"issuer":"https://accounts.google.com","client_id":"abc","client_secret_file":"/run/secrets/google","admit":{"domain":"example.com","reach":"everything"}}}"#;
 
 fn invalid(text: &str) -> String {
     match parse(text) {
@@ -91,7 +91,7 @@ fn a_hosted_section_parses_with_its_origin_listen_address_secret_file_and_callba
     let Site::Hosted(hosted) = parse(HOSTED).unwrap().site else {
         panic!("a hosted config");
     };
-    assert_eq!(hosted.origin.as_str(), "https://hangar.example.com");
+    assert_eq!(hosted.origin.as_str(), "https://flare.example.com");
     assert_eq!(hosted.listen, "0.0.0.0:8080".parse().unwrap());
     assert_eq!(
         hosted.secret_file,
@@ -99,18 +99,18 @@ fn a_hosted_section_parses_with_its_origin_listen_address_secret_file_and_callba
     );
     assert_eq!(
         hosted.oidc.redirect_uri().as_str(),
-        "https://hangar.example.com/auth/oidc/callback"
+        "https://flare.example.com/auth/oidc/callback"
     );
 }
 
 #[test]
 fn an_http_origin_or_one_with_a_path_is_refused_naming_hosted_origin() {
     for origin in [
-        "http://hangar.example.com",
-        "https://hangar.example.com/",
-        "https://hangar.example.com/hangar",
+        "http://flare.example.com",
+        "https://flare.example.com/",
+        "https://flare.example.com/flare",
     ] {
-        let message = invalid(&HOSTED.replace("https://Hangar.Example.com", origin));
+        let message = invalid(&HOSTED.replace("https://Flare.Example.com", origin));
         assert!(message.contains("hosted.origin"), "{origin}: {message}");
     }
 }
@@ -127,7 +127,7 @@ fn a_listen_value_that_is_not_an_address_and_port_is_refused_naming_hosted_liste
 #[test]
 fn a_hosted_section_without_oidc_is_refused_naming_oidc() {
     let message =
-        invalid(r#"{"hosted":{"origin":"https://hangar.example.com","listen":"0.0.0.0:8080"}}"#);
+        invalid(r#"{"hosted":{"origin":"https://flare.example.com","listen":"0.0.0.0:8080"}}"#);
     assert!(message.contains("oidc"), "{message}");
 }
 

@@ -1,4 +1,4 @@
-//! Plan test 16, the client: `hangar open` fails with `server::not_running`
+//! Plan test 16, the client: `flare open` fails with `server::not_running`
 //! when nothing answers, and sends no token to a server that gives a wrong
 //! proof.
 #![cfg(test)]
@@ -101,8 +101,8 @@ fn open_fails_with_server_not_running_when_there_is_no_server_file() {
     let home = Home::new();
     let board = board_dir(&home);
     let ran = home.run(&["open", "--board", board.to_str().unwrap()]);
-    ran.assert_failed("hangar::server::not_running");
-    assert!(ran.all().contains("hangar serve"), "{}", ran.all());
+    ran.assert_failed("flare::server::not_running");
+    assert!(ran.all().contains("flare serve"), "{}", ran.all());
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn open_fails_with_server_not_running_when_nothing_answers_on_the_port() {
     drop(free);
     write_server_file(&home, &board, port);
     home.run(&["open", "--board", board.to_str().unwrap()])
-        .assert_failed("hangar::server::not_running");
+        .assert_failed("flare::server::not_running");
     assert!(home.opened().is_empty());
 }
 
@@ -125,7 +125,7 @@ fn open_sends_no_token_to_a_server_that_gives_a_wrong_proof() {
     let (port, heads) = fake_server("not-the-proof");
     write_server_file(&home, &board, port);
     home.run(&["open", "--board", board.to_str().unwrap()])
-        .assert_failed("hangar::server::not_running");
+        .assert_failed("flare::server::not_running");
     let heads = heads.lock().unwrap();
     assert_eq!(heads.len(), 1, "only the probe was sent: {heads:?}");
     assert!(

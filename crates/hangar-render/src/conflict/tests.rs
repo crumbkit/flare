@@ -41,14 +41,14 @@ fn view(conflict: &Conflict) -> String {
     conflict_view(
         conflict,
         &target("tok-2"),
-        &LocalPath::try_from("/b/hangar-plan").unwrap(),
+        &LocalPath::try_from("/b/flare-plan").unwrap(),
     )
     .into_string()
 }
 
 #[test]
 fn the_view_shows_each_field_now_beside_the_edit() {
-    let text = text_of(&view(&conflict("hangar: share pages", NEWER)));
+    let text = text_of(&view(&conflict("flare: share pages", NEWER)));
     assert!(
         text.contains(
             "Your edit was not saved, because someone changed this task since you opened this form."
@@ -56,7 +56,7 @@ fn the_view_shows_each_field_now_beside_the_edit() {
         "{text}"
     );
     assert!(text.contains("Nothing you typed is lost."));
-    assert!(text.contains("hangar: share pages"));
+    assert!(text.contains("flare: share pages"));
     assert!(text.contains("done"));
     assert!(text.contains("was open"));
     assert!(text.contains("you did not change it"));
@@ -75,9 +75,9 @@ fn discard_is_a_link_and_save_is_a_post_to_the_targets_action() {
         if let Tok::Start { name, attributes } = token {
             let has =
                 |key: &str, value: &str| attributes.iter().any(|(k, v)| k == key && v == value);
-            saw_link |= name == "a" && has("href", "/b/hangar-plan");
+            saw_link |= name == "a" && has("href", "/b/flare-plan");
             saw_form |=
-                name == "form" && has("action", "/b/hangar-plan/edit") && has("method", "post");
+                name == "form" && has("action", "/b/flare-plan/edit") && has("method", "post");
         }
     }
     assert!(saw_link && saw_form, "{html}");
@@ -85,7 +85,7 @@ fn discard_is_a_link_and_save_is_a_post_to_the_targets_action() {
 
 #[test]
 fn saving_from_the_view_writes_the_edit_onto_the_newer_record() {
-    let conflict = conflict("hangar: share pages", NEWER);
+    let conflict = conflict("flare: share pages", NEWER);
     let pairs = submit(&view(&conflict));
     let post = FormPost::from_pairs(pairs).unwrap();
     assert_eq!(post.token().expose_secret(), "tok-2");
@@ -101,13 +101,13 @@ fn saving_from_the_view_writes_the_edit_onto_the_newer_record() {
     let body: Value = serde_json::from_str(write.body().as_str()).unwrap();
     assert_eq!(
         body,
-        json!({"title": "hangar: share pages", "status": "done", "body": "Prose and more"})
+        json!({"title": "flare: share pages", "status": "done", "body": "Prose and more"})
     );
 }
 
 #[test]
 fn a_save_from_the_view_is_refused_again_when_the_record_changed_once_more() {
-    let conflict = conflict("hangar: share pages", NEWER);
+    let conflict = conflict("flare: share pages", NEWER);
     let edit = FormPost::from_pairs(submit(&view(&conflict)))
         .unwrap()
         .into_edit(&slot("task", EDITABLE, None), &task_schema())
@@ -148,10 +148,10 @@ fn saved_from_view(conflict: &Conflict, newer: &str) -> Value {
 #[test]
 fn an_unchanged_field_whose_newer_value_no_control_edits_stays_as_it_is_now() {
     let newer = r#"{"title": "Artifact server", "status": 5, "body": "Prose"}"#;
-    let conflict = conflict("hangar: share pages", newer);
+    let conflict = conflict("flare: share pages", newer);
     assert_eq!(
         saved_from_view(&conflict, newer),
-        json!({"title": "hangar: share pages", "status": 5, "body": "Prose"})
+        json!({"title": "flare: share pages", "status": 5, "body": "Prose"})
     );
 }
 

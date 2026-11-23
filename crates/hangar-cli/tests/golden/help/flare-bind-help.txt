@@ -1,6 +1,6 @@
 Save a binding that fills a page's slots with records
 
-Usage: hangar bind [OPTIONS] --name <NAME> <PAGE> <SLOT=PATH>...
+Usage: flare bind [OPTIONS] --name <NAME> <PAGE> <SLOT=PATH>...
 
 Arguments:
   <PAGE>
@@ -17,7 +17,7 @@ Options:
           The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
 
       --board-program <PATH>
-          The board program; without it, HANGAR_BOARD, then the first board on PATH
+          The board program; without it, FLARE_BOARD, then the first board on PATH
 
       --dry-run
           Report what the command would change, and change nothing
@@ -38,7 +38,7 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  hangar bind task-card --name kitchen task=/tasks/tap
+  flare bind task-card --name kitchen task=/tasks/tap
           Save the binding kitchen, which fills task-card's task slot with /tasks/tap
 
 Columns:

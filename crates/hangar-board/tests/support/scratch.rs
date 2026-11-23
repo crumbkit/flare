@@ -3,7 +3,7 @@
 //! Each scratch board is a new Git repository under the system's temporary
 //! directory with `.board/board.json`, the schemas the tests need and the
 //! records each test seeds. The board program comes from
-//! `HANGAR_TEST_BOARD`, or from `PATH` when that variable is not set. Every
+//! `FLARE_TEST_BOARD`, or from `PATH` when that variable is not set. Every
 //! command runs with `HOME` and the XDG directories inside the scratch
 //! directory and with `GIT_CONFIG_GLOBAL=/dev/null`, so no test reads or
 //! writes the developer's own boards.
@@ -33,7 +33,7 @@ pub fn board_program() -> PathBuf {
         clippy::disallowed_methods,
         reason = "a test reads its own settings from the environment"
     )]
-    if let Some(program) = std::env::var_os("HANGAR_TEST_BOARD") {
+    if let Some(program) = std::env::var_os("FLARE_TEST_BOARD") {
         return PathBuf::from(program);
     }
     #[expect(
@@ -45,7 +45,7 @@ pub fn board_program() -> PathBuf {
         .map(|directory| directory.join("board"))
         .find(|candidate| candidate.is_file())
         .expect(
-            "the hangar-board tests need the board program: set HANGAR_TEST_BOARD to its \
+            "the hangar-board tests need the board program: set FLARE_TEST_BOARD to its \
              absolute path, or put a board built from crumbkit/board e4ee3333 or later on PATH",
         )
 }
@@ -94,7 +94,7 @@ pub fn check_board(program: &Path) -> Result<(), String> {
     }
     Err(format!(
         "the board program {} has no `board log --at`, so it is older than crumbkit/board \
-         e4ee3333; set HANGAR_TEST_BOARD to the absolute path of a newer build",
+         e4ee3333; set FLARE_TEST_BOARD to the absolute path of a newer build",
         program.display()
     ))
 }
@@ -174,7 +174,7 @@ impl ScratchBoard {
             program.to_path_buf(),
             self.state(),
             search_path(),
-            Committer::new("hangar tests", "hangar-tests@example.invalid").unwrap(),
+            Committer::new("flare tests", "flare-tests@example.invalid").unwrap(),
         )
         .with_limits(limits)
     }

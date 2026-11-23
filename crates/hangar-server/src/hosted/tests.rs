@@ -6,8 +6,8 @@ use http::header::COOKIE;
 use http::{HeaderMap, HeaderValue, Method};
 use secrecy::ExposeSecret as _;
 
-const AUTHORITY: &str = "hangar.example.com";
-const ORIGIN_TEXT: &str = "https://hangar.example.com";
+const AUTHORITY: &str = "flare.example.com";
+const ORIGIN_TEXT: &str = "https://flare.example.com";
 
 fn public() -> PublicOrigin {
     PublicOrigin::try_from(ORIGIN_TEXT).unwrap()
@@ -79,7 +79,7 @@ fn the_host_is_checked_before_the_origin_and_the_origin_before_the_credential() 
         ("host", AUTHORITY.as_bytes()),
         ("origin", ORIGIN_TEXT.as_bytes()),
         ("sec-fetch-site", b"same-origin"),
-        ("cookie", b"__Host-hangar_session=abc"),
+        ("cookie", b"__Host-flare_session=abc"),
     ]);
     assert_eq!(
         check(&public(), &Method::POST, &right).map(secret_of),
@@ -109,7 +109,7 @@ fn the_session_cookie_is_read_from_any_cookie_header_beside_unparseable_pairs() 
         (COOKIE.as_str(), b"theme=caf\xc3\xa9; bare; =x"),
         (
             COOKIE.as_str(),
-            b"other=1;__Host-hangar_session=tok-en_1  ; z=\xff",
+            b"other=1;__Host-flare_session=tok-en_1  ; z=\xff",
         ),
     ]);
     assert_eq!(

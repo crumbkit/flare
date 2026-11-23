@@ -76,13 +76,13 @@ fn the_state_home_is_refused_when_neither_variable_is_usable() {
 }
 
 #[test]
-fn prepare_makes_a_directory_of_mode_0700_under_hangar_loopback() {
+fn prepare_makes_a_directory_of_mode_0700_under_flare_loopback() {
     let scratch = Scratch::new();
     let state = prepared(&scratch);
     assert!(
         state
             .path()
-            .starts_with(scratch.path().join("hangar/loopback"))
+            .starts_with(scratch.path().join("flare/loopback"))
     );
     let key = state.path().file_name().unwrap().to_str().unwrap();
     assert_eq!(key.len(), 32);
@@ -287,7 +287,7 @@ fn a_newer_version_is_refused_with_the_upgrade_message() {
         matches!(error, StateError::Newer { version: 2, .. }),
         "{error:?}"
     );
-    assert!(error.to_string().contains("upgrade hangar"), "{error}");
+    assert!(error.to_string().contains("upgrade flare"), "{error}");
 }
 
 #[test]

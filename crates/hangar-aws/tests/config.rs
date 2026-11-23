@@ -15,10 +15,10 @@ fn config(region: &str, table: &str, bucket: &str) -> String {
 
 #[test]
 fn a_config_with_three_valid_names_is_admitted() {
-    let parsed = parse(&config("eu-west-1", "hangar-shares", "hangar-files")).unwrap();
+    let parsed = parse(&config("eu-west-1", "flare-shares", "flare-files")).unwrap();
     assert_eq!(parsed.region().as_str(), "eu-west-1");
-    assert_eq!(parsed.table().as_str(), "hangar-shares");
-    assert_eq!(parsed.bucket().as_str(), "hangar-files");
+    assert_eq!(parsed.table().as_str(), "flare-shares");
+    assert_eq!(parsed.bucket().as_str(), "flare-files");
 }
 
 #[test]
@@ -51,13 +51,13 @@ fn names_past_their_length_limits_are_refused() {
 #[test]
 fn malformed_names_are_refused_without_repeating_them() {
     let cases = [
-        ("Eu-West-1", "hangar-shares", "hangar-files"),
-        ("eu west 1", "hangar-shares", "hangar-files"),
-        ("eu-west-1", "hangar/shares", "hangar-files"),
-        ("eu-west-1", "hangar-shares", "Hangar-Files"),
-        ("eu-west-1", "hangar-shares", "-hangar-files"),
-        ("eu-west-1", "hangar-shares", "hangar-files-"),
-        ("eu-west-1", "hangar-shares", "hangar_files"),
+        ("Eu-West-1", "flare-shares", "flare-files"),
+        ("eu west 1", "flare-shares", "flare-files"),
+        ("eu-west-1", "flare/shares", "flare-files"),
+        ("eu-west-1", "flare-shares", "Flare-Files"),
+        ("eu-west-1", "flare-shares", "-flare-files"),
+        ("eu-west-1", "flare-shares", "flare-files-"),
+        ("eu-west-1", "flare-shares", "flare_files"),
     ];
     for (region, table, bucket) in cases {
         let message = parse(&config(region, table, bucket)).unwrap_err();
@@ -81,8 +81,8 @@ fn a_credential_key_is_refused_with_a_message_that_names_the_provider_chain() {
     ] {
         let text = serde_json::json!({
             "region": "eu-west-1",
-            "table": "hangar-shares",
-            "bucket": "hangar-files",
+            "table": "flare-shares",
+            "bucket": "flare-files",
             key: "AKIASECRETVALUE1234",
         })
         .to_string();
@@ -96,8 +96,8 @@ fn a_credential_key_is_refused_with_a_message_that_names_the_provider_chain() {
 fn an_unknown_key_is_refused_without_repeating_its_value() {
     let text = serde_json::json!({
         "region": "eu-west-1",
-        "table": "hangar-shares",
-        "bucket": "hangar-files",
+        "table": "flare-shares",
+        "bucket": "flare-files",
         "endpoint": "https://example.org/private-value",
     })
     .to_string();
@@ -108,17 +108,17 @@ fn an_unknown_key_is_refused_without_repeating_its_value() {
 
 #[test]
 fn a_value_of_the_wrong_type_is_refused_without_repeating_it() {
-    let text = r#"{"region": 4242, "table": "hangar-shares", "bucket": "hangar-files"}"#;
+    let text = r#"{"region": 4242, "table": "flare-shares", "bucket": "flare-files"}"#;
     let message = parse(text).unwrap_err();
     assert!(!message.contains("4242"), "{message}");
-    let text = r#"{"region": "eu-west-1", "table": ["secret-list"], "bucket": "hangar-files"}"#;
+    let text = r#"{"region": "eu-west-1", "table": ["secret-list"], "bucket": "flare-files"}"#;
     let message = parse(text).unwrap_err();
     assert!(!message.contains("secret-list"), "{message}");
 }
 
 #[test]
 fn a_missing_key_is_named() {
-    let message = parse(r#"{"region": "eu-west-1", "table": "hangar-shares"}"#).unwrap_err();
+    let message = parse(r#"{"region": "eu-west-1", "table": "flare-shares"}"#).unwrap_err();
     assert!(message.contains("bucket"), "{message}");
 }
 

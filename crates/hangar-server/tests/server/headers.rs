@@ -5,7 +5,7 @@
 use crate::harness::{BINDING, PAGE, Reply, Server};
 use std::collections::BTreeSet;
 
-/// The threat model's policy for hangar's own documents.
+/// The threat model's policy for flare's own documents.
 pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 /// Asserts that `reply` carries the policy and the six other headers, once
@@ -115,7 +115,7 @@ const OPEN: [&str; 6] = [
     "/launch",
     "/launch/probe",
     "/auth/oidc/finish",
-    "/hangar/style.css",
+    "/flare/style.css",
 ];
 
 #[tokio::test]
@@ -150,7 +150,7 @@ async fn every_route_outside_the_open_list_answers_401_without_a_good_credential
         );
         let unknown_session = call
             .clone()
-            .cookie("hangar_session=no-such-session")
+            .cookie("flare_session=no-such-session")
             .send()
             .await;
         assert_eq!(
@@ -196,7 +196,7 @@ async fn a_wrong_host_is_refused_with_403_and_the_right_host_is_served() {
 async fn the_launch_host_does_not_serve_the_sign_in_hosts_paths() {
     let server = Server::start().await;
     for path in [
-        "/auth/oidc/start?return_to=/hangar/",
+        "/auth/oidc/start?return_to=/flare/",
         "/auth/oidc/callback?state=x",
     ] {
         assert_eq!(server.get(path).send().await.status, 404, "{path}");
@@ -257,7 +257,7 @@ async fn a_credentialed_cross_site_request_is_refused_unless_it_is_a_navigation(
         Some("websocket"),
         None,
     ] {
-        for path in ["/hangar/style.css", page.as_str()] {
+        for path in ["/flare/style.css", page.as_str()] {
             let mut call = server
                 .get(path)
                 .cookie(&cookie)
@@ -270,7 +270,7 @@ async fn a_credentialed_cross_site_request_is_refused_unless_it_is_a_navigation(
             assert_eq!(reply.code().as_deref(), Some("request::cross_site"));
         }
         let bearer = server
-            .get("/hangar/style.css")
+            .get("/flare/style.css")
             .bearer(&server.token())
             .header("Sec-Fetch-Site", "cross-site")
             .header("Sec-Fetch-Mode", mode.unwrap_or("no-cors"))
@@ -282,7 +282,7 @@ async fn a_credentialed_cross_site_request_is_refused_unless_it_is_a_navigation(
         );
     }
     let no_credential = server
-        .get("/hangar/style.css")
+        .get("/flare/style.css")
         .header("Sec-Fetch-Site", "cross-site")
         .header("Sec-Fetch-Mode", "no-cors")
         .send()

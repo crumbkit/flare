@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "hangar/publish/v1",
+  "title": "flare/publish/v1",
   "description": "The page that was published, with its new version.",
   "type": "object",
   "properties": {
@@ -13,7 +13,7 @@
     },
     "schema": {
       "description": "The id of this document.",
-      "const": "hangar/publish/v1"
+      "const": "flare/publish/v1"
     }
   },
   "required": [
@@ -22,7 +22,7 @@
   ],
   "$defs": {
     "Published": {
-      "description": "What `hangar publish` published, or would publish.",
+      "description": "What `flare publish` published, or would publish.",
       "type": "object",
       "properties": {
         "format": {

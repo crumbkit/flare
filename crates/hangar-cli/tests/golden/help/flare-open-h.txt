@@ -1,6 +1,6 @@
 Open the running server's index, a page or a binding in a browser
 
-Usage: hangar open [OPTIONS] [NAME]
+Usage: flare open [OPTIONS] [NAME]
 
 Arguments:
   [NAME]  The page or binding to open; without it, the index
@@ -10,9 +10,9 @@ Options:
   -h, --help         Print help (see more with '--help')
 
 Examples:
-  hangar open
-  hangar open kitchen
+  flare open
+  flare open kitchen
 
 Effects: additive, not idempotent, closed-world.
-Global flags: --json, --fields <FIELD>, --full, --no-input. `hangar open --help` describes them.
-Next: hangar open --help explains each column.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare open --help` describes them.
+Next: flare open --help explains each column.

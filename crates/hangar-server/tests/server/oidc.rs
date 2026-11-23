@@ -33,7 +33,7 @@ pub(crate) async fn start(server: &Server) -> (Reply, Url, String) {
         .await;
     assert_eq!(reply.status, 303, "{}", reply.body);
     let location = Url::parse(reply.header("location").unwrap()).unwrap();
-    let kept = cookie_pair(&reply, "hangar_oidc_state").expect("a kept-state cookie");
+    let kept = cookie_pair(&reply, "flare_oidc_state").expect("a kept-state cookie");
     (reply, location, kept)
 }
 
@@ -68,7 +68,7 @@ pub(crate) async fn sign_in(server: &Server, fake: &Fake) -> String {
     assert_eq!(reply.status, 303, "{}", reply.body);
     let finish = server.get(&finish_path(server, &reply)).send().await;
     assert_eq!(finish.status, 200, "{}", finish.body);
-    cookie_pair(&finish, "hangar_session").expect("a session cookie")
+    cookie_pair(&finish, "flare_session").expect("a session cookie")
 }
 
 #[tokio::test]
@@ -94,11 +94,11 @@ async fn the_callback_sets_no_session_cookie_and_clears_the_kept_state() {
     let (_, location, kept) = start(&server).await;
     let reply = callback(&server, &fake.approve(&location), &kept).await;
     assert_eq!(reply.status, 303, "{}", reply.body);
-    assert!(cookie_pair(&reply, "hangar_session").is_none());
+    assert!(cookie_pair(&reply, "flare_session").is_none());
     let cleared = reply
         .all("set-cookie")
         .into_iter()
-        .find(|cookie| cookie.starts_with("hangar_oidc_state="))
+        .find(|cookie| cookie.starts_with("flare_oidc_state="))
         .expect("the kept state is cleared");
     assert!(cleared.contains("Max-Age=0"));
     finish_path(&server, &reply);
@@ -126,7 +126,7 @@ async fn the_finish_route_sets_the_session_cookie_on_the_launch_host_and_the_ses
             .body
             .contains(&format!("content=\"0;url=/pages/{HOME}\""))
     );
-    let session = cookie_pair(&finish, "hangar_session").unwrap();
+    let session = cookie_pair(&finish, "flare_session").unwrap();
     let page = server
         .get(&format!("/pages/{HOME}"))
         .cookie(&session)
@@ -252,12 +252,12 @@ async fn a_temporary_refusal_answers_503_and_a_wrong_state_answers_403() {
         (reply.status, reply.code().as_deref()),
         (503, Some("oidc::unavailable"))
     );
-    assert!(cookie_pair(&reply, "hangar_session").is_none());
+    assert!(cookie_pair(&reply, "flare_session").is_none());
     let (_, location, _) = start(&server).await;
     let wrong = callback(
         &server,
         &fake.approve(&location),
-        "hangar_oidc_state=not-it",
+        "flare_oidc_state=not-it",
     )
     .await;
     assert_eq!(
@@ -271,7 +271,7 @@ async fn the_sign_in_host_serves_only_its_two_paths_and_checks_its_host() {
     let (server, _fake, _clock) = oidc_server().await;
     for path in [
         "/up",
-        "/hangar/",
+        "/flare/",
         "/launch/probe?nonce=x",
         "/auth/oidc/finish?code=x",
     ] {
@@ -279,7 +279,7 @@ async fn the_sign_in_host_serves_only_its_two_paths_and_checks_its_host() {
         assert_eq!(reply.status, 404, "{path} on localhost");
     }
     let wrong_host = server
-        .oidc_request("GET", "/auth/oidc/start?return_to=/hangar/")
+        .oidc_request("GET", "/auth/oidc/start?return_to=/flare/")
         .host(&server.authority)
         .send()
         .await;

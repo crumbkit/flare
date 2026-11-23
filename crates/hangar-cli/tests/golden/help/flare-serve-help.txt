@@ -1,13 +1,13 @@
 Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
 
-Usage: hangar serve [OPTIONS]
+Usage: flare serve [OPTIONS]
 
 Options:
       --board <DIR>
           The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
 
       --board-program <PATH>
-          The board program; without it, HANGAR_BOARD, then the first board on PATH
+          The board program; without it, FLARE_BOARD, then the first board on PATH
 
       --port <N>
           The launch host's port on 127.0.0.1; 0 picks a free port. A hosted server listens on hosted.listen instead
@@ -15,7 +15,7 @@ Options:
           [default: 0]
 
       --config <PATH>
-          The config file, whose hosted section serves the pages behind a TLS proxy; without it, $XDG_CONFIG_HOME/hangar/config.json or ~/.config/hangar/config.json
+          The config file, whose hosted section serves the pages behind a TLS proxy; without it, $XDG_CONFIG_HOME/flare/config.json or ~/.config/flare/config.json
 
       --idle-exit <DURATION>
           Stop after this long without a request, such as 30m or 8h. A hosted server never stops by itself
@@ -38,10 +38,10 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  hangar serve
+  flare serve
           Serve the board in the current directory
 
-  hangar serve --board ../notes --idle-exit 1h
+  flare serve --board ../notes --idle-exit 1h
           Serve another board and stop after an hour without a request
 
 Columns:

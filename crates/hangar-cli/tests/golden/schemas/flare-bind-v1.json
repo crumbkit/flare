@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "hangar/bind/v1",
+  "title": "flare/bind/v1",
   "description": "The binding that was saved and the page version it is pinned to.",
   "type": "object",
   "properties": {
@@ -13,7 +13,7 @@
     },
     "schema": {
       "description": "The id of this document.",
-      "const": "hangar/bind/v1"
+      "const": "flare/bind/v1"
     }
   },
   "required": [
@@ -22,7 +22,7 @@
   ],
   "$defs": {
     "Bound": {
-      "description": "What `hangar bind` saved, or would save.",
+      "description": "What `flare bind` saved, or would save.",
       "type": "object",
       "properties": {
         "name": {

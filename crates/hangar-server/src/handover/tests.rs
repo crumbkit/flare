@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 fn handed() -> Handed {
     Handed {
         session: Credential::Session(SecretString::from("a-session-for-the-test")),
-        return_to: "/hangar/".to_owned(),
+        return_to: "/flare/".to_owned(),
         lasts: Duration::from_secs(60 * 60),
     }
 }

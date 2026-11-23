@@ -221,7 +221,7 @@ fn the_cookie_is_host_only_http_only_and_strict() {
     let signed_in = loopback.sign_in(&code, now).unwrap();
     let cookie = signed_in.set_cookie().expose_secret().to_owned();
     let value = cookie
-        .strip_prefix("hangar_session=")
+        .strip_prefix("flare_session=")
         .and_then(|rest| rest.strip_suffix("; Path=/; HttpOnly; SameSite=Strict"))
         .unwrap();
     assert_eq!(value.len(), 64);

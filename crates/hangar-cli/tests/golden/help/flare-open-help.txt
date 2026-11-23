@@ -1,6 +1,6 @@
 Open the running server's index, a page or a binding in a browser
 
-Usage: hangar open [OPTIONS] [NAME]
+Usage: flare open [OPTIONS] [NAME]
 
 Arguments:
   [NAME]
@@ -26,10 +26,10 @@ Options:
           Print help (see a summary with '-h')
 
 Examples:
-  hangar open
+  flare open
           Open the index of the running server
 
-  hangar open kitchen
+  flare open kitchen
           Open the binding or page named kitchen
 
 Columns:

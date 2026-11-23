@@ -59,7 +59,7 @@ fn the_form_posts_to_the_targets_action() {
     let (name, attributes) = &start_tags(&html)[0];
     assert_eq!(name, "form");
     assert_eq!(attribute(attributes, "method"), Some("post"));
-    assert_eq!(attribute(attributes, "action"), Some("/b/hangar-plan/edit"));
+    assert_eq!(attribute(attributes, "action"), Some("/b/flare-plan/edit"));
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn the_hidden_inputs_carry_the_token_blob_binding_slot_and_base() {
     };
     assert_eq!(hidden("token"), "tok-1");
     assert_eq!(hidden("based_on"), "1".repeat(40));
-    assert_eq!(hidden("through"), "hangar-plan");
+    assert_eq!(hidden("through"), "flare-plan");
     assert_eq!(hidden("slot"), "task");
     let base: serde_json::Value = serde_json::from_str(&hidden("base")).unwrap();
     assert_eq!(

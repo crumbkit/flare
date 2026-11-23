@@ -1,5 +1,5 @@
 //! Runs every function of hangar-core's file suite against `S3FileStore`
-//! on the S3 stand-in, and checks how the store reads objects that hangar
+//! on the S3 stand-in, and checks how the store reads objects that flare
 //! did not write.
 #![cfg(test)]
 
@@ -44,7 +44,7 @@ async fn concurrent_puts_of_one_id_give_one_id_taken() {
         .unwrap();
 }
 
-/// Writes an object as someone other than hangar would, at the key of
+/// Writes an object as someone other than flare would, at the key of
 /// file `id` under `share`.
 async fn foreign_object(bucket: &str, share: &ShareId, id: &FileId, body: Vec<u8>, media: &str) {
     s3_client()
@@ -59,7 +59,7 @@ async fn foreign_object(bucket: &str, share: &ShareId, id: &FileId, body: Vec<u8
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_object_with_a_media_type_hangar_refuses_answers_unavailable() {
+async fn an_object_with_a_media_type_flare_refuses_answers_unavailable() {
     let config = fresh_config().await;
     let stores = Stores::connect_at(&config, &endpoints());
     let (share, id) = (ShareId::from_random([1; 16]), FileId::from_random([2; 16]));

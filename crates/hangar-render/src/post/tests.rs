@@ -41,7 +41,7 @@ fn a_post_of_the_form_as_drawn_reads_back_its_claims() {
     let post = FormPost::from_pairs(drawn()).unwrap();
     assert_eq!(post.token().expose_secret(), "tok-1");
     assert_eq!(post.based_on().as_str(), "1".repeat(40));
-    assert_eq!(post.through().as_str(), "hangar-plan");
+    assert_eq!(post.through().as_str(), "flare-plan");
     assert_eq!(post.slot(), &slot_name("task"));
     assert!(edit(drawn()).is_ok());
 }

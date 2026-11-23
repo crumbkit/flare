@@ -1,8 +1,8 @@
 //! The local stand-ins that the tests run against, and a new table and
 //! bucket for each test.
 //!
-//! The tests read the stand-ins' URLs from `HANGAR_TEST_DYNAMODB` and
-//! `HANGAR_TEST_S3`, and fail naming the variable when one is unset. Each
+//! The tests read the stand-ins' URLs from `FLARE_TEST_DYNAMODB` and
+//! `FLARE_TEST_S3`, and fail naming the variable when one is unset. Each
 //! call to [`fresh`] creates a table and a bucket with random names, so
 //! tests that run together share nothing. The table takes its key schema
 //! and attribute definitions from the CloudFormation template, so the tests
@@ -19,12 +19,12 @@ use hangar_core::contract::RunTogether;
 use std::future::Future;
 
 /// The made-up access key id that the stand-ins accept.
-pub const ACCESS_KEY_ID: &str = "hangartest";
+pub const ACCESS_KEY_ID: &str = "flaretest";
 /// The made-up secret key that the stand-ins accept.
-pub const SECRET_ACCESS_KEY: &str = "hangartestsecret";
+pub const SECRET_ACCESS_KEY: &str = "flaretestsecret";
 
 /// The CloudFormation template that defines the table and the bucket.
-pub const TEMPLATE: &str = include_str!("../../../../infra/hangar-stores.template.json");
+pub const TEMPLATE: &str = include_str!("../../../../infra/flare-stores.template.json");
 
 /// Reads one stand-in's URL from the environment.
 fn url(variable: &str) -> String {
@@ -45,8 +45,8 @@ fn url(variable: &str) -> String {
 #[must_use]
 pub fn endpoints() -> Endpoints {
     Endpoints::new(
-        EndpointUrl::try_from(url("HANGAR_TEST_DYNAMODB").as_str()).unwrap(),
-        EndpointUrl::try_from(url("HANGAR_TEST_S3").as_str()).unwrap(),
+        EndpointUrl::try_from(url("FLARE_TEST_DYNAMODB").as_str()).unwrap(),
+        EndpointUrl::try_from(url("FLARE_TEST_S3").as_str()).unwrap(),
     )
 }
 
@@ -70,13 +70,13 @@ pub fn dynamodb_client() -> aws_sdk_dynamodb::Client {
     let config = aws_sdk_dynamodb::Config::builder()
         .behavior_version(aws_sdk_dynamodb::config::BehaviorVersion::latest())
         .region(aws_sdk_dynamodb::config::Region::new("us-east-1"))
-        .endpoint_url(url("HANGAR_TEST_DYNAMODB"))
+        .endpoint_url(url("FLARE_TEST_DYNAMODB"))
         .credentials_provider(aws_sdk_dynamodb::config::Credentials::new(
             ACCESS_KEY_ID,
             SECRET_ACCESS_KEY,
             None,
             None,
-            "hangar-tests",
+            "flare-tests",
         ))
         .build();
     aws_sdk_dynamodb::Client::from_conf(config)
@@ -93,14 +93,14 @@ pub fn s3_client() -> aws_sdk_s3::Client {
     let config = aws_sdk_s3::Config::builder()
         .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
         .region(aws_sdk_s3::config::Region::new("us-east-1"))
-        .endpoint_url(url("HANGAR_TEST_S3"))
+        .endpoint_url(url("FLARE_TEST_S3"))
         .force_path_style(true)
         .credentials_provider(aws_sdk_s3::config::Credentials::new(
             ACCESS_KEY_ID,
             SECRET_ACCESS_KEY,
             None,
             None,
-            "hangar-tests",
+            "flare-tests",
         ))
         .build();
     aws_sdk_s3::Client::from_conf(config)
@@ -180,8 +180,8 @@ pub async fn fresh_config() -> HostedConfig {
 pub fn unmade_config() -> HostedConfig {
     HostedConfig::new(
         Region::try_from("us-east-1").unwrap(),
-        TableName::try_from(random_name("hangar-test").as_str()).unwrap(),
-        BucketName::try_from(random_name("hangar-test").as_str()).unwrap(),
+        TableName::try_from(random_name("flare-test").as_str()).unwrap(),
+        BucketName::try_from(random_name("flare-test").as_str()).unwrap(),
     )
 }
 
