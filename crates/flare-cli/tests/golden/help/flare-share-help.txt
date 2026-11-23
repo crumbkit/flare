@@ -1,4 +1,4 @@
-Share a Markdown file with named people, or as a response to flares
+Share a Markdown file with people, teams or everyone, or as a response to flares
 
 Usage: flare share [OPTIONS] <FILE>
 
@@ -10,8 +10,8 @@ Options:
       --title <TITLE>
           The share's title; without it, the file's name without its ending
 
-      --with <ADDRESS>
-          The addresses to grant Reader, repeated or separated by commas
+      --with <WHO>
+          Who to grant Reader, repeated or separated by commas: an address, team:<name> for a team you belong to, or everyone
 
       --re <ID>
           The flares this share responds to, repeated or separated by commas; their owners become Readers of it
@@ -48,7 +48,7 @@ Columns:
   id           The share's id.
   title        The share's title.
   version      The share's latest version.
-  granted      The addresses that now hold a role on it; none after `--update`, which does not report them.
+  granted      The addresses, `team:<name>` and `everyone` that now hold a role on it; none after `--update`, which does not report them.
   responds_to  The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.

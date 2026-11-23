@@ -1,4 +1,4 @@
-Grant an existing share to more people
+Grant a share to more people, teams or everyone
 
 Usage: flare grant [OPTIONS] <ID>
 
@@ -6,12 +6,15 @@ Arguments:
   <ID>  The share to grant
 
 Options:
-      --with <ADDRESS>  The addresses to grant Reader, repeated or separated by commas
-      --re <ID>         The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it
-  -h, --help            Print help (see more with '--help')
+      --with <WHO>  Who to grant Reader, repeated or separated by commas: an address, team:<name> for a team you belong to, or everyone
+      --everyone    Grant Reader to everyone signed in whom the server's sign-in rule covers; only the share's owner may
+      --re <ID>     The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it
+  -h, --help        Print help (see more with '--help')
 
 Examples:
   flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+  flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with team:design
+  flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
 
 Effects: additive, not idempotent, closed-world.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare grant --help` describes them.

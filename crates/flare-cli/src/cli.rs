@@ -1,10 +1,19 @@
 //! `flare`'s command-line grammar and tool record.
 
 mod sharing;
+mod teams;
 
-pub(crate) use sharing::{ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs};
+pub(crate) use sharing::{
+    ActivityArgs, GrantArgs, GrantsArgs, LoginArgs, LogoutArgs, RevokeArgs, ShareArgs, SharesArgs,
+};
+pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
-use crate::documents::{ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, OPEN, PUBLISH, SERVE, SHARE, SHARES};
+use crate::documents::teams::{
+    TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
+};
+use crate::documents::{
+    ACTIVITY, BIND, GRANT, GRANTS, LOGIN, LOGOUT, OPEN, PUBLISH, REVOKE, SERVE, SHARE, SHARES,
+};
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
 use crumbkit::help::{Effects, Example, Help, Leaf};
@@ -45,10 +54,20 @@ pub(crate) enum Verb {
     Login(LoginArgs),
     /// Revoke this computer's token for the flare server and delete it
     Logout(LogoutArgs),
-    /// Share a Markdown file with named people, or as a response to flares
+    /// Share a Markdown file with people, teams or everyone, or as a response to flares
     Share(ShareArgs),
-    /// Grant an existing share to more people
+    /// Grant a share to more people, teams or everyone
     Grant(GrantArgs),
+    /// End grants on a share
+    Revoke(RevokeArgs),
+    /// List a share's grants
+    Grants(GrantsArgs),
+    /// Manage the teams that shares are granted to
+    Teams {
+        /// What to do with teams.
+        #[command(subcommand)]
+        command: TeamsVerb,
+    },
     /// List your shares or the shares granted to you
     ///
     /// The server lists at most 500 shares in one answer and has no cursor
@@ -175,7 +194,7 @@ pub const TOOL: Tool = Tool::new()
             .root_verbs(
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "grant",
-                    "shares", "activity",
+                    "revoke", "grants", "shares", "activity",
                 ],
                 ROOT,
             )
@@ -249,12 +268,75 @@ pub const TOOL: Tool = Tool::new()
         .effects(Effects::additive())
         .document(SHARE),
     Leaf::new(&["grant"])
-        .examples(&[Example::new(
-            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
-            "Grant a share to one more person",
-        )])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
+                "Grant a share to one more person",
+            ),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "team:design"],
+                "Grant a share to the members of a team you belong to",
+            ),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
+                "Open a share you own to everyone signed in",
+            ),
+        ])
         .effects(Effects::additive())
         .document(GRANT),
+    Leaf::new(&["revoke"])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
+                "End one person's grant on a share",
+            ),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
+                "Close a share you own to everyone signed in",
+            ),
+        ])
+        .effects(Effects::destructive())
+        .document(REVOKE),
+    Leaf::new(&["grants"])
+        .examples(&[Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+            "List the people, teams and everyone grants of a share",
+        )])
+        .effects(Effects::read_only())
+        .document(GRANTS),
+    Leaf::new(&["teams", "create"])
+        .examples(&[Example::new(&["design"], "Create the team design")])
+        .effects(Effects::additive())
+        .document(TEAMS_CREATE),
+    Leaf::new(&["teams", "add"])
+        .examples(&[Example::new(
+            &["design", "--with", "mei@example.org,jo@example.org"],
+            "Add two people to the team design",
+        )])
+        .effects(Effects::additive())
+        .document(TEAMS_ADD),
+    Leaf::new(&["teams", "remove"])
+        .examples(&[Example::new(
+            &["design", "--with", "jo@example.org"],
+            "Remove one person from the team design",
+        )])
+        .effects(Effects::destructive())
+        .document(TEAMS_REMOVE),
+    Leaf::new(&["teams", "list"])
+        .examples(&[Example::new(&[], "List the teams you belong to")])
+        .effects(Effects::read_only())
+        .document(TEAMS_LIST),
+    Leaf::new(&["teams", "show"])
+        .examples(&[Example::new(&["design"], "Show the team design and its members")])
+        .effects(Effects::read_only())
+        .document(TEAMS_SHOW),
+    Leaf::new(&["teams", "delete"])
+        .examples(&[Example::new(
+            &["design", "--yes"],
+            "Delete the team design without a question",
+        )])
+        .effects(Effects::destructive())
+        .document(TEAMS_DELETE),
     Leaf::new(&["shares"])
         .examples(&[
             Example::new(&[], "List your shares, newest first"),

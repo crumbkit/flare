@@ -26,10 +26,11 @@ use flare_auth_oidc::{
     OidcConfig,
 };
 use flare_aws::{
-    DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
+    DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
+    Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{Flares, NamedRecipients};
+use flare_core::{FlareTeams, Flares, NamedRecipients};
 use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Sharing, Site, Stopped};
 use std::path::Path;
 use std::sync::OnceLock;
@@ -225,6 +226,7 @@ type HostedSharing = Sharing<
     DynamoResponseStore,
     DynamoTokenStore,
     NamedRecipients,
+    FlareTeams<DynamoTeamStore>,
 >;
 
 /// The share API on the configured table and bucket, which it checks
@@ -242,7 +244,8 @@ async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing,
         stores.grants,
         stores.responses,
         config.creators,
-    );
+    )
+    .with_teams(FlareTeams::new(stores.teams));
     Ok(Sharing::new(
         flares,
         stores.tokens,

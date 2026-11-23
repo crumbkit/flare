@@ -28,6 +28,7 @@ pub mod page_store;
 pub mod record_store;
 pub mod response_store;
 pub mod share_store;
+pub mod team_store;
 pub mod token_store;
 
 pub use executor::{RunTogether, Threads, block_on};
@@ -144,6 +145,15 @@ clauses! {
     AFlaresListHoldsOnlyItsLinks => "a flare's list holds only links to that flare",
     AResponsesListNamesEveryFlare => "a response's list names every flare it links to",
     TheLimitBoundsAListOldestFirst => "a flare's list holds at most the limit, oldest first",
+    ACreatedTeamReadsBack => "a created team reads back active, with its owner as its only member",
+    AUsedTeamNameIsTaken => "a team name that a team has ever had is taken, and a refused create writes nothing",
+    MemberPairsAgree => "after adds and removes, a team's member list and each person's team list agree",
+    APresentMemberIsNotAddedTwice => "adding a present member answers false and writes nothing",
+    AnAbsentMemberIsNotRemoved => "removing an absent member answers false and writes nothing",
+    AFullTeamRefusesAMember => "a team with the member limit refuses another member and writes nothing",
+    AnInactiveTeamRefusesAMember => "a deleted or missing team refuses a member and writes nothing",
+    ADeletedTeamKeepsItsOwner => "a deleted team reads back deleted with its owner, and marking it again changes nothing",
+    AGroupGrantKeepsItsAudience => "a group grant reads back with the audience it was written with, in the share's list and in the group's list",
     FixtureIsUnusable => "the fixture holds a value that its type refuses",
     TheStoreFailedUnexpectedly => "the store returned an error that no clause expects",
 }

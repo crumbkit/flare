@@ -14,6 +14,8 @@
 //! [`Flares`] wraps it with the creators rule and the response links that
 //! `--re` writes, and reads the responses to a flare since a cursor.
 //! [`TokenStore`] keeps the digests of CLI tokens and login codes.
+//! [`Teams`] reads the teams a share can be granted to, and [`FlareTeams`]
+//! keeps them in a [`TeamStore`].
 
 mod auth;
 mod binding;
@@ -32,6 +34,7 @@ mod response;
 mod share;
 mod sharing;
 mod store;
+mod teams;
 mod time;
 mod token;
 
@@ -42,7 +45,7 @@ pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
     ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
-    MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients,
+    MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients, Revoked,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
@@ -56,11 +59,15 @@ pub use share::{
     DocumentText, Listing, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewShare, NewVersion,
     Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion, SharedVersion,
 };
-pub use sharing::{Opened, ShareError, SharedWithMe, Shares, Standing};
+pub use sharing::{ListedGrant, Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
     FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, MoveError, PageStore,
     PageStoreError, ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError,
     ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
+};
+pub use teams::{
+    Admission, Audience, FlareTeams, Group, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED,
+    MailDomain, NoTeams, Team, TeamName, TeamState, TeamStore, TeamStoreError, Teams, TeamsError,
 };
 pub use time::Timestamp;
 pub use token::{

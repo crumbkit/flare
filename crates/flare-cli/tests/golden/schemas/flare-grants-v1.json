@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/grants/v1",
+  "description": "The grants of a share to people, teams and everyone, oldest first.",
+  "type": "object",
+  "properties": {
+    "cut": {
+      "description": "Present when the output budget cut the result short, so data holds only its first rows.",
+      "type": "object",
+      "properties": {
+        "budget": {
+          "description": "The most bytes that the run printed on standard output.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "description": "The over-budget code.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "budget"
+      ]
+    },
+    "data": {
+      "description": "The rows of the page, up to the limit.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/GrantRow"
+      }
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "next": {
+      "description": "The next steps, in the order the text prints them. It is absent when there are none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "commands": {
+            "description": "The commands that carry out the step, in order.",
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "call": {
+                      "description": "A command line of this tool.",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "call"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "run": {
+                      "description": "A command line of another program.",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "run"
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "description": "The sentence or phrase that the text prints for the step.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "commands"
+        ]
+      }
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/grants/v1"
+    },
+    "total": {
+      "description": "The number of rows that matched, of which data holds one page. It is absent when the tool did not count the rows.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "truncated": {
+      "description": "True when the document leaves out rows that matched, because of the limit or the output budget, and false when data holds every row.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "data",
+    "truncated"
+  ],
+  "$defs": {
+    "GrantRow": {
+      "description": "One grant in `flare grants`.",
+      "type": "object",
+      "properties": {
+        "audience": {
+          "description": "For an everyone grant, the mail domain it opens to, or `admitted` for the server's email list.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created": {
+          "description": "When the grant was first written, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "granted_by": {
+          "description": "Who wrote the grant's current role.",
+          "type": "string"
+        },
+        "grantee": {
+          "description": "The person's address, `team:<name>` or `everyone`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Who the grant is to: `person`, `team` or `everyone`.",
+          "type": "string"
+        },
+        "role": {
+          "description": "The grant's role: `admin` or `reader`.",
+          "type": "string"
+        },
+        "state": {
+          "description": "`active`, or `dormant` for a grant to a deleted team, which opens nothing until the share's owner revokes it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grantee",
+        "kind",
+        "role",
+        "state"
+      ]
+    }
+  }
+}

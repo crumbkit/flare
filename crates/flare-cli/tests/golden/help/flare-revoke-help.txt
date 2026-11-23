@@ -1,0 +1,45 @@
+End grants on a share
+
+Usage: flare revoke [OPTIONS] <--with <WHO>|--everyone> <ID>
+
+Arguments:
+  <ID>
+          The share whose grants end
+
+Options:
+      --with <WHO>
+          Whose grant ends, repeated or separated by commas: an address, team:<name> or everyone
+
+      --everyone
+          End the grant to everyone signed in; only the share's owner may
+
+      --yes
+          Proceed without asking for confirmation
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+          End one person's grant on a share
+
+  flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+          Close a share you own to everyone signed in
+
+Columns:
+  id       The share's id.
+  revoked  The addresses, `team:<name>` and `everyone` whose grant ended; one that held no grant is left out.
+
+Effects: destructive, not idempotent, closed-world.

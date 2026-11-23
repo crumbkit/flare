@@ -12,6 +12,10 @@ use flare_core::{
 };
 use std::collections::HashMap;
 
+mod audience;
+
+use audience::{read_audience, with_audience};
+
 /// One item as DynamoDB holds it.
 pub(crate) type Item = HashMap<String, AttributeValue>;
 
@@ -45,6 +49,10 @@ pub(crate) mod attr {
     pub(crate) const FLARE: &str = "flare";
     pub(crate) const VERSION: &str = "version";
     pub(crate) const POSITION: &str = "position";
+    /// The audience of an everyone grant, on its grant item and its entry.
+    pub(crate) const AUDIENCE: &str = "audience";
+    /// A team's state, `active` or `deleted`.
+    pub(crate) const STATE: &str = "state";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.
@@ -61,6 +69,8 @@ pub(crate) enum ItemKind {
     LabelSlot,
     Link,
     Sequence,
+    Team,
+    Member,
 }
 
 impl ItemKind {
@@ -78,6 +88,8 @@ impl ItemKind {
             Self::LabelSlot => "token label",
             Self::Link => "response link",
             Self::Sequence => "response sequence",
+            Self::Team => "team",
+            Self::Member => "team member",
         }
     }
 }
@@ -314,7 +326,7 @@ pub(crate) fn owner_entry_from(item: &Item, owner: &PrincipalId) -> Result<Share
 
 /// A grant's item, with its `rev`.
 pub(crate) fn grant_item(grant: &Grant, rev: &Rev) -> Item {
-    keyed(
+    let item = keyed(
         &Key::grant(grant.share(), grant.grantee()),
         [
             (attr::ROLE, text(role_name(grant.role()))),
@@ -322,7 +334,8 @@ pub(crate) fn grant_item(grant: &Grant, rev: &Rev) -> Item {
             (attr::CREATED, number(grant.created().as_secs())),
             (attr::REV, text(rev.as_str())),
         ],
-    )
+    );
+    with_audience(item, grant)
 }
 
 /// The grant on share `id` that a grant item holds, with its `rev`.
@@ -335,21 +348,23 @@ pub(crate) fn grant_from(item: &Item, id: &ShareId) -> Result<Held, Malformed> {
         read_role(item, kind)?,
         read_principal(item, attr::GRANTED_BY, kind)?,
         read_time(item, kind)?,
-    );
+    )
+    .with_audience(read_audience(item, kind)?);
     let rev = Rev(read_text(item, attr::REV, kind)?.to_owned());
     Ok(Held { grant, rev })
 }
 
 /// A grant's entry in its grantee's list.
 pub(crate) fn grantee_entry_item(grant: &Grant) -> Item {
-    keyed(
+    let item = keyed(
         &Key::grantee_entry(grant.grantee(), grant.created(), grant.share()),
         [
             (attr::ROLE, text(role_name(grant.role()))),
             (attr::GRANTED_BY, text(grant.granted_by().as_str())),
             (attr::CREATED, number(grant.created().as_secs())),
         ],
-    )
+    );
+    with_audience(item, grant)
 }
 
 /// The grant that an entry in `grantee`'s list holds.
@@ -362,7 +377,8 @@ pub(crate) fn grantee_entry_from(item: &Item, grantee: &PrincipalId) -> Result<G
         read_role(item, kind)?,
         read_principal(item, attr::GRANTED_BY, kind)?,
         created,
-    ))
+    )
+    .with_audience(read_audience(item, kind)?))
 }
 
 /// The `rev` in a grant item, or `None` when it has none.

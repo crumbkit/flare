@@ -114,7 +114,7 @@ const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
 const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 23] = [
+pub(crate) static ROUTES: [Route; 31] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -243,6 +243,64 @@ pub(crate) static ROUTES: [Route; 23] = [
         "/api/grants/<name>",
         TOKEN,
         Handler::Api(ApiRoute::Grant),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/grants/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::ListGrants),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/grants/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::RevokeGrants),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/teams",
+        TOKEN,
+        Handler::Api(ApiRoute::CreateTeam),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/teams",
+        TOKEN,
+        Handler::Api(ApiRoute::ListTeams),
+        Sites::Hosted,
+    ),
+    // The members routes come before the team's own, whose pattern ends in
+    // <name> and would otherwise take `design/members` as the name.
+    route(
+        Method::POST,
+        "/api/teams/<name>/members",
+        TOKEN,
+        Handler::Api(ApiRoute::AddMembers),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/teams/<name>/members",
+        TOKEN,
+        Handler::Api(ApiRoute::RemoveMembers),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/teams/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::ShowTeam),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/teams/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::DeleteTeam),
         Sites::Hosted,
     ),
     route(

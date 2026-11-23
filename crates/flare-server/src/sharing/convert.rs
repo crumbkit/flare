@@ -3,10 +3,12 @@
 
 use super::Refusal;
 use flare_contract::{
-    ActivityItem as WireItem, ApiCode, FlareRef, Format, Role as WireRole, ShareSummary, utc,
+    ActivityItem as WireItem, ApiCode, FlareRef, Format, GrantEntry, GrantState, GranteeKind,
+    Role as WireRole, ShareSummary, TeamRole, TeamSummary, utc,
 };
 use flare_core::{
-    ActivityItem, FlareError, ParseError, RecipientError, Role, Share, ShareError, Standing,
+    ActivityItem, Email, FlareError, Group, ListedGrant, ParseError, RecipientError, Role, Share,
+    ShareError, Standing, Team, TeamsError,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -73,6 +75,8 @@ pub(super) fn share_error(error: ShareError) -> ApiCode {
         ShareError::TooManyShares => ApiCode::TooManyShares,
         ShareError::TooManyVersions => ApiCode::TooManyVersions,
         ShareError::NoVerifiedEmail => ApiCode::NoVerifiedEmail,
+        ShareError::TeamNotFound => ApiCode::TeamNotFound,
+        ShareError::EveryoneUnbounded => ApiCode::EveryoneUnbounded,
         _ => ApiCode::SharesUnavailable,
     }
 }
@@ -126,5 +130,60 @@ pub(super) fn content_error(error: &ParseError) -> Refusal {
             detail: Some(other.to_string()),
             share: None,
         },
+    }
+}
+
+/// The code of a teams service refusal.
+pub(super) fn teams_error(error: TeamsError) -> ApiCode {
+    match error {
+        TeamsError::NotFound => ApiCode::TeamNotFound,
+        TeamsError::Forbidden => ApiCode::TeamForbidden,
+        TeamsError::NotACreator => ApiCode::TeamNotACreator,
+        TeamsError::Taken => ApiCode::TeamNameTaken,
+        TeamsError::TooManyMembers => ApiCode::TooManyMembers,
+        TeamsError::TooManyOwned => ApiCode::TooManyTeamsOwned,
+        TeamsError::TooManyJoined => ApiCode::TooManyTeamsJoined,
+        TeamsError::ManagedElsewhere => ApiCode::TeamsManagedElsewhere,
+        _ => ApiCode::TeamsUnavailable,
+    }
+}
+
+/// The summary of `team` for the caller with the address `caller`.
+pub(super) fn team_summary(team: &Team, caller: &Email) -> TeamSummary {
+    TeamSummary {
+        name: team.name().as_str().to_owned(),
+        owner: team.owner().as_str().to_owned(),
+        role: if team.owner() == caller {
+            TeamRole::Owner
+        } else {
+            TeamRole::Member
+        },
+        members: u32::try_from(team.members()).unwrap_or(u32::MAX),
+        created: utc(team.created().as_secs()),
+    }
+}
+
+/// The contract's entry for one listed grant.
+pub(super) fn grant_entry(listed: &ListedGrant) -> GrantEntry {
+    let grant = &listed.grant;
+    let kind = match Group::of_grantee(grant.grantee()) {
+        Some(Group::Team(_)) => GranteeKind::Team,
+        Some(Group::Everyone) => GranteeKind::Everyone,
+        None => GranteeKind::Person,
+    };
+    GrantEntry {
+        grantee: grant.grantee().as_str().to_owned(),
+        kind,
+        role: role(grant.role()),
+        state: if listed.dormant {
+            GrantState::Dormant
+        } else {
+            GrantState::Active
+        },
+        granted_by: grant.granted_by().as_str().to_owned(),
+        created: utc(grant.created().as_secs()),
+        audience: grant
+            .audience()
+            .map(|audience| audience.as_str().to_owned()),
     }
 }

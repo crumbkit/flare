@@ -18,6 +18,7 @@ use crate::response::{MAX_PAGE, Position, ResponseLink};
 use crate::share::{Share, ShareId, ShareVersion};
 use crate::sharing::ShareError;
 use crate::store::{GrantStore, ResponseStore, ShareStore};
+use crate::teams::Teams;
 use crate::time::Timestamp;
 
 /// One response to a flare that the caller can open.
@@ -50,7 +51,7 @@ pub struct ActivityPage {
     pub more: bool,
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T> {
     /// The responses to `flares` above `after` that the caller can open,
     /// oldest first, at most `limit` of them (1 to [`MAX_PAGE`]).
     ///

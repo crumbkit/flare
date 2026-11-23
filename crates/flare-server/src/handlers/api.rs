@@ -36,6 +36,22 @@ pub(crate) enum ApiRoute {
     PublishVersion,
     /// `POST /api/grants/{id}`.
     Grant,
+    /// `GET /api/grants/{id}`.
+    ListGrants,
+    /// `DELETE /api/grants/{id}`.
+    RevokeGrants,
+    /// `POST /api/teams`.
+    CreateTeam,
+    /// `GET /api/teams`.
+    ListTeams,
+    /// `GET /api/teams/{name}`.
+    ShowTeam,
+    /// `DELETE /api/teams/{name}`.
+    DeleteTeam,
+    /// `POST /api/teams/{name}/members`.
+    AddMembers,
+    /// `DELETE /api/teams/{name}/members`.
+    RemoveMembers,
     /// `GET /api/activity`.
     Activity,
     /// `POST /api/tokens/exchange`.
@@ -226,6 +242,20 @@ where
         ApiRoute::Grant => body_of(ctx, body)
             .await?
             .map(|request| Call::Grant(name.to_owned(), request)),
+        ApiRoute::RevokeGrants => body_of(ctx, body)
+            .await?
+            .map(|request| Call::RevokeGrants(name.to_owned(), request)),
+        ApiRoute::CreateTeam => body_of(ctx, body).await?.map(Call::CreateTeam),
+        ApiRoute::AddMembers => body_of(ctx, body)
+            .await?
+            .map(|request| Call::AddMembers(name.to_owned(), request)),
+        ApiRoute::RemoveMembers => body_of(ctx, body)
+            .await?
+            .map(|request| Call::RemoveMembers(name.to_owned(), request)),
+        ApiRoute::ListGrants => Ok(Call::ListGrants(name.to_owned())),
+        ApiRoute::ListTeams => Ok(Call::ListTeams),
+        ApiRoute::ShowTeam => Ok(Call::ShowTeam(name.to_owned())),
+        ApiRoute::DeleteTeam => Ok(Call::DeleteTeam(name.to_owned())),
         ApiRoute::OpenShare => Ok(Call::Open(name.to_owned())),
         ApiRoute::RevokeToken => Ok(Call::Revoke(name.to_owned())),
         ApiRoute::ListShares => {
@@ -234,8 +264,18 @@ where
                 Some("with-me") => Ok(Scope::WithMe),
                 _ => Err(ApiCode::BadQuery.into()),
             };
+            let everyone: Result<bool, Refusal> = match ctx.query("everyone").as_deref() {
+                None | Some("false") => Ok(false),
+                Some("true") => Ok(true),
+                Some(_) => Err(ApiCode::BadQuery.into()),
+            };
             scope.and_then(|scope| {
-                number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List { scope, limit })
+                let everyone = everyone?;
+                number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List {
+                    scope,
+                    limit,
+                    everyone,
+                })
             })
         }
         ApiRoute::Activity => {

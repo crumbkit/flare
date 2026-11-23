@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/revoke/v1",
+  "description": "The share and the grants this command ended.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/RevokedOut"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/revoke/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "RevokedOut": {
+      "description": "The grants that `flare revoke` ended.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The share's id.",
+          "type": "string"
+        },
+        "revoked": {
+          "description": "The addresses, `team:<name>` and `everyone` whose grant ended; one that held no grant is left out.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "revoked"
+      ]
+    }
+  }
+}

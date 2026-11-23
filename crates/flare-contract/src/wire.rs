@@ -37,7 +37,8 @@ pub struct ShareRequest {
     /// The content, at most 256 KiB.
     pub content: String,
     /// Who to share with: each an identifier that the deployment resolves,
-    /// which by default is an email address.
+    /// which by default is an email address, or `team:<name>` for a team
+    /// the caller belongs to, or `everyone`.
     #[serde(default)]
     pub with: Vec<String>,
     /// The ids of the flares this share responds to.
@@ -57,18 +58,33 @@ pub struct VersionRequest {
     pub content: String,
 }
 
-/// `POST /api/shares/{id}/grants`: more people, or more flares the share
-/// responds to.
+/// `POST /api/grants/{id}`: more people, teams or everyone, or more flares
+/// the share responds to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GrantRequest {
-    /// Who to share with.
+    /// Who to share with: each a person's identifier, `team:<name>` for a
+    /// team the caller belongs to, or `everyone`.
     #[serde(default)]
     pub with: Vec<String>,
+    /// Grant Reader to everyone signed in whom the deployment's admit rule
+    /// covers. Only the share's owner may. A body without it grants no
+    /// everyone grant.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub everyone: bool,
     /// The ids of more flares the share responds to. Only its owner names
     /// them.
     #[serde(default)]
     pub re: Vec<String>,
+}
+
+/// Whether `value` is false, so a false flag is left out of a body.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes the field by reference"
+)]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// One share as a list or a reply shows it.
@@ -105,7 +121,8 @@ pub struct OpenedShare {
 pub struct Shared {
     /// The share.
     pub share: ShareSummary,
-    /// The addresses granted Reader by this request.
+    /// The addresses, `team:<name>` and `everyone` granted Reader by this
+    /// request.
     pub granted: Vec<String>,
     /// The flares the share responds to that this request named.
     pub responds_to: Vec<String>,

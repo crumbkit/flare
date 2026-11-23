@@ -107,6 +107,14 @@ The share API lets people share Markdown files with named people from the
   that is not listed is refused as not an email address. `names` without
   `stores` is refused, and a bad entry is refused naming `hosted.names`.
 - A person who is not a creator gets 403 `flare::shares::not_a_creator`.
+- A share granted to everyone signed in opens to the people the `admit`
+  rule admitted when the grant was made. Under a `domain` rule the grant
+  opens to signed-in addresses at that domain. Under an `emails` rule it
+  opens to every signed-in person while the rule stays `emails`. Under an
+  `anyone` rule the grant is refused with 409
+  `flare::grants::everyone_unbounded`, because it would open the share to
+  any Google account. [teams.md](teams.md) gives the life of teams and
+  group grants.
 
 Routes:
 
@@ -118,11 +126,19 @@ Routes:
 - `POST /api/shares` creates a share, with its grants and the flares it
   responds to.
 - `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
+  With `scope=with-me`, `everyone=true` adds the shares granted to everyone.
 - `GET /api/shares/<id>` reads a share.
 - `POST /api/shares/<id>/versions` publishes the next version of a share,
   from a `format` and `content`. Only the owner may, and the answer is the
   share summary with the new `version`.
-- `POST /api/grants/<id>` grants a share to more addresses.
+- `POST /api/grants/<id>` grants a share to more addresses, to teams as
+  `team:<name>`, or to everyone signed in with `everyone: true`.
+- `DELETE /api/grants/<id>` ends the grants it names.
+- `GET /api/grants/<id>` lists a share's grants, dormant ones first.
+- `POST /api/teams`, `GET /api/teams`, `GET /api/teams/<name>`,
+  `DELETE /api/teams/<name>` and `POST` or `DELETE`
+  `/api/teams/<name>/members` create, list, show and delete teams and
+  change their members.
 - `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
   responses to flares that the caller may read, oldest first, at most 100
   a page.

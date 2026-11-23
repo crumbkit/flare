@@ -31,11 +31,12 @@ mod pages;
 mod publish;
 mod serve;
 mod sharing;
+mod teams;
 
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
 
-use cli::{CommandsVerb, SelfVerb, Verb};
+use cli::{CommandsVerb, SelfVerb, TeamsVerb, Verb};
 use codes::Failed;
 use env::Snapshot;
 use std::process::ExitCode;
@@ -95,6 +96,19 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             let result = block_on(false, sharing::grant(&args, &env));
             crumbkit::finish(run, documents::GRANT, result)
         }
+        Verb::Revoke(args) => {
+            let question = format!("End these grants on the share {}?", args.id);
+            if let Err(refused) = run.confirm(args.yes, &question) {
+                return crumbkit::finish(run, documents::REVOKE, Err(refused));
+            }
+            let result = block_on(false, sharing::revoke(&args, &env));
+            crumbkit::finish(run, documents::REVOKE, result)
+        }
+        Verb::Grants(args) => {
+            let result = block_on(false, sharing::grants(&args, &env));
+            crumbkit::finish(run, documents::GRANTS, result)
+        }
+        Verb::Teams { command } => run_teams(run, command, &env),
         Verb::Shares(args) => {
             let result = block_on(false, sharing::shares(&args, &env));
             crumbkit::finish(run, documents::SHARES, result)
@@ -114,6 +128,54 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
         } => {
             let result = Ok::<_, crumbkit::Error>(crumbkit_usage::findings(&mut run, &TOOL, &args));
             crumbkit::finish(run, crumbkit_usage::SELF_USAGE, result)
+        }
+    }
+}
+
+/// Runs one `flare teams` command.
+fn run_teams(mut run: crumbkit::Run, command: TeamsVerb, env: &Snapshot) -> ExitCode {
+    use documents::teams::{
+        TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
+    };
+    match command {
+        TeamsVerb::Create(args) => {
+            let result = block_on(false, teams::create(&args.name, env));
+            crumbkit::finish(run, TEAMS_CREATE, result)
+        }
+        TeamsVerb::Add(args) => {
+            let result = block_on(false, teams::members(&args.name, &args.with, true, env));
+            crumbkit::finish(run, TEAMS_ADD, result)
+        }
+        TeamsVerb::Remove(args) => {
+            let question = format!("Remove these people from the team {}?", args.members.name);
+            if let Err(refused) = run.confirm(args.yes, &question) {
+                return crumbkit::finish(run, TEAMS_REMOVE, Err(refused));
+            }
+            let members = &args.members;
+            let result = block_on(
+                false,
+                teams::members(&members.name, &members.with, false, env),
+            );
+            crumbkit::finish(run, TEAMS_REMOVE, result)
+        }
+        TeamsVerb::List(args) => {
+            let result = block_on(false, teams::list(&args, env));
+            crumbkit::finish(run, TEAMS_LIST, result)
+        }
+        TeamsVerb::Show(args) => {
+            let result = block_on(false, teams::show(&args.names, env));
+            crumbkit::finish(run, TEAMS_SHOW, result)
+        }
+        TeamsVerb::Delete(args) => {
+            let question = format!(
+                "Delete the team {}? Its grants stay and open nothing, and its name is never used again.",
+                args.name
+            );
+            if let Err(refused) = run.confirm(args.yes, &question) {
+                return crumbkit::finish(run, TEAMS_DELETE, Err(refused));
+            }
+            let result = block_on(false, teams::delete(&args.name, env));
+            crumbkit::finish(run, TEAMS_DELETE, result)
         }
     }
 }

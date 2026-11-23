@@ -558,7 +558,7 @@ fn a_principal_with_no_verified_email_gets_no_verified_email_on_every_method() {
             shares.revoke(&nameless, &id(1), &other).await.err(),
             shares.grants(&nameless, &id(1)).await.err(),
             shares.mine(&nameless).await.err(),
-            shares.shared_with_me(&nameless).await.err(),
+            shares.shared_with_me(&nameless, false).await.err(),
             shares.file(&nameless, &files, &id(1), &file).await.err(),
         ]
     });
@@ -665,7 +665,7 @@ fn every_failing_store_gives_unavailable_and_never_gives_access() {
                 broken.revoke(&who, &id(1), &other).await.err(),
                 broken.grants(&who, &id(1)).await.err(),
                 broken.mine(&who).await.err(),
-                broken.shared_with_me(&bob).await.err(),
+                broken.shared_with_me(&bob, false).await.err(),
                 broken.file(&who, &files, &id(1), &file).await.err(),
             ]
         });
@@ -689,7 +689,7 @@ fn every_failing_store_gives_unavailable_and_never_gives_access() {
                 .err(),
             broken.revoke(&alice(), &id(1), &other).await.err(),
             broken.grants(&alice(), &id(1)).await.err(),
-            broken.shared_with_me(&bob).await.err(),
+            broken.shared_with_me(&bob, false).await.err(),
             broken.file(&bob, &files, &id(1), &file).await.err(),
         ]
     });
@@ -727,7 +727,7 @@ fn the_share_list_shows_owned_shares_only_and_shared_with_me_shows_granted_share
         .collect();
     assert_eq!(mine, [id(3), id(1)]);
 
-    let shared = block_on(shares.shared_with_me(&bob)).unwrap();
+    let shared = block_on(shares.shared_with_me(&bob, false)).unwrap();
     let seen: Vec<(ShareId, Role)> = shared
         .items()
         .iter()
@@ -736,7 +736,7 @@ fn the_share_list_shows_owned_shares_only_and_shared_with_me_shows_granted_share
     assert_eq!(seen, [(id(3), Role::Admin), (id(1), Role::Reader)]);
 
     block_on(shares.revoke(&alice(), &id(1), &email("bob@example.com"))).unwrap();
-    let shared = block_on(shares.shared_with_me(&bob)).unwrap();
+    let shared = block_on(shares.shared_with_me(&bob, false)).unwrap();
     assert_eq!(shared.items().len(), 1);
     assert_eq!(shared.items()[0].share.id(), &id(3));
 }
@@ -747,7 +747,7 @@ fn the_debug_output_of_an_opened_share_and_a_shared_with_me_entry_holds_no_addre
     grant(&shares, &alice(), "bob@example.com", Role::Reader);
     let bob = person("bob@example.com");
     let opened = block_on(shares.open(&bob, &id(1), None)).unwrap();
-    let shared = block_on(shares.shared_with_me(&bob)).unwrap();
+    let shared = block_on(shares.shared_with_me(&bob, false)).unwrap();
     let grants = block_on(shares.grants(&alice(), &id(1))).unwrap();
     for debug in [
         format!("{opened:?}"),

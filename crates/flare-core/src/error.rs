@@ -56,6 +56,12 @@ pub enum Subject {
     TokenId,
     /// A [`TokenLabel`](crate::TokenLabel).
     TokenLabel,
+    /// A [`TeamName`](crate::TeamName).
+    TeamName,
+    /// A [`MailDomain`](crate::MailDomain).
+    MailDomain,
+    /// An [`Audience`](crate::Audience).
+    Audience,
 }
 
 impl fmt::Display for Subject {
@@ -86,6 +92,9 @@ impl fmt::Display for Subject {
             Self::FileBytes => "file",
             Self::TokenId => "token id",
             Self::TokenLabel => "token label",
+            Self::TeamName => "team name",
+            Self::MailDomain => "mail domain",
+            Self::Audience => "audience",
         };
         formatter.write_str(text)
     }

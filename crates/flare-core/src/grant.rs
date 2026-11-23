@@ -5,6 +5,7 @@
 
 use crate::name::PrincipalId;
 use crate::share::{HiddenPrincipal, ShareId};
+use crate::teams::Audience;
 use crate::time::Timestamp;
 use std::fmt;
 
@@ -24,7 +25,8 @@ pub enum Role {
     Admin,
 }
 
-/// One person's grant on one share.
+/// One grant on one share, to a person or to a group. A group's grantee
+/// is its [`Group::principal_id`](crate::Group::principal_id).
 #[derive(Clone, PartialEq, Eq)]
 pub struct Grant {
     share: ShareId,
@@ -32,6 +34,7 @@ pub struct Grant {
     role: Role,
     granted_by: PrincipalId,
     created: Timestamp,
+    audience: Option<Audience>,
 }
 
 impl Grant {
@@ -50,7 +53,21 @@ impl Grant {
             role,
             granted_by,
             created,
+            audience: None,
         }
+    }
+
+    /// The same grant with the audience that an everyone grant recorded.
+    #[must_use]
+    pub fn with_audience(mut self, audience: Option<Audience>) -> Self {
+        self.audience = audience;
+        self
+    }
+
+    /// The audience of an everyone grant, or `None` for any other grant.
+    #[must_use]
+    pub fn audience(&self) -> Option<&Audience> {
+        self.audience.as_ref()
     }
 
     /// The share.
@@ -93,6 +110,7 @@ impl fmt::Debug for Grant {
             .field("role", &self.role)
             .field("granted_by", &HiddenPrincipal)
             .field("created", &self.created)
+            .field("audience", &self.audience)
             .finish()
     }
 }
@@ -191,6 +209,7 @@ pub struct GrantWrite {
     expected: Option<Role>,
     by: Granter,
     created: Timestamp,
+    audience: Option<Audience>,
 }
 
 impl GrantWrite {
@@ -209,7 +228,21 @@ impl GrantWrite {
             expected,
             by,
             created,
+            audience: None,
         }
+    }
+
+    /// The same write, recording `audience` on an everyone grant.
+    #[must_use]
+    pub(crate) fn with_audience(mut self, audience: Option<Audience>) -> Self {
+        self.audience = audience;
+        self
+    }
+
+    /// The audience the write records, for an everyone grant.
+    #[must_use]
+    pub fn audience(&self) -> Option<&Audience> {
+        self.audience.as_ref()
     }
 
     /// The share.
@@ -259,6 +292,7 @@ impl GrantWrite {
             self.by.principal().clone(),
             kept.map_or(self.created, Grant::created),
         )
+        .with_audience(self.audience.clone())
     }
 }
 
@@ -272,6 +306,7 @@ impl fmt::Debug for GrantWrite {
             .field("expected", &self.expected)
             .field("by", &self.by)
             .field("created", &self.created)
+            .field("audience", &self.audience)
             .finish()
     }
 }

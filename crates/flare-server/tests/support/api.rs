@@ -6,9 +6,9 @@
 use crate::faulty::{Faults, FaultyRecipients, FaultyResponses, FaultyShares, FaultyTokens};
 use crate::harness::{Call, Reply, cookie_pair};
 use crate::hosted::{Admits, Hosted, SESSION};
-use flare_auth_oidc::{Admit, Reach};
-use flare_core::memory::MemoryGrantStore;
-use flare_core::{Creators, Email, Flares};
+use flare_auth_oidc::{Admit, DomainRule, Reach, WorkspaceDomain};
+use flare_core::memory::{MemoryGrantStore, MemoryTeamStore};
+use flare_core::{Creators, Email, FlareTeams, Flares};
 use flare_server::Sharing;
 use serde_json::{Value, json};
 use url::Url;
@@ -29,8 +29,20 @@ pub struct Api {
 }
 
 impl Api {
-    /// A server whose creators are alice, bob and carol at example.com.
+    /// A server whose creators are alice, bob and carol at example.com,
+    /// under an admit rule that admits anyone.
     pub async fn start() -> Self {
+        Self::start_admitting(Admit::Anyone(Reach::Everything)).await
+    }
+
+    /// The same server under an admit rule of the domain example.com.
+    pub async fn start_with_domain() -> Self {
+        let domain = WorkspaceDomain::try_from("example.com").unwrap();
+        Self::start_admitting(Admit::Domain(DomainRule::new(domain, Reach::Everything))).await
+    }
+
+    /// The same server under `admit`.
+    pub async fn start_admitting(admit: Admit) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
         let hosted = Hosted::start_attached(Admits::Domain, None, move |app| {
@@ -51,7 +63,8 @@ impl Api {
                     ..FaultyResponses::default()
                 },
                 creators,
-            );
+            )
+            .with_teams(FlareTeams::new(MemoryTeamStore::new()));
             let tokens = FaultyTokens {
                 fail: switches.tokens.clone(),
                 ..FaultyTokens::default()
@@ -59,7 +72,6 @@ impl Api {
             let recipients = FaultyRecipients {
                 fail: switches.recipients.clone(),
             };
-            let admit = Admit::Anyone(Reach::Everything);
             app.with_sharing(Sharing::new(flares, tokens, recipients, admit))
         })
         .await;

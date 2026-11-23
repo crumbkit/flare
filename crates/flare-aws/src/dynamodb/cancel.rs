@@ -70,7 +70,9 @@ fn rank(role: ItemRole) -> u8 {
         | ItemRole::ShareItem
         | ItemRole::CodeItem
         | ItemRole::TokenItem
-        | ItemRole::PairItem => 1,
+        | ItemRole::PairItem
+        | ItemRole::TeamItem
+        | ItemRole::MemberItem => 1,
         ItemRole::GrantCount
         | ItemRole::ShareCount
         | ItemRole::LabelSlot

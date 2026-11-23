@@ -1,0 +1,17 @@
+Manage the teams that shares are granted to
+
+Usage: flare teams [OPTIONS] <COMMAND>
+
+Commands:
+  create  Create a team that you own, with you as its first member
+  add     Add people to a team you own
+  remove  Remove people from a team you own, or leave a team you belong to
+  list    List the teams you belong to
+  show    Show the members of teams you belong to
+  delete  Delete a team you own; its grants stay and open nothing, and its name is never used again
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Global flags: --json, --fields <FIELD>, --long, --full, --no-input. `flare teams --help` describes them.
+Next: flare teams <COMMAND> -h

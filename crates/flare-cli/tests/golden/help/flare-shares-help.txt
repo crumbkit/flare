@@ -8,6 +8,9 @@ Options:
       --with-me
           List the shares granted to you in place of your own
 
+      --everyone
+          With --with-me, also list the shares open to everyone signed in
+
       --limit <N>
           Print at most this many rows, up to 500
           

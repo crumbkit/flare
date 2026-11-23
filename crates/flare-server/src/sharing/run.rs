@@ -1,8 +1,6 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
-use super::convert::{
-    content_error, flare_error, item, recipient_error, role, share_error, standing, summary,
-};
+use super::convert::{content_error, flare_error, item, role, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
 use super::{Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck};
 use flare_contract::{
@@ -12,7 +10,7 @@ use flare_contract::{
 use flare_core::{
     DocumentText, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position,
     Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    ShareTitle, Teams, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -21,14 +19,14 @@ use serde::Serialize;
 const DRAWS: usize = 3;
 
 /// A JSON answer with `status`.
-fn json(status: u16, body: &impl Serialize) -> Answer {
+pub(super) fn json(status: u16, body: &impl Serialize) -> Answer {
     serde_json::to_string(body)
         .map(|text| (status, Some(text)))
         .map_err(|_| ApiCode::SharesUnavailable.into())
 }
 
 /// The share id that `text` names; a malformed id is a missing share.
-fn share_id(text: &str) -> Result<ShareId, Refusal> {
+pub(super) fn share_id(text: &str) -> Result<ShareId, Refusal> {
     ShareId::try_from(text).map_err(|_| ApiCode::ShareNotFound.into())
 }
 
@@ -43,13 +41,14 @@ fn token_error(error: TokenStoreError) -> ApiCode {
 
 /// The `Shared` body of what `share` or `grant` did, for the caller with
 /// `role`.
-fn shared(flared: &Flared, role: WireRole) -> Shared {
+pub(super) fn shared(flared: &Flared, role: WireRole) -> Shared {
     Shared {
         share: summary(&flared.share, role),
         granted: flared
             .granted
             .iter()
             .map(|email| email.as_str().to_owned())
+            .chain(flared.groups.iter().map(ToString::to_string))
             .collect(),
         responds_to: flared
             .responds_to
@@ -59,28 +58,15 @@ fn shared(flared: &Flared, role: WireRole) -> Shared {
     }
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X>
+impl<S, G, R, T, X, M> Sharing<S, G, R, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
     T: TokenStore,
     X: Recipients,
+    M: Teams,
 {
-    /// The address each identifier names.
-    async fn recipients(&self, with: &[String]) -> Result<Vec<Email>, Refusal> {
-        let mut resolved = Vec::with_capacity(with.len());
-        for identifier in with {
-            let email = self
-                .recipients
-                .resolve(identifier)
-                .await
-                .map_err(|error| recipient_error(error, identifier))?;
-            resolved.push(email);
-        }
-        Ok(resolved)
-    }
-
     async fn create(&self, who: &Principal, request: ShareRequest, now: Timestamp) -> Answer {
         if request.format == Format::Html {
             return Err(ApiCode::KindNotServed.into());
@@ -88,7 +74,7 @@ where
         let title = ShareTitle::try_from(request.title.as_str()).map_err(|e| content_error(&e))?;
         let text =
             DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
-        let with = self.recipients(&request.with).await?;
+        let (with, groups) = self.named(&request.with, false).await?;
         let re = request
             .re
             .iter()
@@ -102,7 +88,8 @@ where
                 ShareContent::Document(text.clone()),
                 with.clone(),
                 re.clone(),
-            );
+            )
+            .with_groups(groups.clone());
             match self.flares.share(who, flare, now).await {
                 Ok(flared) => return json(201, &shared(&flared, WireRole::Owner)),
                 Err(FlareError::Share(ShareError::IdTaken)) => {}
@@ -145,7 +132,7 @@ where
         json(201, &share)
     }
 
-    async fn list(&self, who: &Principal, scope: Scope, limit: usize) -> Answer {
+    async fn list(&self, who: &Principal, scope: Scope, limit: usize, everyone: bool) -> Answer {
         let shares = self.flares.shares();
         let (mut items, truncated) = match scope {
             Scope::Mine => {
@@ -159,7 +146,10 @@ where
                 (items, truncated)
             }
             Scope::WithMe => {
-                let listed = shares.shared_with_me(who).await.map_err(share_error)?;
+                let listed = shares
+                    .shared_with_me(who, everyone)
+                    .await
+                    .map_err(share_error)?;
                 let truncated = listed.truncated();
                 let items = listed
                     .items()
@@ -188,34 +178,6 @@ where
         };
         let share = summary(&opened.share, standing(opened.standing));
         json(200, &OpenedShare { share, content })
-    }
-
-    async fn grant(
-        &self,
-        who: &Principal,
-        id: &str,
-        request: flare_contract::GrantRequest,
-        now: Timestamp,
-    ) -> Answer {
-        let id = share_id(id)?;
-        let with = self.recipients(&request.with).await?;
-        let re = request
-            .re
-            .iter()
-            .map(|text| share_id(text))
-            .collect::<Result<Vec<_>, _>>()?;
-        let flared = self
-            .flares
-            .grant(who, &id, &with, &re, now)
-            .await
-            .map_err(flare_error)?;
-        let owner = who.email().map(Email::principal_id);
-        let role = if owner.as_ref() == Some(flared.share.owner()) {
-            WireRole::Owner
-        } else {
-            WireRole::Admin
-        };
-        json(200, &shared(&flared, role))
     }
 
     async fn activity(
@@ -341,13 +303,14 @@ where
     }
 }
 
-impl<S, G, R, T, X> Api for Sharing<S, G, R, T, X>
+impl<S, G, R, T, X, M> Api for Sharing<S, G, R, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
     T: TokenStore,
     X: Recipients,
+    M: Teams,
 {
     fn authenticate<'a>(
         &'a self,
@@ -374,10 +337,26 @@ where
         Box::pin(async move {
             match call {
                 Call::Create(request) => self.create(who, request, now).await,
-                Call::List { scope, limit } => self.list(who, scope, limit).await,
+                Call::List {
+                    scope,
+                    limit,
+                    everyone,
+                } => self.list(who, scope, limit, everyone).await,
                 Call::Open(id) => self.open(who, &id).await,
                 Call::Publish(id, request) => self.publish(who, &id, request, now).await,
                 Call::Grant(id, request) => self.grant(who, &id, request, now).await,
+                Call::ListGrants(id) => self.list_grants(who, &id).await,
+                Call::RevokeGrants(id, request) => self.revoke_grants(who, &id, request).await,
+                Call::CreateTeam(request) => self.create_team(who, &request, now).await,
+                Call::ListTeams => self.list_teams(who).await,
+                Call::ShowTeam(name) => self.show_team(who, &name).await,
+                Call::DeleteTeam(name) => self.delete_team(who, &name).await,
+                Call::AddMembers(name, request) => {
+                    self.change_members(who, &name, &request, true).await
+                }
+                Call::RemoveMembers(name, request) => {
+                    self.change_members(who, &name, &request, false).await
+                }
                 Call::Activity {
                     flares,
                     since,

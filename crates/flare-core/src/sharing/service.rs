@@ -2,6 +2,8 @@
 //! into a decision and a write.
 
 mod grants;
+mod group_grants;
+mod groups;
 
 use super::error::ShareError;
 use super::{Decision, ShareAction, Standing, Step, decide_actor};
@@ -14,6 +16,7 @@ use crate::share::{
     SharedVersion,
 };
 use crate::store::{FileStore, GrantStore, ShareStore, ShareStoreError};
+use crate::teams::{Admission, NoTeams, Teams};
 use crate::time::Timestamp;
 
 /// One version of a share that a caller opened, with what the caller is to
@@ -27,6 +30,16 @@ pub struct Opened {
     pub version: SharedVersion,
     /// What the caller is to the share.
     pub standing: Standing,
+}
+
+/// One grant of a share as its owner or an admin lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ListedGrant {
+    /// The grant, to a person or a group.
+    pub grant: crate::grant::Grant,
+    /// Whether the grant is to a deleted team, so it opens nothing.
+    pub dormant: bool,
 }
 
 /// A share that another person granted to the caller.
@@ -53,10 +66,17 @@ pub struct SharedWithMe {
 ///
 /// Anyone with a verified address may create a share; a caller that needs
 /// a narrower rule checks it before calling [`Shares::create`].
+///
+/// A person also opens a share through a team that holds a grant on it, or
+/// through an everyone grant whose audience covers them. The service reads
+/// teams through `T` and decides everyone grants under its [`Admission`],
+/// which is [`Admission::Anyone`] until the caller sets the deployment's.
 #[derive(Debug)]
-pub struct Shares<S, G> {
+pub struct Shares<S, G, T = NoTeams> {
     shares: S,
     grants: G,
+    teams: T,
+    admission: Admission,
 }
 
 /// The actor's id: the principal's verified address.
@@ -85,13 +105,47 @@ fn decided(decision: Decision) -> Result<(), ShareError> {
     }
 }
 
-impl<S: ShareStore, G: GrantStore> Shares<S, G> {
-    /// A service over a share store and a grant store.
+impl<S, G> Shares<S, G> {
+    /// A service over a share store and a grant store, with no teams.
     #[must_use]
     pub fn new(shares: S, grants: G) -> Self {
-        Self { shares, grants }
+        Self {
+            shares,
+            grants,
+            teams: NoTeams,
+            admission: Admission::Anyone,
+        }
+    }
+}
+
+impl<S, G, T> Shares<S, G, T> {
+    /// The same service, reading teams through `teams`.
+    #[must_use]
+    pub fn with_teams<U>(self, teams: U) -> Shares<S, G, U> {
+        Shares {
+            shares: self.shares,
+            grants: self.grants,
+            teams,
+            admission: self.admission,
+        }
     }
 
+    /// The same service under the deployment's admit rule, which writes
+    /// and reads everyone grants.
+    #[must_use]
+    pub fn admitting(mut self, admission: Admission) -> Self {
+        self.admission = admission;
+        self
+    }
+
+    /// The teams the service reads.
+    #[must_use]
+    pub fn teams(&self) -> &T {
+        &self.teams
+    }
+}
+
+impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// Reads the share and works out what `actor` is to it.
     async fn standing(
         &self,
@@ -110,6 +164,9 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
         let standing = match grant.map(|grant| grant.role()) {
             Some(Role::Admin) => Standing::Admin,
             Some(Role::Reader) => Standing::Reader,
+            // A group grant gives Reader at most, so it is read only when
+            // the actor holds no grant of their own.
+            None if self.opens_through_group(actor, id).await? => Standing::Reader,
             None => Standing::Stranger,
         };
         Ok((share, standing))
@@ -225,38 +282,6 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
             .owned_by(&actor)
             .await
             .map_err(|_| ShareError::Unavailable)
-    }
-
-    /// The shares granted to the caller, newest grant first, each with the
-    /// caller's role. A grant whose share no longer exists is left out.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
-    /// [`ShareError::Unavailable`] when either store fails.
-    pub async fn shared_with_me(
-        &self,
-        who: &Principal,
-    ) -> Result<Listing<SharedWithMe>, ShareError> {
-        let actor = actor(who)?;
-        let granted = self
-            .grants
-            .granted_to(&actor)
-            .await
-            .map_err(|_| ShareError::Unavailable)?;
-        let truncated = granted.truncated();
-        let mut entries = Vec::with_capacity(granted.items().len());
-        for grant in granted.into_items() {
-            match self.shares.get(grant.share()).await {
-                Ok(share) => entries.push(SharedWithMe {
-                    share,
-                    role: grant.role(),
-                }),
-                Err(ShareStoreError::NotFound) => {}
-                Err(_) => return Err(ShareError::Unavailable),
-            }
-        }
-        Ok(Listing::with_truncated(entries, truncated))
     }
 
     /// Reads a file of a share that the caller may read.

@@ -8,6 +8,15 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare teams create`, `add`, `remove`, `list`, `show` and `delete` manage
+  named teams of people. `flare share` and `flare grant` grant a share to a
+  team with `--with team:<name>`, and the owner grants it to everyone
+  signed in with `--everyone`. `flare revoke` ends grants and `flare grants`
+  lists them. Deleting a team leaves its grants as dormant grants that open
+  nothing, and a team name is never reused. An everyone grant opens the
+  share only to the people the `admit` rule admits, and an `anyone` admit
+  rule refuses it. `docs/teams.md` gives the life of teams and group
+  grants.
 - `flare share <file> --update <id>` publishes the file as the next version
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print

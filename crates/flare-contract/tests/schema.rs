@@ -42,6 +42,17 @@ fn the_schema_names_every_request_response_and_problem_type() {
         "ExchangeRequest",
         "TokenIssued",
         "ProblemDocument",
+        "RevokeRequest",
+        "Revoked",
+        "GrantList",
+        "GrantEntry",
+        "TeamRequest",
+        "MembersRequest",
+        "TeamSummary",
+        "TeamList",
+        "TeamShown",
+        "MembersChanged",
+        "TeamDeleted",
     ] {
         assert!(defs.contains_key(name), "{name} is missing");
     }

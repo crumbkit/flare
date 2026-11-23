@@ -7,6 +7,7 @@
 
 mod authority;
 mod changes;
+mod groups;
 mod limits;
 mod lists;
 mod races;
@@ -20,6 +21,7 @@ pub use changes::{
     a_leave_applies_under_the_expected_role_alone, a_revoke_and_a_regrant_leave_no_stale_entry,
     a_role_change_keeps_the_first_grant_time,
 };
+pub use groups::a_group_grant_keeps_its_audience;
 pub use limits::{concurrent_grants_at_the_limit_give_one_too_many, the_grant_limit_holds};
 pub use lists::{
     a_list_shows_its_truncation_and_order, a_persons_list_holds_their_grants_newest_first,

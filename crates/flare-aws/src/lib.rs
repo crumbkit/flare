@@ -1,9 +1,9 @@
-//! flare's share, grant, file, token and response stores, kept in DynamoDB
+//! flare's share, grant, file, token, response and team stores, kept in DynamoDB
 //! and S3.
 //!
 //! [`Stores::connect`] builds a [`DynamoShareStore`], a
-//! [`DynamoGrantStore`], an [`S3FileStore`], a [`DynamoTokenStore`] and a
-//! [`DynamoResponseStore`] from a [`HostedConfig`], which names the region,
+//! [`DynamoGrantStore`], an [`S3FileStore`], a [`DynamoTokenStore`], a
+//! [`DynamoResponseStore`] and a [`DynamoTeamStore`] from a [`HostedConfig`], which names the region,
 //! the table and the bucket. Credentials come only
 //! from the AWS provider chain. The table and the bucket are those that
 //! `infra/flare-stores.template.json` defines, and [`Stores::check`]
@@ -28,5 +28,7 @@ pub use config::{BucketName, ConfigError, HostedConfig, Region, TableName};
 pub use connect::{CheckError, Stores};
 #[cfg(any(test, feature = "testing"))]
 pub use connect::{EndpointUrl, Endpoints, Fault};
-pub use dynamodb::{DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore};
+pub use dynamodb::{
+    DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
+};
 pub use s3::S3FileStore;

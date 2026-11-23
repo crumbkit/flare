@@ -1,17 +1,19 @@
-//! `flare share`, `grant`, `shares` and `activity`: each reads the saved
+//! `flare share`, `grant`, `revoke`, `grants`, `shares` and `activity`:
+//! each reads the saved
 //! login and its token from the Keychain, and calls the server's share API.
 
-use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, SharesArgs};
+use crate::cli::{ActivityArgs, GrantArgs, GrantsArgs, RevokeArgs, ShareArgs, SharesArgs};
 use crate::client::Api;
 use crate::codes::{Failed, Refused, SharingFailed};
-use crate::documents::{ActivityRow, Next, ShareRow, SharedOut};
+use crate::documents::{ActivityRow, GrantRow, Next, RevokedOut, ShareRow, SharedOut};
 use crate::env::Snapshot;
 use crate::keychain;
 use crate::login::saved;
 use crumbkit::Listing;
 use flare_contract::{
-    ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, Role, ShareList,
-    ShareRequest, ShareSummary, Shared, VersionRequest,
+    ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantList, GrantRequest, GrantState,
+    GranteeKind, RevokeRequest, Revoked, Role, ShareList, ShareRequest, ShareSummary, Shared,
+    VersionRequest,
 };
 use flare_core::ShareId;
 use reqwest::Method;
@@ -35,7 +37,7 @@ const MAX_RESPONSES: usize = 100;
 ///
 /// Returns [`SharingFailed::LoginNeeded`] when no login is saved or the
 /// Keychain holds no token for it.
-fn session(env: &Snapshot) -> Result<Api, Failed> {
+pub(crate) fn session(env: &Snapshot) -> Result<Api, Failed> {
     let saved = saved::required(env)?;
     let token = keychain::read(env, &saved.server)?.ok_or_else(|| SharingFailed::LoginNeeded {
         server: Some(saved.server.clone()),
@@ -44,7 +46,7 @@ fn session(env: &Snapshot) -> Result<Api, Failed> {
 }
 
 /// The answer, or a bad-answer failure when the server sent no body.
-fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
+pub(crate) fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
     answer.ok_or_else(|| {
         SharingFailed::BadAnswer {
             server: api.origin().to_owned(),
@@ -158,6 +160,7 @@ pub(crate) async fn grant(args: &GrantArgs, env: &Snapshot) -> Result<SharedOut,
     let id = share_id(&api, &args.id)?;
     let request = GrantRequest {
         with: args.with.clone(),
+        everyone: args.everyone,
         re: args.re.clone(),
     };
     let target = format!("/api/grants/{}", id.as_str());
@@ -174,7 +177,8 @@ pub(crate) async fn shares(args: &SharesArgs, env: &Snapshot) -> Result<Listing<
     let api = session(env)?;
     let scope = if args.with_me { "with-me" } else { "mine" };
     let limit = args.page.limit().unwrap_or(MAX_SHARES);
-    let target = format!("/api/shares?scope={scope}&limit={limit}");
+    let everyone = if args.everyone { "&everyone=true" } else { "" };
+    let target = format!("/api/shares?scope={scope}&limit={limit}{everyone}");
     let answer: Option<ShareList> = api.send(Method::GET, &target, None::<&()>).await?;
     let list = body(&api, answer)?;
     let rows = list
@@ -184,17 +188,78 @@ pub(crate) async fn shares(args: &SharesArgs, env: &Snapshot) -> Result<Listing<
             id: share.id,
             title: share.title,
             owner: share.owner,
-            role: match share.role {
-                Role::Owner => "owner",
-                Role::Admin => "admin",
-                Role::Reader => "reader",
-            }
-            .to_owned(),
+            role: role_name(share.role).to_owned(),
             version: share.version,
             created: share.created,
         })
         .collect();
     Ok(Listing::uncounted(rows, list.more).described("shares"))
+}
+
+fn role_name(role: Role) -> &'static str {
+    match role {
+        Role::Owner => "owner",
+        Role::Admin => "admin",
+        Role::Reader => "reader",
+    }
+}
+
+/// Runs `flare revoke`.
+///
+/// # Errors
+///
+/// Returns the failure that stopped it.
+pub(crate) async fn revoke(args: &RevokeArgs, env: &Snapshot) -> Result<RevokedOut, Failed> {
+    let api = session(env)?;
+    let id = share_id(&api, &args.id)?;
+    let request = RevokeRequest {
+        with: args.with.clone(),
+        everyone: args.everyone,
+    };
+    let target = format!("/api/grants/{}", id.as_str());
+    let answer: Option<Revoked> = api.send(Method::DELETE, &target, Some(&request)).await?;
+    let revoked = body(&api, answer)?;
+    Ok(RevokedOut {
+        id: revoked.share,
+        revoked: revoked.revoked,
+    })
+}
+
+/// Runs `flare grants`. Dormant grants, to deleted teams, are listed
+/// first.
+///
+/// # Errors
+///
+/// Returns the failure that stopped it.
+pub(crate) async fn grants(args: &GrantsArgs, env: &Snapshot) -> Result<Listing<GrantRow>, Failed> {
+    let api = session(env)?;
+    let id = share_id(&api, &args.id)?;
+    let target = format!("/api/grants/{}", id.as_str());
+    let answer: Option<GrantList> = api.send(Method::GET, &target, None::<&()>).await?;
+    let mut items = body(&api, answer)?.items;
+    items.sort_by_key(|entry| entry.state != GrantState::Dormant);
+    let rows = items
+        .into_iter()
+        .map(|entry| GrantRow {
+            grantee: entry.grantee,
+            kind: match entry.kind {
+                GranteeKind::Person => "person",
+                GranteeKind::Team => "team",
+                GranteeKind::Everyone => "everyone",
+            }
+            .to_owned(),
+            role: role_name(entry.role).to_owned(),
+            state: match entry.state {
+                GrantState::Active => "active",
+                GrantState::Dormant => "dormant",
+            }
+            .to_owned(),
+            granted_by: entry.granted_by,
+            created: entry.created,
+            audience: entry.audience,
+        })
+        .collect();
+    Ok(Listing::from_all(rows, None).described("grants"))
 }
 
 fn activity_row(item: ActivityItem) -> Option<ActivityRow> {

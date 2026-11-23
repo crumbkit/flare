@@ -1,0 +1,16 @@
+Show the members of teams you belong to
+
+Usage: flare teams show [OPTIONS] <NAME>...
+
+Arguments:
+  <NAME>...  The teams' names, up to 100
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Examples:
+  flare teams show design
+
+Effects: read-only, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare teams show --help` describes them.
+Next: flare teams show --help explains each column.

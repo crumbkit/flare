@@ -1,5 +1,5 @@
-//! In-memory stores for tests. The share, grant, file, token and response
-//! stores exist only under the `testing` feature and in this crate's own tests.
+//! In-memory stores for tests. The share, grant, file, token, response and
+//! team stores exist only under the `testing` feature and in this crate's own tests.
 //!
 //! Each store is a [`std::sync::Mutex`] over maps. Every operation is one
 //! step under the lock, so no state sits between two steps. A binding's
@@ -29,6 +29,8 @@ mod responses;
 #[cfg(any(test, feature = "testing"))]
 mod shares;
 #[cfg(any(test, feature = "testing"))]
+mod teams;
+#[cfg(any(test, feature = "testing"))]
 mod tokens;
 
 #[cfg(any(test, feature = "testing"))]
@@ -41,6 +43,8 @@ pub use records::MemoryRecordStore;
 pub use responses::MemoryResponseStore;
 #[cfg(any(test, feature = "testing"))]
 pub use shares::MemoryShareStore;
+#[cfg(any(test, feature = "testing"))]
+pub use teams::MemoryTeamStore;
 #[cfg(any(test, feature = "testing"))]
 pub use tokens::MemoryTokenStore;
 

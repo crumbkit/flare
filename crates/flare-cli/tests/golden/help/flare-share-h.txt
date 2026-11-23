@@ -1,4 +1,4 @@
-Share a Markdown file with named people, or as a response to flares
+Share a Markdown file with people, teams or everyone, or as a response to flares
 
 Usage: flare share [OPTIONS] <FILE>
 
@@ -6,11 +6,11 @@ Arguments:
   <FILE>  The file to share: .md for Markdown
 
 Options:
-      --title <TITLE>   The share's title; without it, the file's name without its ending
-      --with <ADDRESS>  The addresses to grant Reader, repeated or separated by commas
-      --re <ID>         The flares this share responds to, repeated or separated by commas; their owners become Readers of it
-      --update <ID>     Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
-  -h, --help            Print help (see more with '--help')
+      --title <TITLE>  The share's title; without it, the file's name without its ending
+      --with <WHO>     Who to grant Reader, repeated or separated by commas: an address, team:<name> for a team you belong to, or everyone
+      --re <ID>        The flares this share responds to, repeated or separated by commas; their owners become Readers of it
+      --update <ID>    Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+  -h, --help           Print help (see more with '--help')
 
 Examples:
   flare share review.md --with ana@example.org,jo@example.org

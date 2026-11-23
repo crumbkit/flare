@@ -14,8 +14,11 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare bind`](#flare-bind): Save a binding that fills a page's slots with records
 - [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
 - [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
-- [`flare share`](#flare-share): Share a Markdown file with named people, or as a response to flares
-- [`flare grant`](#flare-grant): Grant an existing share to more people
+- [`flare share`](#flare-share): Share a Markdown file with people, teams or everyone, or as a response to flares
+- [`flare grant`](#flare-grant): Grant a share to more people, teams or everyone
+- [`flare revoke`](#flare-revoke): End grants on a share
+- [`flare grants`](#flare-grants): List a share's grants
+- [`flare teams`](#flare-teams): Manage the teams that shares are granted to
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
 - [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
 - [`flare commands`](#flare-commands): Explore flare's commands
@@ -213,13 +216,13 @@ Effects: destructive, not idempotent, closed-world.
 
 ## `flare share`
 
-Share a Markdown file with named people, or as a response to flares
+Share a Markdown file with people, teams or everyone, or as a response to flares
 
 ### Arguments
 
 - `<FILE>`: The file to share: .md for Markdown. Required.
 - `--title <TITLE>`: The share's title; without it, the file's name without its ending
-- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
+- `--with <WHO>`: Who to grant Reader, repeated or separated by commas: an address, team:\<name\> for a team you belong to, or everyone. Takes more than one value.
 - `--re <ID>`: The flares this share responds to, repeated or separated by commas; their owners become Readers of it. Takes more than one value.
 - `--update <ID>`: Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
 
@@ -248,19 +251,20 @@ flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 - `id`: The share's id.
 - `title`: The share's title.
 - `version`: The share's latest version.
-- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `granted`: The addresses, `team:<name>` and `everyone` that now hold a role on it; none after `--update`, which does not report them.
 - `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
 
 ## `flare grant`
 
-Grant an existing share to more people
+Grant a share to more people, teams or everyone
 
 ### Arguments
 
 - `<ID>`: The share to grant. Required.
-- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
+- `--with <WHO>`: Who to grant Reader, repeated or separated by commas: an address, team:\<name\> for a team you belong to, or everyone. Takes more than one value.
+- `--everyone`: Grant Reader to everyone signed in whom the server's sign-in rule covers; only the share's owner may
 - `--re <ID>`: The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it. Takes more than one value.
 
 ### Examples
@@ -271,15 +275,262 @@ Grant a share to one more person.
 flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
 ```
 
+Grant a share to the members of a team you belong to.
+
+```sh
+flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with team:design
+```
+
+Open a share you own to everyone signed in.
+
+```sh
+flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+```
+
 ### Columns
 
 - `id`: The share's id.
 - `title`: The share's title.
 - `version`: The share's latest version.
-- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `granted`: The addresses, `team:<name>` and `everyone` that now hold a role on it; none after `--update`, which does not report them.
 - `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
+
+## `flare revoke`
+
+End grants on a share
+
+### Arguments
+
+- `<ID>`: The share whose grants end. Required.
+- `--with <WHO>`: Whose grant ends, repeated or separated by commas: an address, team:\<name\> or everyone. Required, or give `--everyone` in its place. Takes more than one value.
+- `--everyone`: End the grant to everyone signed in; only the share's owner may. Required, or give `--with` in its place.
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+End one person's grant on a share.
+
+```sh
+flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+```
+
+Close a share you own to everyone signed in.
+
+```sh
+flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+```
+
+### Columns
+
+- `id`: The share's id.
+- `revoked`: The addresses, `team:<name>` and `everyone` whose grant ended; one that held no grant is left out.
+
+Effects: destructive, not idempotent, closed-world.
+
+## `flare grants`
+
+List a share's grants
+
+### Arguments
+
+- `<ID>`: The share whose grants to list; you must own it or hold Admin on it. Required.
+
+### Examples
+
+List the people, teams and everyone grants of a share.
+
+```sh
+flare grants 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+### Columns
+
+- `grantee`: The person's address, `team:<name>` or `everyone`.
+- `kind`: Who the grant is to: `person`, `team` or `everyone`.
+- `role`: The grant's role: `admin` or `reader`.
+- `state`: `active`, or `dormant` for a grant to a deleted team, which opens nothing until the share's owner revokes it.
+
+### Columns that `--long` adds
+
+- `granted_by`: Who wrote the grant's current role.
+- `created`: When the grant was first written, in RFC 3339 UTC.
+- `audience`: For an everyone grant, the mail domain it opens to, or `admitted` for the server's email list.
+
+Effects: read-only, closed-world.
+
+## `flare teams`
+
+Manage the teams that shares are granted to
+
+### Commands
+
+- [`flare teams create`](#flare-teams-create): Create a team that you own, with you as its first member
+- [`flare teams add`](#flare-teams-add): Add people to a team you own
+- [`flare teams remove`](#flare-teams-remove): Remove people from a team you own, or leave a team you belong to
+- [`flare teams list`](#flare-teams-list): List the teams you belong to
+- [`flare teams show`](#flare-teams-show): Show the members of teams you belong to
+- [`flare teams delete`](#flare-teams-delete): Delete a team you own; its grants stay and open nothing, and its name is never used again
+
+## `flare teams create`
+
+Create a team that you own, with you as its first member
+
+### Arguments
+
+- `<NAME>`: The team's name: 1 to 40 lowercase letters, digits and dashes. Required.
+
+### Examples
+
+Create the team design.
+
+```sh
+flare teams create design
+```
+
+### Columns
+
+- `name`: The team's name.
+- `owner`: The owner's address.
+- `role`: What you are to the team: `owner` or `member`.
+- `members`: How many members the team has, its owner included.
+
+### Columns that `--long` adds
+
+- `created`: When the team was created, in RFC 3339 UTC.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare teams add`
+
+Add people to a team you own
+
+### Arguments
+
+- `<NAME>`: The team's name. Required.
+- `--with <PERSON>`: The people, repeated or separated by commas: each an address, or a name the server resolves. Required. Takes more than one value.
+
+### Examples
+
+Add two people to the team design.
+
+```sh
+flare teams add design --with mei@example.org,jo@example.org
+```
+
+### Columns
+
+- `team`: The team's name.
+- `members`: How many members the team has now.
+- `changed`: The addresses added or removed; one already present, or already absent, is left out.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare teams remove`
+
+Remove people from a team you own, or leave a team you belong to
+
+### Arguments
+
+- `<NAME>`: The team's name. Required.
+- `--with <PERSON>`: The people, repeated or separated by commas: each an address, or a name the server resolves. Required. Takes more than one value.
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+Remove one person from the team design.
+
+```sh
+flare teams remove design --with jo@example.org
+```
+
+### Columns
+
+- `team`: The team's name.
+- `members`: How many members the team has now.
+- `changed`: The addresses added or removed; one already present, or already absent, is left out.
+
+Effects: destructive, not idempotent, closed-world.
+
+## `flare teams list`
+
+List the teams you belong to
+
+### Arguments
+
+- `--limit <N>`: Print at most this many rows, up to 100. Default: `50`.
+- `--all`: Print every row
+
+### Examples
+
+List the teams you belong to.
+
+```sh
+flare teams list
+```
+
+### Columns
+
+- `name`: The team's name.
+- `owner`: The owner's address.
+- `role`: What you are to the team: `owner` or `member`.
+- `members`: How many members the team has, its owner included.
+
+### Columns that `--long` adds
+
+- `created`: When the team was created, in RFC 3339 UTC.
+
+Effects: read-only, closed-world.
+
+## `flare teams show`
+
+Show the members of teams you belong to
+
+### Arguments
+
+- `<NAME>`: The teams' names, up to 100. Required. Takes more than one value.
+
+### Examples
+
+Show the team design and its members.
+
+```sh
+flare teams show design
+```
+
+### Columns
+
+- `team`: The team's name.
+- `member`: The member's address.
+- `role`: `owner` for the team's owner, else `member`.
+
+Effects: read-only, closed-world.
+
+## `flare teams delete`
+
+Delete a team you own; its grants stay and open nothing, and its name is never used again
+
+### Arguments
+
+- `<NAME>`: The team's name. Required.
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+Delete the team design without a question.
+
+```sh
+flare teams delete design --yes
+```
+
+### Columns
+
+- `team`: The deleted team's name.
+- `grants_dormant`: Always true: each flare's grant to the team stays and opens nothing until the flare's owner revokes it.
+- `name_reusable`: Always false: the name is never used again, so no new team can take over the dormant grants.
+
+Effects: destructive, not idempotent, closed-world.
 
 ## `flare shares`
 
@@ -290,6 +541,7 @@ The server lists at most 500 shares in one answer and has no cursor for the rest
 ### Arguments
 
 - `--with-me`: List the shares granted to you in place of your own
+- `--everyone`: With --with-me, also list the shares open to everyone signed in
 - `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
 - `--all`: Print every row
 

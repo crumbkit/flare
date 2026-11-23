@@ -45,6 +45,15 @@ pub enum ShareError {
     /// decided by it.
     #[error("the caller has no verified email address")]
     NoVerifiedEmail,
+    /// A named team does not exist, is deleted, or the caller is not a
+    /// member. The three give the same answer, so no one learns which team
+    /// names exist.
+    #[error("no such team")]
+    TeamNotFound,
+    /// The deployment admits anyone to sign in, so a grant to everyone
+    /// would open the share to every account, and it is refused.
+    #[error("the deployment admits anyone, so a share cannot be granted to everyone")]
+    EveryoneUnbounded,
     /// A store could not answer. After a write the outcome is unknown.
     #[error("the share stores are unavailable")]
     Unavailable,

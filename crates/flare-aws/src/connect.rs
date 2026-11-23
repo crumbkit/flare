@@ -5,8 +5,8 @@
 use crate::config::HostedConfig;
 use crate::dynamodb::retry::Policy;
 use crate::dynamodb::{
-    DynamoClient, DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore,
-    Faults, Table,
+    DynamoClient, DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTeamStore,
+    DynamoTokenStore, Faults, Table,
 };
 use crate::s3::{Bucket, S3Client, S3FileStore};
 use aws_sdk_dynamodb::types::{KeyType, ScalarAttributeType};
@@ -29,6 +29,8 @@ pub struct Stores {
     pub tokens: DynamoTokenStore,
     /// The links from responses to flares, in the table.
     pub responses: DynamoResponseStore,
+    /// Teams and their members, in the table.
+    pub teams: DynamoTeamStore,
     table: Table,
     bucket: Bucket,
 }
@@ -98,6 +100,7 @@ impl Stores {
             grants: DynamoGrantStore::from_table(table.clone()),
             files: S3FileStore::from_bucket(bucket.clone()),
             tokens: DynamoTokenStore::from_table(table.clone()),
+            teams: DynamoTeamStore::from_table(table.clone()),
             responses: DynamoResponseStore::from_table(table.clone()),
             table,
             bucket,

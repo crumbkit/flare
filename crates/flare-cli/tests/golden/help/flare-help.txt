@@ -9,12 +9,15 @@ Verbs
   bind      Save a binding that fills a page's slots with records
   login     Sign in to a flare server in the browser and keep its token in the Keychain
   logout    Revoke this computer's token for the flare server and delete it
-  share     Share a Markdown file with named people, or as a response to flares
-  grant     Grant an existing share to more people
+  share     Share a Markdown file with people, teams or everyone, or as a response to flares
+  grant     Grant a share to more people, teams or everyone
+  revoke    End grants on a share
+  grants    List a share's grants
   shares    List your shares or the shares granted to you
   activity  List the responses to flares since a cursor, oldest first
 
 Commands
+  teams     Manage the teams that shares are granted to
   commands  Explore flare's commands
   self      Review flare's own use
 

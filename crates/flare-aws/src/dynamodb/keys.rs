@@ -8,7 +8,8 @@
 //! 20 digits.
 
 use flare_core::{
-    Digest, Email, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
+    Digest, Email, Group, Position, PrincipalId, ShareId, ShareVersion, TeamName, Timestamp,
+    TokenId, TokenLabel,
 };
 
 /// The sort key prefix of an owner or grantee entry. A list is a query of
@@ -24,6 +25,12 @@ pub(crate) const PAIR_PREFIX: &str = "F#";
 
 /// The sort key prefix of a link under a flare's partition.
 pub(crate) const LINK_PREFIX: &str = "P#";
+
+/// The sort key prefix of a member under a team's partition.
+pub(crate) const MEMBER_PREFIX: &str = "M#";
+
+/// The sort key prefix of a team under a person's partition.
+pub(crate) const TEAM_PREFIX: &str = "T#";
 
 /// The digits of an inverted time in an entry's sort key.
 const TIME_DIGITS: usize = 20;
@@ -80,6 +87,29 @@ impl Key {
     /// A grant's entry in its grantee's list.
     pub(crate) fn grantee_entry(grantee: &PrincipalId, created: Timestamp, id: &ShareId) -> Self {
         Self::new(grantee_partition(grantee), entry_sort_key(created, id))
+    }
+}
+
+impl Key {
+    /// A team's item, which holds its owner, creation time, state and
+    /// member count.
+    pub(crate) fn team(team: &TeamName) -> Self {
+        Self::new(team_partition(team), "META")
+    }
+
+    /// The two items of one member pair: the member under the team, and
+    /// the team under the member.
+    pub(crate) fn member_pair(team: &TeamName, member: &Email) -> (Self, Self) {
+        (
+            Self::new(
+                team_partition(team),
+                format!("{MEMBER_PREFIX}{}", member.as_str()),
+            ),
+            Self::new(
+                member_partition(member),
+                format!("{TEAM_PREFIX}{}", team.as_str()),
+            ),
+        )
     }
 }
 
@@ -147,9 +177,34 @@ pub(crate) fn owner_partition(owner: &PrincipalId) -> String {
     format!("OWN#{}", owner.as_str())
 }
 
-/// The partition of a grantee's entries.
+/// The partition of a grantee's entries: a person's own, the team's
+/// partition for a team, or the one partition of everyone grants.
 pub(crate) fn grantee_partition(grantee: &PrincipalId) -> String {
-    format!("TO#{}", grantee.as_str())
+    match Group::of_grantee(grantee) {
+        Some(Group::Team(team)) => team_partition(&team),
+        Some(Group::Everyone) => "EVERYONE".to_owned(),
+        None => format!("TO#{}", grantee.as_str()),
+    }
+}
+
+/// The partition of a team's item, its members and its grant entries.
+pub(crate) fn team_partition(team: &TeamName) -> String {
+    format!("TEAM#{}", team.as_str())
+}
+
+/// The partition of a person's teams.
+pub(crate) fn member_partition(member: &Email) -> String {
+    format!("MEMBER#{}", member.as_str())
+}
+
+/// The member of a member entry's sort key, or `None` for any other.
+pub(crate) fn member_of(sort_key: &str) -> Option<Email> {
+    Email::try_from(sort_key.strip_prefix(MEMBER_PREFIX)?).ok()
+}
+
+/// The team of a person's team entry's sort key, or `None` for any other.
+pub(crate) fn team_of(sort_key: &str) -> Option<TeamName> {
+    TeamName::try_from(sort_key.strip_prefix(TEAM_PREFIX)?).ok()
 }
 
 /// `E#<inverted time>#<id>`. The time is `u64::MAX - created` in 20 digits,

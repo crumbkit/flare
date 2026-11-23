@@ -15,8 +15,8 @@ use crate::dynamodb::retry::{Attempt, Final, Sent, Settled, Token, run};
 use crate::dynamodb::settle::{self, malformed};
 use crate::dynamodb::transact::{self, GrantPlan, ItemRole, RevokePlan, Transaction};
 use flare_core::{
-    Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Granter, Listing, MAX_GRANTS,
-    MAX_LISTED, PrincipalId, Revoker, Role, ShareId, Timestamp,
+    Audience, Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Granter, Listing,
+    MAX_GRANTS, MAX_LISTED, PrincipalId, Revoker, Role, ShareId, Timestamp,
 };
 
 /// Keeps the grants of shares in the table.
@@ -139,6 +139,7 @@ pub(crate) struct GrantOp<'a> {
     pub(crate) expected: Option<Role>,
     pub(crate) by: Granter,
     pub(crate) created: Timestamp,
+    pub(crate) audience: Option<Audience>,
 }
 
 /// A built grant: the transaction, the grant it writes and its new `rev`.
@@ -180,6 +181,7 @@ impl Attempt for GrantOp<'_> {
             created,
             read: held.as_ref().map(|held| &held.rev),
             rev: &rev,
+            audience: self.audience.as_ref(),
         };
         let transaction = transact::grant(self.table.name(), &plan).ok_or(Sent::Unavailable)?;
         let grant = Grant::new(
@@ -188,7 +190,8 @@ impl Attempt for GrantOp<'_> {
             self.role,
             self.by.principal().clone(),
             created,
-        );
+        )
+        .with_audience(self.audience.clone());
         Ok(BuiltGrant {
             transaction,
             grant,
@@ -283,6 +286,7 @@ impl GrantStore for DynamoGrantStore {
             expected: write.expected(),
             by: write.by().clone(),
             created: write.created(),
+            audience: write.audience().cloned(),
         };
         answer(run(self.table.policy(), &op).await)
     }

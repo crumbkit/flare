@@ -10,6 +10,7 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
         "tokens",
         "activity",
         "requests",
+        "teams",
     ];
     for code in ApiCode::ALL {
         let parts: Vec<&str> = code.text().split("::").collect();
@@ -60,4 +61,19 @@ fn a_recipient_problem_shows_the_address_form() {
         panic!("{problem:?}");
     };
     assert!(text.contains("ana@example.org"));
+}
+
+#[test]
+fn the_team_codes_name_the_teams_area_and_the_everyone_refusal_names_grants() {
+    assert_eq!(ApiCode::TeamNotFound.text(), "flare::teams::not_found");
+    assert_eq!(ApiCode::TeamNotFound.status(), 404);
+    assert_eq!(ApiCode::TeamNameTaken.text(), "flare::teams::name_taken");
+    assert_eq!(
+        ApiCode::TeamsManagedElsewhere.text(),
+        "flare::teams::managed_elsewhere"
+    );
+    assert_eq!(
+        ApiCode::EveryoneUnbounded.text(),
+        "flare::grants::everyone_unbounded"
+    );
 }
