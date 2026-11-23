@@ -11,6 +11,7 @@
 
 use super::Ctx;
 use super::edit::read_body;
+use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
@@ -173,7 +174,8 @@ where
     }
 }
 
-/// Answers one route of the share API.
+/// Answers one route of the share API, and counts its token event from
+/// the final answer's status.
 pub(crate) async fn handle<P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
     route: ApiRoute,
@@ -190,6 +192,43 @@ where
     let Some(api) = ctx.shared.sharing.as_deref() else {
         return Err(Code::NotFound.into());
     };
+    let reply = answer(ctx, api, route, name, credential, body)
+        .await
+        .unwrap_or_else(|problem| problem.reply(ctx.headers));
+    if let Some(event) = token_event(route, reply.status()) {
+        ctx.shared.count(event);
+    }
+    Ok(reply)
+}
+
+/// The token event an answer of `route` with `status` counts: an exchange
+/// that answered 2xx traded a code, one that answered 4xx refused it, and
+/// any other `/api/` route that answered 401 refused the request's
+/// credential. A 5xx, such as a token store that is down, counts nothing.
+fn token_event(route: ApiRoute, status: StatusCode) -> Option<Event> {
+    match route {
+        ApiRoute::Exchange if status.is_success() => Some(Event::TokenExchanged),
+        ApiRoute::Exchange if status.is_client_error() => Some(Event::TokenRefused),
+        ApiRoute::Exchange | ApiRoute::CliLogin => None,
+        _ => (status == StatusCode::UNAUTHORIZED).then_some(Event::TokenRefused),
+    }
+}
+
+/// The answer of one route of the share API from `api`.
+async fn answer<P, R, S, K>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    api: &dyn Api,
+    route: ApiRoute,
+    name: &str,
+    credential: Option<Credential>,
+    body: Incoming,
+) -> Result<Reply, Problem>
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
     let origin = ctx
         .shared
         .site
@@ -209,7 +248,13 @@ where
         _ => match caller(ctx, api, credential.as_ref(), now).await {
             Err(refusal) => Err(refusal),
             Ok(who) => match call(ctx, route, name, body).await? {
-                Ok(call) => api.run(&who, call, now).await,
+                Ok(call) => {
+                    let answer = api.run(&who, call, now).await;
+                    if route == ApiRoute::CreateShare && answer.is_ok() {
+                        ctx.shared.count(Event::ShareCreated);
+                    }
+                    answer
+                }
                 Err(refusal) => Err(refusal),
             },
         },

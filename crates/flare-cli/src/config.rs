@@ -5,7 +5,9 @@
 //! `hosted` section makes `flare serve` serve the hosted site, behind a
 //! TLS proxy, and needs an `oidc` section with `client_secret_file`,
 //! because a host has no Keychain. A `stores` key in the hosted section
-//! adds the share API, which `creators` limits and `names` serves. Every object refuses
+//! adds the share API, which `creators` limits and `names` serves. A
+//! `log` section with `"metrics": true` turns on the metric lines of
+//! docs/metrics.md; they are off without it. Every object refuses
 //! unknown keys, and a
 //! `client_secret` key anywhere is refused, because the secret lives only
 //! in the Keychain or in the file `client_secret_file` names. A refusal
@@ -44,6 +46,8 @@ pub(crate) const KEYCHAIN_SERVICE: &str = "flare-oidc-google";
 pub(crate) struct Config {
     /// The site `flare serve` serves.
     pub(crate) site: Site,
+    /// Whether the server writes a metric line for each counted event.
+    pub(crate) metrics: bool,
 }
 
 /// Which site the config asks for.
@@ -106,6 +110,14 @@ pub(crate) enum Problem {
 struct File {
     hosted: Option<HostedSection>,
     oidc: Option<OidcSection>,
+    log: Option<LogSection>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LogSection {
+    #[serde(default)]
+    metrics: bool,
 }
 
 #[derive(Deserialize)]
@@ -191,6 +203,7 @@ const MAX_BYTES: u64 = 64 * 1024;
 pub(crate) fn load(given: Option<&Path>, env: &Snapshot) -> Result<Config, Failed> {
     let local = || Config {
         site: Site::Local { oidc: None },
+        metrics: false,
     };
     let Some(path) = self::path(given, env) else {
         return Ok(local());
@@ -240,6 +253,7 @@ pub(crate) fn parse(text: &str) -> Result<Config, Problem> {
         )));
     }
     let file: File = serde_json::from_value(value).map_err(|error| invalid(&error.to_string()))?;
+    let metrics = file.log.is_some_and(|log| log.metrics);
     let site = match (file.hosted, file.oidc) {
         (None, oidc) => Site::Local {
             oidc: oidc.map(local_oidc).transpose().map_err(Problem::Invalid)?,
@@ -253,7 +267,7 @@ pub(crate) fn parse(text: &str) -> Result<Config, Problem> {
             ));
         }
     };
-    Ok(Config { site })
+    Ok(Config { site, metrics })
 }
 
 /// The secret file's path: absolute, or a refusal that names the key.
