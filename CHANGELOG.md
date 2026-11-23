@@ -192,6 +192,18 @@ This file records the notable changes to flare. The format follows
   `flare::shares::no_email`. With no saved login flare does not know the
   server, so `flare::login::needed` gives a hint that names `flare login`.
   These recoveries were `run` recoveries before.
+- `flare::network::bad_answer` recovers with a repair and then a retry:
+  check that the server runs flare with the share API, then run the same
+  command again. In JSON its recovery is of kind `after`.
+- A `flare::shares::partly_shared` refusal names `flare grant` as a call
+  with the share the server named, and a `flare::activity::bad_cursor`
+  refusal names `flare activity <FLARE>...` without a cursor, with an
+  alternative that runs it with `--since` once the right cursor is found.
+- `flare activity` prints its next command as a step: in text, a `Next:`
+  sentence on standard error with `flare activity <id>... --since <cursor>`
+  under it, and in JSON, the same call under `next`. The summary line
+  `Next: --since <cursor>` on standard output is gone, and the JSON
+  `summary.cursor` and `summary.more` stay.
 - The project is renamed from hangar to flare. The crates are `flare-core`,
   `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
   `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.

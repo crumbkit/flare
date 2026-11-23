@@ -1,4 +1,4 @@
-Install flare's agent skill
+Manage flare's agent skill
 
 Usage: flare skills [OPTIONS] <COMMAND>
 

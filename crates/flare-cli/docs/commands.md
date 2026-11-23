@@ -22,7 +22,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
-- [`flare skills`](#flare-skills): Install flare's agent skill
+- [`flare skills`](#flare-skills): Manage flare's agent skill
 - [`flare self`](#flare-self): Review flare's own use
 
 ### Arguments
@@ -542,7 +542,7 @@ Effects: read-only, closed-world.
 
 ## `flare skills`
 
-Install flare's agent skill
+Manage flare's agent skill
 
 ### Commands
 

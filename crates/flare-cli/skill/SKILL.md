@@ -28,6 +28,8 @@ called flares, and the owners of those flares can then read it.
     browser sign-in. Ask the person to run it, and wait for them before
     you run the original command again.
   - `retry`: run the original command again.
+  - `after`: make the repair that `repair` describes first, then take
+    the step in `then`, which is a `run` or `retry` step as above.
   - `hint`: follow the advice in `text`. When it names a step for a
     person, ask the person.
   - `none`: flare offers no next step. Tell the person the failure's
@@ -74,10 +76,13 @@ server. Never look for, print or copy the token.
 
 ## Follow responses
 
-`flare activity <id>` lists the responses to a flare, oldest first. The
-JSON's `summary.cursor` marks where the list ended. Keep it, and pass it
-next time as `flare activity <id> --since <cursor>` to list only the newer
-responses. `summary.more` is true when more responses wait past this page.
+`flare activity <id>` lists the responses to a flare, oldest first. Its
+JSON holds the next step under `next`: each step has a `text` and a
+`commands` list whose `call` is the next `flare activity` command, with
+the same flares and `--since` and the cursor where this page ended. Keep
+that call and run it as given to list only the newer responses. Do not
+build the `--since` argument yourself. `summary.more` is true when more
+responses wait past this page.
 
 ## Comments
 

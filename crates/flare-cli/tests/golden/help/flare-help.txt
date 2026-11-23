@@ -19,7 +19,7 @@ Verbs
 Commands
   commands  Explore flare's commands
   schemas   Explore the JSON documents that flare prints
-  skills    Install flare's agent skill
+  skills    Manage flare's agent skill
   self      Review flare's own use
 
 Options:

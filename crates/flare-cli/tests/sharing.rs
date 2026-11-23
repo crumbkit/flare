@@ -903,3 +903,247 @@ fn a_dry_run_of_update_checks_the_id_before_the_body_as_the_server_does() {
     ])
     .assert_failed("flare::shares::kind_not_served");
 }
+
+/// The failure document that a `--json` run printed, after asserting that
+/// the run failed with `code`.
+fn failure(ran: &run::Ran, code: &str) -> Value {
+    ran.assert_failed(code);
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["schema"], "flare/failure/v1", "{}", ran.all());
+    assert_eq!(printed["code"], code, "{}", ran.all());
+    printed
+}
+
+/// The `help:` line that a text run printed on standard error.
+fn help_line(ran: &run::Ran) -> String {
+    ran.stderr
+        .lines()
+        .find(|line| line.trim_start().starts_with("help:"))
+        .unwrap_or_else(|| panic!("no help line: {}", ran.all()))
+        .to_owned()
+}
+
+/// A share id that the server names in a partly shared refusal.
+const PARTLY: &str = "dddddddddddddddddddddddddddddddd";
+
+/// A partly shared refusal of `POST /api/shares`, naming `share` when given.
+fn partly_shared(api: &FakeApi, share: Option<&str>) {
+    let mut refusal = json!({
+        "type": "about:blank",
+        "title": "The share was created, and some of its grants or responses were not written.",
+        "status": 409,
+        "code": "flare::shares::partly_shared",
+        "recovery": {"kind": "hint", "text": "run flare grant with the share id, --with and --re to finish"},
+    });
+    if let Some(share) = share {
+        refusal["share"] = json!(share);
+    }
+    api.route("POST", "/api/shares", 409, &refusal);
+}
+
+#[test]
+fn a_server_that_is_not_flare_fails_with_bad_answer_whose_recovery_repairs_then_retries() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    api.route("POST", "/api/tokens/exchange", 502, &json!("lost"));
+    let ran = home.sharing(&["login", &api.origin, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(
+        printed["recovery"],
+        json!({
+            "kind": "after",
+            "repair": "check that the server runs flare with the share API",
+            "then": {"kind": "retry"},
+        }),
+        "{}",
+        ran.all()
+    );
+    api.route("POST", "/api/tokens/exchange", 502, &json!("lost"));
+    let ran = home.sharing(&["login", &api.origin]);
+    ran.assert_failed("flare::network::bad_answer");
+    assert!(
+        help_line(&ran).contains(
+            "check that the server runs flare with the share API, then run the same command again"
+        ),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_partly_shared_refusal_names_flare_grant_with_the_share_the_server_named() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let file = file.to_str().unwrap();
+    partly_shared(&api, Some(PARTLY));
+    let ran = home.sharing(&["share", file, "--with", "ana@example.org", "--json"]);
+    let printed = failure(&ran, "flare::shares::partly_shared");
+    let call = format!("flare grant {PARTLY} --with <ADDRESS> --re <ID>");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "run", "call": call}),
+        "{}",
+        ran.all()
+    );
+    partly_shared(&api, Some(PARTLY));
+    let ran = home.sharing(&["share", file, "--with", "ana@example.org"]);
+    ran.assert_failed("flare::shares::partly_shared");
+    assert!(help_line(&ran).contains(&call), "{}", ran.all());
+
+    api.route(
+        "POST",
+        &format!("/api/grants/{PARTLY}"),
+        200,
+        &json!({
+            "share": summary(PARTLY, "review"),
+            "granted": ["ana@example.org"],
+            "responds_to": [],
+        }),
+    );
+    home.sharing(&["grant", PARTLY, "--with", "ana@example.org"])
+        .assert_ok();
+}
+
+#[test]
+fn a_partly_shared_refusal_without_a_share_names_flare_grant_with_a_placeholder_id() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    for share in [None, Some("not a share id")] {
+        partly_shared(&api, share);
+        let ran = home.sharing(&["share", file.to_str().unwrap(), "--json"]);
+        let printed = failure(&ran, "flare::shares::partly_shared");
+        assert_eq!(
+            printed["recovery"],
+            json!({"kind": "run", "call": "flare grant <ID> --with <ADDRESS> --re <ID>"}),
+            "{share:?}: {}",
+            ran.all()
+        );
+    }
+}
+
+/// The recovery and the alternative of a bad cursor.
+fn assert_bad_cursor(ran: &run::Ran) {
+    let printed = failure(ran, "flare::activity::bad_cursor");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "run", "call": "flare activity <FLARE>..."}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["alternatives"],
+        json!([{
+            "kind": "after",
+            "repair": "find the cursor that the last flare activity printed",
+            "then": {"kind": "run", "call": "flare activity <FLARE>... --since <CURSOR>"},
+        }]),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_cursor_flare_did_not_write_fails_with_bad_cursor_and_names_flare_activity_without_since() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let ran = home.sharing(&["activity", FLARE, "--since", "nonsense", "--json"]);
+    assert_bad_cursor(&ran);
+    assert!(api.requests_to("/api/activity").is_empty());
+    let ran = home.sharing(&["activity", FLARE, "--since", "nonsense"]);
+    ran.assert_failed("flare::activity::bad_cursor");
+    assert!(
+        help_line(&ran).contains("flare activity <FLARE>..."),
+        "{}",
+        ran.all()
+    );
+
+    let mut refusal = problem("flare::activity::bad_cursor", 400, &api.origin);
+    refusal["recovery"] = json!({
+        "kind": "hint",
+        "text": "pass the cursor that the last flare activity printed, or none to start over",
+    });
+    api.route("GET", "/api/activity", 400, &refusal);
+    let ran = home.sharing(&["activity", FLARE, "--since", "fc1.AAAAAAAAAAA", "--json"]);
+    assert_bad_cursor(&ran);
+}
+
+/// Answers the next activity call with one response and `cursor`.
+fn one_page(api: &FakeApi, cursor: &str, more: bool) {
+    api.route(
+        "GET",
+        "/api/activity",
+        200,
+        &json!({
+            "items": [response("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "First")],
+            "cursor": cursor,
+            "more": more,
+        }),
+    );
+}
+
+#[test]
+fn activity_names_the_next_call_with_the_flares_and_the_last_cursor_under_next() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    one_page(&api, "fc1.AAAAAAAAAC8", false);
+    let ran = home.sharing(&["activity", FLARE, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["next"],
+        json!([{
+            "text": "Read the responses that arrive after these.",
+            "commands": [{"call": format!("flare activity {FLARE} --since fc1.AAAAAAAAAC8")}],
+        }]),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["summary"],
+        json!({"cursor": "fc1.AAAAAAAAAC8", "more": false}),
+        "{}",
+        ran.all()
+    );
+
+    let other = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    one_page(&api, "fc1.AAAAAAAAAD0", true);
+    let ran = home.sharing(&["activity", other, FLARE, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["next"],
+        json!([{
+            "text": "Read the responses that wait past this page.",
+            "commands": [{"call": format!("flare activity {other} {FLARE} --since fc1.AAAAAAAAAD0")}],
+        }]),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["summary"],
+        json!({"cursor": "fc1.AAAAAAAAAD0", "more": true}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn activity_in_text_prints_the_next_call_on_standard_error_and_no_summary_line() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    one_page(&api, "fc1.AAAAAAAAAC8", false);
+    let ran = home.sharing(&["activity", FLARE]);
+    ran.assert_ok();
+    assert!(
+        ran.stderr.contains(&format!(
+            "Next: Read the responses that arrive after these.\n  flare activity {FLARE} --since fc1.AAAAAAAAAC8\n"
+        )),
+        "{}",
+        ran.all()
+    );
+    assert!(!ran.stdout.contains("Next: --since"), "{}", ran.all());
+}

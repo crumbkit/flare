@@ -87,7 +87,7 @@ pub(crate) enum Verb {
         #[command(subcommand)]
         command: SchemasCommand,
     },
-    /// Install flare's agent skill
+    /// Manage flare's agent skill
     Skills {
         /// What to do with the skill.
         #[command(subcommand)]
