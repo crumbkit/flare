@@ -7,7 +7,11 @@
 # suite on a Mac is their macOS check, as the lanes decision says. The
 # board job builds the board program that flare-board's tests run. The
 # hosted job runs flare-aws's tests against a local DynamoDB and a local
-# S3 server, so the lane leaves flare-aws out of its tests. The ui job
+# S3 server, so the lane leaves flare-aws out of its tests. It also runs
+# flare-cli's hosted_stores test, which starts the built `flare serve` on
+# those stand-ins, without --all-features, so the lane skips that test: its
+# --all-features build turns on the `testing` features, and the test must
+# run the flare command as it ships. The ui job
 # installs, checks and tests the TypeScript workspace in ui/.
 name: CI
 
@@ -129,9 +133,13 @@ jobs:
           path: board-bin
           key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
           fail-on-cache-miss: true
-      # flare-aws's tests need the stand-ins that the hosted job starts.
+      # flare-aws's tests need the stand-ins that the hosted job starts, and
+      # flare-cli's hosted_stores test needs them and a build without
+      # --all-features, so the hosted job runs both.
       - name: tests
-        run: cargo nextest run --locked --workspace --all-features --exclude flare-aws
+        run: >-
+          cargo nextest run --locked --workspace --all-features --exclude flare-aws
+          -E 'not binary(hosted_stores)'
         env:
           FLARE_TEST_BOARD: ${{ github.workspace }}/board-bin/board
       - name: doctests
@@ -245,6 +253,29 @@ jobs:
           ready "$FLARE_TEST_S3" 403
       - name: tests
         run: cargo nextest run --locked -p flare-aws --all-features
+      # The hosted_stores test starts the built `flare serve`, so its build
+      # must hold no `testing` feature of a flare crate. This step fails when
+      # the tree the test builds, dev-dependencies included, turns one on,
+      # and when cargo tree or grep fails.
+      - name: no testing features in the hosted_stores build
+        run: |
+          tree="$RUNNER_TEMP/flare-tree.txt"
+          if ! cargo tree --locked --color never --prefix none -p flare-cli \
+            -e normal,build,dev -f '{p} {f}' > "$tree"; then
+            echo "cargo tree failed, so the testing features were not checked" >&2
+            exit 1
+          fi
+          found=0
+          grep -E '^flare-[a-z-]+ v[^ ]+ \(.*\) .*\btesting\b' "$tree" || found=$?
+          case "$found" in
+            0) echo "the hosted_stores build enables a testing feature" >&2; exit 1 ;;
+            1) ;;
+            *) echo "grep could not read the dependency tree" >&2; exit 1 ;;
+          esac
+      # The test sets the AWS endpoint variables and SSL_CERT_FILE on the
+      # flare children itself.
+      - name: flare serve on the stand-ins
+        run: cargo nextest run --locked -p flare-cli --test hosted_stores
 
   advisories:
     if: github.event_name != 'pull_request'
