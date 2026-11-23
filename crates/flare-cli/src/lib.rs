@@ -13,6 +13,7 @@
 //! keeps in the Keychain. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
 
+mod activity;
 mod bind;
 mod board;
 mod cli;
@@ -102,7 +103,7 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             crumbkit::finish(run, documents::SHARES, result)
         }
         Verb::Activity(args) => {
-            let result = block_on(false, sharing::activity(&args, &env));
+            let result = block_on(false, activity::activity(&args, &env));
             crumbkit::finish(run, documents::ACTIVITY, result)
         }
         Verb::Comments(args) => {

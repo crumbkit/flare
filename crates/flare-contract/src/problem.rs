@@ -114,7 +114,7 @@ codes! {
     CommentInvalid => ("flare::comments::invalid", 400, "A comment is 1 to 8,000 characters of plain text.",
         |_| hint("shorten the text, or remove control characters, as the detail says")),
     TooManyComments => ("flare::comments::too_many", 409, "A flare holds at most 2,000 comments and replies.",
-        |_| hint("ask the operator to raise the limit")),
+        |_| hint("share the file again as a new flare to continue the discussion")),
     CommentsUnavailable => ("flare::comments::unavailable", 503, "The comment store did not answer.",
         |_| Recovery::Retry),
     CursorNotFound => ("flare::cursors::not_found", 404, "You have saved no cursor with this name.",

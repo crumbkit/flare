@@ -267,7 +267,8 @@ is the only limit on sign-in requests:
   one that expires first. Without `hosted.stores` the process holds at most
   1,024 sessions.
 - A person removed from the `admit` rule keeps a live session until it
-  expires. With `hosted.stores`, ending every session of one person means
+  expires, except on the comment and activity routes, which check the
+  share API's admit rule for a cookie as they do for a token. With `hosted.stores`, ending every session of one person means
   deleting the items under `SESSOF#<person id>` and the sessions they
   name; without it, restarting the process ends every session.
 
@@ -277,7 +278,8 @@ is the only limit on sign-in requests:
 - Serve flare on a name whose parent domain has no untrusted subdomains.
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.
-- A hosted reply's `Content-Security-Policy` has `connect-src 'self'`, so
-  a page's script reaches this site's API and no other host.
+- A hosted reply's `Content-Security-Policy` has `connect-src 'self'`,
+  which limits the requests a page makes to this site's origin. It has no
+  `script-src`, so a hosted page runs no script today.
 - Every reply carries `Strict-Transport-Security: max-age=63072000`, so a
   browser that has visited uses HTTPS for two years.

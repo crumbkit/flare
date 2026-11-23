@@ -363,3 +363,36 @@ fn a_cursor_is_read_advanced_and_never_moves_back() {
         FlareError::TooManyCursors
     );
 }
+
+/// Bob as the browser knows him under an emails rule: the allow-list
+/// entry's own id, which differs from his address.
+fn bob_in_the_browser() -> Principal {
+    Principal::with_email(
+        PrincipalId::try_from("google:b").unwrap(),
+        bob().email().unwrap().clone(),
+    )
+}
+
+#[test]
+fn one_person_is_one_author_and_one_cursor_whichever_principal_id_their_sign_in_names() {
+    let flares = with_flare();
+    let browser = bob_in_the_browser();
+    post(&flares, &browser, 1, None);
+    let threads = block_on(flares.comments(&alice(), &flare_id())).unwrap();
+    assert_eq!(threads[0].comment.author.as_str(), "bob@example.com");
+    // The CLI's principal, whose id is derived from the address, edits and
+    // deletes what the browser wrote.
+    let body = CommentBody::try_from("edited").unwrap();
+    block_on(flares.edit_comment(&bob(), &comment_id(1), body, at(30))).unwrap();
+    let name = CursorName::try_from("mine").unwrap();
+    block_on(flares.advance_cursor(&browser, &name, Position::new(7))).unwrap();
+    assert_eq!(
+        block_on(flares.cursor(&bob(), &name)).unwrap(),
+        Position::new(7)
+    );
+    block_on(flares.delete_comment(&bob(), &comment_id(1), at(31))).unwrap();
+    // Alice stays refused, as the admitted twin shows bob is not.
+    let other = CommentBody::try_from("not yours").unwrap();
+    let refused = block_on(flares.edit_comment(&alice(), &comment_id(1), other, at(32)));
+    assert_eq!(refused.unwrap_err(), FlareError::NotCommentAuthor);
+}

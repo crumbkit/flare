@@ -51,7 +51,7 @@ no index.
 | `LABELS#<owner>` | `L#<label>` | The id of the owner's latest token with that label. |
 | `SESS#<64-hex digest>` | `SESS` | One browser session, by the SHA-256 of its secret: person, verified address, creation time, expiry and the expiry again in `expires_at`. |
 | `SESSOF#<person>` | `S#<20-digit expiry>#<64-hex digest>` | A link from a person to one of their sessions, in expiry order, with `expires_at`. |
-| `SESSOF#<person>` | `GUARD` | A random `rev` that every sign-in of the person replaces from the value it read, so two sign-ins together cannot both stay under 8 sessions. |
+| `SESSOF#<person>` | `GUARD` | A random `rev` that every sign-in of the person replaces from the value it read, so two sign-ins together cannot both stay under 8 sessions, and an `expires_at` of the session cap after the latest sign-in. |
 | `KEY#SIGNIN` | `V#<10-digit number>` | One sealing key: 32 bytes and its creation time. Writing key `n + 1` sets `expires_at` on key `n` to an hour later. |
 | `SEQ#responses` | `SEQ` | The head: the highest position given to a response link. |
 | `RESP#<response>` | `F#<flare>` | A response's link to one flare: version, time and position. |
@@ -126,9 +126,9 @@ first link a repeat answers anyway.
 | State | Event | Next state | Owner of the event |
 | --- | --- | --- | --- |
 | no session | `create` | the session and its link exist, the person's guard has a new `rev`, and the old session and the person's earliest-expiring sessions beyond 8 are gone, in one transaction; a guard, link or session that changed since the read reads again | the sign-in |
-| live, 10 minutes of its idle life used | `principal` | one transaction moves the expiry, the TTL attribute and the link; a failed transaction is ignored and the call still answers the principal | the browser's request |
+| live, 10 minutes of its idle life used | `principal` | one transaction moves the expiry, the TTL attribute and the link; a transaction that fails for another reason is ignored and the call still answers the principal, and one whose condition fails reads the session again and answers none when it is gone | the browser's request |
 | live | `remove` | the session and its link are deleted | the sign-out |
-| any sessions of a person | `remove_all_of` | every link and session it names is deleted, expired or not, up to 32 per transaction | the operator |
+| any sessions of a person | `remove_all_of` | every link and session it names, and the person's guard, is deleted, expired or not, up to 32 sessions per transaction | the operator |
 | no key | `current` or `rotate` | key 1 exists, written only if absent; the loser of a race reads the winner's | any process |
 | the newest key is 30 days old | `rotate` | key `n + 1` exists, written only if absent, and key `n` has its grace end in its TTL | any process |
 | a key that is not the newest | `get` | readable until an hour after the next key's creation time | the sign-in |
@@ -217,7 +217,7 @@ FLARE_TEST_DYNAMODB=http://127.0.0.1:8000 FLARE_TEST_S3=http://127.0.0.1:8333 \
 | Tests | What they check |
 | --- | --- |
 | `tests/contract_dynamodb.rs`, `tests/contract_s3.rs` | Every function of the seven contract suites, a second store on the same table, a code's TTL attribute, and objects that flare did not write. |
-| `tests/sessions_dynamodb.rs` | A second store sees a session and its removal, the TTL attribute follows the expiry, an end of a person's sessions leaves no item, twelve sign-ins together leave eight sessions, a lost answer or dropped request, a failed extension that still answers, and a rotation's TTL on the old key. |
+| `tests/sessions_dynamodb.rs` | A second store sees a session and its removal, the TTL attribute follows the expiry, an end of a person's sessions leaves no session, link or guard, extensions that run together, twelve sign-ins together leave eight sessions, a lost answer or dropped request, a failed extension that still answers, and a rotation's TTL on the old key. |
 | `src/dynamodb/grants/tests.rs` | An admin's grant or revoke built before the admin is revoked is refused when sent, because the admin's check and the write are one transaction. |
 | `src/dynamodb/transact/tests.rs` | Each grant and revoke transaction holds the admin's condition beside the write. |
 | `tests/outcome_unknown.rs` | A write whose answers are all lost is resent with one token and settled by a read; a put that the SDK resends after S3 stored it answers success, and onto another object answers `IdTaken`; a lost revoke by an admin whose Admin role ends meanwhile answers `Unavailable`; lost and dropped code, token and link writes answer success and `Unavailable`. |

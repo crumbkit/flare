@@ -7,8 +7,10 @@
 //! and a comment that is not there give the same answer.
 
 use super::{FlareError, Flares, flare_refused};
+use crate::PrincipalId;
 use crate::auth::Principal;
 use crate::comment::{Comment, CommentBody, CommentId, CommentKey, CursorName, NewComment};
+use crate::email::Email;
 use crate::response::Position;
 use crate::share::ShareId;
 use crate::sharing::ShareError;
@@ -80,23 +82,25 @@ fn comment_refused(error: CommentStoreError) -> FlareError {
 impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
     Flares<S, G, R, C, U>
 {
-    /// Checks that `who` has a verified address and can open `flare`.
-    async fn readable(&self, who: &Principal, flare: &ShareId) -> Result<(), FlareError> {
-        if who.email().is_none() {
-            return Err(FlareError::Share(ShareError::NoVerifiedEmail));
-        }
+    /// Checks that `who` can open `flare` and answers who they are.
+    async fn readable(&self, who: &Principal, flare: &ShareId) -> Result<PrincipalId, FlareError> {
+        let person = person(who)?;
         self.shares
             .open(who, flare, None)
             .await
-            .map(|_| ())
+            .map(|_| person)
             .map_err(flare_refused)
     }
 
     /// The comment `id`, when `who` can still open its flare.
-    async fn visible(&self, who: &Principal, id: &CommentId) -> Result<Comment, FlareError> {
+    async fn visible(
+        &self,
+        who: &Principal,
+        id: &CommentId,
+    ) -> Result<(Comment, PrincipalId), FlareError> {
         let comment = self.comments.get(id).await.map_err(comment_refused)?;
         match self.readable(who, &comment.flare).await {
-            Ok(()) => Ok(comment),
+            Ok(person) => Ok((comment, person)),
             Err(FlareError::NotFound) => Err(FlareError::CommentNotFound),
             Err(other) => Err(other),
         }
@@ -150,7 +154,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         draft: CommentDraft,
         at: Timestamp,
     ) -> Result<Posted, FlareError> {
-        self.readable(who, &draft.flare).await?;
+        let author = self.readable(who, &draft.flare).await?;
         if let Some(parent) = &draft.parent {
             let held = self.comments.get(parent).await.map_err(comment_refused)?;
             if held.flare != draft.flare {
@@ -164,7 +168,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
             draft.id,
             draft.flare,
             draft.parent,
-            who.id().clone(),
+            author,
             draft.body,
             draft.key,
             at,
@@ -196,8 +200,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         body: CommentBody,
         at: Timestamp,
     ) -> Result<Comment, FlareError> {
-        let held = self.visible(who, id).await?;
-        if &held.author != who.id() {
+        let (held, person) = self.visible(who, id).await?;
+        if held.author != person {
             return Err(FlareError::NotCommentAuthor);
         }
         self.comments
@@ -219,8 +223,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         id: &CommentId,
         at: Timestamp,
     ) -> Result<Comment, FlareError> {
-        let held = self.visible(who, id).await?;
-        if &held.author != who.id() {
+        let (held, person) = self.visible(who, id).await?;
+        if held.author != person {
             return Err(FlareError::NotCommentAuthor);
         }
         self.comments.delete(id, at).await.map_err(comment_refused)
@@ -234,7 +238,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     /// [`FlareError::CommentsUnavailable`].
     pub async fn cursor(&self, who: &Principal, name: &CursorName) -> Result<Position, FlareError> {
         self.cursors
-            .get(who.id(), name)
+            .get(&person(who)?, name)
             .await
             .map_err(comment_refused)?
             .ok_or(FlareError::CursorNotFound)
@@ -254,11 +258,19 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         to: Position,
     ) -> Result<Position, FlareError> {
         self.cursors
-            .advance(who.id(), name, to)
+            .advance(&person(who)?, name, to)
             .await
             .map_err(|error| match error {
                 CommentStoreError::TooMany => FlareError::TooManyCursors,
                 other => comment_refused(other),
             })
     }
+}
+
+/// The person `who` is: the id derived from their verified address, which
+/// is the same for the browser and the CLI whatever id a sign-in names.
+fn person(who: &Principal) -> Result<PrincipalId, FlareError> {
+    who.email()
+        .map(Email::principal_id)
+        .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))
 }

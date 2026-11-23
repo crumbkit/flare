@@ -465,10 +465,48 @@ async fn a_bearer_request_reads_no_cookie_and_a_cookie_opens_no_other_route() {
 }
 
 #[tokio::test]
-async fn hosted_replies_allow_connections_to_their_own_origin_and_local_ones_do_not() {
+async fn hosted_replies_carry_a_policy_that_limits_connections_to_their_own_origin() {
     let api = Api::start().await;
     let reply = api.hosted.get("/up").send().await;
     let policy = reply.header("content-security-policy").unwrap();
     assert!(policy.contains("connect-src 'self'"), "{policy}");
     assert!(policy.starts_with("default-src 'none'"));
+}
+
+#[tokio::test]
+async fn a_cookie_of_a_person_the_admit_rule_no_longer_names_is_refused_on_comments_and_activity() {
+    use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
+    use flare_core::Email;
+    let alice_email = Email::try_from("alice@example.com").unwrap();
+    let rule = Admit::Emails(
+        AllowList::new(vec![AllowEntry::new(
+            alice_email.clone(),
+            alice_email.principal_id(),
+            Reach::Everything,
+        )])
+        .unwrap(),
+    );
+    let api = Api::start_with(rule).await;
+    let alice = api.token_for("alice").await;
+    let flare = api.share(&alice, "Plan", &["bob@example.com"], &[]).await;
+    let comments = format!("/api/comments?flare={flare}");
+    let activity = format!("/api/activity?flare={flare}");
+    let bob = api.session("bob").await;
+    for path in [&comments, &activity] {
+        let reply = api.browser("GET", path, &bob).send().await;
+        assert_eq!(reply.status, 401, "{path}: {}", reply.body);
+    }
+    let body = json!({"flare": flare, "body": "x", "key": "k"}).to_string();
+    let write = api
+        .browser("POST", "/api/comments", &bob)
+        .body("application/json", body.into_bytes())
+        .send()
+        .await;
+    assert_eq!(write.status, 401, "{}", write.body);
+    // The admitted twin: the person the rule names reads with a cookie.
+    let alice_cookie = api.session("alice").await;
+    for path in [&comments, &activity] {
+        let reply = api.browser("GET", path, &alice_cookie).send().await;
+        assert_eq!(reply.status, 200, "{path}: {}", reply.body);
+    }
 }

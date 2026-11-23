@@ -140,7 +140,9 @@ where
     }))
 }
 
-/// The caller that the request's bearer token proves.
+/// The caller that the request's bearer token or, on a route that takes
+/// one, session cookie proves. A cookie's person must still pass the admit
+/// rule, as a token's owner does.
 async fn caller<P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
     api: &dyn Api,
@@ -157,8 +159,8 @@ where
     if matches!(credential, Credential::Session(_)) {
         // `hosted::check` passes a cookie only to the routes that take one.
         return match ctx.shared.site.authenticate(credential).await {
-            Ok(admitted) => Ok(admitted.principal),
-            Err(flare_core::AuthError::Rejected) => Err(ApiCode::SignInNeeded.into()),
+            Ok(admitted) if api.admits(&admitted.principal) => Ok(admitted.principal),
+            Ok(_) | Err(flare_core::AuthError::Rejected) => Err(ApiCode::SignInNeeded.into()),
             Err(_) => Err(ApiCode::TokensUnavailable.into()),
         };
     }

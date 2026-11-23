@@ -97,11 +97,12 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
 - A request with the session cookie needs `Sec-Fetch-Site: same-origin`.
   One that is not `GET` also needs an `Origin` header equal to the
   site's origin and a JSON `Content-Type`. Any other request fails with
-  `flare::request::origin`.
+  `request::origin` (403).
 - A request with an `Authorization` header is a token request, whatever
   cookies it holds.
-- Hosted pages carry `connect-src 'self'`, so a page's script reaches the
-  site's own API and no other host.
+- Hosted pages carry `connect-src 'self'`, which limits the requests a
+  page makes to the site's own origin. The policy has no `script-src`, so a
+  hosted page runs no script today.
 
 ## Crash points
 

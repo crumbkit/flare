@@ -33,9 +33,15 @@ pub struct Api {
 impl Api {
     /// A server whose creators are alice, bob and carol at example.com.
     pub async fn start() -> Self {
+        Self::start_with(Admit::Anyone(Reach::Everything)).await
+    }
+
+    /// As [`Api::start`], with the share API's admit rule `admit`.
+    pub async fn start_with(admit: Admit) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
         let hosted = Hosted::start_attached(Admits::Domain, None, move |app| {
+            let admit = admit.clone();
             let creators = Creators::only(
                 ["alice", "bob", "carol"]
                     .iter()
@@ -64,7 +70,6 @@ impl Api {
             let recipients = FaultyRecipients {
                 fail: switches.recipients.clone(),
             };
-            let admit = Admit::Anyone(Reach::Everything);
             app.with_sharing(Sharing::new(flares, tokens, recipients, admit))
         })
         .await;

@@ -1,7 +1,7 @@
 //! What the session and sealing key stores show on a durable table, beyond
 //! the contract suites: a second store on the same table sees every write,
 //! each item carries its expiry in the table's TTL attribute, an end of all
-//! of a person's sessions leaves no item behind, sign-ins that run together
+//! of a person's sessions leaves none of their items behind, sign-ins that run together
 //! keep the person at 8 sessions, and a lost answer or a dropped request
 //! behaves as the stores promise.
 #![cfg(test)]
@@ -131,14 +131,21 @@ async fn a_session_and_its_link_carry_the_expiry_in_the_tables_ttl_attribute() {
         .unwrap();
     assert_eq!(expires, at(START + SESSION_IDLE));
     let found = expiring(config.table().as_str()).await;
-    assert_eq!(found.len(), 2, "{found:?}");
-    assert!(
+    assert_eq!(found.len(), 3, "{found:?}");
+    let session_and_link = |found: &[(String, String, String)], expires: Timestamp| {
         found
             .iter()
+            .filter(|(_, sk, _)| sk != "GUARD")
             .all(|(_, _, ttl)| *ttl == expires.as_secs().to_string())
-    );
+    };
+    assert!(session_and_link(&found, expires));
     assert!(found.iter().any(|(pk, _, _)| pk.starts_with("SESS#")));
     assert!(found.iter().any(|(pk, _, _)| pk.starts_with("SESSOF#")));
+    // The guard expires when the cap after the sign-in has passed, by when
+    // every session of the person has expired.
+    let guard: Vec<_> = found.iter().filter(|(_, sk, _)| sk == "GUARD").collect();
+    assert_eq!(guard.len(), 1, "{found:?}");
+    assert_eq!(guard[0].2, (START + rule().cap()).to_string());
     // A later request moves the TTL attribute and the link with the expiry.
     let later = at(START + SESSION_IDLE - 60);
     stores
@@ -154,16 +161,12 @@ async fn a_session_and_its_link_carry_the_expiry_in_the_tables_ttl_attribute() {
         .unwrap();
     assert!(moved > expires);
     let found = expiring(config.table().as_str()).await;
-    assert_eq!(found.len(), 2, "{found:?}");
-    assert!(
-        found
-            .iter()
-            .all(|(_, _, ttl)| *ttl == moved.as_secs().to_string())
-    );
+    assert_eq!(found.len(), 3, "{found:?}");
+    assert!(session_and_link(&found, moved));
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn removing_every_session_of_a_person_leaves_no_session_or_link_item() {
+async fn removing_every_session_of_a_person_leaves_no_session_link_or_guard_item() {
     let config = fresh_config().await;
     let stores = Stores::connect_at(&config, &endpoints());
     let ana = person("ana@example.com");
@@ -219,8 +222,8 @@ async fn removing_every_session_of_a_person_leaves_no_session_or_link_item() {
     let table = config.table().as_str();
     assert_eq!(
         items_of(table, "SESSOF#").await,
-        3,
-        "ben's link, ben's guard and ana's guard"
+        2,
+        "ben's link and ben's guard, and no guard of ana's"
     );
     assert_eq!(items_of(table, "SESS#").await, 1, "ben's session");
 }
@@ -357,4 +360,81 @@ async fn a_rotation_gives_the_old_key_a_ttl_that_ends_its_grace_and_a_second_sto
         found,
         vec![("KEY#SIGNIN".to_owned(), "V#0000000001".to_owned(), ends)]
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn extensions_that_run_together_all_answer_the_principal_and_move_the_expiry_once() {
+    let config = fresh_config().await;
+    let stores = Stores::connect_at(&config, &endpoints());
+    let ana = person("ana@example.com");
+    let expires = stores
+        .sessions
+        .create(
+            NewSession::new(digest(1), ana.clone()),
+            None,
+            &rule(),
+            at(START),
+        )
+        .await
+        .unwrap();
+    let later = at(START + SESSION_IDLE - 60);
+    let key = digest(1);
+    let read = || stores.sessions.principal(&key, &RULE, later);
+    let answers = tokio::join!(read(), read(), read(), read(), read(), read());
+    let answers = [
+        answers.0, answers.1, answers.2, answers.3, answers.4, answers.5,
+    ];
+    assert!(
+        answers
+            .iter()
+            .all(|answer| *answer == Ok(Some(ana.clone()))),
+        "{answers:?}"
+    );
+    let moved = stores.sessions.expiry(&digest(1), later).await.unwrap();
+    assert!(moved.is_some_and(|moved| moved > expires));
+    let found = expiring(config.table().as_str()).await;
+    let links = found
+        .iter()
+        .filter(|(pk, sk, _)| pk.starts_with("SESSOF#") && sk != "GUARD");
+    assert_eq!(links.count(), 1, "{found:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_removed_while_requests_extend_it_stays_removed() {
+    let config = fresh_config().await;
+    let stores = Stores::connect_at(&config, &endpoints());
+    let ana = person("ana@example.com");
+    for round in 0..6_u8 {
+        let tag = 10 + round;
+        stores
+            .sessions
+            .create(
+                NewSession::new(digest(tag), ana.clone()),
+                None,
+                &rule(),
+                at(START),
+            )
+            .await
+            .unwrap();
+        let later = at(START + SESSION_IDLE - 60);
+        let key = digest(tag);
+        let read = || stores.sessions.principal(&key, &RULE, later);
+        let (a, b, c, d, removed) =
+            tokio::join!(read(), read(), read(), read(), stores.sessions.remove(&key));
+        removed.unwrap();
+        for answer in [a, b, c, d] {
+            assert!(
+                matches!(answer, Ok(None) | Ok(Some(_))),
+                "round {round}: {answer:?}"
+            );
+        }
+        // Whatever the race did, the session is gone and stays gone.
+        assert_eq!(read().await, Ok(None), "round {round}");
+        assert_eq!(
+            stores.sessions.expiry(&digest(tag), later).await,
+            Ok(None),
+            "round {round}"
+        );
+    }
+    assert_eq!(items_of(config.table().as_str(), "SESS#").await, 0);
 }

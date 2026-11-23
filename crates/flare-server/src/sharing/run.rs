@@ -1,18 +1,18 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
 use super::convert::{
-    content_error, flare_error, item, recipient_error, role, share_error, standing, summary,
+    content_error, flare_error, recipient_error, role, share_error, standing, summary,
 };
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
 use super::{Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck};
 use flare_contract::{
-    ActivityPage, ApiCode, Cursor, ExchangeRequest, Format, OpenedShare, Role as WireRole,
-    ShareList, ShareRequest, Shared, TokenIssued, VersionRequest, utc,
+    ApiCode, ExchangeRequest, Format, OpenedShare, Role as WireRole, ShareList, ShareRequest,
+    Shared, TokenIssued, VersionRequest, utc,
 };
 use flare_core::{
     CommentStore, CursorStore, DocumentText, Email, FlareError, Flared, GrantStore, LoginCode,
-    NewFlare, NewToken, Position, Principal, Recipients, ResponseStore, ShareContent, ShareError,
-    ShareId, ShareStore, ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId,
+    ShareStore, ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -21,14 +21,14 @@ use serde::Serialize;
 const DRAWS: usize = 3;
 
 /// A JSON answer with `status`.
-fn json(status: u16, body: &impl Serialize) -> Answer {
+pub(super) fn json(status: u16, body: &impl Serialize) -> Answer {
     serde_json::to_string(body)
         .map(|text| (status, Some(text)))
         .map_err(|_| ApiCode::SharesUnavailable.into())
 }
 
 /// The share id that `text` names; a malformed id is a missing share.
-fn share_id(text: &str) -> Result<ShareId, Refusal> {
+pub(super) fn share_id(text: &str) -> Result<ShareId, Refusal> {
     ShareId::try_from(text).map_err(|_| ApiCode::ShareNotFound.into())
 }
 
@@ -221,46 +221,6 @@ where
         json(200, &shared(&flared, role))
     }
 
-    async fn activity(
-        &self,
-        who: &Principal,
-        flares: &[String],
-        (since, since_last): (Option<&str>, Option<&str>),
-        limit: usize,
-    ) -> Answer {
-        let given = match since {
-            Some(text) => Cursor::try_from(text)
-                .map_err(|_| ApiCode::BadCursor)?
-                .position(),
-            None => 0,
-        };
-        let saved = match since_last {
-            Some(name) => self.saved_position(who, name).await?.unwrap_or(0),
-            None => 0,
-        };
-        let after = given.max(saved);
-        let ids = flares
-            .iter()
-            .map(|text| share_id(text))
-            .collect::<Result<Vec<_>, _>>();
-        if flares.len() > flare_core::MAX_FLARES {
-            return Err(ApiCode::TooManyFlares.into());
-        }
-        let page = self
-            .flares
-            .activity(who, &ids?, Position::new(after), limit)
-            .await
-            .map_err(flare_error)?;
-        json(
-            200,
-            &ActivityPage {
-                items: page.items.iter().filter_map(item).collect(),
-                cursor: Cursor::new(page.last.get()).to_string(),
-                more: page.more,
-            },
-        )
-    }
-
     async fn revoke(&self, who: &Principal, id: &str, now: Timestamp) -> Answer {
         let id = TokenId::try_from(id).map_err(|_| ApiCode::TokenNotFound)?;
         let owner = who.email().ok_or(ApiCode::NoVerifiedEmail)?;
@@ -359,6 +319,10 @@ where
     T: TokenStore,
     X: Recipients,
 {
+    fn admits(&self, who: &Principal) -> bool {
+        who.email().is_some_and(|email| self.admit.admits(email))
+    }
+
     fn authenticate<'a>(
         &'a self,
         token: &'a SecretString,

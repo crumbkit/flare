@@ -7,7 +7,9 @@
 //! person's links lists their live sessions from the earliest to expire. A
 //! guard item beside the links carries a random `rev` that every sign-in of
 //! the person replaces from the `rev` it read, so two sign-ins of one
-//! person cannot both stay below the limit.
+//! person cannot both stay below the limit. The guard's TTL is the session
+//! cap after the latest sign-in, and an end of all of a person's sessions
+//! deletes it.
 
 use crate::dynamodb::items::{
     Item, ItemKind, Malformed, Rev, attr, keyed, number, read_number, read_text, text,
@@ -158,6 +160,9 @@ pub(crate) struct Creation<'a> {
     pub(crate) principal: &'a Principal,
     pub(crate) created: Timestamp,
     pub(crate) expires: Timestamp,
+    /// When the table's TTL may delete the guard: the cap after the sign-in,
+    /// by when every session this person holds has expired.
+    pub(crate) guard_expires: Timestamp,
     pub(crate) guard: &'a GuardRead,
     pub(crate) rev: &'a Rev,
     pub(crate) ended: &'a [Ended],
@@ -192,7 +197,10 @@ pub(crate) fn create(table: &str, creation: &Creation<'_>) -> Option<Transaction
     );
     let guard = keyed(
         &Key::session_guard(person),
-        [(attr::REV, text(creation.rev.as_str()))],
+        [
+            (attr::REV, text(creation.rev.as_str())),
+            (attr::TTL, number(creation.guard_expires.as_secs())),
+        ],
     );
     let guard_put = match creation.guard {
         None => put(table, guard, Some(ABSENT))?,
@@ -222,8 +230,9 @@ pub(crate) fn end(table: &str, ended: &Ended) -> Option<Transaction> {
     Some(transaction)
 }
 
-/// The transaction that deletes the sessions at `links` and the links,
-/// whatever they now hold.
+/// The transaction that deletes the sessions at `links`, the links and the
+/// person's guard, whatever they now hold. A sign-in that read the guard
+/// before this fails its condition and reads again.
 pub(crate) fn end_all(
     table: &str,
     person: &PrincipalId,
@@ -240,6 +249,10 @@ pub(crate) fn end_all(
             delete(table, &Key::session_link(person, *expires, digest), None)?,
         );
     }
+    transaction.push(
+        ItemRole::SessionGuard,
+        delete(table, &Key::session_guard(person), None)?,
+    );
     Some(transaction)
 }
 

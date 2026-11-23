@@ -15,6 +15,15 @@ This file records the notable changes to flare. The format follows
   at most every 10 minutes. The sealing key rotates every 30 days, and each
   sealed sign-in uses a random nonce. Without `hosted.stores` the in-memory
   stores stay.
+- A comment's author and a named cursor belong to the person's address, so
+  one person who signs in to the browser and to the CLI under an `emails`
+  admit rule is one author and has one set of cursors.
+- The comment and activity routes check a session cookie's person against
+  the share API's admit rule, as they do for a token's owner.
+- The per-person sign-in guard in DynamoDB expires with the 7-day session
+  cap, and ending all of a person's sessions deletes it.
+- A request whose session extension loses a race with a removal now
+  answers as signed out.
 - `OidcAuthenticator::start` and `sign_out` are `async`, and
   `OidcAuthenticator::connect_stored` takes the session and key stores.
 

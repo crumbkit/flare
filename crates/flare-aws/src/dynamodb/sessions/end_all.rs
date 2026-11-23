@@ -10,7 +10,7 @@ use crate::dynamodb::transact::Transaction;
 use flare_core::{Digest, PrincipalId, SessionStoreError, Timestamp};
 
 /// One pass of the end of all of a person's sessions, which deletes up to
-/// [`LINK_READ`] of them, expired or not.
+/// [`LINK_READ`] of them, expired or not, and the person's guard.
 pub(super) struct RemoveAllOp<'a> {
     pub(super) table: &'a Table,
     pub(super) person: &'a PrincipalId,
@@ -42,9 +42,6 @@ impl Attempt for RemoveAllOp<'_> {
             .links(LINK_READ)
             .await
             .map_err(|()| Sent::Unavailable)?;
-        if links.is_empty() {
-            return Err(Sent::Done(0));
-        }
         let transaction =
             items::end_all(self.table.name(), self.person, &links).ok_or(Sent::Unavailable)?;
         Ok((transaction, links.len()))

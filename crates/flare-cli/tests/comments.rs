@@ -283,7 +283,7 @@ fn activity_lists_comment_items_beside_responses() {
 }
 
 #[test]
-fn since_last_reads_from_the_larger_cursor_and_saves_it_on_the_server_and_here_after_printing() {
+fn since_last_reads_from_the_larger_cursor_and_saves_it_here_before_printing_and_on_the_server() {
     let api = FakeApi::start();
     let home = logged_in(&api);
     api.route(

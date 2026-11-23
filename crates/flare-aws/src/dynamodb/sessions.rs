@@ -2,8 +2,10 @@
 //!
 //! A sign-in, a removal and an end of all of a person's sessions are
 //! transactions that the retry loop sends. A request that extends a session
-//! sends one transaction and ignores its failure, because the session is
-//! still live under its old expiry and the next request tries again. Every
+//! sends one transaction. A failure that leaves the session as it was is
+//! ignored, because the session is still live under its old expiry and the
+//! next request tries again; a failed condition reads the session again,
+//! and a session that is gone answers as unknown. Every
 //! read is consistent, and every answer compares the session's expiry with
 //! `now` first, so a session that the table's TTL has not deleted yet is
 //! still expired.
@@ -175,6 +177,9 @@ impl Attempt for CreateOp<'_> {
                 principal: &self.session.principal,
                 created: self.now,
                 expires,
+                guard_expires: Timestamp::from_secs(
+                    self.now.as_secs().saturating_add(self.rule.cap()),
+                ),
                 guard: &guard,
                 rev: &rev,
                 ended: &ended,
@@ -290,11 +295,19 @@ impl SessionStore for DynamoSessionStore {
                 Token::fresh(),
             )
         {
-            // A failed extension leaves the session as it was.
-            let _ = self
+            let sent = self
                 .table
                 .transact(&transaction, &token, "extend session")
                 .await;
+            if matches!(sent, Err(Classified::Conflict { .. } | Classified::Retry)) {
+                // Another call changed the session: an extension that ran
+                // first leaves it live, and a removal leaves nothing.
+                let again = read_session(&self.table, digest)
+                    .await
+                    .map_err(|()| SessionStoreError::Unavailable)?
+                    .filter(|held| held.expires > now);
+                return Ok(again.map(|held| held.principal));
+            }
         }
         Ok(Some(held.principal))
     }

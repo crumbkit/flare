@@ -227,7 +227,10 @@ pub trait SessionStore: Send + Sync {
     -> impl Future<Output = Result<(), SessionStoreError>> + Send;
 
     /// Ends every session of `person`, which is how an operator signs one
-    /// person out.
+    /// person out. Sessions are kept under the id their principal carries,
+    /// which is the id the sign-in named (an allow-list entry's own id under
+    /// an emails rule), so `person` is that id and not one derived from the
+    /// address.
     ///
     /// # Errors
     ///

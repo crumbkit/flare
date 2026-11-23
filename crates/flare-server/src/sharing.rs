@@ -13,6 +13,7 @@
 //! The store keeps the SHA-256 of the secret. A login code is 43 base64url
 //! characters of 32 random bytes, and the store keeps its SHA-256.
 
+mod activity;
 mod comments;
 mod convert;
 mod run;
@@ -149,6 +150,10 @@ pub(crate) trait Api: Send + Sync {
     /// Checks a bearer token at `now`.
     fn authenticate<'a>(&'a self, token: &'a SecretString, now: Timestamp)
     -> Boxed<'a, TokenCheck>;
+
+    /// Whether the site's admit rule still admits `who`, which a session
+    /// cookie must pass as a bearer token does.
+    fn admits(&self, who: &Principal) -> bool;
 
     /// Issues a login code for `owner` and the CLI on `port`.
     fn issue_code<'a>(
