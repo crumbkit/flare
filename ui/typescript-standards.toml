@@ -12,6 +12,7 @@ id = "lanes"
 requirement = """
 - Lane: `ui` in .github/workflows/ci.yml, on each pull request and each push to main. It runs the workflows check through the Rust lane's `zizmor .`, then install, lint, typecheck, knip and test from this directory. Its budget is ten minutes, the job's timeout. A merge waits for it once branch protection requires it.
 - The workspace has no `build` step, because neither package is bundled or published: an app in this workspace imports their TypeScript source and its own build bundles it.
+- Lane: `advisories` in .github/workflows/ci.yml runs `pnpm audit` in this directory daily at 06:43 UTC, on each push to main and on workflow_dispatch (BASE-17). Nothing waits for it.
 """
 reason = "The two packages hold the comment parts' state and their tests. A pull request that breaks either fails before merge, and the lane takes about a minute."
 realizations = ["../.github/workflows/ci.yml", "package.json"]
