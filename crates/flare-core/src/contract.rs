@@ -26,7 +26,9 @@ pub mod file_store;
 pub mod grant_store;
 pub mod page_store;
 pub mod record_store;
+pub mod response_store;
 pub mod share_store;
+pub mod token_store;
 
 pub use executor::{RunTogether, Threads, block_on};
 
@@ -125,6 +127,23 @@ clauses! {
     ConcurrentPutsOfOneIdGiveOneIdTaken => "two puts of one id that run together give one success and one id taken",
     AnUnknownFileIsNotFound => "an unknown file answers not found",
     TheLargestFileReadsBack => "a file of the largest allowed size reads back",
+    ACodeIsUsedOnce => "a login code gives its owner and port once, and a second use is refused",
+    AnExpiredCodeIsRefused => "a code used before its expiry works, and one used at or after its expiry is refused",
+    AnUnknownCodeIsRefused => "a code that was never issued is refused",
+    ConcurrentUsesOfOneCodeGiveOneSuccess => "two uses of one code that run together give one success and one refusal",
+    ATokenReadsBack => "a created token reads back with its owner, label, digest, creation time, a 90-day expiry and no revoked time",
+    AnUnknownTokenIsNotFound => "an unknown token id answers not found",
+    ARevokeKeepsItsFirstTime => "a revoke sets the revoked time, and a second revoke keeps the first time",
+    ARevokeByAnotherOwnerIsNotFound => "a revoke by someone other than the owner answers not found and changes nothing, and the owner's revoke applies",
+    ANewTokenWithTheSameLabelRevokesTheOld => "a new token revokes the owner's active token with the same label, and leaves other labels and other owners' tokens active",
+    ALinkReadsBackUnderItsFlare => "a link reads back under its flare with its response, version and time",
+    PositionsIncreaseAndTheHeadFollows => "each new link gets a larger position, and the head is the last one given",
+    ARepeatedLinkKeepsItsFirstPosition => "a repeated link of one response and flare answers the first link and adds nothing",
+    ConcurrentLinksGetDistinctPositions => "two links that run together get two different positions, both at or below the head",
+    AFlaresListHoldsOnlyNewerLinksUpToTheBound => "a flare's list holds the links above the given position and at most the bound",
+    AFlaresListHoldsOnlyItsLinks => "a flare's list holds only links to that flare",
+    AResponsesListNamesEveryFlare => "a response's list names every flare it links to",
+    TheLimitBoundsAListOldestFirst => "a flare's list holds at most the limit, oldest first",
     FixtureIsUnusable => "the fixture holds a value that its type refuses",
     TheStoreFailedUnexpectedly => "the store returned an error that no clause expects",
 }

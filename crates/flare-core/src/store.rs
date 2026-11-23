@@ -1,5 +1,6 @@
 //! The [`RecordStore`] and [`PageStore`] traits and their errors, and the
-//! [`ShareStore`], [`GrantStore`] and [`FileStore`] traits in submodules.
+//! [`ShareStore`], [`GrantStore`], [`FileStore`], [`TokenStore`] and
+//! [`ResponseStore`] traits in submodules.
 //!
 //! Every trait is async, written as methods that return
 //! `impl Future<Output = …> + Send`, so this crate needs no runtime and no
@@ -9,13 +10,17 @@ mod errors;
 mod files;
 mod fill_types;
 mod grants;
+mod responses;
 mod shares;
+mod tokens;
 
 pub use errors::{MoveError, PageStoreError, ReadError, Rejection, WriteError};
 pub use files::{FileStore, FileStoreError};
 pub use fill_types::FillTypes;
 pub use grants::{GrantStore, GrantStoreError};
+pub use responses::{ResponseStore, ResponseStoreError};
 pub use shares::{ShareStore, ShareStoreError};
+pub use tokens::{TokenStore, TokenStoreError};
 
 use crate::binding::Binding;
 use crate::name::{BindingName, PageName, PageVersion};

@@ -52,6 +52,10 @@ pub enum Subject {
     MediaType,
     /// A [`FileBytes`](crate::FileBytes).
     FileBytes,
+    /// A [`TokenId`](crate::TokenId).
+    TokenId,
+    /// A [`TokenLabel`](crate::TokenLabel).
+    TokenLabel,
 }
 
 impl fmt::Display for Subject {
@@ -80,6 +84,8 @@ impl fmt::Display for Subject {
             Self::FileId => "file id",
             Self::MediaType => "media type",
             Self::FileBytes => "file",
+            Self::TokenId => "token id",
+            Self::TokenLabel => "token label",
         };
         formatter.write_str(text)
     }
