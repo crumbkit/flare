@@ -1,4 +1,4 @@
-Share a Markdown file with people, teams or everyone, or respond to flares
+Share a Markdown file with readers, or respond to flares
 
 Usage: flare share [OPTIONS] <FILE>
 

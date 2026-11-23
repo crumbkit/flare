@@ -36,7 +36,7 @@ mod teams;
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
 
-use cli::{CommandsVerb, SelfVerb, TeamsVerb, Verb};
+use cli::{CommandsVerb, SchemasCommand, SelfVerb, TeamsVerb, Verb};
 use codes::Failed;
 use env::Snapshot;
 use std::process::ExitCode;
@@ -127,6 +127,18 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
         } => {
             let result = crumbkit::commands::list(&mut run, &TOOL, &args);
             crumbkit::finish(run, crumbkit::commands::COMMANDS_LIST, result)
+        }
+        Verb::Schemas {
+            command: SchemasCommand::List(args),
+        } => {
+            let result = crumbkit::schemas::list(&mut run, &TOOL, &args);
+            crumbkit::finish(run, crumbkit::schemas::SCHEMAS_LIST, result)
+        }
+        Verb::Schemas {
+            command: SchemasCommand::Show(args),
+        } => {
+            let result = crumbkit::schemas::show(&mut run, &TOOL, &args);
+            crumbkit::finish(run, crumbkit::schemas::SCHEMAS_SHOW, result)
         }
         Verb::SelfCommand {
             command: SelfVerb::Usage(args),

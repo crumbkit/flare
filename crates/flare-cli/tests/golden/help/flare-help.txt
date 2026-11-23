@@ -9,9 +9,9 @@ Verbs
   bind      Save a binding that fills a page's slots with records
   login     Sign in to a flare server in the browser and keep its token in the Keychain
   logout    Revoke this computer's token for the flare server and delete it
-  share     Share a Markdown file with people, teams or everyone, or respond to flares
+  share     Share a Markdown file with readers, or respond to flares
   show      Show one version of a share you can open, or its latest
-  grant     Grant a share to more people, teams or everyone
+  grant     Grant a share to more readers
   revoke    End grants on a share
   grants    List a share's grants
   shares    List your shares or the shares granted to you
@@ -20,6 +20,7 @@ Verbs
 Commands
   teams     Manage teams
   commands  Explore flare's commands
+  schemas   Explore the JSON documents that flare prints
   self      Review flare's own use
 
 Options:

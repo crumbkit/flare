@@ -17,6 +17,11 @@ This file records the notable changes to flare. The format follows
   share only to the people the `admit` rule admits, and an `anyone` admit
   rule refuses it. `docs/teams.md` gives the life of teams and group
   grants.
+- `flare schemas list` lists the JSON documents that flare prints, and
+  `flare schemas show <id>...` prints the JSON Schema of each of 1 to 100
+  ids, so an agent learns the shape of `flare ... --json` from flare
+  itself. An id that names no document fails with
+  `flare::schemas::not_found`, whose recovery runs `flare schemas list`.
 - Each tagged release attaches `flare` for macOS on Apple silicon and for
   Linux on arm64 and x86_64, and `brew install crumbkit/tap/flare` installs
   it. `docs/releasing.md` says how to install flare and how a release is

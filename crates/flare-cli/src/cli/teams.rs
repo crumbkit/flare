@@ -1,6 +1,10 @@
 //! The arguments and help of `flare teams`.
 
+use crate::documents::teams::{
+    TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
+};
 use clap::{Args, Subcommand};
+use crumbkit::help::{Effects, Example, Leaf};
 use crumbkit::{Page, Yes};
 
 /// The most teams `flare teams show` shows at once.
@@ -79,3 +83,51 @@ pub(crate) struct DeleteTeamArgs {
     #[command(flatten)]
     pub(crate) yes: Yes,
 }
+
+/// The help of `flare teams create`.
+pub(super) const CREATE_LEAF: Leaf = Leaf::new(&["teams", "create"])
+    .examples(&[Example::new(&["design"], "Create the team design")])
+    .effects(Effects::additive())
+    .document(TEAMS_CREATE);
+
+/// The help of `flare teams add`.
+pub(super) const ADD_LEAF: Leaf = Leaf::new(&["teams", "add"])
+    .examples(&[Example::new(
+        &["design", "--with", "mei@example.org,jo@example.org"],
+        "Add two people to the team design",
+    )])
+    .effects(Effects::additive())
+    .document(TEAMS_ADD);
+
+/// The help of `flare teams remove`.
+pub(super) const REMOVE_LEAF: Leaf = Leaf::new(&["teams", "remove"])
+    .examples(&[Example::new(
+        &["design", "--with", "jo@example.org"],
+        "Remove one person from the team design",
+    )])
+    .effects(Effects::destructive())
+    .document(TEAMS_REMOVE);
+
+/// The help of `flare teams list`.
+pub(super) const LIST_LEAF: Leaf = Leaf::new(&["teams", "list"])
+    .examples(&[Example::new(&[], "List the teams you belong to")])
+    .effects(Effects::read_only())
+    .document(TEAMS_LIST);
+
+/// The help of `flare teams show`.
+pub(super) const SHOW_LEAF: Leaf = Leaf::new(&["teams", "show"])
+    .examples(&[Example::new(
+        &["design"],
+        "Show the members of the team design",
+    )])
+    .effects(Effects::read_only())
+    .document(TEAMS_SHOW);
+
+/// The help of `flare teams delete`.
+pub(super) const DELETE_LEAF: Leaf = Leaf::new(&["teams", "delete"])
+    .examples(&[Example::new(
+        &["design", "--yes"],
+        "Delete the team design without a question",
+    )])
+    .effects(Effects::destructive())
+    .document(TEAMS_DELETE);

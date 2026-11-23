@@ -1,7 +1,10 @@
 //! `flare`'s command-line grammar and tool record.
 
+mod schemas;
 mod sharing;
 mod teams;
+
+pub(crate) use schemas::SchemasCommand;
 
 pub(crate) use sharing::{
     ActivityArgs, GrantArgs, GrantsArgs, LoginArgs, LogoutArgs, RevokeArgs, ShareArgs, SharesArgs,
@@ -9,9 +12,6 @@ pub(crate) use sharing::{
 };
 pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
-use crate::documents::teams::{
-    TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
-};
 use crate::documents::{
     ACTIVITY, BIND, GRANT, GRANTS, LOGIN, LOGOUT, OPEN, PUBLISH, REVOKE, SERVE, SHARE, SHARES, SHOW,
 };
@@ -55,11 +55,11 @@ pub(crate) enum Verb {
     Login(LoginArgs),
     /// Revoke this computer's token for the flare server and delete it
     Logout(LogoutArgs),
-    /// Share a Markdown file with people, teams or everyone, or respond to flares
+    /// Share a Markdown file with readers, or respond to flares
     Share(ShareArgs),
     /// Show one version of a share you can open, or its latest
     Show(ShowArgs),
-    /// Grant a share to more people, teams or everyone
+    /// Grant a share to more readers
     Grant(GrantArgs),
     /// End grants on a share
     Revoke(RevokeArgs),
@@ -84,6 +84,12 @@ pub(crate) enum Verb {
         /// What to do with the commands.
         #[command(subcommand)]
         command: CommandsVerb,
+    },
+    /// Explore the JSON documents that flare prints
+    Schemas {
+        /// What to do with the documents.
+        #[command(subcommand)]
+        command: SchemasCommand,
     },
     /// Review flare's own use
     #[command(name = "self")]
@@ -324,39 +330,12 @@ pub const TOOL: Tool = Tool::new()
         )])
         .effects(Effects::read_only())
         .document(GRANTS),
-    Leaf::new(&["teams", "create"])
-        .examples(&[Example::new(&["design"], "Create the team design")])
-        .effects(Effects::additive())
-        .document(TEAMS_CREATE),
-    Leaf::new(&["teams", "add"])
-        .examples(&[Example::new(
-            &["design", "--with", "mei@example.org,jo@example.org"],
-            "Add two people to the team design",
-        )])
-        .effects(Effects::additive())
-        .document(TEAMS_ADD),
-    Leaf::new(&["teams", "remove"])
-        .examples(&[Example::new(
-            &["design", "--with", "jo@example.org"],
-            "Remove one person from the team design",
-        )])
-        .effects(Effects::destructive())
-        .document(TEAMS_REMOVE),
-    Leaf::new(&["teams", "list"])
-        .examples(&[Example::new(&[], "List the teams you belong to")])
-        .effects(Effects::read_only())
-        .document(TEAMS_LIST),
-    Leaf::new(&["teams", "show"])
-        .examples(&[Example::new(&["design"], "Show the team design and its members")])
-        .effects(Effects::read_only())
-        .document(TEAMS_SHOW),
-    Leaf::new(&["teams", "delete"])
-        .examples(&[Example::new(
-            &["design", "--yes"],
-            "Delete the team design without a question",
-        )])
-        .effects(Effects::destructive())
-        .document(TEAMS_DELETE),
+    teams::CREATE_LEAF,
+    teams::ADD_LEAF,
+    teams::REMOVE_LEAF,
+    teams::LIST_LEAF,
+    teams::SHOW_LEAF,
+    teams::DELETE_LEAF,
     Leaf::new(&["shares"])
         .examples(&[
             Example::new(&[], "List your shares, newest first"),
@@ -387,6 +366,8 @@ pub const TOOL: Tool = Tool::new()
                     ])
                     .effects(Effects::read_only())
                     .document(COMMANDS_LIST),
+                schemas::LIST_LEAF,
+                schemas::SHOW_LEAF,
                 Leaf::new(&["self", "usage"])
                     .examples(&[Example::new(&[], "Report the findings of the last 7 days")])
                     .effects(Effects::read_only())

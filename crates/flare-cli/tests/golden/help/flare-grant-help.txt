@@ -1,4 +1,4 @@
-Grant a share to more people, teams or everyone
+Grant a share to more readers
 
 Usage: flare grant [OPTIONS] <ID>
 

@@ -24,7 +24,7 @@ Options:
 
 Examples:
   flare teams show design
-          Show the team design and its members
+          Show the members of the team design
 
 Columns:
   team    The team's name.
