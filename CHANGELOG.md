@@ -8,6 +8,28 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare login <server>` signs in to a hosted flare in the browser and
+  keeps a token in the macOS Keychain. The server stores only the token's
+  SHA-256 hash, and a token expires 90 days after its creation. A new login
+  with the same label revokes the older token, and `flare logout --yes`
+  revokes the token and deletes it. `docs/tokens.md` gives the life of
+  login codes and tokens.
+- `flare share <file> --with <addresses> --re <flare>` shares a Markdown
+  file with named people as a response to flares. `flare grant`, `flare
+  shares` and `flare activity` grant a share to more people, list shares
+  and list the responses to flares. A flare the caller may not read answers
+  exactly as a missing one, and activity gives no count of hidden
+  responses.
+- `flare serve` serves the share API on a hosted site whose config has
+  `hosted.stores`. `hosted.creators` lists who may share, and the admit
+  rule `{ "anyone": true }` admits every verified address.
+- `flare-contract` holds the share API's request, response and problem
+  types and their JSON Schema. Every refusal is an RFC 9457 problem
+  document with a `flare::<area>::<kind>` code.
+- `flare-aws` keeps login codes, CLI tokens and response links in DynamoDB
+  through `DynamoTokenStore` and `DynamoResponseStore`. The table deletes
+  expired login codes through its time-to-live on `expires_at`.
+
 - `hangar-aws` keeps shares and grants in one DynamoDB table and files in
   an S3 bucket, through `DynamoShareStore`, `DynamoGrantStore` and
   `S3FileStore`. Each write is one transaction, so a grant or revoke lands
