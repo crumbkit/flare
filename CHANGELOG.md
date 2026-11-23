@@ -17,7 +17,10 @@ This file records the notable changes to flare. The format follows
   with a Copy button, tables scroll in their own box on a narrow screen,
   and a "Figure N." paragraph directly after a diagram, table or code block
   becomes its caption. `docs/reading.md` lists the languages and diagram
-  types.
+  types. The page uses IBM Plex Sans and JetBrains Mono, which flare
+  serves from its own origin at `/flare/assets/`; they are vendored in
+  `crates/flare-server/fonts/` with their SIL Open Font License files, and
+  no request goes to a third-party font host.
 
 - `flare login <server>` signs in to a hosted flare in the browser and
   keeps a token in the macOS Keychain. The server stores only the token's

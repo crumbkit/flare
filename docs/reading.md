@@ -67,6 +67,17 @@ it. A block in any other language stays plain and keeps its label.
 To add a language, add one line to `ui/flare/src/languages.ts` and one row
 here.
 
+## Fonts
+
+The stylesheet that flare-server serves declares IBM Plex Sans and
+JetBrains Mono with `@font-face`. The Latin subset of each family's variable
+font sits in `crates/flare-server/fonts/` with its SIL Open Font License
+file, and `/flare/assets/<name>` serves it as `font/woff2` with the same
+year-long immutable cache as the script files. Each name ends with the first
+8 hex digits of the file's SHA-256, so a new font file needs a new name and a
+matching `@font-face` rule in `docs.rs`. The page's policy allows fonts only
+from its own origin, so a font host is never asked.
+
 ## Building without Node
 
 Cargo builds flare without Node. When `ui/flare/dist` holds no bundle, the

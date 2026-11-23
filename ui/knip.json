@@ -4,6 +4,11 @@
   "workspaces": {
     "flare": {
       "project": ["src/**/*.ts", "tests/**/*.ts", "*.ts"]
-    }
+    },
+    "headless": {
+      "entry": ["src/**/*.test-d.ts"],
+      "project": ["src/**/*.ts", "*.ts"]
+    },
+    "react": { "project": ["src/**/*.{ts,tsx}", "*.ts"] }
   }
 }

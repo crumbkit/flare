@@ -239,3 +239,42 @@ async fn the_sample_share_renders_for_the_acceptance_journey() {
         std::fs::write(directory.join(name), text).unwrap();
     }
 }
+
+#[tokio::test]
+async fn the_reading_pages_fonts_resolve_on_flares_own_origin() {
+    let (api, bob, id) = shared(SAMPLE).await;
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    assert!(
+        page.body.contains("href=\"/flare/style.css\""),
+        "{}",
+        page.body
+    );
+    let style = api.hosted.get("/flare/style.css").send().await;
+    let urls: Vec<&str> = style
+        .body
+        .split("url(")
+        .skip(1)
+        .filter_map(|rest| rest.split(')').next())
+        .map(|url| url.trim_matches('"'))
+        .collect();
+    let fonts: Vec<&&str> = urls.iter().filter(|url| url.ends_with(".woff2")).collect();
+    assert_eq!(fonts.len(), 2, "{urls:?}");
+    for url in &urls {
+        assert!(
+            url.starts_with("/flare/assets/"),
+            "{url} is not on flare's origin"
+        );
+    }
+    for url in fonts {
+        let font = api.hosted.get(url).send().await;
+        assert_eq!(font.status, 200, "{url}");
+        assert_eq!(font.header("content-type"), Some("font/woff2"), "{url}");
+        assert_eq!(
+            font.all("cache-control"),
+            vec!["public, max-age=31536000, immutable"],
+            "{url}"
+        );
+    }
+    assert!(!style.body.contains("fonts.googleapis.com"));
+    assert!(!style.body.contains("fonts.gstatic.com"));
+}

@@ -7,7 +7,8 @@
 # suite on a Mac is their macOS check, as the lanes decision says. The
 # board job builds the board program that flare-board's tests run. The
 # hosted job runs flare-aws's tests against a local DynamoDB and a local
-# S3 server, so the lane leaves flare-aws out of its tests.
+# S3 server, so the lane leaves flare-aws out of its tests. The ui job
+# installs, checks and tests the TypeScript workspace in ui/.
 name: CI
 
 on:
@@ -224,6 +225,44 @@ jobs:
           name: reading-journey
           path: ui/flare/test-results/
           retention-days: 7
+
+  # The ui job runs the TypeScript lane of the workspace in ui/: install,
+  # lint, typecheck, knip and test, as ui/typescript-standards.toml's lanes
+  # decision records. The lane job's `zizmor .` already checks this file.
+  ui:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm/action-setup installs the pnpm that ui/package.json's
+      # `packageManager` names, and setup-node the Node that .node-version
+      # names. setup-node caches pnpm's store, keyed by the lockfile.
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - name: install
+        run: pnpm install --frozen-lockfile
+      - name: lint
+        run: pnpm run lint
+      - name: typecheck
+        run: pnpm run typecheck
+      - name: knip
+        run: pnpm run knip
+      - name: test
+        run: pnpm run test
 
   # flare-aws's tests run against DynamoDB Local and SeaweedFS's S3
   # server, each pulled by digest. The tests sign with made-up keys that

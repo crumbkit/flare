@@ -1,7 +1,10 @@
 # pnpm reads its settings from this file. The workspace holds the reading
-# page's script, which flare-server embeds.
+# page's script, which flare-server embeds, and Flare's headless comment
+# core and its React binding.
 packages:
   - flare
+  - headless
+  - react
 
 # `pnpm add` writes an exact version, never a range (BASE-13).
 savePrefix: ""

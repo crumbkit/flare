@@ -3,8 +3,9 @@
    signed Flare mockup, in Flightdeck's livery. The older token names, which
    the edit form and the conflict view use, are set from them. The markup
    that uses these class names is written in this crate, so the two change
-   together. The fonts are named with system fallbacks; flare serves no font
-   file. */
+   together. The fonts are named with system fallbacks. flare-server's
+   stylesheet declares them with @font-face and serves the files from its
+   own origin; a page rendered without it uses the fallbacks. */
 
 :root {
   color-scheme: light dark;
