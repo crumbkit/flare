@@ -80,7 +80,7 @@ pub(crate) enum Event {
     SignInRefused { reason: Reason },
     /// The exchange traded a login code for a token.
     TokenExchanged,
-    /// The exchange answered 4xx, or a bearer token was refused with 401.
+    /// The exchange answered 4xx, or another `/api/` request answered 401.
     TokenRefused,
 }
 
@@ -257,6 +257,11 @@ impl Reason {
             SignInRefusal::CannotSeal => Self::CannotSeal,
             SignInRefusal::NoHostedDomain => Self::NoHostedDomain,
             SignInRefusal::OtherHostedDomain => Self::OtherHostedDomain,
+            // SignInRefusal is non-exhaustive, so a refusal that a later
+            // flare-auth-oidc adds maps to `other` here without a compile
+            // error. Name it above, and add it to Reason::ALL, to
+            // docs/metrics.md and to the list in
+            // every_refusal_of_flare_auth_oidc_has_its_own_reason.
             _ => Self::Other,
         }
     }

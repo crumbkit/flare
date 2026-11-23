@@ -119,6 +119,20 @@ fn served_shapes(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// The counts of every metric but `Requests` in the metric lines of
+/// `text`.
+fn refusals(text: &str) -> Vec<(String, u64)> {
+    let mut totals = Totals::default();
+    for line in metric_lines(text) {
+        totals.add(&line);
+    }
+    totals
+        .by_metric()
+        .filter(|(metric, _)| *metric != "Requests")
+        .map(|(metric, count)| (metric.to_owned(), count))
+        .collect()
+}
+
 /// The same requests on either server: alice signs in and reads the page
 /// `home`.
 async fn sign_in_and_read(api: &Api) -> String {
@@ -164,6 +178,7 @@ async fn metric_lines_count_a_whole_run_hold_no_personal_value_and_never_change_
     let (status, issued) = api.exchange(&code, "test").await;
     assert_eq!(status, 201, "{issued}");
     let token = issued["token"].as_str().unwrap().to_owned();
+    let token_id = issued["id"].as_str().unwrap().to_owned();
     let title = "Quarterly plan for the kitchen";
     let id = api.share(&token, title, &["bob@example.com"], &[]).await;
     let (status, _) = api.exchange("not-a-login-code", "test").await;
@@ -232,6 +247,9 @@ async fn metric_lines_count_a_whole_run_hold_no_personal_value_and_never_change_
         for value in [
             "alice@example.com",
             "bob@example.com",
+            "alice",
+            "bob",
+            token_id.as_str(),
             "example.com",
             token.as_str(),
             code.as_str(),
@@ -249,6 +267,37 @@ async fn metric_lines_count_a_whole_run_hold_no_personal_value_and_never_change_
             assert!(!line.contains(value), "a metric line holds {value}: {line}");
         }
     }
+
+    // The exchange counts a refusal from its final answer: a 503 from the
+    // token store is not a refused token, and a body the server refuses
+    // before the exchange reads it is one.
+    let code = api.code_for("alice").await;
+    let from = log.len();
+    api.faults.tokens.store(true, Ordering::SeqCst);
+    let (status, _) = api.exchange(&code, "test").await;
+    assert_eq!(status, 503);
+    let (status, _) = api
+        .read("GET", "/api/shares?scope=mine", Some(&token))
+        .await;
+    assert_eq!(status, 503);
+    api.faults.tokens.store(false, Ordering::SeqCst);
+    assert_eq!(
+        refusals(&log.since(from)),
+        [],
+        "a 503 from the token store counts no refused token"
+    );
+    let from = log.len();
+    let oversized = api
+        .call("POST", "/api/tokens/exchange", None)
+        .body("application/json", vec![b' '; 1024 * 1024 + 1])
+        .send()
+        .await;
+    assert_eq!(oversized.status, 413, "{}", oversized.body);
+    assert_eq!(
+        refusals(&log.since(from)),
+        [("TokensRefused".to_owned(), 1)],
+        "an oversized exchange body is a refused token"
+    );
 
     // A log that refuses every write changes no answer.
     log.closed.store(true, Ordering::SeqCst);
