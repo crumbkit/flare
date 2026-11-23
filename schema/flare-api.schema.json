@@ -164,6 +164,24 @@
       },
       "type": "object"
     },
+    "OpenedShare": {
+      "description": "`GET /api/shares/{id}`: the latest version of a share the caller can\nopen.",
+      "properties": {
+        "content": {
+          "description": "The latest version's content.",
+          "type": "string"
+        },
+        "share": {
+          "$ref": "#/$defs/ShareSummary",
+          "description": "The share."
+        }
+      },
+      "required": [
+        "share",
+        "content"
+      ],
+      "type": "object"
+    },
     "ProblemDocument": {
       "description": "An RFC 9457 problem document with flare's code and recovery.",
       "properties": {

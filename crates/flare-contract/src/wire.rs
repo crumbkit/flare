@@ -78,6 +78,16 @@ pub struct ShareSummary {
     pub created: String,
 }
 
+/// `GET /api/shares/{id}`: the latest version of a share the caller can
+/// open.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct OpenedShare {
+    /// The share.
+    pub share: ShareSummary,
+    /// The latest version's content.
+    pub content: String,
+}
+
 /// The answer to `POST /api/shares` and `POST /api/shares/{id}/grants`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Shared {

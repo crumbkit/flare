@@ -2,8 +2,8 @@
 //! `schema/flare-api.schema.json` commits.
 
 use crate::{
-    ActivityPage, ExchangeRequest, GrantRequest, ProblemDocument, ShareList, ShareRequest, Shared,
-    TokenIssued,
+    ActivityPage, ExchangeRequest, GrantRequest, OpenedShare, ProblemDocument, ShareList,
+    ShareRequest, Shared, TokenIssued,
 };
 use schemars::generate::SchemaSettings;
 use std::fmt;
@@ -21,6 +21,7 @@ pub fn generate() -> String {
     generator.subschema_for::<GrantRequest>();
     generator.subschema_for::<Shared>();
     generator.subschema_for::<ShareList>();
+    generator.subschema_for::<OpenedShare>();
     generator.subschema_for::<ActivityPage>();
     generator.subschema_for::<ExchangeRequest>();
     generator.subschema_for::<TokenIssued>();

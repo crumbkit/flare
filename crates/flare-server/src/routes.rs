@@ -4,6 +4,7 @@
 //! sites that serve it. The local sign-in host's two routes are in
 //! `handlers/oidc.rs`.
 
+use crate::handlers::ApiRoute;
 use crate::site::SiteKind;
 use flare_core::Access;
 use http::Method;
@@ -40,6 +41,9 @@ pub(crate) enum Need {
     Session,
     /// The bearer token; a session is refused.
     Bearer,
+    /// A bearer token that the share API checks itself; the hosted site
+    /// reads no cookie for these routes.
+    Token,
 }
 
 /// What a route does.
@@ -59,6 +63,7 @@ pub(crate) enum Handler {
     Probe,
     OidcStart,
     OidcCallback,
+    Api(ApiRoute),
 }
 
 #[cfg(test)]
@@ -106,9 +111,10 @@ const fn route(
 
 const OPEN: (Need, Option<Access>) = (Need::Nothing, None);
 const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
+const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 14] = [
+pub(crate) static ROUTES: [Route; 22] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -182,6 +188,62 @@ pub(crate) static ROUTES: [Route; 14] = [
         OPEN,
         Handler::Probe,
         Sites::Local,
+    ),
+    route(
+        Method::GET,
+        "/cli/login",
+        OPEN,
+        Handler::Api(ApiRoute::CliLogin),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/tokens/exchange",
+        OPEN,
+        Handler::Api(ApiRoute::Exchange),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/tokens/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::RevokeToken),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/shares",
+        TOKEN,
+        Handler::Api(ApiRoute::CreateShare),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/shares",
+        TOKEN,
+        Handler::Api(ApiRoute::ListShares),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/shares/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::OpenShare),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/grants/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::Grant),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/activity",
+        TOKEN,
+        Handler::Api(ApiRoute::Activity),
+        Sites::Hosted,
     ),
 ];
 

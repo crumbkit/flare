@@ -35,6 +35,7 @@ fn the_schema_names_every_request_response_and_problem_type() {
         "Shared",
         "ShareSummary",
         "ShareList",
+        "OpenedShare",
         "ActivityPage",
         "ActivityItem",
         "ExchangeRequest",

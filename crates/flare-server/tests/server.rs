@@ -37,6 +37,19 @@ pub mod harness;
 )]
 pub mod hosted;
 
+#[path = "support/faulty.rs"]
+pub mod faulty;
+
+#[path = "support/api.rs"]
+#[expect(
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    reason = "the API harness is test support: it panics on a broken fixture, and each test reads what it returns"
+)]
+pub mod api;
+
+#[path = "server/api.rs"]
+mod api_routes;
 #[path = "server/authenticators.rs"]
 mod authenticators;
 #[path = "server/crashes.rs"]
