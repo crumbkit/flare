@@ -224,6 +224,12 @@ pub enum Admit {
     /// Every verified account of one Google Workspace domain, as the signed
     /// `hd` claim of its ID token says. It is meant for the Google issuer.
     Domain(DomainRule),
+    /// Every account whose email the provider verified, each signing in
+    /// as its own address and reaching the resources given. It lets people
+    /// outside the operator's organisation sign in and read the shares
+    /// granted to them; who may create a share is the server's creators
+    /// rule, which this rule does not widen.
+    Anyone(Reach),
 }
 
 impl Admit {
@@ -245,6 +251,10 @@ impl Admit {
                 Ok(Principal::with_email(id, email))
             }
             Self::Domain(rule) => rule.principal(email, hd),
+            Self::Anyone(_) => {
+                let email = Email::try_from(email).map_err(|_| SignInRefusal::NotAllowed)?;
+                Ok(Principal::with_email(email.principal_id(), email))
+            }
         }
     }
 
@@ -253,7 +263,7 @@ impl Admit {
     /// person can change the parameter, so it admits nobody.
     pub(crate) fn hosted_domain_hint(&self) -> Option<&str> {
         match self {
-            Self::Emails(_) => None,
+            Self::Emails(_) | Self::Anyone(_) => None,
             Self::Domain(rule) => Some(rule.domain.as_str()),
         }
     }

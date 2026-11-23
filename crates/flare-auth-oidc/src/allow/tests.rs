@@ -135,3 +135,16 @@ fn a_domain_sign_in_builds_its_principal_with_the_verified_email_in_lower_case()
         Some("ada@example.com")
     );
 }
+
+#[test]
+fn the_anyone_rule_admits_any_verified_address_as_its_own_principal_and_refuses_a_malformed_one() {
+    let admit = Admit::Anyone(Reach::Only(Vec::new()));
+    let principal = admit.principal("Ola@Outside.Example", None).unwrap();
+    assert_eq!(principal.id().as_str(), "ola@outside.example");
+    assert_eq!(principal.email().unwrap().as_str(), "ola@outside.example");
+    assert_eq!(
+        admit.principal("not an address", None).unwrap_err(),
+        SignInRefusal::NotAllowed
+    );
+    assert_eq!(admit.hosted_domain_hint(), None);
+}

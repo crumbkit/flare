@@ -44,8 +44,12 @@
 //!    ([`SignInRefusal::OtherHostedDomain`] otherwise); and the email is
 //!    ASCII, so that lower-cased it is the principal id
 //!    ([`SignInRefusal::NotAllowed`] otherwise).
+//! 9. Under [`Admit::Anyone`], in place of step 7: the email is ASCII, and
+//!    lower-cased it is the principal id ([`SignInRefusal::NotAllowed`]
+//!    otherwise). Any account with a verified email signs in, and reaches
+//!    the pages the rule's reach names.
 //!
-//! Under both rules the session's [`flare_core::Principal`] carries the
+//! Under every rule the session's [`flare_core::Principal`] carries the
 //! verified email in lower case, which shares are decided by. Under
 //! [`Admit::Emails`] the principal id is the entry's, which may differ
 //! from the email.
