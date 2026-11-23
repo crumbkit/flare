@@ -242,3 +242,100 @@ async fn a_failing_share_store_gives_a_5xx_problem_and_the_post_works_again_once
         .await;
     assert_eq!((status, &published["version"]), (201, &json!(2)));
 }
+
+#[tokio::test]
+async fn opening_with_a_version_returns_that_versions_content_and_without_one_the_latest() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    let id = api.share(&alice, "Plan", &["bob@example.com"], &[]).await;
+    let (status, _) = api
+        .json(
+            "POST",
+            &path(&id),
+            Some(&alice),
+            version_body("# Plan v2\n"),
+        )
+        .await;
+    assert_eq!(status, 201);
+    for token in [&alice, &bob] {
+        let (status, first) = api
+            .read("GET", &format!("/api/shares/{id}?version=1"), Some(token))
+            .await;
+        assert_eq!(status, 200, "{first}");
+        assert_eq!(first["content"], json!("# Plan\n"));
+        assert_eq!(first["version"], json!(1));
+        assert_eq!(first["share"]["version"], json!(2));
+        let (status, latest) = api
+            .read("GET", &format!("/api/shares/{id}"), Some(token))
+            .await;
+        assert_eq!(status, 200, "{latest}");
+        assert_eq!(latest["content"], json!("# Plan v2\n"));
+        assert_eq!(latest["version"], json!(2));
+    }
+}
+
+#[tokio::test]
+async fn a_version_above_the_latest_zero_or_not_a_number_is_a_problem_with_no_content() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let id = api.share(&alice, "Plan", &[], &[]).await;
+    let cases = [
+        ("2", 404, "flare::shares::not_found"),
+        ("0", 400, "flare::requests::bad_query"),
+        ("abc", 400, "flare::requests::bad_query"),
+        ("-1", 400, "flare::requests::bad_query"),
+    ];
+    for (version, expected_status, expected) in cases {
+        let (status, refused) = api
+            .read(
+                "GET",
+                &format!("/api/shares/{id}?version={version}"),
+                Some(&alice),
+            )
+            .await;
+        assert_eq!(
+            (status, code(&refused)),
+            (expected_status, expected),
+            "{version}"
+        );
+        assert!(refused.get("content").is_none(), "{refused}");
+    }
+    let (status, opened) = api
+        .read("GET", &format!("/api/shares/{id}?version=1"), Some(&alice))
+        .await;
+    assert_eq!((status, &opened["version"]), (200, &json!(1)));
+}
+
+#[tokio::test]
+async fn a_stranger_and_an_unknown_id_get_the_same_answer_for_a_version() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let carol = api.token_for("carol").await;
+    let id = api.share(&alice, "Plan", &[], &[]).await;
+    for version in ["1", "2"] {
+        let stranger = api
+            .call(
+                "GET",
+                &format!("/api/shares/{id}?version={version}"),
+                Some(&carol),
+            )
+            .send()
+            .await;
+        let unknown = api
+            .call(
+                "GET",
+                &format!("/api/shares/{}?version={version}", "0".repeat(32)),
+                Some(&carol),
+            )
+            .send()
+            .await;
+        assert_eq!(stranger.status, 404);
+        assert_eq!(stranger.status, unknown.status);
+        assert_eq!(parse(&stranger), parse(&unknown), "the answers differ");
+    }
+    let (status, _) = api
+        .read("GET", &format!("/api/shares/{id}?version=1"), Some(&alice))
+        .await;
+    assert_eq!(status, 200);
+}

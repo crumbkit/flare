@@ -28,11 +28,11 @@ pub const MAX_SHARES_PER_OWNER: usize = 500;
 pub const MAX_LISTED: usize = 500;
 
 /// The longest title, in bytes.
-const MAX_TITLE: usize = 200;
+pub const MAX_TITLE: usize = 200;
 
 /// The longest document, in bytes: 256 KiB, so that one version fits one
 /// item of a store whose items hold at most 400 KB.
-const MAX_DOCUMENT: usize = 262_144;
+pub const MAX_DOCUMENT: usize = 262_144;
 
 /// The bytes of a random id.
 const ID_BYTES: usize = 16;

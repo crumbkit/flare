@@ -559,3 +559,252 @@ fn logout_without_yes_and_without_a_terminal_revokes_nothing() {
     );
     assert!(home.keychain_item().is_some());
 }
+
+/// A share opened at `version` of `latest`, as the API sends it.
+fn opened(version: u32, latest: u32, content: &str) -> Value {
+    let mut share = summary(FLARE, "Plans");
+    share["role"] = json!("reader");
+    share["version"] = json!(latest);
+    json!({"share": share, "version": version, "content": content})
+}
+
+#[test]
+fn show_asks_for_the_version_and_prints_the_title_owner_role_version_and_content() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let path = format!("/api/shares/{FLARE}");
+    api.route("GET", &path, 200, &opened(1, 2, "# Plans\n\nFirst cut.\n"));
+    let ran = home.sharing(&["show", FLARE, "--version", "1", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["schema"], "flare/show/v1", "{}", ran.all());
+    let data = &printed["data"];
+    assert_eq!(data["id"], FLARE);
+    assert_eq!(data["title"], "Plans");
+    assert_eq!(data["owner"], "ana@example.org");
+    assert_eq!(data["role"], "reader");
+    assert_eq!(data["version"], 1);
+    assert_eq!(data["latest"], 2);
+    assert_eq!(data["content"], "# Plans\n\nFirst cut.\n");
+    let sent = &api.requests_to(&path)[0];
+    assert_eq!(sent.method, "GET");
+    assert_eq!(sent.target, format!("{path}?version=1"));
+    assert_eq!(
+        sent.headers.get("authorization").map(String::as_str),
+        Some(format!("Bearer {TOKEN}").as_str())
+    );
+
+    api.route("GET", &path, 200, &opened(2, 2, "# Plans\n\nSecond cut.\n"));
+    let ran = home.sharing(&["show", FLARE]);
+    ran.assert_ok();
+    for expected in ["Plans", "ana@example.org", "reader", "Second cut."] {
+        assert!(ran.stdout.contains(expected), "{expected}: {}", ran.all());
+    }
+    assert_eq!(api.requests_to(&path)[1].target, path);
+}
+
+#[test]
+fn show_without_a_login_fails_with_login_needed_and_a_version_of_zero_sends_nothing() {
+    let home = Home::new();
+    home.sharing(&["show", FLARE])
+        .assert_failed("flare::login::needed");
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    for version in ["0", "abc"] {
+        let ran = home.sharing(&["show", FLARE, "--version", version]);
+        assert_ne!(ran.code, Some(0), "{}", ran.all());
+    }
+    assert!(api.requests_to(&format!("/api/shares/{FLARE}")).is_empty());
+}
+
+#[test]
+fn show_keeps_the_servers_not_found_for_a_share_the_caller_cannot_open() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        &format!("/api/shares/{FLARE}"),
+        404,
+        &problem("flare::shares::not_found", 404, &api.origin),
+    );
+    home.sharing(&["show", FLARE, "--version", "9"])
+        .assert_failed("flare::shares::not_found");
+}
+
+#[test]
+fn a_dry_run_with_no_login_checks_the_file_prints_the_checks_and_sends_nothing() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let ran = home.sharing(&[
+        "share",
+        file.to_str().unwrap(),
+        "--with",
+        "jo@example.org",
+        "--dry-run",
+        "--json",
+    ]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["dry_run"], true, "{}", ran.all());
+    let data = &printed["data"];
+    assert_eq!(data["title"], "review");
+    assert!(data["id"].is_null(), "{}", ran.all());
+    assert!(data["version"].is_null(), "{}", ran.all());
+    let checks = data["checks"].to_string();
+    for expected in ["Markdown", "title", "rendered", "--with"] {
+        assert!(checks.contains(expected), "{expected}: {checks}");
+    }
+    assert!(api.requests().is_empty());
+    assert_eq!(home.keychain_calls(), "");
+}
+
+#[test]
+fn a_dry_run_with_a_saved_login_reads_neither_the_keychain_nor_the_server() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let calls = home.keychain_calls();
+    let requests = api.requests().len();
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    home.sharing(&["share", file.to_str().unwrap(), "--dry-run"])
+        .assert_ok();
+    home.sharing(&[
+        "share",
+        file.to_str().unwrap(),
+        "--update",
+        FLARE,
+        "--dry-run",
+    ])
+    .assert_ok();
+    assert_eq!(home.keychain_calls(), calls);
+    assert_eq!(api.requests().len(), requests);
+}
+
+#[test]
+fn a_dry_run_of_a_file_the_server_would_refuse_prints_the_refusal_and_writes_no_html() {
+    let home = Home::new();
+    let out = home.path().join("preview.html");
+    let empty = home.path().join("empty.md");
+    write(&empty, "");
+    let large = home.path().join("large.md");
+    write(&large, &"x".repeat(262_145));
+    let html = home.path().join("page.html");
+    write(&html, "<p>x</p>\n");
+    let text = home.path().join("notes.txt");
+    write(&text, "x\n");
+    let good = home.path().join("good.md");
+    write(&good, "# Good\n");
+    let long_title = "t".repeat(201);
+    let cases: [(&std::path::Path, &[&str], &str); 5] = [
+        (&empty, &[], "flare::shares::invalid"),
+        (&large, &[], "flare::shares::too_large"),
+        (&html, &[], "flare::shares::kind_not_served"),
+        (&text, &[], "flare::files::unknown_format"),
+        (&good, &["--title", &long_title], "flare::shares::invalid"),
+    ];
+    for (file, extra, code) in cases {
+        let mut args = vec!["share", file.to_str().unwrap(), "--dry-run"];
+        args.extend_from_slice(extra);
+        args.extend_from_slice(&["--out", out.to_str().unwrap()]);
+        home.sharing(&args).assert_failed(code);
+        assert!(!out.exists(), "{code}");
+    }
+    home.sharing(&["share", good.to_str().unwrap(), "--dry-run"])
+        .assert_ok();
+}
+
+#[test]
+fn a_dry_run_with_out_writes_the_html_that_flare_render_makes_for_the_same_text() {
+    let home = Home::new();
+    let text = "# Review\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<script>x</script>\n";
+    let file = home.path().join("review.md");
+    write(&file, text);
+    let out = home.path().join("preview.html");
+    let ran = home.sharing(&[
+        "share",
+        file.to_str().unwrap(),
+        "--dry-run",
+        "--out",
+        out.to_str().unwrap(),
+        "--json",
+    ]);
+    ran.assert_ok();
+    let page = flare_core::Page::new(
+        flare_core::PageName::try_from("share").unwrap(),
+        flare_core::PageContent::new(flare_core::ContentFormat::Markdown, text).unwrap(),
+        flare_core::Slots::new(Vec::new()).unwrap(),
+    );
+    let expected = flare_render::render_page(&page, &[]).unwrap();
+    assert_eq!(std::fs::read_to_string(&out).unwrap(), expected.as_str());
+    assert!(ran.stdout.contains("preview.html"), "{}", ran.all());
+}
+
+#[test]
+fn out_without_dry_run_is_refused_before_any_request() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let out = home.path().join("preview.html");
+    let ran = home.sharing(&[
+        "share",
+        file.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert_ne!(ran.code, Some(0), "{}", ran.all());
+    assert!(api.requests_to("/api/shares").is_empty());
+    assert!(!out.exists());
+}
+
+#[test]
+fn a_dry_run_whose_out_file_cannot_be_written_fails_with_files_unwritable() {
+    let home = Home::new();
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let out = home.path().join("missing").join("preview.html");
+    home.sharing(&[
+        "share",
+        file.to_str().unwrap(),
+        "--dry-run",
+        "--out",
+        out.to_str().unwrap(),
+    ])
+    .assert_failed("flare::files::unwritable");
+    assert!(!out.exists());
+    let out = home.path().join("preview.html");
+    home.sharing(&[
+        "share",
+        file.to_str().unwrap(),
+        "--dry-run",
+        "--out",
+        out.to_str().unwrap(),
+    ])
+    .assert_ok();
+    assert!(out.exists());
+}
+
+#[test]
+fn a_dry_run_of_update_checks_the_id_before_the_body_as_the_server_does() {
+    let home = Home::new();
+    let html = home.path().join("page.html");
+    write(&html, "<p>x</p>\n");
+    home.sharing(&[
+        "share",
+        html.to_str().unwrap(),
+        "--update",
+        "not an id",
+        "--dry-run",
+    ])
+    .assert_failed("flare::shares::not_found");
+    home.sharing(&[
+        "share",
+        html.to_str().unwrap(),
+        "--update",
+        FLARE,
+        "--dry-run",
+    ])
+    .assert_failed("flare::shares::kind_not_served");
+}

@@ -8,6 +8,18 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare show <id> [--version n]` prints one version of a share you can
+  open, with its title, owner, your role, the latest version and the
+  Markdown. `GET /api/shares/<id>` takes `?version=n`, and its answer
+  names the version it holds.
+- `flare share <file> --dry-run` checks the file with the server's own
+  checks and renders it with flare-render, with no login and no request,
+  and prints what it checked. `--out <path>` writes the rendered HTML.
+  It also works with `--update`.
+  flare has had no release, so the `flare/share/v1` document changes in
+  place under the pre-release exemption of crumbkit's ADR-0007: `id`,
+  `title` and `version` may be null, which a dry run prints, and the
+  document gains a `checks` list.
 - `flare share <file> --update <id>` publishes the file as the next version
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print

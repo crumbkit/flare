@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/show/v1",
+  "description": "One version of a share the caller can open: its title, owner, the caller's role, its number and its Markdown.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/Shown"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/show/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "Shown": {
+      "description": "One version of a share that `flare show` read.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "description": "The version's Markdown.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The share's id.",
+          "type": "string"
+        },
+        "latest": {
+          "description": "The share's latest version.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "owner": {
+          "description": "The owner's identifier.",
+          "type": "string"
+        },
+        "role": {
+          "description": "The caller's role: `owner`, `admin` or `reader`.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The share's title.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The version whose content this holds.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "owner",
+        "role",
+        "version",
+        "latest",
+        "content"
+      ]
+    }
+  }
+}

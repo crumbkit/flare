@@ -165,19 +165,26 @@
       "type": "object"
     },
     "OpenedShare": {
-      "description": "`GET /api/shares/{id}`: the latest version of a share the caller can\nopen.",
+      "description": "`GET /api/shares/{id}?version=n`: version `n` of a share the caller can\nopen, or its latest version without `n`.",
       "properties": {
         "content": {
-          "description": "The latest version's content.",
+          "description": "That version's content.",
           "type": "string"
         },
         "share": {
           "$ref": "#/$defs/ShareSummary",
-          "description": "The share."
+          "description": "The share, whose `version` is its latest."
+        },
+        "version": {
+          "description": "The number of the version whose content this answer holds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
         "share",
+        "version",
         "content"
       ],
       "type": "object"

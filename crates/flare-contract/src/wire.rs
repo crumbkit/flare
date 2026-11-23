@@ -90,13 +90,15 @@ pub struct ShareSummary {
     pub created: String,
 }
 
-/// `GET /api/shares/{id}`: the latest version of a share the caller can
-/// open.
+/// `GET /api/shares/{id}?version=n`: version `n` of a share the caller can
+/// open, or its latest version without `n`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct OpenedShare {
-    /// The share.
+    /// The share, whose `version` is its latest.
     pub share: ShareSummary,
-    /// The latest version's content.
+    /// The number of the version whose content this answer holds.
+    pub version: u32,
+    /// That version's content.
     pub content: String,
 }
 
