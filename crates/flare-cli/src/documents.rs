@@ -302,12 +302,11 @@ pub(crate) struct Next {
     pub(crate) more: bool,
 }
 
+/// The text output prints no summary line: the listing's step names the
+/// next `flare activity` call with the cursor, and the JSON document keeps
+/// `cursor` and `more` under `summary`.
 impl std::fmt::Display for Next {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "Next: --since {}", self.cursor)?;
-        if self.more {
-            formatter.write_str(" (more responses wait)")?;
-        }
+    fn fmt(&self, _formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Ok(())
     }
 }

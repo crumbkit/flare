@@ -109,7 +109,9 @@ impl Api {
         let problem: ProblemDocument = serde_json::from_slice(&bytes)
             .map_err(|_| self.bad(format!("it answered {status} with no problem document")))?;
         match ApiCode::from_text(&problem.code) {
-            Some(code) => Err(Refused::new(code, problem.detail, &self.origin).into()),
+            Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
+                .naming(problem.share.as_deref())
+                .into()),
             None => Err(self.bad(format!(
                 "it answered {status} with the code {}, which this flare does not know; a newer flare may",
                 problem.code

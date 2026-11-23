@@ -39,6 +39,11 @@ macro_rules! codes {
 
             /// What the caller does next. `server` is the deployment's
             /// origin, which `flare login` names.
+            ///
+            /// The hints of `PartlyShared` and `BadCursor` stay as wire text
+            /// for API callers. The `flare` command prints typed calls of
+            /// `flare grant` and `flare activity` in their place, so it
+            /// never prints those two hints.
             #[must_use]
             pub fn recovery(self, server: &str) -> Recovery {
                 let make: fn(&str) -> Recovery = match self { $(Self::$variant => $recovery,)* };
