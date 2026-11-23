@@ -8,6 +8,10 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- Each tagged release attaches `flare` for macOS on Apple silicon and for
+  Linux on arm64 and x86_64, and `brew install crumbkit/tap/flare` installs
+  it. `docs/releasing.md` says how to install flare and how a release is
+  cut.
 - `flare share <file> --update <id>` publishes the file as the next version
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print
