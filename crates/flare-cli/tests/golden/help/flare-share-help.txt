@@ -14,7 +14,7 @@ Options:
           The addresses to grant Reader, repeated or separated by commas
 
       --re <ID>
-          The flares this share responds to, repeated or separated by commas
+          The flares this share responds to, repeated or separated by commas; their owners become Readers of it
 
       --update <ID>
           Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant

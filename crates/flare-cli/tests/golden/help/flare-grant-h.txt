@@ -7,7 +7,7 @@ Arguments:
 
 Options:
       --with <ADDRESS>  The addresses to grant Reader, repeated or separated by commas
-      --re <ID>         The flares the share responds to, repeated or separated by commas; only its owner may add them
+      --re <ID>         The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it
   -h, --help            Print help (see more with '--help')
 
 Examples:
