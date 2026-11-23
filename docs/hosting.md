@@ -72,7 +72,8 @@ The share API lets people share Markdown files with named people from the
   "origin": "https://flare.example.com",
   "listen": "127.0.0.1:8080",
   "stores": { "region": "eu-west-1", "table": "flare-shares", "bucket": "flare-files" },
-  "creators": ["ana@example.com", "sam@example.com"]
+  "creators": ["ana@example.com", "@example.com"],
+  "names": { "ana": "ana@example.com" }
 }
 ```
 
@@ -85,9 +86,26 @@ The share API lets people share Markdown files with named people from the
   config.
 - `flare serve` checks the table and the bucket at start and exits with
   `flare::stores::unavailable` when it cannot read them.
-- `creators` lists the addresses that may share and respond. Without it,
-  everyone the `admit` rule admits may. `creators` without `stores` is
-  refused, and an `anyone` admit rule without `creators` is refused.
+- `creators` says who may share and respond. It is a list of addresses
+  and `@domain` entries, such as `"ana@example.com"` and `"@example.com"`,
+  where a domain entry admits every verified address at exactly that
+  domain and not its subdomains. It can instead be the value
+  `"anyone admitted"`, which lets everyone the `admit` rule admits share.
+  Under an `anyone` admit rule, `"anyone admitted"` means open sharing:
+  any account the issuer verifies, which with Google is any Google
+  account, can sign in and create shares. `flare serve` logs a warning at
+  start when the config has this combination. A domain entry such as
+  `@gmail.com` likewise admits every address at that public domain.
+  Without `creators`, everyone a `domain` or `emails` rule admits may.
+  `creators` without `stores` is refused, and an `anyone` admit rule needs
+  `creators` written out, so that letting every signed-in person share is a
+  choice. Anything else in `creators` is refused naming `hosted.creators`.
+- `names` maps usernames, written in lower-case letters, digits, dots,
+  hyphens and underscores, to addresses, such as
+  `{ "ana": "ana@example.com" }`, so that `flare share --with ana` resolves
+  to `ana@example.com`. A full address still resolves as itself, and a name
+  that is not listed is refused as not an email address. `names` without
+  `stores` is refused, and a bad entry is refused naming `hosted.names`.
 - A person who is not a creator gets 403 `flare::shares::not_a_creator`.
 
 Routes:
