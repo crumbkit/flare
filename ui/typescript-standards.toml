@@ -21,17 +21,3 @@ id = "headless-without-dom"
 requirement = "headless/tsconfig.json sets `lib` to es2024 alone and `types` to an empty list, so the core type-checks with no DOM and no runtime's globals."
 reason = "The core must run under any front end. A reference to `document`, `window` or `fetch` in headless/src fails `tsc` instead of waiting for a reviewer."
 realizations = ["headless/tsconfig.json"]
-
-[[exception]]
-rule = "BASE-17"
-paths = ["./"]
-owner = "the repository owner"
-reason = "No job runs `pnpm audit` yet. Neither package has a runtime dependency other than React, which the importing app supplies, and nothing here is released."
-correction = "The change that adds ui/flare, the first package that ships to a browser, adds `pnpm audit` to the scheduled advisories job."
-
-[[exception]]
-rule = "BASE-13"
-items = ["dependabot:npm"]
-owner = "the repository owner"
-reason = ".github/dependabot.yml does not yet name the npm ecosystem for ui/, so no weekly pull request moves these pins."
-correction = "A change adds an npm entry for /ui to .github/dependabot.yml."

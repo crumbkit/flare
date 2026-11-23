@@ -1,7 +1,12 @@
-# Dependabot opens the weekly pull requests that move a project's pins
-# (BASE-26). Each ecosystem puts all its updates in one pull request. The
-# 7-day cooldown proposes a release only once it is 7 days old, so a release
-# that is yanked soon after publication is never proposed.
+# Dependabot opens the weekly pull requests that move a project's pins: the
+# Rust ecosystems under BASE-26 of rust-standards, and the npm pins of ui/
+# under BASE-13 of typescript-standards. Each ecosystem puts all its updates
+# in one pull request. The 7-day cooldown proposes a release only once it is
+# 7 days old, so a release that is yanked soon after publication is never
+# proposed. It is also the age pnpm requires before it installs one
+# (BASE-14). Dependabot does not read .node-version, so a person raises it,
+# and checks the `packageManager` pin of pnpm in ui/package.json in the same
+# change.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -28,3 +33,12 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ["*"]
