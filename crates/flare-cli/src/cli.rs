@@ -10,7 +10,7 @@ pub(crate) use sharing::{
 };
 
 use crate::documents::{
-    ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
+    ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
 };
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
@@ -66,6 +66,13 @@ pub(crate) enum Verb {
     Shares(SharesArgs),
     /// List the responses to flares since a cursor, oldest first
     Activity(ActivityArgs),
+    /// Count the metric lines in a flare server's log, by day
+    ///
+    /// The counts come from the metric lines that flare serve writes on
+    /// standard error when its config sets log.metrics to true. A page
+    /// view is one page response, so one person who reloads a page counts
+    /// twice. Lines that are not metric lines are skipped and counted.
+    Metrics(MetricsArgs),
     /// Explore flare's commands
     Commands {
         /// What to do with the commands.
@@ -180,8 +187,16 @@ pub(crate) struct BindArgs {
     pub(crate) dry_run: DryRun,
 }
 
+/// The arguments of `flare metrics`.
+#[derive(Debug, Args)]
+pub(crate) struct MetricsArgs {
+    /// The log files to read, oldest first; without them, standard input
+    #[arg(value_name = "FILE")]
+    pub(crate) files: Vec<PathBuf>,
+}
+
 /// Why flare's commands are verbs at the root.
-const ROOT: &str = "each command names what a person does with the board flare serves or the server flare shares through";
+const ROOT: &str = "each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes";
 
 /// flare's help and failures.
 pub const TOOL: Tool = Tool::new()
@@ -190,7 +205,7 @@ pub const TOOL: Tool = Tool::new()
             .root_verbs(
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "show",
-                    "grant", "shares", "activity",
+                    "grant", "shares", "activity", "metrics",
                 ],
                 ROOT,
             )
@@ -310,6 +325,16 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::read_only())
         .document(ACTIVITY),
+    Leaf::new(&["metrics"])
+        .examples(&[
+            Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),
+            Example::new(
+                &["flare.log.1", "flare.log", "--json"],
+                "Count the metric lines of a rotated log and its newer file as JSON",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(METRICS),
                 Leaf::new(&["commands", "list"])
                     .examples(&[
                         Example::new(&[], "List every command"),

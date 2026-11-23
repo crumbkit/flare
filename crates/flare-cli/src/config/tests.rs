@@ -365,3 +365,34 @@ fn other_creators_settings_are_not_marked_open_to_anyone() {
     let domain_rule = hosted_with(&format!(r#"{STORES},"creators":"anyone admitted""#));
     assert!(!open_to_anyone(&domain_rule));
 }
+
+#[test]
+fn log_metrics_is_off_when_the_config_does_not_set_it() {
+    assert!(!parse("{}").unwrap().metrics);
+    assert!(!parse(DOMAIN).unwrap().metrics);
+    assert!(!parse(r#"{"log":{}}"#).unwrap().metrics);
+}
+
+#[test]
+fn log_metrics_true_turns_the_metric_lines_on_for_the_local_and_the_hosted_site() {
+    assert!(parse(r#"{"log":{"metrics":true}}"#).unwrap().metrics);
+    assert!(!parse(r#"{"log":{"metrics":false}}"#).unwrap().metrics);
+    let hosted = r#"{"log":{"metrics":true},"hosted":{"origin":"https://flare.example.com","listen":"127.0.0.1:8080"},"oidc":{"issuer":"https://accounts.google.com","client_id":"x","client_secret_file":"/run/secret","admit":{"domain":"example.com","reach":"everything"}}}"#;
+    let config = parse(hosted).unwrap();
+    assert!(config.metrics);
+    assert!(matches!(config.site, Site::Hosted(_)));
+}
+
+#[test]
+fn a_misspelt_log_key_or_a_metrics_value_that_is_not_a_boolean_is_refused_naming_it() {
+    for (text, named) in [
+        (r#"{"log":{"metric":true}}"#, "metric"),
+        (r#"{"logs":{"metrics":true}}"#, "logs"),
+        (r#"{"log":{"metrics":"yes"}}"#, "boolean"),
+    ] {
+        let Err(Problem::Invalid(message)) = parse(text) else {
+            panic!("{text} was accepted");
+        };
+        assert!(message.contains(named), "{message}");
+    }
+}
