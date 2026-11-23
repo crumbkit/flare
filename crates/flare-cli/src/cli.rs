@@ -2,9 +2,13 @@
 
 mod sharing;
 
-pub(crate) use sharing::{ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs};
+pub(crate) use sharing::{
+    ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs, ShowArgs,
+};
 
-use crate::documents::{ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, OPEN, PUBLISH, SERVE, SHARE, SHARES};
+use crate::documents::{
+    ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
+};
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
 use crumbkit::help::{Effects, Example, Help, Leaf};
@@ -47,6 +51,8 @@ pub(crate) enum Verb {
     Logout(LogoutArgs),
     /// Share a Markdown file with named people, or as a response to flares
     Share(ShareArgs),
+    /// Show one version of a share you can open, or its latest
+    Show(ShowArgs),
     /// Grant an existing share to more people
     Grant(GrantArgs),
     /// List your shares or the shares granted to you
@@ -174,8 +180,8 @@ pub const TOOL: Tool = Tool::new()
         Help::new()
             .root_verbs(
                 &[
-                    "serve", "open", "publish", "bind", "login", "logout", "share", "grant",
-                    "shares", "activity",
+                    "serve", "open", "publish", "bind", "login", "logout", "share", "show",
+                    "grant", "shares", "activity",
                 ],
                 ROOT,
             )
@@ -245,9 +251,26 @@ pub const TOOL: Tool = Tool::new()
                 &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Publish review.md as the next version of a share you own",
             ),
+            Example::new(
+                &["review.md", "--dry-run", "--out", "review.html"],
+                "Check review.md as the server would and write its HTML to review.html, sharing nothing",
+            ),
         ])
         .effects(Effects::additive())
         .document(SHARE),
+    Leaf::new(&["show"])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Show the latest version of a share",
+            ),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--version", "1"],
+                "Show the first version of a share",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(SHOW),
     Leaf::new(&["grant"])
         .examples(&[Example::new(
             &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
