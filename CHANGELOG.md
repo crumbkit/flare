@@ -8,6 +8,14 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare show <id> [--version n]` prints one version of a share you can
+  open, with its title, owner, your role, the latest version and the
+  Markdown. `GET /api/shares/<id>` takes `?version=n`, and its answer
+  names the version it holds.
+- `flare share <file> --dry-run` checks the file with the server's own
+  checks and renders it with flare-render, with no login and no request,
+  and prints what it checked. `--out <path>` writes the rendered HTML.
+  It also works with `--update`.
 - `flare share <file> --update <id>` publishes the file as the next version
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print
@@ -25,6 +33,8 @@ This file records the notable changes to flare. The format follows
   and list the responses to flares. A flare the caller may not read answers
   exactly as a missing one, and activity gives no count of hidden
   responses.
+  A response is also shared with the owner of each flare it responds to,
+  as Reader, unless they already hold a role on it.
 - `flare serve` serves the share API on a hosted site whose config has
   `hosted.stores`. `hosted.creators` lists who may share, and the admit
   rule `{ "anyone": true }` admits every verified address.

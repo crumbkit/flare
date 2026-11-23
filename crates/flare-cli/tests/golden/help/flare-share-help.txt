@@ -15,6 +15,8 @@ Options:
 
       --re <ID>
           The flares this share responds to, repeated or separated by commas
+          
+          The owner of each flare becomes a Reader of the share.
 
       --update <ID>
           Publish the file as the next version of this share you own
