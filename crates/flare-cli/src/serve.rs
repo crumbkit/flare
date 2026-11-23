@@ -29,7 +29,7 @@ use flare_aws::{
     DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{AddressesOnly, Flares};
+use flare_core::{Flares, NamedRecipients};
 use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Sharing, Site, Stopped};
 use std::path::Path;
 use std::sync::OnceLock;
@@ -192,8 +192,13 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
     } = hosted;
     let admit = oidc.admit().clone();
     let oidc = connect(oidc, &Secret::File(secret_file)).await?;
+    if sharing.as_ref().is_some_and(|config| config.open_to_anyone) {
+        tracing::warn!(
+            "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
+        );
+    }
     let sharing = match sharing {
-        Some(config) => Some(share_api(config, admit).await?),
+        Some(config) => Some(share_api(*config, admit).await?),
         None => None,
     };
     let mut signals = Signals::install()?;
@@ -219,7 +224,7 @@ type HostedSharing = Sharing<
     DynamoGrantStore,
     DynamoResponseStore,
     DynamoTokenStore,
-    AddressesOnly,
+    NamedRecipients,
 >;
 
 /// The share API on the configured table and bucket, which it checks
@@ -238,7 +243,12 @@ async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing,
         stores.responses,
         config.creators,
     );
-    Ok(Sharing::new(flares, stores.tokens, AddressesOnly, admit))
+    Ok(Sharing::new(
+        flares,
+        stores.tokens,
+        config.recipients,
+        admit,
+    ))
 }
 
 /// Serves `app` until a signal or, on the local site, the idle exit.

@@ -42,6 +42,9 @@ pub(crate) struct ShareArgs {
     /// The flares this share responds to, repeated or separated by commas
     #[arg(long, value_name = "ID", value_delimiter = ',')]
     pub(crate) re: Vec<String>,
+    /// Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+    #[arg(long, value_name = "ID", conflicts_with_all = ["title", "with", "re"])]
+    pub(crate) update: Option<String>,
 }
 
 /// The arguments of `flare grant`.

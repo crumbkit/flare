@@ -41,8 +41,8 @@ pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
-    ActivityItem, ActivityPage, AddressesOnly, Creators, FlareError, Flared, Flares, MAX_FLARES,
-    NewFlare, RecipientError, Recipients,
+    ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
+    MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};

@@ -241,6 +241,10 @@ pub const TOOL: Tool = Tool::new()
                 &["answer.md", "--re", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Share answer.md as a response to a flare",
             ),
+            Example::new(
+                &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Publish review.md as the next version of a share you own",
+            ),
         ])
         .effects(Effects::additive())
         .document(SHARE),

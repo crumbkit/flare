@@ -26,7 +26,9 @@ mod owners;
 mod people;
 
 pub use activity::{ActivityItem, ActivityPage};
-pub use people::{AddressesOnly, Creators, RecipientError, Recipients};
+pub use people::{
+    AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
+};
 
 use crate::auth::Principal;
 use crate::email::Email;

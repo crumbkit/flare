@@ -8,6 +8,10 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare share <file> --update <id>` publishes the file as the next version
+  of a share you own, through `POST /api/shares/<id>/versions`. Readers
+  open the new content at once, and `flare share` and `flare grant` print
+  the share's version. The option refuses `--title`, `--with` and `--re`.
 - `flare login <server>` signs in to a hosted flare in the browser and
   keeps a token in the macOS Keychain. The server stores only the token's
   SHA-256 hash, and a token expires 90 days after its creation. A new login

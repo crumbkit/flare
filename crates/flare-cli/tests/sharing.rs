@@ -302,6 +302,106 @@ fn share_refuses_a_file_that_is_neither_markdown_nor_html() {
 }
 
 #[test]
+fn share_update_posts_the_file_as_the_next_version_and_prints_the_share_with_its_version() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review 2\n");
+    let mut updated = summary(FLARE, "review");
+    updated["version"] = json!(2);
+    api.route(
+        "POST",
+        &format!("/api/shares/{FLARE}/versions"),
+        201,
+        &updated,
+    );
+    let ran = home.sharing(&["share", file.to_str().unwrap(), "--update", FLARE, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["data"]["id"], FLARE, "{}", ran.all());
+    assert_eq!(printed["data"]["title"], "review");
+    assert_eq!(printed["data"]["version"], 2);
+    assert!(printed["data"]["granted"].is_null(), "{}", ran.all());
+    assert!(printed["data"]["responds_to"].is_null(), "{}", ran.all());
+    let sent = &api.requests_to(&format!("/api/shares/{FLARE}/versions"))[0];
+    assert_eq!(
+        sent.headers.get("authorization").map(String::as_str),
+        Some(format!("Bearer {TOKEN}").as_str())
+    );
+    assert_eq!(
+        sent.json(),
+        json!({"format": "markdown", "content": "# Review 2\n"})
+    );
+    assert!(api.requests_to("/api/shares").is_empty());
+}
+
+#[test]
+fn share_update_refuses_title_with_and_re_before_any_request_and_a_plain_update_is_admitted() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let file = file.to_str().unwrap();
+    for extra in [
+        ["--title", "New"],
+        ["--with", "jo@example.org"],
+        ["--re", FLARE],
+    ] {
+        let ran = home.sharing(&["share", file, "--update", FLARE, extra[0], extra[1]]);
+        assert_ne!(ran.code, Some(0), "{}", ran.all());
+        assert!(ran.all().contains(extra[0]), "{}", ran.all());
+    }
+    assert!(
+        api.requests_to(&format!("/api/shares/{FLARE}/versions"))
+            .is_empty()
+    );
+    let mut updated = summary(FLARE, "review");
+    updated["version"] = json!(2);
+    api.route(
+        "POST",
+        &format!("/api/shares/{FLARE}/versions"),
+        201,
+        &updated,
+    );
+    home.sharing(&["share", file, "--update", FLARE])
+        .assert_ok();
+}
+
+#[test]
+fn share_update_keeps_the_servers_refusal_code_for_a_share_the_caller_cannot_publish() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    api.route(
+        "POST",
+        &format!("/api/shares/{FLARE}/versions"),
+        404,
+        &problem("flare::shares::not_found", 404, &api.origin),
+    );
+    home.sharing(&["share", file.to_str().unwrap(), "--update", FLARE])
+        .assert_failed("flare::shares::not_found");
+}
+
+#[test]
+fn share_update_with_a_malformed_id_or_an_unknown_file_ending_sends_nothing() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    home.sharing(&["share", file.to_str().unwrap(), "--update", "not an id"])
+        .assert_failed("flare::shares::not_found");
+    let text = home.path().join("review.txt");
+    write(&text, "text\n");
+    home.sharing(&["share", text.to_str().unwrap(), "--update", FLARE])
+        .assert_failed("flare::files::unknown_format");
+    assert!(
+        api.requests_to(&format!("/api/shares/{FLARE}/versions"))
+            .is_empty()
+    );
+}
+
+#[test]
 fn grant_sends_each_recipient_and_flare_to_the_shares_grant_route() {
     let api = FakeApi::start();
     let home = logged_in(&api);
