@@ -64,18 +64,36 @@ jobs:
           esac
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      # fetch-depth 0 fetches main as well as the tag, so the next step can
+      # check that main holds the tagged commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.tag.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
+      # A tag is released only when its commit is on main, because this
+      # workflow runs no tests and relies on ci.yml having tested main. A
+      # version with a `-`, such as 0.2.0-rc.1, is refused, because gh marks
+      # every release it creates as the latest, and the tap would make a
+      # pre-release the formula that every colleague upgrades to.
       - id: version
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           version=$(cargo pkgid --package flare-cli | sed 's/.*[#@]//')
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [ -n "$TAG" ] && [ "$TAG" != "v$version" ]; then
+          if [ -z "$TAG" ]; then
+            exit 0
+          fi
+          if [ "$TAG" != "v$version" ]; then
             echo "the tag is $TAG and Cargo.toml says $version" >&2
+            exit 1
+          fi
+          case "$version" in
+            *-*) echo "the version is $version, and a release has no pre-release part after a -" >&2; exit 1 ;;
+          esac
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "the tag $TAG points at $(git rev-parse HEAD), which is not on main" >&2
             exit 1
           fi
 
@@ -191,8 +209,12 @@ jobs:
             fi
           done
 
-  # The release gets the archives and SHA256SUMS. A run again after a failure
-  # replaces the files of a release that the failed run created.
+  # The release gets the archives and SHA256SUMS. gh release create makes a
+  # draft, uploads the files and then publishes it, and deletes the draft
+  # when an upload fails. A job stopped during its upload, by its timeout or
+  # a cancel, leaves the draft behind. A run again finds that draft, replaces
+  # its files and publishes it, because the tap reads only published
+  # releases.
   release:
     if: needs.version.outputs.tag != ''
     needs: [version, advisories, build, formula]
@@ -216,6 +238,7 @@ jobs:
       - run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/*
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes dist/*
           fi
