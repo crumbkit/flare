@@ -31,9 +31,9 @@ before it binds.
 - Opening a share on the hosted site is not a page view. `flare show` and
   other readers open a share with `GET /api/shares/<name>`, which shows as
   `Requests` with the `Route` `/api/shares/<name>` and the `StatusClass`
-  `2xx`. That count includes the owner's own reads of their shares, and
-  every listing and reread, so it is the number of share reads and says
-  nothing about how many people read a share.
+  `2xx`. That count includes the owner's own reads of their shares and
+  every reread, so it is the number of share reads and says nothing about
+  how many people read a share.
 - An exchange that fails because the token store is unavailable answers
   503 and counts no refused token; it shows only as `Requests` with the
   `StatusClass` `5xx`.
