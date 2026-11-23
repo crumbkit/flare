@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6.43.0/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "workspaces": {
+    "headless": {
+      "entry": ["src/**/*.test-d.ts"],
+      "project": ["src/**/*.ts", "*.ts"]
+    },
+    "react": { "project": ["src/**/*.{ts,tsx}", "*.ts"] }
+  }
+}
