@@ -22,7 +22,7 @@
   ],
   "$defs": {
     "SharedOut": {
-      "description": "A share that `flare share` made or `flare grant` granted.",
+      "description": "A share that `flare share` made or updated, or `flare grant` granted.",
       "type": "object",
       "properties": {
         "granted": {
@@ -46,11 +46,18 @@
         "title": {
           "description": "The share's title.",
           "type": "string"
+        },
+        "version": {
+          "description": "The share's latest version.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
         }
       },
       "required": [
         "id",
         "title",
+        "version",
         "granted",
         "responds_to"
       ]

@@ -11,7 +11,7 @@ use crate::login::saved;
 use crumbkit::Listing;
 use flare_contract::{
     ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, Role, ShareList,
-    ShareRequest, Shared,
+    ShareRequest, ShareSummary, Shared, VersionRequest,
 };
 use flare_core::ShareId;
 use reqwest::Method;
@@ -65,6 +65,7 @@ fn shared_out(shared: Shared) -> SharedOut {
     SharedOut {
         id: shared.share.id,
         title: shared.share.title,
+        version: shared.share.version,
         granted: shared.granted,
         responds_to: shared.responds_to,
     }
@@ -110,6 +111,9 @@ pub(crate) async fn share(args: &ShareArgs, env: &Snapshot) -> Result<SharedOut,
     let format = format(&args.file)?;
     let api = session(env)?;
     let content = read_file(&args.file)?;
+    if let Some(id) = &args.update {
+        return update(&api, id, VersionRequest { format, content }).await;
+    }
     let title = args.title.clone().unwrap_or_else(|| {
         args.file
             .file_stem()
@@ -126,6 +130,22 @@ pub(crate) async fn share(args: &ShareArgs, env: &Snapshot) -> Result<SharedOut,
         .send(Method::POST, "/api/shares", Some(&request))
         .await?;
     Ok(shared_out(body(&api, answer)?))
+}
+
+/// Publishes `request` as the next version of the share `id`. The server
+/// answers with the share's summary, whose version is the new number.
+async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<SharedOut, Failed> {
+    let id = share_id(api, id)?;
+    let target = format!("/api/shares/{}/versions", id.as_str());
+    let answer: Option<ShareSummary> = api.send(Method::POST, &target, Some(&request)).await?;
+    let share = body(api, answer)?;
+    Ok(SharedOut {
+        id: share.id,
+        title: share.title,
+        version: share.version,
+        granted: Vec::new(),
+        responds_to: Vec::new(),
+    })
 }
 
 /// Runs `flare grant`.

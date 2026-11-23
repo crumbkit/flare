@@ -31,6 +31,7 @@ fn the_schema_names_every_request_response_and_problem_type() {
     let defs = generated["$defs"].as_object().unwrap();
     for name in [
         "ShareRequest",
+        "VersionRequest",
         "GrantRequest",
         "Shared",
         "ShareSummary",

@@ -35,6 +35,7 @@ Examples:
 Columns:
   id           The share's id.
   title        The share's title.
+  version      The share's latest version.
   granted      The addresses that now hold a role on it.
   responds_to  The flares it responds to.
 
