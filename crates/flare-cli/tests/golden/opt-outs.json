@@ -50,7 +50,7 @@
   "declarations": [
     {
       "declaration": "root-verbs",
-      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare grant, flare shares, flare activity",
+      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare grant, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete",
       "declares": "Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.",
       "reason": "each command names what a person does with the board flare serves or the server flare shares through"
     }

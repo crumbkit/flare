@@ -1,0 +1,16 @@
+List a flare's comments and replies
+
+Usage: flare comments [OPTIONS] <FLARE>
+
+Arguments:
+  <FLARE>  The flare whose comments to list
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Examples:
+  flare comments 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+
+Effects: read-only, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare comments --help` describes them.
+Next: flare comments --help explains each column.

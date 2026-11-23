@@ -1,10 +1,12 @@
 //! The share API's routes on the hosted site, and `/cli/login`, which
 //! hands a signed-in browser's login code to the `flare` command.
 //!
-//! Every `/api/` route but the code exchange takes only a bearer token.
-//! `hosted::check` never reads a cookie for an `/api/` path, so a page on
-//! another site cannot make a browser act through the API, and the API
-//! needs no Origin check. A token that is not a flare token goes to the
+//! Every `/api/` route but the code exchange takes a bearer token. The
+//! comment routes and `/api/activity` also take the session cookie when
+//! the request has no Authorization header, after `hosted::check` has
+//! required the headers that a page of this site sends. No other `/api/`
+//! path reads a cookie, so a page on another site cannot make a browser act
+//! through them. A token that is not a flare token goes to the
 //! deployment's authenticator, which may accept bearer tokens of its own.
 //! Every refusal is an RFC 9457 problem document with a
 //! `flare::<area>::<kind>` code.
@@ -36,6 +38,18 @@ pub(crate) enum ApiRoute {
     Grant,
     /// `GET /api/activity`.
     Activity,
+    /// `GET /api/comments`.
+    Comments,
+    /// `POST /api/comments`.
+    PostComment,
+    /// `PATCH /api/comments/{id}`.
+    EditComment,
+    /// `DELETE /api/comments/{id}`.
+    DeleteComment,
+    /// `GET /api/cursors/{name}`.
+    Cursor,
+    /// `PUT /api/cursors/{name}`.
+    SaveCursor,
     /// `POST /api/tokens/exchange`.
     Exchange,
     /// `DELETE /api/tokens/{id}`.
@@ -138,6 +152,14 @@ where
     K: OidcClock,
 {
     let credential = credential.ok_or(ApiCode::SignInNeeded)?;
+    if matches!(credential, Credential::Session(_)) {
+        // `hosted::check` passes a cookie only to the routes that take one.
+        return match ctx.shared.site.authenticate(credential).await {
+            Ok(admitted) => Ok(admitted.principal),
+            Err(flare_core::AuthError::Rejected) => Err(ApiCode::SignInNeeded.into()),
+            Err(_) => Err(ApiCode::TokensUnavailable.into()),
+        };
+    }
     let token = bearer_of(credential).ok_or(ApiCode::SignInNeeded)?;
     match api.authenticate(token, now).await {
         TokenCheck::Principal(principal) => Ok(principal),
@@ -236,16 +258,31 @@ where
         ApiRoute::Activity => {
             let flares = every(ctx.uri, "flare");
             let since = every(ctx.uri, "since");
-            if flares.is_empty() || since.len() > 1 {
+            let since_last = every(ctx.uri, "since_last");
+            if flares.is_empty() || since.len() > 1 || since_last.len() > 1 {
                 Err(ApiCode::BadQuery.into())
             } else {
                 number(ctx, flare_core::MAX_PAGE, DEFAULT_LIST).map(|limit| Call::Activity {
                     flares,
                     since: since.into_iter().next(),
+                    since_last: since_last.into_iter().next(),
                     limit,
                 })
             }
         }
+        ApiRoute::Comments => ctx
+            .query("flare")
+            .map(Call::Comments)
+            .ok_or_else(|| ApiCode::BadQuery.into()),
+        ApiRoute::PostComment => body_of(ctx, body).await?.map(Call::Post),
+        ApiRoute::EditComment => body_of(ctx, body)
+            .await?
+            .map(|request| Call::Edit(name.to_owned(), request)),
+        ApiRoute::DeleteComment => Ok(Call::Delete(name.to_owned())),
+        ApiRoute::Cursor => Ok(Call::Cursor(name.to_owned())),
+        ApiRoute::SaveCursor => body_of(ctx, body)
+            .await?
+            .map(|request| Call::SaveCursor(name.to_owned(), request)),
         ApiRoute::Exchange | ApiRoute::CliLogin => Err(ApiCode::BadQuery.into()),
     })
 }

@@ -45,8 +45,11 @@ fn no_board_write_serves_the_hosted_site_and_its_other_methods_are_api_routes_th
                 route.pattern
             );
             let exchange = route.pattern == "/api/tokens/exchange";
+            let comments = route.pattern.starts_with("/api/comments");
             assert!(
-                route.credential == Need::Token || (exchange && route.credential == Need::Nothing),
+                route.credential == Need::Token
+                    || (exchange && route.credential == Need::Nothing)
+                    || (comments && route.credential == Need::TokenOrCookie),
                 "{} {}",
                 route.method,
                 route.pattern
@@ -125,4 +128,24 @@ fn the_hosted_site_serves_its_seven_routes_and_none_of_the_local_ones() {
             "{path}"
         );
     }
+}
+
+#[test]
+fn only_the_comment_routes_and_activity_take_the_session_cookie() {
+    let mut taking: Vec<(String, &str)> = ROUTES
+        .iter()
+        .filter(|route| route.credential == Need::TokenOrCookie)
+        .map(|route| (route.method.to_string(), route.pattern))
+        .collect();
+    taking.sort();
+    assert_eq!(
+        taking,
+        [
+            ("DELETE".to_owned(), "/api/comments/<name>"),
+            ("GET".to_owned(), "/api/activity"),
+            ("GET".to_owned(), "/api/comments"),
+            ("PATCH".to_owned(), "/api/comments/<name>"),
+            ("POST".to_owned(), "/api/comments"),
+        ]
+    );
 }

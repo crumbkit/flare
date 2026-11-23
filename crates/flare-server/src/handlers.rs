@@ -229,7 +229,7 @@ where
     S: Schemas,
     K: OidcClock,
 {
-    if matches!(need, Need::Nothing | Need::Token) {
+    if matches!(need, Need::Nothing | Need::Token | Need::TokenOrCookie) {
         return Ok(None);
     }
     let credential = credential.ok_or_else(|| ctx.sign_in_needed())?;

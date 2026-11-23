@@ -102,11 +102,16 @@ Routes:
 - `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
 - `GET /api/shares/<id>` reads a share.
 - `POST /api/grants/<id>` grants a share to more addresses.
-- `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
-  responses to flares that the caller may read, oldest first, at most 100
-  a page.
+- `GET /api/activity?flare=<id>&since=<cursor>&since_last=<name>&limit=<n>`
+  lists the responses and comment events on flares that the caller may
+  read, oldest first, at most 100 a page.
+- `GET` and `POST /api/comments`, `PATCH` and `DELETE /api/comments/<id>`
+  and `GET` and `PUT /api/cursors/<name>` read and write comments and named
+  cursors. `docs/comments.md` gives their life.
 
-- Every `/api/` route except the exchange needs a bearer token. A missing,
+- Every `/api/` route except the exchange needs a bearer token, and the
+  comment routes and activity also take the session cookie of a
+  same-origin browser request. A missing,
   expired or revoked token answers 401 `flare::tokens::sign_in_needed`.
   Under an `emails` admit rule, so does the token of an owner whom the
   list no longer names. Under a `domain` or `anyone` rule a token works
@@ -251,5 +256,7 @@ is the only limit on sign-in requests:
 - Serve flare on a name whose parent domain has no untrusted subdomains.
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.
+- A hosted reply's `Content-Security-Policy` has `connect-src 'self'`, so
+  a page's script reaches this site's API and no other host.
 - Every reply carries `Strict-Transport-Security: max-age=63072000`, so a
   browser that has visited uses HTTPS for two years.

@@ -26,7 +26,7 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
-        "activity", "usage",
+        "activity", "comments", "comment", "reply", "comment-edit", "comment-delete", "usage",
     ])
     .examples(EXAMPLES)
     .skip(

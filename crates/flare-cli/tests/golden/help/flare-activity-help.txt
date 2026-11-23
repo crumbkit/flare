@@ -1,14 +1,17 @@
-List the responses to flares since a cursor, oldest first
+List responses and comments since a cursor
 
 Usage: flare activity [OPTIONS] <FLARE>...
 
 Arguments:
   <FLARE>...
-          The flares whose responses to list, at most 16
+          The flares whose responses and comments to list, at most 16
 
 Options:
       --since <CURSOR>
-          List only responses after this cursor, which an earlier call printed
+          List only activity after this cursor, which an earlier call printed
+
+      --since-last <NAME>
+          Continue from the cursor saved as NAME, the larger of this computer's and the server's, and save where this call ends
 
       --limit <N>
           Print at most this many rows, up to 100
@@ -38,15 +41,23 @@ Examples:
           List the responses to a flare, oldest first
 
   flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
-          List the responses after the cursor an earlier call printed
+          List the activity after the cursor an earlier call printed
+
+  flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since-last inbox
+          List what is new since the last call that used the name inbox, then save where this one ends
 
 Columns:
   flare    The flare it responds to.
-  share    The responding share's id.
-  title    The responding share's title.
-  by       The responder's identifier.
-  version  The version of the flare it responds to.
-  at       When it named the flare, in RFC 3339 UTC.
-  also     The other flares it responds to that the caller can open.
+  kind     What happened: `response`, `comment`, `reply`, `edited` or `deleted`.
+  share    The responding share's id, for a response.
+  title    The responding share's title, for a response.
+  comment  The comment or reply the event is about, for a comment event.
+  parent   The comment a reply answers, or an edited or deleted reply is on.
+  by       The person who responded, wrote, edited or deleted.
+  version  The version of the flare it responds to, for a response.
+  body     The comment's or reply's text after the event; absent for a response or a deletion.
+  at       When it happened, in RFC 3339 UTC.
+  also     The other flares a response responds to that the caller can open.
 
-Effects: read-only, closed-world.
+Effects: additive, not idempotent, closed-world.
+Writes: applies all items or none.

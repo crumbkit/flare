@@ -6,7 +6,8 @@ use flare_contract::{
     ActivityItem as WireItem, ApiCode, FlareRef, Format, Role as WireRole, ShareSummary, utc,
 };
 use flare_core::{
-    ActivityItem, FlareError, ParseError, RecipientError, Role, Share, ShareError, Standing,
+    ActivityItem, FlareError, ParseError, RecipientError, ResponseActivity, Role, Share,
+    ShareError, Standing,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -19,6 +20,7 @@ pub(super) fn summary(share: &Share, role: WireRole) -> ShareSummary {
         role,
         version: share.latest().get(),
         created: utc(share.created().as_secs()),
+        comments: None,
     }
 }
 
@@ -40,10 +42,16 @@ pub(super) fn standing(standing: Standing) -> WireRole {
 }
 
 /// The contract's activity item.
-/// A comment event has no contract form yet, so it is left out.
 pub(super) fn item(item: &ActivityItem) -> Option<WireItem> {
-    let item = item.as_response()?;
-    Some(WireItem::Response {
+    match item {
+        ActivityItem::Response(response) => Some(response_item(response)),
+        ActivityItem::Comment(comment) => super::comments::activity(comment),
+        _ => None,
+    }
+}
+
+fn response_item(item: &ResponseActivity) -> WireItem {
+    WireItem::Response {
         flare: item.flare.as_str().to_owned(),
         share: item.response.id().as_str().to_owned(),
         title: item.response.title().as_str().to_owned(),
@@ -59,7 +67,7 @@ pub(super) fn item(item: &ActivityItem) -> Option<WireItem> {
                 title: share.title().as_str().to_owned(),
             })
             .collect(),
-    })
+    }
 }
 
 /// The code of a share service refusal. A refused share and a missing one
@@ -98,6 +106,13 @@ pub(super) fn flare_error(error: FlareError) -> Refusal {
             share: Some(share.as_str().to_owned()),
         },
         FlareError::Share(error) => share_error(error).into(),
+        FlareError::CommentNotFound => ApiCode::CommentNotFound.into(),
+        FlareError::NotCommentAuthor => ApiCode::NotCommentAuthor.into(),
+        FlareError::ReplyToReply => ApiCode::ReplyDepth.into(),
+        FlareError::TooManyComments => ApiCode::TooManyComments.into(),
+        FlareError::CursorNotFound => ApiCode::CursorNotFound.into(),
+        FlareError::TooManyCursors => ApiCode::TooManyCursors.into(),
+        FlareError::CommentsUnavailable => ApiCode::CommentsUnavailable.into(),
         _ => ApiCode::ActivityUnavailable.into(),
     }
 }

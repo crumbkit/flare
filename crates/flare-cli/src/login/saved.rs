@@ -49,7 +49,7 @@ fn labels_path(env: &Snapshot) -> Result<PathBuf, Failed> {
 
 /// The text of the file at `path`, at most `limit` bytes, or `None` when
 /// there is no file.
-fn read_capped(path: &Path, limit: u64) -> Result<Option<String>, Failed> {
+pub(crate) fn read_capped(path: &Path, limit: u64) -> Result<Option<String>, Failed> {
     use std::io::Read as _;
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
@@ -70,7 +70,7 @@ fn read_capped(path: &Path, limit: u64) -> Result<Option<String>, Failed> {
 }
 
 /// Replaces the file at `path` with `bytes`, mode 0600.
-fn write(path: &Path, bytes: &[u8]) -> Result<(), Failed> {
+pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<(), Failed> {
     if let Some(directory) = path.parent() {
         std::fs::create_dir_all(directory).map_err(unusable)?;
     }
@@ -113,9 +113,9 @@ pub(crate) fn remember_label(env: &Snapshot, server: &str, label: &str) -> Resul
     write(&labels_path(env)?, &bytes)
 }
 
-fn unusable(problem: impl std::fmt::Display) -> Failed {
+pub(crate) fn unusable(problem: impl std::fmt::Display) -> Failed {
     Failed::StateUnusable {
-        problem: format!("the saved login could not be used: {problem}"),
+        problem: format!("flare's saved state could not be used: {problem}"),
     }
 }
 

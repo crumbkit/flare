@@ -20,6 +20,20 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare comments`, `flare comment`, `flare reply`, `flare comment-edit` and
+  `flare comment-delete` let a person comment on a flare they can open,
+  reply to a comment, and change or delete their own. A comment is 1 to
+  8,000 characters, a flare holds 2,000, a reply has no replies, and a
+  repeated `--key` writes nothing new. The hosted page sends the same
+  requests with the session cookie when the request is same-origin, and its
+  replies carry `connect-src 'self'`. Opening a share returns its
+  count of comments.
+- `flare activity` lists comment, reply, edit and delete events with
+  responses. `--since-last <name>` starts from the larger of this
+  computer's saved cursor and the server's, and saves where the run ends in
+  `<state home>/flare/cursors.json` and in `PUT /api/cursors/<name>`.
+  `docs/comments.md` gives the life of a comment and of a cursor.
+- `SessionStore::remove_all_of` deletes every session of one person.
 - `flare login <server>` signs in to a hosted flare in the browser and
   keeps a token in the macOS Keychain. The server stores only the token's
   SHA-256 hash, and a token expires 90 days after its creation. A new login

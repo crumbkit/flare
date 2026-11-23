@@ -13,6 +13,7 @@
 //! The store keeps the SHA-256 of the secret. A login code is 43 base64url
 //! characters of 32 random bytes, and the store keeps its SHA-256.
 
+mod comments;
 mod convert;
 mod run;
 mod tokens;
@@ -20,7 +21,9 @@ mod tokens;
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 
 use flare_auth_oidc::Admit;
-use flare_contract::{ApiCode, ExchangeRequest, GrantRequest, ShareRequest};
+use flare_contract::{
+    ApiCode, CommentEdit, ExchangeRequest, GrantRequest, NamedCursor, NewComment, ShareRequest,
+};
 use flare_core::{Email, Flares, Principal, Timestamp};
 use secrecy::SecretString;
 use std::fmt;
@@ -85,8 +88,21 @@ pub(crate) enum Call {
     Activity {
         flares: Vec<String>,
         since: Option<String>,
+        since_last: Option<String>,
         limit: usize,
     },
+    /// `GET /api/comments`.
+    Comments(String),
+    /// `POST /api/comments`.
+    Post(NewComment),
+    /// `PATCH /api/comments/{id}`.
+    Edit(String, CommentEdit),
+    /// `DELETE /api/comments/{id}`.
+    Delete(String),
+    /// `GET /api/cursors/{name}`.
+    Cursor(String),
+    /// `PUT /api/cursors/{name}`.
+    SaveCursor(String, NamedCursor),
     /// `DELETE /api/tokens/{id}`.
     Revoke(String),
 }

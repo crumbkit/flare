@@ -203,22 +203,34 @@ pub(crate) struct ActivityRow {
     /// The flare it responds to.
     #[row(column)]
     pub(crate) flare: String,
-    /// The responding share's id.
+    /// What happened: `response`, `comment`, `reply`, `edited` or `deleted`.
     #[row(column)]
-    pub(crate) share: String,
-    /// The responding share's title.
+    pub(crate) kind: String,
+    /// The responding share's id, for a response.
     #[row(column)]
-    pub(crate) title: String,
-    /// The responder's identifier.
+    pub(crate) share: Option<String>,
+    /// The responding share's title, for a response.
+    #[row(column)]
+    pub(crate) title: Option<String>,
+    /// The comment or reply the event is about, for a comment event.
+    #[row(column)]
+    pub(crate) comment: Option<String>,
+    /// The comment a reply answers, or an edited or deleted reply is on.
+    #[row(column)]
+    pub(crate) parent: Option<String>,
+    /// The person who responded, wrote, edited or deleted.
     #[row(column)]
     pub(crate) by: String,
-    /// The version of the flare it responds to.
+    /// The version of the flare it responds to, for a response.
     #[row(column)]
-    pub(crate) version: u32,
-    /// When it named the flare, in RFC 3339 UTC.
+    pub(crate) version: Option<u32>,
+    /// The comment's or reply's text after the event; absent for a response or a deletion.
+    #[row(column)]
+    pub(crate) body: Option<String>,
+    /// When it happened, in RFC 3339 UTC.
     #[row(column)]
     pub(crate) at: String,
-    /// The other flares it responds to that the caller can open.
+    /// The other flares a response responds to that the caller can open.
     #[row(column)]
     pub(crate) also: Vec<String>,
 }
@@ -228,15 +240,21 @@ pub(crate) struct ActivityRow {
 pub(crate) struct Next {
     /// The cursor to pass as `--since`.
     pub(crate) cursor: String,
+    /// The name this call saved the cursor under, when it ran with `--since-last`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) saved_as: Option<String>,
     /// Whether newer responses wait past this page.
     pub(crate) more: bool,
 }
 
 impl std::fmt::Display for Next {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "Next: --since {}", self.cursor)?;
+        match &self.saved_as {
+            Some(name) => write!(formatter, "Next: --since-last {name}")?,
+            None => write!(formatter, "Next: --since {}", self.cursor)?,
+        }
         if self.more {
-            formatter.write_str(" (more responses wait)")?;
+            formatter.write_str(" (more activity waits)")?;
         }
         Ok(())
     }
@@ -247,6 +265,103 @@ pub(crate) const ACTIVITY: Document<Listing<ActivityRow, Next>> = Document::new(
     "flare",
     "activity",
     1,
-    "The responses to the named flares, oldest first, and the cursor of the next call.",
+    "The responses and comment events on the named flares, oldest first, and the cursor of the next call.",
 )
-.when_empty("No new responses.");
+.when_empty("No new activity.");
+
+/// One comment or reply, as `flare comment`, `reply`, `comment-edit` and
+/// `comment-delete` print it.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct CommentOut {
+    /// The comment's or reply's id.
+    #[row(column)]
+    pub(crate) id: String,
+    /// The flare it is on.
+    #[row(column)]
+    pub(crate) flare: String,
+    /// The comment a reply answers; absent for a comment.
+    #[row(column)]
+    pub(crate) parent: Option<String>,
+    /// The author's identifier.
+    #[row(column)]
+    pub(crate) author: String,
+    /// When it was written, in RFC 3339 UTC.
+    #[row(column)]
+    pub(crate) at: String,
+    /// When its text last changed, in RFC 3339 UTC; absent when it never did.
+    #[row(column)]
+    pub(crate) edited: Option<String>,
+    /// Whether its author deleted it.
+    #[row(column)]
+    pub(crate) deleted: bool,
+    /// Its text; absent once deleted.
+    #[row(column)]
+    pub(crate) body: Option<String>,
+}
+
+/// The document of `flare comment`.
+pub(crate) const COMMENT: Document<CommentOut> = Document::new(
+    "flare",
+    "comment",
+    1,
+    "The comment written. A repeated --key answers the first comment and writes nothing.",
+);
+
+/// The document of `flare reply`.
+pub(crate) const REPLY: Document<CommentOut> = Document::new(
+    "flare",
+    "reply",
+    1,
+    "The reply written. A repeated --key answers the first reply and writes nothing.",
+);
+
+/// The document of `flare comment-edit`.
+pub(crate) const COMMENT_EDIT: Document<CommentOut> = Document::new(
+    "flare",
+    "comment-edit",
+    1,
+    "The comment or reply with its new text.",
+);
+
+/// The document of `flare comment-delete`.
+pub(crate) const COMMENT_DELETE: Document<CommentOut> = Document::new(
+    "flare",
+    "comment-delete",
+    1,
+    "The deleted comment or reply, which no longer has its text.",
+);
+
+/// One comment or reply in `flare comments`.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct CommentRow {
+    /// The comment's or reply's id.
+    #[row(column)]
+    pub(crate) id: String,
+    /// The comment a reply answers; absent for a comment.
+    #[row(column)]
+    pub(crate) parent: Option<String>,
+    /// The author's identifier.
+    #[row(column)]
+    pub(crate) author: String,
+    /// When it was written, in RFC 3339 UTC.
+    #[row(column)]
+    pub(crate) at: String,
+    /// When its text last changed, in RFC 3339 UTC.
+    #[row(column)]
+    pub(crate) edited: Option<String>,
+    /// Whether its author deleted it.
+    #[row(column)]
+    pub(crate) deleted: bool,
+    /// Its text; absent once deleted.
+    #[row(column)]
+    pub(crate) body: Option<String>,
+}
+
+/// The document of `flare comments`.
+pub(crate) const COMMENTS: Document<Listing<CommentRow>> = Document::new(
+    "flare",
+    "comments",
+    1,
+    "The flare's comments, oldest first, each followed by its replies, oldest first.",
+)
+.when_empty("No comments.");

@@ -1,4 +1,4 @@
-Revoke this computer's token for the flare server and delete it
+Revoke and delete this computer's token
 
 Usage: flare logout [OPTIONS]
 

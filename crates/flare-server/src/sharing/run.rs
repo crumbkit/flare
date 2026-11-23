@@ -155,7 +155,8 @@ where
             ShareContent::Document(text) => text.as_str().to_owned(),
             _ => return Err(ApiCode::KindNotServed.into()),
         };
-        let share = summary(&opened.share, standing(opened.standing));
+        let mut share = summary(&opened.share, standing(opened.standing));
+        share.comments = self.live_comments(who, &id).await.ok();
         json(200, &OpenedShare { share, content })
     }
 
@@ -191,15 +192,20 @@ where
         &self,
         who: &Principal,
         flares: &[String],
-        since: Option<&str>,
+        (since, since_last): (Option<&str>, Option<&str>),
         limit: usize,
     ) -> Answer {
-        let after = match since {
+        let given = match since {
             Some(text) => Cursor::try_from(text)
                 .map_err(|_| ApiCode::BadCursor)?
                 .position(),
             None => 0,
         };
+        let saved = match since_last {
+            Some(name) => self.saved_position(who, name).await?.unwrap_or(0),
+            None => 0,
+        };
+        let after = given.max(saved);
         let ids = flares
             .iter()
             .map(|text| share_id(text))
@@ -351,8 +357,23 @@ where
                 Call::Activity {
                     flares,
                     since,
+                    since_last,
                     limit,
-                } => self.activity(who, &flares, since.as_deref(), limit).await,
+                } => {
+                    self.activity(
+                        who,
+                        &flares,
+                        (since.as_deref(), since_last.as_deref()),
+                        limit,
+                    )
+                    .await
+                }
+                Call::Comments(flare) => self.thread(who, &flare).await,
+                Call::Post(request) => self.post(who, request, now).await,
+                Call::Edit(id, request) => self.edit(who, &id, request, now).await,
+                Call::Delete(id) => self.delete(who, &id, now).await,
+                Call::Cursor(name) => self.cursor(who, &name).await,
+                Call::SaveCursor(name, request) => self.save_cursor(who, &name, request).await,
                 Call::Revoke(id) => self.revoke(who, &id, now).await,
             }
         })

@@ -15,6 +15,10 @@ use hyper::body::Bytes;
 /// The policy of flare's own documents (threat model, threat 12).
 pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
+/// The policy of hosted replies: flare's own pages may also open
+/// connections to their own origin, which the comment routes need.
+pub(crate) const HOSTED_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+
 const CORP: HeaderName = HeaderName::from_static("cross-origin-resource-policy");
 const COOP: HeaderName = HeaderName::from_static("cross-origin-opener-policy");
 
@@ -125,6 +129,10 @@ impl Reply {
             headers.insert(name, HeaderValue::from_static(value));
         }
         if site == SiteKind::Hosted {
+            headers.insert(
+                CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(HOSTED_POLICY),
+            );
             headers.insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
         }
         for (name, value) in extra {

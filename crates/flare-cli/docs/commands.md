@@ -8,16 +8,21 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 
 ### Commands
 
-- [`flare serve`](#flare-serve): Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
+- [`flare serve`](#flare-serve): Serve a board's pages and bindings, locally or behind a TLS proxy, until Ctrl-C
 - [`flare open`](#flare-open): Open the running server's index, a page or a binding in a browser
-- [`flare publish`](#flare-publish): Publish a new version of a page from an HTML or Markdown file
-- [`flare bind`](#flare-bind): Save a binding that fills a page's slots with records
-- [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
-- [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
-- [`flare share`](#flare-share): Share a Markdown file with named people, or as a response to flares
+- [`flare publish`](#flare-publish): Publish a page version from an HTML or Markdown file
+- [`flare bind`](#flare-bind): Save a binding that fills a page's slots
+- [`flare login`](#flare-login): Sign in to a flare server and keep its token in the Keychain
+- [`flare logout`](#flare-logout): Revoke and delete this computer's token
+- [`flare share`](#flare-share): Share a Markdown file with people, or as a response to flares
 - [`flare grant`](#flare-grant): Grant an existing share to more people
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
-- [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
+- [`flare activity`](#flare-activity): List responses and comments since a cursor
+- [`flare comments`](#flare-comments): List a flare's comments and replies
+- [`flare comment`](#flare-comment): Comment on a flare
+- [`flare reply`](#flare-reply): Reply to a comment
+- [`flare comment-edit`](#flare-comment-edit): Edit a comment or reply you wrote
+- [`flare comment-delete`](#flare-comment-delete): Delete a comment or reply you wrote
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare self`](#flare-self): Review flare's own use
 
@@ -31,7 +36,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 
 ## `flare serve`
 
-Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
+Serve a board's pages and bindings, locally or behind a TLS proxy, until Ctrl-C
 
 ### Arguments
 
@@ -97,7 +102,7 @@ Effects: additive, not idempotent, closed-world.
 
 ## `flare publish`
 
-Publish a new version of a page from an HTML or Markdown file
+Publish a page version from an HTML or Markdown file
 
 ### Arguments
 
@@ -133,7 +138,7 @@ Effects: additive, not idempotent, closed-world.
 
 ## `flare bind`
 
-Save a binding that fills a page's slots with records
+Save a binding that fills a page's slots
 
 ### Arguments
 
@@ -164,7 +169,7 @@ Writes: applies all items or none.
 
 ## `flare login`
 
-Sign in to a flare server in the browser and keep its token in the Keychain
+Sign in to a flare server and keep its token in the Keychain
 
 ### Arguments
 
@@ -190,7 +195,7 @@ Effects: additive, not idempotent, closed-world.
 
 ## `flare logout`
 
-Revoke this computer's token for the flare server and delete it
+Revoke and delete this computer's token
 
 ### Arguments
 
@@ -213,7 +218,7 @@ Effects: destructive, not idempotent, closed-world.
 
 ## `flare share`
 
-Share a Markdown file with named people, or as a response to flares
+Share a Markdown file with people, or as a response to flares
 
 ### Arguments
 
@@ -311,12 +316,13 @@ Effects: read-only, closed-world.
 
 ## `flare activity`
 
-List the responses to flares since a cursor, oldest first
+List responses and comments since a cursor
 
 ### Arguments
 
-- `<FLARE>`: The flares whose responses to list, at most 16. Required. Takes more than one value.
-- `--since <CURSOR>`: List only responses after this cursor, which an earlier call printed
+- `<FLARE>`: The flares whose responses and comments to list, at most 16. Required. Takes more than one value.
+- `--since <CURSOR>`: List only activity after this cursor, which an earlier call printed
+- `--since-last <NAME>`: Continue from the cursor saved as NAME, the larger of this computer's and the server's, and save where this call ends
 - `--limit <N>`: Print at most this many rows, up to 100. Default: `50`.
 - `--all`: Print every row
 
@@ -328,23 +334,195 @@ List the responses to a flare, oldest first.
 flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 ```
 
-List the responses after the cursor an earlier call printed.
+List the activity after the cursor an earlier call printed.
 
 ```sh
 flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
 ```
 
+List what is new since the last call that used the name inbox, then save where this one ends.
+
+```sh
+flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since-last inbox
+```
+
 ### Columns
 
 - `flare`: The flare it responds to.
-- `share`: The responding share's id.
-- `title`: The responding share's title.
-- `by`: The responder's identifier.
-- `version`: The version of the flare it responds to.
-- `at`: When it named the flare, in RFC 3339 UTC.
-- `also`: The other flares it responds to that the caller can open.
+- `kind`: What happened: `response`, `comment`, `reply`, `edited` or `deleted`.
+- `share`: The responding share's id, for a response.
+- `title`: The responding share's title, for a response.
+- `comment`: The comment or reply the event is about, for a comment event.
+- `parent`: The comment a reply answers, or an edited or deleted reply is on.
+- `by`: The person who responded, wrote, edited or deleted.
+- `version`: The version of the flare it responds to, for a response.
+- `body`: The comment's or reply's text after the event; absent for a response or a deletion.
+- `at`: When it happened, in RFC 3339 UTC.
+- `also`: The other flares a response responds to that the caller can open.
+
+Effects: additive, not idempotent, closed-world.
+
+Writes: applies all items or none.
+
+## `flare comments`
+
+List a flare's comments and replies
+
+### Arguments
+
+- `<FLARE>`: The flare whose comments to list. Required.
+
+### Examples
+
+List a flare's comments, each followed by its replies.
+
+```sh
+flare comments 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+### Columns
+
+- `id`: The comment's or reply's id.
+- `parent`: The comment a reply answers; absent for a comment.
+- `author`: The author's identifier.
+- `at`: When it was written, in RFC 3339 UTC.
+- `edited`: When its text last changed, in RFC 3339 UTC.
+- `deleted`: Whether its author deleted it.
+- `body`: Its text; absent once deleted.
 
 Effects: read-only, closed-world.
+
+## `flare comment`
+
+Comment on a flare
+
+### Arguments
+
+- `<FLARE>`: The flare to comment on. Required.
+- `--body <TEXT>`: The text, 1 to 8,000 characters. Required, or give `--body-file` in its place.
+- `--body-file <FILE>`: A file that holds the text, which is how to send more than one line. Required, or give `--body` in its place.
+- `--key <KEY>`: The key that makes a repeat of this call write nothing; without it, a new random key
+
+### Examples
+
+Comment on a flare.
+
+```sh
+flare comment 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Is this final?'
+```
+
+Comment with the text of a file; running it again writes nothing new.
+
+```sh
+flare comment 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body-file note.txt --key note-1
+```
+
+### Columns
+
+- `id`: The comment's or reply's id.
+- `flare`: The flare it is on.
+- `parent`: The comment a reply answers; absent for a comment.
+- `author`: The author's identifier.
+- `at`: When it was written, in RFC 3339 UTC.
+- `edited`: When its text last changed, in RFC 3339 UTC; absent when it never did.
+- `deleted`: Whether its author deleted it.
+- `body`: Its text; absent once deleted.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare reply`
+
+Reply to a comment
+
+### Arguments
+
+- `<COMMENT>`: The comment to reply to, which is not itself a reply. Required.
+- `--flare <FLARE>`: The flare the comment is on. Required.
+- `--body <TEXT>`: The text, 1 to 8,000 characters. Required, or give `--body-file` in its place.
+- `--body-file <FILE>`: A file that holds the text, which is how to send more than one line. Required, or give `--body` in its place.
+- `--key <KEY>`: The key that makes a repeat of this call write nothing; without it, a new random key
+
+### Examples
+
+Reply to a comment.
+
+```sh
+flare reply 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --flare 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Yes, ship it'
+```
+
+### Columns
+
+- `id`: The comment's or reply's id.
+- `flare`: The flare it is on.
+- `parent`: The comment a reply answers; absent for a comment.
+- `author`: The author's identifier.
+- `at`: When it was written, in RFC 3339 UTC.
+- `edited`: When its text last changed, in RFC 3339 UTC; absent when it never did.
+- `deleted`: Whether its author deleted it.
+- `body`: Its text; absent once deleted.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare comment-edit`
+
+Edit a comment or reply you wrote
+
+### Arguments
+
+- `<COMMENT>`: The comment or reply to edit, which only its author may. Required.
+- `--body <TEXT>`: The text, 1 to 8,000 characters. Required, or give `--body-file` in its place.
+- `--body-file <FILE>`: A file that holds the text, which is how to send more than one line. Required, or give `--body` in its place.
+
+### Examples
+
+Replace the text of your comment.
+
+```sh
+flare comment-edit 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --body 'Is this final, or a draft?'
+```
+
+### Columns
+
+- `id`: The comment's or reply's id.
+- `flare`: The flare it is on.
+- `parent`: The comment a reply answers; absent for a comment.
+- `author`: The author's identifier.
+- `at`: When it was written, in RFC 3339 UTC.
+- `edited`: When its text last changed, in RFC 3339 UTC; absent when it never did.
+- `deleted`: Whether its author deleted it.
+- `body`: Its text; absent once deleted.
+
+Effects: additive, not idempotent, closed-world.
+
+## `flare comment-delete`
+
+Delete a comment or reply you wrote
+
+### Arguments
+
+- `<COMMENT>`: The comment or reply to delete, which only its author may. Required.
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+Delete your comment without a question.
+
+```sh
+flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
+```
+
+### Columns
+
+- `id`: The comment's or reply's id.
+- `flare`: The flare it is on.
+- `parent`: The comment a reply answers; absent for a comment.
+- `author`: The author's identifier.
+- `at`: When it was written, in RFC 3339 UTC.
+- `edited`: When its text last changed, in RFC 3339 UTC; absent when it never did.
+- `deleted`: Whether its author deleted it.
+- `body`: Its text; absent once deleted.
+
+Effects: destructive, not idempotent, closed-world.
 
 ## `flare commands`
 

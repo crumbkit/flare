@@ -149,6 +149,15 @@ impl Api {
         }
     }
 
+    /// A request as a signed-in browser's script sends it: the session
+    /// `cookie`, the same-origin headers and, for a body, JSON.
+    pub fn browser(&self, method: &str, path: &str, cookie: &str) -> Call {
+        self.hosted
+            .request(method, path)
+            .cookie(cookie)
+            .same_origin()
+    }
+
     /// Sends a request with a JSON body and reads the JSON reply.
     pub async fn json(
         &self,

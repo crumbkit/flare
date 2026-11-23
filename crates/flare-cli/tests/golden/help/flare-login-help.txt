@@ -1,4 +1,4 @@
-Sign in to a flare server in the browser and keep its token in the Keychain
+Sign in to a flare server and keep its token in the Keychain
 
 Usage: flare login [OPTIONS] <SERVER>
 
