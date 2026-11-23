@@ -149,12 +149,12 @@ pub(crate) async fn share(
     dry_run: bool,
     env: &Snapshot,
 ) -> Result<ShareOut, Failed> {
+    let outgoing = outgoing(args)?;
     if dry_run {
-        return dry_run::check(args, outgoing(args)?);
+        return dry_run::check(args, outgoing);
     }
-    format(&args.file)?;
     let api = session(env)?;
-    match outgoing(args)? {
+    match outgoing {
         Outgoing::Update(id, request) => update(&api, &id, request).await,
         Outgoing::Create(request) => {
             let answer = api

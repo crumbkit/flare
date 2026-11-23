@@ -219,12 +219,10 @@ Share a Markdown file with named people, or as a response to flares
 ### Arguments
 
 - `<FILE>`: The file to share: .md for Markdown. Required.
-- `--title <TITLE>`: The share's title, by default the file name less .md
-- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
-- `--re <ID>`: The flares this share responds to, repeated or separated by commas
-
-  The owner of each flare becomes a Reader of the share. Takes more than one value.
-- `--update <ID>`: Publish the file as the next version of this share you own
+- `--title <TITLE>`: The title; without it, the file name without its ending
+- `--with <ADDRESS>`: The addresses to grant Reader, repeated or comma-separated. Takes more than one value.
+- `--re <ID>`: The flares it responds to, whose owners become Readers; repeated or comma-separated. Takes more than one value.
+- `--update <ID>`: Publish the file as your share's next version
 
   It changes only the content; grants stay with flare grant.
 - `--dry-run`: Report what the command would change, and change nothing

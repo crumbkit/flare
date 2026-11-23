@@ -8,7 +8,9 @@ use crate::cli::ShareArgs;
 use crate::codes::{Failed, Refused, SharingFailed};
 use crate::documents::ShareOut;
 use crumbkit_durable::{Mode, write_atomically};
-use flare_core::{ContentFormat, Page, PageContent, PageName, ShareId, Slots};
+use flare_core::{
+    ContentFormat, MAX_DOCUMENT, MAX_TITLE, Page, PageContent, PageName, ShareId, Slots,
+};
 use flare_server::{BodyRefused, check_share, check_version};
 
 /// The page name that the rendered HTML's `<title>` shows. flare-render
@@ -37,7 +39,7 @@ pub(super) fn check(args: &ShareArgs, outgoing: Outgoing) -> Result<ShareOut, Fa
         Outgoing::Create(request) => {
             let (title, text) = check_share(&request).map_err(refused)?;
             checks.push(format!(
-                "the title \"{}\" is 1 to 200 bytes",
+                "the title \"{}\" is 1 to {MAX_TITLE} bytes with no control character",
                 title.as_str()
             ));
             for (named, what) in [
@@ -53,9 +55,11 @@ pub(super) fn check(args: &ShareArgs, outgoing: Outgoing) -> Result<ShareOut, Fa
             (None, Some(title.as_str().to_owned()), text)
         }
         Outgoing::Update(id, request) => {
-            let text = check_version(&request).map_err(refused)?;
+            // The server parses the id before it checks the body, so a
+            // malformed id answers not_found here as it does there.
             let id = ShareId::try_from(id.as_str())
                 .map_err(|_| Refused::new(flare_contract::ApiCode::ShareNotFound, None, ""))?;
+            let text = check_version(&request).map_err(refused)?;
             checks.push(format!(
                 "not checked: whether you own the share {}, which only the server knows",
                 id.as_str()
@@ -64,7 +68,7 @@ pub(super) fn check(args: &ShareArgs, outgoing: Outgoing) -> Result<ShareOut, Fa
         }
     };
     checks.push(format!(
-        "the content is {} bytes of text with no NUL, within the 262144 a share holds",
+        "the content is {} bytes of text with no NUL, within the {MAX_DOCUMENT} a share holds",
         content.as_str().len()
     ));
     let html = render(content.as_str())?;

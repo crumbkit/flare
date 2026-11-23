@@ -34,23 +34,20 @@ pub(crate) struct ShareArgs {
     /// The file to share: .md for Markdown
     #[arg(value_name = "FILE")]
     pub(crate) file: PathBuf,
-    /// The share's title, by default the file name less .md
+    /// The title; without it, the file name without its ending
     #[arg(long, value_name = "TITLE")]
     pub(crate) title: Option<String>,
-    /// The addresses to grant Reader, repeated or separated by commas
+    /// The addresses to grant Reader, repeated or comma-separated
     #[arg(long, value_name = "ADDRESS", value_delimiter = ',')]
     pub(crate) with: Vec<String>,
-    /// The flares this share responds to, repeated or separated by commas
-    ///
-    /// The owner of each flare becomes a Reader of the share.
+    /// The flares it responds to, whose owners become Readers; repeated or comma-separated
     #[arg(long, value_name = "ID", value_delimiter = ',')]
     pub(crate) re: Vec<String>,
-    /// Publish the file as the next version of this share you own
+    /// Publish the file as your share's next version
     ///
     /// It changes only the content; grants stay with flare grant.
     #[arg(long, value_name = "ID", conflicts_with_all = ["title", "with", "re"])]
     pub(crate) update: Option<String>,
-    /// Check the file as the server would and render it, without a login or a request, and share nothing.
     #[command(flatten)]
     pub(crate) dry_run: DryRun,
     /// With --dry-run, write the HTML here

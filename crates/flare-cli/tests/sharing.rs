@@ -785,3 +785,26 @@ fn a_dry_run_whose_out_file_cannot_be_written_fails_with_files_unwritable() {
     .assert_ok();
     assert!(out.exists());
 }
+
+#[test]
+fn a_dry_run_of_update_checks_the_id_before_the_body_as_the_server_does() {
+    let home = Home::new();
+    let html = home.path().join("page.html");
+    write(&html, "<p>x</p>\n");
+    home.sharing(&[
+        "share",
+        html.to_str().unwrap(),
+        "--update",
+        "not an id",
+        "--dry-run",
+    ])
+    .assert_failed("flare::shares::not_found");
+    home.sharing(&[
+        "share",
+        html.to_str().unwrap(),
+        "--update",
+        FLARE,
+        "--dry-run",
+    ])
+    .assert_failed("flare::shares::kind_not_served");
+}
