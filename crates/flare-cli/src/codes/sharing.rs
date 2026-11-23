@@ -1,8 +1,8 @@
-//! The failures of `flare login`, `logout`, `share`, `grant`, `shares` and
-//! `activity`. [`SharingFailed`] holds the command's own, and [`Refused`]
-//! carries a refusal of the share API with the server's code, so a caller
-//! sees `flare::shares::not_a_creator` whether it reads the API or the
-//! command. No message holds a token or a login code.
+//! The failures of `flare login`, `logout`, `share`, `show`, `grant`,
+//! `shares` and `activity`. [`SharingFailed`] holds the command's own, and
+//! [`Refused`] carries a refusal of the share API with the server's code, so
+//! a caller sees `flare::shares::not_a_creator` whether it reads the API or
+//! the command. No message holds a token or a login code.
 
 use crumbkit::{Call, Code, Failure, Recovery};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
@@ -22,6 +22,8 @@ pub const NETWORK_UNREACHABLE: Code<'static> = Code::from_spelling("flare::netwo
 pub const NETWORK_BAD_ANSWER: Code<'static> = Code::from_spelling("flare::network::bad_answer");
 /// The file to share could not be read.
 pub const FILES_UNREADABLE: Code<'static> = Code::from_spelling("flare::files::unreadable");
+/// The rendered HTML of a dry run could not be written.
+pub const FILES_UNWRITABLE: Code<'static> = Code::from_spelling("flare::files::unwritable");
 /// The file to share is neither Markdown nor HTML.
 pub const FILES_UNKNOWN_FORMAT: Code<'static> = Code::from_spelling("flare::files::unknown_format");
 
@@ -94,6 +96,19 @@ pub enum SharingFailed {
     #[error("{path} could not be read: {problem}")]
     #[failure(code = FILES_UNREADABLE, hint = "pass a readable file", field(path = path))]
     FileUnreadable {
+        /// The file.
+        path: String,
+        /// What went wrong.
+        problem: String,
+    },
+    /// The rendered HTML of a dry run could not be written.
+    #[error("{path} could not be written: {problem}")]
+    #[failure(
+        code = FILES_UNWRITABLE,
+        hint = "pass --out with a file in a directory you can write",
+        field(path = path)
+    )]
+    FileUnwritable {
         /// The file.
         path: String,
         /// What went wrong.

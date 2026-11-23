@@ -8,7 +8,7 @@ Arguments:
 
 Options:
       --title <TITLE>
-          The share's title; without it, the file's name without its ending
+          The share's title, by default the file name less .md
 
       --with <ADDRESS>
           The addresses to grant Reader, repeated or separated by commas
@@ -17,7 +17,15 @@ Options:
           The flares this share responds to, repeated or separated by commas
 
       --update <ID>
-          Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+          Publish the file as the next version of this share you own
+          
+          It changes only the content; grants stay with flare grant.
+
+      --dry-run
+          Report what the command would change, and change nothing
+
+      --out <PATH>
+          With --dry-run, write the HTML here
 
       --json
           Print the result as a JSON document. The default prints text.
@@ -44,11 +52,15 @@ Examples:
   flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
           Publish review.md as the next version of a share you own
 
+  flare share review.md --dry-run --out review.html
+          Check review.md as the server would and write its HTML to review.html, sharing nothing
+
 Columns:
-  id           The share's id.
-  title        The share's title.
-  version      The share's latest version.
-  granted      The addresses that now hold a role on it; none after `--update`, which does not report them.
-  responds_to  The flares it responds to; none after `--update`, which does not report them.
+  id           The share's id; none on a dry run of a new share.
+  title        The share's title; none on a dry run of `--update`, which does not read the share.
+  version      The share's latest version; none on a dry run.
+  granted      The addresses that now hold a role on it; none after `--update` or a dry run.
+  responds_to  The flares it responds to; none after `--update` or a dry run.
 
 Effects: additive, not idempotent, closed-world.
+Children: A dry run lists its checks.

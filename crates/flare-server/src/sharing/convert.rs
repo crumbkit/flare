@@ -1,7 +1,7 @@
 //! Turns flare-core's shares, activity and refusals into the contract's
 //! bodies and codes.
 
-use super::Refusal;
+use super::{BodyRefused, Refusal};
 use flare_contract::{
     ActivityItem as WireItem, ApiCode, FlareRef, Format, Role as WireRole, ShareSummary, utc,
 };
@@ -115,16 +115,18 @@ pub(super) fn recipient_error(error: RecipientError, identifier: &str) -> Refusa
 
 /// The refusal for a title or content that its type refused: too large
 /// for a document over the limit, and invalid otherwise.
-pub(super) fn content_error(error: &ParseError) -> Refusal {
+pub(super) fn content_error(error: &ParseError) -> BodyRefused {
     match error {
         ParseError::TooLong {
             subject: flare_core::Subject::DocumentText,
             ..
-        } => ApiCode::ShareTooLarge.into(),
-        other => Refusal {
+        } => BodyRefused {
+            code: ApiCode::ShareTooLarge,
+            detail: None,
+        },
+        other => BodyRefused {
             code: ApiCode::ShareInvalid,
             detail: Some(other.to_string()),
-            share: None,
         },
     }
 }

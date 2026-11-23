@@ -2,6 +2,15 @@
   "schema": "flare/opt-outs/v2",
   "data": [
     {
+      "rule": "listings/show-ids",
+      "applies_to": "flare show",
+      "reason": "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
+      "costs": [
+        "An agent runs the command once for each id."
+      ],
+      "budget": null
+    },
+    {
       "rule": "suite/skip",
       "applies_to": "Check::PathWeights",
       "reason": "The path weights read the example golden files, which the Examples skip leaves out.",
@@ -50,9 +59,19 @@
   "declarations": [
     {
       "declaration": "root-verbs",
-      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare grant, flare shares, flare activity",
+      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare shares, flare activity",
       "declares": "Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.",
       "reason": "each command names what a person does with the board flare serves or the server flare shares through"
+    },
+    {
+      "declaration": "children",
+      "applies_to": "flare share",
+      "declares": "The text prints lines under each row for its checks, and help describes them as: A dry run lists its checks."
+    },
+    {
+      "declaration": "children",
+      "applies_to": "flare show",
+      "declares": "The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file."
     }
   ]
 }

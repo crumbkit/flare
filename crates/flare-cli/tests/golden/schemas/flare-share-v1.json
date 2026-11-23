@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/share/v1",
-  "description": "The share, its latest version, the people it is granted to and the flares it responds to.",
+  "description": "The share, its latest version, the people it is granted to and the flares it responds to, or what a dry run checked.",
   "type": "object",
   "properties": {
     "data": {
-      "$ref": "#/$defs/SharedOut"
+      "$ref": "#/$defs/ShareOut"
     },
     "dry_run": {
       "description": "Present, and true, when the run was a dry run that changed nothing.",
@@ -21,12 +21,19 @@
     "data"
   ],
   "$defs": {
-    "SharedOut": {
-      "description": "A share that `flare share` made or updated, or `flare grant` granted.",
+    "ShareOut": {
+      "description": "A share that `flare share` made or updated, or that a dry run checked.",
       "type": "object",
       "properties": {
+        "checks": {
+          "description": "What a dry run checked, wrote and could not check; empty on a real run.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "granted": {
-          "description": "The addresses that now hold a role on it; none after `--update`, which does not report them.",
+          "description": "The addresses that now hold a role on it; none after `--update` or a dry run.",
           "type": [
             "array",
             "null"
@@ -36,11 +43,14 @@
           }
         },
         "id": {
-          "description": "The share's id.",
-          "type": "string"
+          "description": "The share's id; none on a dry run of a new share.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "responds_to": {
-          "description": "The flares it responds to; none after `--update`, which does not report them.",
+          "description": "The flares it responds to; none after `--update` or a dry run.",
           "type": [
             "array",
             "null"
@@ -50,12 +60,18 @@
           }
         },
         "title": {
-          "description": "The share's title.",
-          "type": "string"
+          "description": "The share's title; none on a dry run of `--update`, which does not read the share.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "version": {
-          "description": "The share's latest version.",
-          "type": "integer",
+          "description": "The share's latest version; none on a dry run.",
+          "type": [
+            "integer",
+            "null"
+          ],
           "format": "uint32",
           "minimum": 0
         }
@@ -65,7 +81,8 @@
         "title",
         "version",
         "granted",
-        "responds_to"
+        "responds_to",
+        "checks"
       ]
     }
   }

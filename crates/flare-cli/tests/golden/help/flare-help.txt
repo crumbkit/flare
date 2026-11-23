@@ -10,6 +10,7 @@ Verbs
   login     Sign in to a flare server in the browser and keep its token in the Keychain
   logout    Revoke this computer's token for the flare server and delete it
   share     Share a Markdown file with named people, or as a response to flares
+  show      Show one version of a share you can open, or its latest
   grant     Grant an existing share to more people
   shares    List your shares or the shares granted to you
   activity  List the responses to flares since a cursor, oldest first
