@@ -270,5 +270,5 @@ pub use limits::Limits;
 pub use listen::{BindError, Listeners, ServeError, Stopped};
 pub use metrics::{METRICS_TARGET, Metrics, Totals};
 pub use schemas::Schemas;
-pub use sharing::Sharing;
+pub use sharing::{BodyRefused, Sharing, check_share, check_version};
 pub use site::{OriginError, PublicOrigin, Site};

@@ -12,7 +12,8 @@
 # those stand-ins, without --all-features, so the lane skips that test: its
 # --all-features build turns on the `testing` features, and the test must
 # run the flare command as it ships. The ui job
-# installs, checks and tests the TypeScript workspace in ui/.
+# installs, checks and tests the TypeScript workspace in ui/. The scheduled
+# advisories job checks the Rust and the npm dependencies.
 name: CI
 
 on:
@@ -292,5 +293,24 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
           fallback: none
-      - name: advisories
+      - name: rust advisories
         run: cargo deny --locked check advisories
+      # The npm steps run even when the rust advisories step fails, so an
+      # advisory against a Rust crate does not hide one against an npm
+      # package. pnpm/action-setup installs the pnpm that ui/package.json's
+      # `packageManager` names, and setup-node the Node that .node-version
+      # names. Neither caches anything, because this job installs nothing.
+      - if: ${{ !cancelled() }}
+        uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          package_json_file: ui/package.json
+      - if: ${{ !cancelled() }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      # pnpm audit reads the lockfile and asks the npm registry for advisories
+      # against every package in it (BASE-17).
+      - name: npm advisories
+        if: ${{ !cancelled() }}
+        working-directory: ui
+        run: pnpm audit

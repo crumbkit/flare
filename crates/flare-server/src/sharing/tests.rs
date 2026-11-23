@@ -168,3 +168,53 @@ async fn an_admin_is_refused_a_new_version_and_the_owner_publishes_it() {
     let (status, _) = api.run(&ana, post(), NOW).await.unwrap();
     assert_eq!(status, 201);
 }
+
+fn share_request(title: &str, format: Format, content: &str) -> flare_contract::ShareRequest {
+    flare_contract::ShareRequest {
+        title: title.to_owned(),
+        format,
+        content: content.to_owned(),
+        with: Vec::new(),
+        re: Vec::new(),
+    }
+}
+
+#[test]
+fn the_share_checks_refuse_html_first_then_the_title_then_the_content() {
+    let code = |request| super::check_share(&request).map(|_| ()).map_err(|e| e.code);
+    assert_eq!(
+        code(share_request("", Format::Html, "")),
+        Err(ApiCode::KindNotServed)
+    );
+    assert_eq!(
+        code(share_request("", Format::Markdown, "")),
+        Err(ApiCode::ShareInvalid)
+    );
+    assert_eq!(
+        code(share_request(
+            "Plan",
+            Format::Markdown,
+            &"x".repeat(262_145)
+        )),
+        Err(ApiCode::ShareTooLarge)
+    );
+    assert_eq!(
+        code(share_request("Plan", Format::Markdown, "# Plan\n")),
+        Ok(())
+    );
+}
+
+#[test]
+fn the_version_checks_refuse_html_and_empty_content_and_admit_markdown() {
+    let code = |format, content: &str| {
+        super::check_version(&VersionRequest {
+            format,
+            content: content.to_owned(),
+        })
+        .map(|_| ())
+        .map_err(|e| e.code)
+    };
+    assert_eq!(code(Format::Html, "<p>x</p>"), Err(ApiCode::KindNotServed));
+    assert_eq!(code(Format::Markdown, ""), Err(ApiCode::ShareInvalid));
+    assert_eq!(code(Format::Markdown, "# Plan\n"), Ok(()));
+}

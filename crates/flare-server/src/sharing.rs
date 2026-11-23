@@ -8,6 +8,11 @@
 //! flare-core's values and refusals into the contract's, and `tokens.rs`
 //! mints and reads tokens and login codes.
 //!
+//! [`check_share`] and [`check_version`] are the checks that a create and a
+//! new version apply to their body before any store call. The `flare share
+//! --dry-run` command calls the same two functions, so a dry run refuses
+//! what the server would refuse.
+//!
 //! A token's text is `flare_<id>_<secret>`: the id is 32 hexadecimal
 //! characters and the secret 43 base64url characters of 32 random bytes.
 //! The store keeps the SHA-256 of the secret. A login code is 43 base64url
@@ -19,9 +24,13 @@ mod tokens;
 
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 
+use convert::content_error;
+
 use flare_auth_oidc::Admit;
-use flare_contract::{ApiCode, ExchangeRequest, GrantRequest, ShareRequest, VersionRequest};
-use flare_core::{Email, Flares, Principal, Timestamp};
+use flare_contract::{
+    ApiCode, ExchangeRequest, Format, GrantRequest, ShareRequest, VersionRequest,
+};
+use flare_core::{DocumentText, Email, Flares, Principal, ShareTitle, ShareVersion, Timestamp};
 use secrecy::SecretString;
 use std::fmt;
 use std::future::Future;
@@ -77,8 +86,8 @@ pub(crate) enum Call {
     Create(ShareRequest),
     /// `GET /api/shares`.
     List { scope: Scope, limit: usize },
-    /// `GET /api/shares/{id}`.
-    Open(String),
+    /// `GET /api/shares/{id}`, at a version or at the latest.
+    Open(String, Option<ShareVersion>),
     /// `POST /api/shares/{id}/versions`.
     Publish(String, VersionRequest),
     /// `POST /api/grants/{id}`.
@@ -99,6 +108,64 @@ pub(crate) struct Refusal {
     pub(crate) code: ApiCode,
     pub(crate) detail: Option<String>,
     pub(crate) share: Option<String>,
+}
+
+/// Why a share's body fails the checks of [`check_share`] or
+/// [`check_version`]: the code the API answers with, and its detail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BodyRefused {
+    /// The code, such as `flare::shares::too_large`.
+    pub code: ApiCode,
+    /// What is wrong, when the code alone does not say.
+    pub detail: Option<String>,
+}
+
+impl From<BodyRefused> for Refusal {
+    fn from(refused: BodyRefused) -> Self {
+        Self {
+            code: refused.code,
+            detail: refused.detail,
+            share: None,
+        }
+    }
+}
+
+/// The checks a create applies to its body before any store call: the
+/// format, then the title, then the content.
+///
+/// # Errors
+///
+/// Returns `flare::shares::kind_not_served` for HTML,
+/// `flare::shares::too_large` for content over 256 KiB, and
+/// `flare::shares::invalid` with a detail for any other title or content
+/// that its type refuses.
+pub fn check_share(request: &ShareRequest) -> Result<(ShareTitle, DocumentText), BodyRefused> {
+    served(request.format)?;
+    let title = ShareTitle::try_from(request.title.as_str()).map_err(|e| content_error(&e))?;
+    let text = DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
+    Ok((title, text))
+}
+
+/// The checks a new version applies to its body before any store call:
+/// the format, then the content.
+///
+/// # Errors
+///
+/// Returns the refusals of [`check_share`] other than the title's.
+pub fn check_version(request: &VersionRequest) -> Result<DocumentText, BodyRefused> {
+    served(request.format)?;
+    DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))
+}
+
+/// Refuses a format the server does not serve.
+fn served(format: Format) -> Result<(), BodyRefused> {
+    match format {
+        Format::Markdown => Ok(()),
+        Format::Html => Err(BodyRefused {
+            code: ApiCode::KindNotServed,
+            detail: None,
+        }),
+    }
 }
 
 impl From<ApiCode> for Refusal {

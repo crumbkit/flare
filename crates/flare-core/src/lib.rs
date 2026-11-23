@@ -53,8 +53,9 @@ pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
 pub use response::{MAX_PAGE, NewLink, Position, ResponseLink};
 pub use share::{
-    DocumentText, Listing, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewShare, NewVersion,
-    Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion, SharedVersion,
+    DocumentText, Listing, MAX_DOCUMENT, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_TITLE, MAX_VERSIONS,
+    NewShare, NewVersion, Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion,
+    SharedVersion,
 };
 pub use sharing::{Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{

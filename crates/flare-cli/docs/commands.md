@@ -15,6 +15,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
 - [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
 - [`flare share`](#flare-share): Share a Markdown file with named people, or as a response to flares
+- [`flare show`](#flare-show): Show one version of a share you can open, or its latest
 - [`flare grant`](#flare-grant): Grant an existing share to more people
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
 - [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
@@ -219,10 +220,14 @@ Share a Markdown file with named people, or as a response to flares
 ### Arguments
 
 - `<FILE>`: The file to share: .md for Markdown. Required.
-- `--title <TITLE>`: The share's title; without it, the file's name without its ending
-- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
-- `--re <ID>`: The flares this share responds to, repeated or separated by commas; their owners become Readers of it. Takes more than one value.
-- `--update <ID>`: Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+- `--title <TITLE>`: The title; without it, the file name without its ending
+- `--with <ADDRESS>`: The addresses to grant Reader, repeated or comma-separated. Takes more than one value.
+- `--re <ID>`: The flares it responds to, whose owners become Readers; repeated or comma-separated. Takes more than one value.
+- `--update <ID>`: Publish the file as your share's next version
+
+  It changes only the content; grants stay with flare grant.
+- `--dry-run`: Report what the command would change, and change nothing
+- `--out <PATH>`: With --dry-run, write the HTML here
 
 ### Examples
 
@@ -244,15 +249,59 @@ Publish review.md as the next version of a share you own.
 flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 ```
 
+Check review.md as the server would and write its HTML to review.html, sharing nothing.
+
+```sh
+flare share review.md --dry-run --out review.html
+```
+
+### Columns
+
+- `id`: The share's id; none on a dry run of a new share.
+- `title`: The share's title; none on a dry run of `--update`, which does not read the share.
+- `version`: The share's latest version; none on a dry run.
+- `granted`: The addresses that now hold a role on it; none after `--update` or a dry run.
+- `responds_to`: The flares it responds to; none after `--update` or a dry run.
+
+Effects: additive, not idempotent, closed-world.
+
+Children: A dry run lists its checks.
+
+## `flare show`
+
+Show one version of a share you can open, or its latest
+
+### Arguments
+
+- `<ID>`: The share to show. Required.
+- `--version <N>`: The version to show, a number from 1; without it, the latest
+
+### Examples
+
+Show the latest version of a share.
+
+```sh
+flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+Show the first version of a share.
+
+```sh
+flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
+```
+
 ### Columns
 
 - `id`: The share's id.
 - `title`: The share's title.
-- `version`: The share's latest version.
-- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
-- `responds_to`: The flares it responds to; none after `--update`, which does not report them.
+- `owner`: The owner's identifier.
+- `role`: The caller's role: `owner`, `admin` or `reader`.
+- `version`: The version whose content this holds.
+- `latest`: The share's latest version.
 
-Effects: additive, not idempotent, closed-world.
+Effects: read-only, closed-world.
+
+Children: The version's Markdown follows the share, one line of text for each line of the file.
 
 ## `flare grant`
 
