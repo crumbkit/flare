@@ -177,7 +177,10 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
         &self.shares
     }
 
-    /// The response store, for reads.
+    /// The response store, for tests that read the index. It is not built
+    /// into a server, so no caller there can write the index around
+    /// [`Flares`].
+    #[cfg(any(test, feature = "testing"))]
     #[must_use]
     pub fn responses(&self) -> &R {
         &self.responses
@@ -358,16 +361,12 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
                 }
             }
         }
-        // Every named person is indexed again, including those who already
-        // held a grant, so repeating a grant repairs missing entries.
-        for person in &named {
-            if self.index_grant(&person.principal_id(), id).await.is_err() {
-                return Err(FlareError::PartlyShared {
-                    share: id.clone(),
-                    granted: granted.len(),
-                    cause: ShareError::Unavailable,
-                });
-            }
+        if self.reindex(&named, &granted, id).await.is_err() {
+            return Err(FlareError::PartlyShared {
+                share: id.clone(),
+                granted: granted.len(),
+                cause: ShareError::Unavailable,
+            });
         }
         if let Err(cause) = self.grant_owners(who, id, &flares, at).await {
             if granted.is_empty() {

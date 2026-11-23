@@ -378,3 +378,48 @@ fn activity_examines_at_most_1000_entries_a_call_and_says_more_when_stale_entrie
     assert_eq!(shown(&second), vec![id(2)]);
     assert!(!second.more);
 }
+
+#[test]
+fn a_new_grant_after_a_revoke_whose_unindex_failed_shows_the_response_as_new() {
+    let flares = service();
+    share(&flares, "alice", 1, &["bob", "carol"], &[]);
+    share(&flares, "bob", 2, &["carol"], &[1]);
+    flares
+        .responses()
+        .fail_unindex
+        .store(true, Ordering::SeqCst);
+    let failed = revoke(&flares, "bob", 2, "carol");
+    assert_eq!(failed.unwrap_err(), FlareError::ResponsesUnavailable);
+    flares
+        .responses()
+        .fail_unindex
+        .store(false, Ordering::SeqCst);
+    // Carol's stale entry stays; her cursor moves past it.
+    let cursor = activity(&flares, "carol", 1, Position::new(0));
+    assert!(cursor.items.is_empty());
+    grant(&flares, "bob", 2, &["carol"]);
+    let next = activity(&flares, "carol", 1, cursor.last);
+    assert_eq!(shown(&next), vec![id(2)]);
+    // She holds one entry for the response, at its new position.
+    let carol: Vec<_> = flares
+        .responses()
+        .inner
+        .entries()
+        .into_iter()
+        .filter(|entry| {
+            entry.reader == Reader::Person(PrincipalId::try_from("carol@example.com").unwrap())
+        })
+        .collect();
+    assert_eq!(carol.len(), 1);
+    assert!(carol[0].position > cursor.last);
+}
+
+#[test]
+fn a_repeated_grant_to_a_person_who_holds_the_grant_keeps_their_entry_position() {
+    let flares = service();
+    share(&flares, "alice", 1, &["bob", "carol"], &[]);
+    share(&flares, "bob", 2, &["carol"], &[1]);
+    let before = flares.responses().inner.entries();
+    grant(&flares, "bob", 2, &["carol"]);
+    assert_eq!(flares.responses().inner.entries(), before);
+}

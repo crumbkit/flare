@@ -28,6 +28,7 @@
 //! written before the grant are affected.
 
 use super::Flares;
+use crate::email::Email;
 use crate::name::PrincipalId;
 use crate::response::{NewEntry, Reader, ResponseLink};
 use crate::share::ShareId;
@@ -94,11 +95,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
 
     /// Writes the entries that a grant of `person` on `share`, already
     /// stored, makes possible, with `share` as a response and as a flare.
-    pub(super) async fn index_grant(
-        &self,
-        person: &PrincipalId,
-        share: &ShareId,
-    ) -> Result<(), Unfinished> {
+    async fn index_grant(&self, person: &PrincipalId, share: &ShareId) -> Result<(), Unfinished> {
         let reader = Reader::Person(person.clone());
         let mut entries = Vec::new();
         let links = self
@@ -123,6 +120,28 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
                 .map(|link| NewEntry::new(reader.clone(), link)),
         );
         self.write_entries(entries).await
+    }
+
+    /// Writes the entries of a grant on `share` to each person in
+    /// `named`, including those who already held a grant, so repeating a
+    /// grant repairs missing entries. A person in `granted` held no grant
+    /// before, so any entry they have for `share` as a response is stale,
+    /// as when an unindex failed; it goes first, so the response takes a
+    /// new position and shows as new.
+    pub(super) async fn reindex(
+        &self,
+        named: &[Email],
+        granted: &[Email],
+        share: &ShareId,
+    ) -> Result<(), Unfinished> {
+        for person in named {
+            let id = person.principal_id();
+            if granted.contains(person) {
+                self.unindex(id.clone(), share).await?;
+            }
+            self.index_grant(&id, share).await?;
+        }
+        Ok(())
     }
 
     /// The shares `person` owns or holds a grant on, newest first in each

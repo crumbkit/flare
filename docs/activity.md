@@ -40,7 +40,9 @@ Who gets an entry:
    already hold a grant.
 3. A revoke is written and `unindex` does not finish. The reader has stale
    entries. Activity opens every response before listing it, so a stale
-   entry is skipped without a trace, and a repeated revoke deletes it.
+   entry is skipped without a trace, and a repeated revoke deletes it. A
+   later grant of the response to the same reader also deletes it before
+   writing a new entry, so the response takes a new position.
 4. An index transaction's outcome is unknown. The writer reads the markers
    and writes only the missing entries.
 5. Two writers move the counter at once. One transaction fails on the
@@ -81,8 +83,13 @@ Who gets an entry:
 ## What a reader sees
 
 - An entry takes a new position when it is written. A response that a
-  reader gains access to after their cursor shows as new activity, even
-  when the response is older than the cursor.
+  reader is granted after their cursor shows as new activity, even when the
+  response is older than the cursor. `flare grant` removes any entry a
+  newly granted reader still has for the response before it writes the new
+  one, so this holds after a revoke whose removal failed.
+- A reader whose grant on a flare is revoked and later granted again keeps
+  their entries at their old positions, so responses that were below their
+  cursor do not show again as new.
 - Links written before this index existed have no entries, so activity
   does not list them. Repeating `flare grant <response> --re <flare>`
   writes their entries.
