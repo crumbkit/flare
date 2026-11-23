@@ -8,6 +8,17 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A hosted site shows a Markdown share at `/s/<id>` to a signed-in reader
+  the share is granted to, in the signed Flare layout: a header with the
+  flare name and the reader's initials, a line naming who shared it, with
+  whom, the version and the date, then the article. `?version=<n>` shows an
+  older version. A refused share and a missing share give the same
+  not-found page. Mermaid diagrams are drawn, code is coloured by Shiki
+  with a Copy button, tables scroll in their own box on a narrow screen,
+  and a "Figure N." paragraph directly after a diagram, table or code block
+  becomes its caption. `docs/reading.md` lists the languages and diagram
+  types.
+
 - `flare login <server>` signs in to a hosted flare in the browser and
   keeps a token in the macOS Keychain. The server stores only the token's
   SHA-256 hash, and a token expires 90 days after its creation. A new login
@@ -140,6 +151,9 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- flare's stylesheet takes the light and dark colours of the signed Flare
+  mockup, so pages at `/pages/<name>`, the edit form and the conflict view
+  change colour.
 - The project is renamed from hangar to flare. The crates are `flare-core`,
   `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
   `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.

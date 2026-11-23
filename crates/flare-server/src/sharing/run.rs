@@ -4,7 +4,7 @@ use super::convert::{
     content_error, flare_error, item, recipient_error, role, share_error, standing, summary,
 };
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
-use super::{Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck};
+use super::{Answer, Api, Boxed, Call, ReadRefusal, Reading, Refusal, Scope, Sharing, TokenCheck};
 use flare_contract::{
     ActivityPage, ApiCode, Cursor, ExchangeRequest, Format, OpenedShare, Role as WireRole,
     ShareList, ShareRequest, Shared, TokenIssued, utc,
@@ -12,7 +12,8 @@ use flare_contract::{
 use flare_core::{
     DocumentText, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position,
     Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    ShareTitle, ShareVersion, Standing, Timestamp, TokenId, TokenLabel, TokenStore,
+    TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -155,6 +156,53 @@ where
         };
         let share = summary(&opened.share, standing(opened.standing));
         json(200, &OpenedShare { share, content })
+    }
+
+    async fn reading(
+        &self,
+        who: &Principal,
+        id: &str,
+        version: Option<&str>,
+    ) -> Result<Reading, ReadRefusal> {
+        let refused = |error: ShareError| match error {
+            ShareError::Unavailable => ReadRefusal::Unavailable,
+            _ => ReadRefusal::NotFound,
+        };
+        let id = ShareId::try_from(id).map_err(|_| ReadRefusal::NotFound)?;
+        let number = version
+            .map(|text| {
+                text.parse::<u32>()
+                    .ok()
+                    .and_then(|number| ShareVersion::try_from(number).ok())
+                    .ok_or(ReadRefusal::NotFound)
+            })
+            .transpose()?;
+        let shares = self.flares.shares();
+        let opened = shares.open(who, &id, number).await.map_err(refused)?;
+        let ShareContent::Document(text) = opened.version.content() else {
+            return Err(ReadRefusal::NotFound);
+        };
+        let with = match opened.standing {
+            Standing::Owner | Standing::Admin => Some(
+                shares
+                    .grants(who, &id)
+                    .await
+                    .map_err(refused)?
+                    .iter()
+                    .map(|grant| grant.grantee().as_str().to_owned())
+                    .collect(),
+            ),
+            Standing::Reader | Standing::Stranger => None,
+        };
+        Ok(Reading {
+            title: opened.share.title().as_str().to_owned(),
+            owner: opened.share.owner().as_str().to_owned(),
+            own: opened.standing == Standing::Owner,
+            with,
+            version: opened.version.number().get(),
+            published: opened.version.created().as_secs(),
+            markdown: text.as_str().to_owned(),
+        })
     }
 
     async fn grant(
@@ -352,5 +400,14 @@ where
                 Call::Revoke(id) => self.revoke(who, &id, now).await,
             }
         })
+    }
+
+    fn read<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: Option<&'a str>,
+    ) -> Boxed<'a, Result<Reading, ReadRefusal>> {
+        Box::pin(self.reading(who, id, version))
     }
 }

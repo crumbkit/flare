@@ -40,6 +40,8 @@ pub(crate) enum Code {
     RecordNotFound,
     PageNotFound,
     BindingNotFound,
+    ShareNotFound,
+    SharesUnavailable,
     CannotRender,
     BoardUnavailable,
     LaunchRefused,
@@ -99,6 +101,8 @@ impl Code {
             Self::RecordNotFound => (S::NOT_FOUND, "records::not_found"),
             Self::PageNotFound => (S::NOT_FOUND, "pages::not_found"),
             Self::BindingNotFound => (S::NOT_FOUND, "bindings::not_found"),
+            Self::ShareNotFound => (S::NOT_FOUND, "shares::not_found"),
+            Self::SharesUnavailable => (S::SERVICE_UNAVAILABLE, "shares::unavailable"),
             Self::CannotRender => (S::INTERNAL_SERVER_ERROR, "pages::cannot_render"),
             Self::BoardUnavailable => (S::SERVICE_UNAVAILABLE, "board::unavailable"),
             Self::LaunchRefused => (S::FORBIDDEN, "launch::code_refused"),
@@ -160,6 +164,10 @@ impl Code {
             Self::RecordNotFound => "A record the binding fills is gone.",
             Self::PageNotFound => "No page has this name.",
             Self::BindingNotFound => "No binding has this name.",
+            Self::ShareNotFound => {
+                "No share here is open to you. Ask its owner to share it with your address."
+            }
+            Self::SharesUnavailable => "The share store did not answer. Try again.",
             Self::CannotRender => "The page could not be rendered.",
             Self::BoardUnavailable => "The board did not answer. Try again.",
             Self::LaunchRefused => {
@@ -208,6 +216,8 @@ pub(crate) enum Help {
     HostedSignIn(String),
     /// A link back to this local path.
     Back(String),
+    /// A link that asks for this local path again.
+    Retry(String),
 }
 
 /// A refusal or failure, ready to answer.
@@ -261,6 +271,12 @@ impl Problem {
                 main.push_str(&format!(
                     "<span><a href=\"{}\">Sign in with Google</a></span>",
                     docs::escape(start)
+                ));
+            }
+            Help::Retry(path) => {
+                main.push_str(&format!(
+                    "<span><a href=\"{}\">Retry</a></span>",
+                    docs::escape(path)
                 ));
             }
             Help::Back(path) => {

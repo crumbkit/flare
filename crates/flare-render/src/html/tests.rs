@@ -80,3 +80,46 @@ fn the_stylesheet_styles_each_class_the_crate_writes() {
         assert!(css.contains(class), "{class}");
     }
 }
+
+#[test]
+fn the_stylesheet_has_the_mockup_tokens_for_light_and_dark() {
+    let css = stylesheet();
+    let (light, dark) = css
+        .split_once("@media (prefers-color-scheme: dark)")
+        .unwrap();
+    for token in [
+        "--canvas:",
+        "--app:",
+        "--surface-2:",
+        "--card:",
+        "--line:",
+        "--fg:",
+        "--muted:",
+        "--accent:",
+        "--accent-tint:",
+        "--accent-ink:",
+    ] {
+        assert!(light.contains(token), "light {token}");
+        assert!(dark.contains(token), "dark {token}");
+    }
+    assert!(light.contains("--fg: oklch(18% .015 240)"));
+    assert!(dark.contains("--fg: oklch(93% .008 240)"));
+}
+
+#[test]
+fn the_stylesheet_styles_the_reading_page_article() {
+    let css = stylesheet();
+    for class in [
+        ".doc",
+        ".scroll",
+        ".code-head",
+        ".text-btn",
+        ".diagram-source",
+        ".mm-light",
+        ".mm-dark",
+        "figcaption",
+        "--shiki-dark",
+    ] {
+        assert!(css.contains(class), "{class}");
+    }
+}

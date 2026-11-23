@@ -223,6 +223,7 @@
 //!     leaves the process only in the exchange's answer.
 
 mod app;
+mod assets;
 mod auth;
 mod checks;
 mod clock;
@@ -238,6 +239,7 @@ mod limits;
 mod listen;
 pub mod ops;
 mod problem;
+mod reading;
 mod reply;
 mod routes;
 mod schemas;

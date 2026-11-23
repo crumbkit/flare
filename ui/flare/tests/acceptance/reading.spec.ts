@@ -1,0 +1,103 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, type Page, test } from "@playwright/test";
+
+const ORIGIN = "http://flare.test";
+const PAGE = `${ORIGIN}/s/sample`;
+const sample = process.env.FLARE_READING_SAMPLE ?? join(import.meta.dirname, "../../sample");
+const assets = join(import.meta.dirname, "../../dist/assets");
+
+/** Serves the sample page, the stylesheet and the built files from one origin. */
+async function serve(page: Page): Promise<void> {
+  const policy = (await readFile(join(sample, "policy.txt"), "utf8")).trim();
+  await page.route(`${ORIGIN}/**`, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/s/sample") {
+      await route.fulfill({
+        contentType: "text/html; charset=utf-8",
+        headers: { "Content-Security-Policy": policy },
+        body: await readFile(join(sample, "page.html"), "utf8"),
+      });
+    } else if (path === "/flare/style.css") {
+      await route.fulfill({
+        contentType: "text/css; charset=utf-8",
+        body: await readFile(join(sample, "style.css"), "utf8"),
+      });
+    } else if (path.startsWith("/flare/assets/") && !path.includes("..")) {
+      await route.fulfill({
+        contentType: "text/javascript; charset=utf-8",
+        body: await readFile(join(assets, path.slice("/flare/assets/".length))),
+      });
+    } else {
+      await route.fulfill({ status: 404, body: "" });
+    }
+  });
+}
+
+test("a reader opens artboard 01's sample share with its diagram, caption and coloured code", async ({
+  page,
+}, info) => {
+  const violations: string[] = [];
+  const errors: string[] = [];
+  await page.exposeFunction("reportViolation", (text: string) => violations.push(text));
+  await page.addInitScript(() => {
+    document.addEventListener("securitypolicyviolation", (event) => {
+      const report = Reflect.get(window, "reportViolation");
+      if (typeof report === "function") {
+        report(`${event.effectiveDirective} blocked ${event.blockedURI}`);
+      }
+    });
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      errors.push(message.text());
+    }
+  });
+  await serve(page);
+
+  await page.goto(PAGE);
+  await expect(page.locator("body")).toHaveAttribute("data-reading", "done", { timeout: 30_000 });
+
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Weather holds for the island ferry",
+  );
+  await expect(page.locator(".share-meta")).toContainText("Shared by alice@example.com with you");
+  await expect(page.locator(".bar")).toHaveText(/flare.*BO/s);
+  const figure = page.locator("figure.diagram");
+  await expect(figure).toHaveAttribute("data-diagram", "drawn");
+  await expect(figure.locator("figcaption")).toHaveText(
+    "Figure 1. What happens to one sailing when a forecast arrives.",
+  );
+  await expect(figure.locator(".mm svg").filter({ visible: true })).toHaveCount(1);
+  await expect(page.locator(".code pre.shiki")).toHaveCount(1);
+  await expect(page.locator(".code button[data-copy]")).toBeVisible();
+
+  const table = page.locator(".doc > .scroll").first();
+  if (info.project.name === "phone") {
+    const widths = await table.evaluate((box) => ({
+      scroll: box.scrollWidth,
+      client: box.clientWidth,
+      page: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+    }));
+    expect(widths.scroll).toBeGreaterThan(widths.client);
+    expect(widths.page).toBeLessThanOrEqual(widths.viewport);
+  }
+
+  const axe = await new AxeBuilder({ page }).analyze();
+  expect(
+    axe.violations.flatMap((violation) =>
+      violation.nodes.map(
+        (node) => `${violation.id}: ${node.target.join(" ")}: ${node.failureSummary ?? ""}`,
+      ),
+    ),
+  ).toEqual([]);
+  expect(violations).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({
+    path: info.outputPath(`reading-${info.project.name}.png`),
+    fullPage: true,
+  });
+});

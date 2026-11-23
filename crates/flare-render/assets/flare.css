@@ -1,121 +1,166 @@
-/* flare's stylesheet for the page document, the edit form and the conflict
-   view. The board-ui tokens are copied from crumbkit/board ui/src/tokens.css
-   without Tailwind; the --h- tokens are flare's chrome. The markup that uses
-   these class names is written in this crate, so the two change together. */
+/* flare's stylesheet for the page document, the reading page, the edit form
+   and the conflict view. The tokens are the light and dark tokens of the
+   signed Flare mockup, in Flightdeck's livery. The older token names, which
+   the edit form and the conflict view use, are set from them. The markup
+   that uses these class names is written in this crate, so the two change
+   together. The fonts are named with system fallbacks; flare serves no font
+   file. */
 
 :root {
   color-scheme: light dark;
-  --paper: #f7f6f2;
-  --surface: #ffffff;
-  --ink: #1d2126;
-  --ink-muted: #5b636d;
-  --rule: #dcd9d0;
-  --accent: #2f6f62;
-  --accent-soft: #e2efeb;
-  --warn: #9a3b1c;
-  --warn-soft: #f8e6dd;
-  --code-bg: #f0eee8;
-  --added: #2d6a2f;
-  --added-soft: #e3f1e0;
-  --removed: #a2332b;
-  --removed-soft: #f9e3e0;
-  --font-text: ui-serif, Georgia, "Iowan Old Style", serif;
-  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --measure: 68ch;
-  --radius: 6px;
+  --canvas: oklch(94.5% .006 240);
+  --app: oklch(97% .005 240);
+  --surface-2: oklch(95.5% .005 240);
+  --card: oklch(99.5% .002 240);
+  --line: oklch(86% .01 240);
+  --line-soft: oklch(92% .006 240);
+  --line-strong: oklch(58% .012 240);
+  --fg: oklch(18% .015 240);
+  --muted: oklch(42% .015 240);
+  --accent: oklch(46% .15 230);
+  --on-accent: oklch(99.5% .002 240);
+  --accent-tint: oklch(92% .04 230);
+  --accent-ink: oklch(30% .1 230);
+  --green-tint: oklch(93% .05 150);
+  --green-ink: oklch(32% .1 150);
+  --amber-tint: oklch(94% .07 85);
+  --amber-ink: oklch(36% .1 75);
+  --red-tint: oklch(94% .035 25);
+  --red-ink: oklch(40% .13 25);
+  --show-light: block;
+  --show-dark: none;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 3px;
 
-  --h-chalk: #eef0f5;
-  --h-panel: #ffffff;
-  --h-tint: oklch(0.925 0.045 268);
-  --h-tint-line: oklch(0.84 0.06 268);
-  --h-ink: #1c2036;
-  --h-muted: #5c637a;
-  --h-line: #d6dae6;
-  --h-act: #3846a6;
-  --h-act-ink: #ffffff;
-  --h-bad: #8c2d28;
-  --h-bad-soft: oklch(0.94 0.035 25);
-  --h-good: #2a6336;
-  --h-good-soft: oklch(0.94 0.04 150);
-  --h-note: #5c4310;
-  --h-note-soft: oklch(0.94 0.055 88);
-  --r-block: 12px;
-  --r-ctl: 8px;
+  /* The older names. */
+  --paper: var(--app);
+  --surface: var(--card);
+  --ink: var(--fg);
+  --ink-muted: var(--muted);
+  --rule: var(--line);
+  --accent-soft: var(--accent-tint);
+  --warn: var(--red-ink);
+  --warn-soft: var(--red-tint);
+  --code-bg: var(--surface-2);
+  --added: var(--green-ink);
+  --added-soft: var(--green-tint);
+  --removed: var(--red-ink);
+  --removed-soft: var(--red-tint);
+  --font-text: var(--font-body);
+  --font-ui: var(--font-body);
+  --measure: 68ch;
+  --h-chalk: var(--canvas);
+  --h-panel: var(--card);
+  --h-tint: var(--surface-2);
+  --h-tint-line: var(--line);
+  --h-ink: var(--fg);
+  --h-muted: var(--muted);
+  --h-line: var(--line);
+  --h-act: var(--accent);
+  --h-act-ink: var(--on-accent);
+  --h-bad: var(--red-ink);
+  --h-bad-soft: var(--red-tint);
+  --h-good: var(--green-ink);
+  --h-good-soft: var(--green-tint);
+  --h-note: var(--amber-ink);
+  --h-note-soft: var(--amber-tint);
+  --r-block: var(--radius);
+  --r-ctl: var(--radius);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #15181b;
-    --surface: #1c2024;
-    --ink: #e4e2dc;
-    --ink-muted: #9aa2ab;
-    --rule: #30363c;
-    --accent: #7cc4b3;
-    --accent-soft: #1f3530;
-    --warn: #f0a07f;
-    --warn-soft: #3a2219;
-    --code-bg: #111416;
-    --added: #8fd18a;
-    --added-soft: #1d3320;
-    --removed: #f29a90;
-    --removed-soft: #3d1f1c;
-
-    --h-chalk: #11131b;
-    --h-panel: #1a1d29;
-    --h-tint: oklch(0.30 0.055 268);
-    --h-tint-line: oklch(0.42 0.07 268);
-    --h-ink: #e3e6f1;
-    --h-muted: #a0a7bd;
-    --h-line: #2d3246;
-    --h-act: #98a6f4;
-    --h-act-ink: #10142a;
-    --h-bad: #f3a79f;
-    --h-bad-soft: oklch(0.29 0.05 25);
-    --h-good: #9cd8a6;
-    --h-good-soft: oklch(0.29 0.045 150);
-    --h-note: #efd59a;
-    --h-note-soft: oklch(0.31 0.05 88);
+    --canvas: oklch(13.5% .012 240);
+    --app: oklch(17% .012 240);
+    --surface-2: oklch(20% .012 240);
+    --card: oklch(22% .012 240);
+    --line: oklch(32% .015 240);
+    --line-soft: oklch(27% .012 240);
+    --line-strong: oklch(52% .015 240);
+    --fg: oklch(93% .008 240);
+    --muted: oklch(72% .015 240);
+    --accent: oklch(72% .12 230);
+    --on-accent: oklch(17% .012 240);
+    --accent-tint: oklch(32% .06 230);
+    --accent-ink: oklch(86% .07 230);
+    --green-tint: oklch(30% .05 150);
+    --green-ink: oklch(85% .09 150);
+    --amber-tint: oklch(33% .06 85);
+    --amber-ink: oklch(88% .09 85);
+    --red-tint: oklch(29% .05 25);
+    --red-ink: oklch(85% .09 25);
+    --show-light: none;
+    --show-dark: block;
   }
 }
 
 body {
   margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-ui);
+  background: var(--app);
+  color: var(--fg);
+  font-family: var(--font-body);
 }
 
-/* A Markdown page. */
-.prose-board {
-  font-family: var(--font-text);
-  font-size: 1.0625rem;
+/* A Markdown page in the frame, and the article of the reading page. */
+.prose-board { padding: 24px; }
+.prose-board,
+.doc {
+  font-family: var(--font-body);
+  font-size: 16px;
   line-height: 1.6;
-  max-width: var(--measure);
-  padding: 24px;
+  max-width: 820px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.prose-board h1,
-.prose-board h2,
-.prose-board h3,
-.prose-board h4 {
-  font-family: var(--font-ui);
-  line-height: 1.25;
-  margin: 1.6em 0 0.5em;
+:is(.prose-board, .doc) :is(h1, h2, h3, h4, p, ul, ol, figure, blockquote, pre) { margin: 0; }
+:is(.prose-board, .doc) :is(h1, h2, h3, h4) { line-height: 1.25; font-weight: 600; text-wrap: balance; }
+:is(.prose-board, .doc) > h1 { font-size: 30px; letter-spacing: -.01em; }
+:is(.prose-board, .doc) > h2 { font-size: 20px; margin-top: 14px; }
+:is(.prose-board, .doc) > h3 { font-size: 17px; margin-top: 8px; }
+:is(.prose-board, .doc) > :is(p, ul, ol, blockquote) { max-width: 68ch; }
+:is(.prose-board, .doc) :is(ul, ol) { padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+:is(.prose-board, .doc) a { color: var(--accent); text-underline-offset: 2px; }
+:is(.prose-board, .doc) :not(pre) > code { font-family: var(--font-mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 4px; font-size: .85em; }
+:is(.prose-board, .doc) blockquote { padding-left: 1em; border-left: 3px solid var(--line); color: var(--muted); }
+:is(.prose-board, .doc) img { max-width: 100%; }
+.mono { font-family: var(--font-mono); font-size: .92em; }
+
+/* A table scrolls in its own box on a narrow screen. */
+.scroll { overflow-x: auto; min-width: 0; }
+:is(.prose-board, .doc) table { border-collapse: collapse; width: 100%; font-size: 15px; font-variant-numeric: tabular-nums; }
+:is(.prose-board, .doc) th { text-align: left; font-size: 13px; font-weight: 600; color: var(--muted); padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+:is(.prose-board, .doc) td { text-align: left; padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+:is(.prose-board, .doc) tbody tr:last-child td { border-bottom-color: var(--line); }
+:is(.prose-board, .doc) .align-center { text-align: center; }
+:is(.prose-board, .doc) .align-right { text-align: right; padding-right: 0; padding-left: 14px; }
+
+/* Figures: a diagram, or a table or code block with its caption. */
+:is(.prose-board, .doc) figure { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+figcaption { font-size: 13px; color: var(--muted); }
+.diagram-source { font: 13px/1.65 var(--font-mono); white-space: pre-wrap; overflow-x: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); color: var(--fg); }
+.diagram-error { font-size: 13px; color: var(--red-ink); }
+/* Mermaid's own SVG. Its labels were measured at 14px with normal line
+   height, so those values are restored here. */
+.mm { font: 14px/normal var(--font-body); min-width: 620px; }
+.mm *, .mm *::before, .mm *::after { box-sizing: content-box; }
+.mm svg { display: block; height: auto; max-width: 100%; }
+.mm-light { display: var(--show-light); }
+.mm-dark { display: var(--show-dark); }
+
+/* A code block: its language, a Copy button and the code. */
+.code { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
+.code-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.code pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 13px/1.65 var(--font-mono); color: var(--fg); tab-size: 4; }
+.code pre code { font: inherit; background: none; border: 0; padding: 0; }
+/* Shiki writes GitHub Light's colours and GitHub Dark's as --shiki-dark. */
+.code pre.shiki { background-color: transparent !important; }
+@media (prefers-color-scheme: dark) {
+  .code .shiki, .code .shiki span { color: var(--shiki-dark) !important; }
 }
-.prose-board h1 { font-size: 1.6rem; }
-.prose-board h2 { font-size: 1.3rem; }
-.prose-board h3 { font-size: 1.1rem; }
-.prose-board > :first-child { margin-top: 0; }
-.prose-board a { color: var(--accent); }
-.prose-board code { font-family: var(--font-mono); font-size: 0.875em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
-.prose-board pre { background: var(--code-bg); padding: 0.9em 1em; border-radius: var(--radius); overflow-x: auto; line-height: 1.45; }
-.prose-board pre code { background: none; padding: 0; }
-.prose-board table { border-collapse: collapse; font-family: var(--font-ui); font-size: 0.9375rem; }
-.prose-board th, .prose-board td { border: 1px solid var(--rule); padding: 0.3em 0.7em; text-align: left; }
-.prose-board .align-center { text-align: center; }
-.prose-board .align-right { text-align: right; }
-.prose-board blockquote { margin: 0; padding-left: 1em; border-left: 3px solid var(--rule); color: var(--ink-muted); }
-.prose-board img { max-width: 100%; }
+.text-btn { background: none; border: 0; padding: 0; font: 13px var(--font-body); color: var(--accent); cursor: pointer; }
 
 /* flare's chrome: the edit form and the conflict view. */
 .flare-form,

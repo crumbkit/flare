@@ -29,10 +29,11 @@ fn on(switch: &AtomicBool) -> bool {
 }
 
 /// A share store that fails while its switch is on.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FaultyShares {
-    /// The store that answers while the switch is off.
-    pub inner: MemoryShareStore,
+    /// The store that answers while the switch is off, which a test may
+    /// also reach through a clone.
+    pub inner: Arc<MemoryShareStore>,
     /// The switch.
     pub fail: Arc<AtomicBool>,
 }
