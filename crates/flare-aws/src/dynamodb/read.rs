@@ -115,7 +115,10 @@ impl Table {
         keys: &[Key],
         kind: ItemKind,
     ) -> Result<Vec<Item>, Unavailable> {
-        get_many_with(self.policy(), keys, |wanted| self.ask_batch(wanted, kind)).await
+        get_many_with(self.policy(), keys, kind, |wanted| {
+            self.ask_batch(wanted, kind)
+        })
+        .await
     }
 
     /// The `BatchGetItem` of `wanted` in this table.
@@ -221,12 +224,13 @@ pub(crate) fn batch_keys(keys: &[Key]) -> Result<KeysAndAttributes, Unavailable>
         .map_err(|_| Unavailable)
 }
 
-/// Reads `keys` in batches of [`KEYS_PER_BATCH`] with `ask`, asking again
+/// Reads `keys`, items of `kind`, in batches of [`KEYS_PER_BATCH`] with `ask`, asking again
 /// for unprocessed keys after the policy's backoff, at most
 /// [`UNPROCESSED_ROUNDS`] asks a batch.
 pub(crate) async fn get_many_with<F, Fut>(
     policy: &Policy,
     keys: &[Key],
+    kind: ItemKind,
     mut ask: F,
 ) -> Result<Vec<Item>, Unavailable>
 where
@@ -246,11 +250,7 @@ where
                 _ => break,
             }
             if asked >= UNPROCESSED_ROUNDS {
-                tracing::warn!(
-                    call = "BatchGetItem",
-                    code = "UnprocessedKeys",
-                    "a DynamoDB read failed"
-                );
+                log_failure("BatchGetItem", kind, "UnprocessedKeys", None);
                 return Err(Unavailable);
             }
             back_off(policy, asked).await;

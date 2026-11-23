@@ -86,7 +86,13 @@ Who gets an entry:
   reader is granted after their cursor shows as new activity, even when the
   response is older than the cursor. `flare grant` removes any entry a
   newly granted reader still has for the response before it writes the new
-  one, so this holds after a revoke whose removal failed.
+  one, so this holds after a revoke whose removal failed. Two cases keep
+  the old position, so the response does not show as new. In the first, a
+  grant answers `flare::shares::partly_shared` after the grant is stored
+  and before that person's old entry is removed; a repeated grant finds the
+  person already holds the grant and keeps the old entry. In the second,
+  the owner of a flare is granted the response automatically when it
+  responds to their flare, and that grant removes no old entry.
 - A reader whose grant on a flare is revoked and later granted again keeps
   their entries at their old positions, so responses that were below their
   cursor do not show again as new.

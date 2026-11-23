@@ -84,7 +84,7 @@ fn a_batch_asks_for_a_consistent_read_of_its_keys() {
 async fn a_read_of_many_keys_asks_in_batches_of_at_most_100() {
     let keys = pair_keys(250);
     let sizes = std::sync::Mutex::new(Vec::new());
-    let read = get_many_with(&quick(), &keys, |wanted| {
+    let read = get_many_with(&quick(), &keys, ItemKind::Link, |wanted| {
         sizes.lock().unwrap().push(wanted.keys().len());
         let consistent = wanted.consistent_read() == Some(true);
         async move {
@@ -105,7 +105,7 @@ async fn a_batch_asks_again_for_its_unprocessed_keys_and_fails_after_five_rounds
     let keys = pair_keys(4);
     // The first two answers leave the last key unprocessed; the third reads it.
     let asked = std::sync::Mutex::new(Vec::new());
-    let read = get_many_with(&quick(), &keys, |wanted| {
+    let read = get_many_with(&quick(), &keys, ItemKind::Link, |wanted| {
         let mut asked = asked.lock().unwrap();
         asked.push(wanted.keys().len());
         let round = asked.len();
@@ -122,7 +122,7 @@ async fn a_batch_asks_again_for_its_unprocessed_keys_and_fails_after_five_rounds
     assert_eq!(*asked.lock().unwrap(), vec![4, 1, 1]);
     // A batch that always leaves keys unprocessed fails after five asks.
     let rounds = std::sync::atomic::AtomicUsize::new(0);
-    let read = get_many_with(&quick(), &keys, |_| {
+    let read = get_many_with(&quick(), &keys, ItemKind::Link, |_| {
         rounds.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let left = Some(batch_keys(&keys[3..]).unwrap());
         async move {
