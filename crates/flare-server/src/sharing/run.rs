@@ -7,7 +7,7 @@ use super::tokens::{code_digest, digest, new_secret, random_id, same, split, tok
 use super::{Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck};
 use flare_contract::{
     ActivityPage, ApiCode, Cursor, ExchangeRequest, Format, OpenedShare, Role as WireRole,
-    ShareList, ShareRequest, Shared, TokenIssued, utc,
+    ShareList, ShareRequest, Shared, TokenIssued, VersionRequest, utc,
 };
 use flare_core::{
     DocumentText, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position,
@@ -110,6 +110,39 @@ where
             }
         }
         Err(ApiCode::SharesUnavailable.into())
+    }
+
+    /// Publishes the next version of a share for its owner. The answer is
+    /// the share as the owner sees it, with the number that was written.
+    async fn publish(
+        &self,
+        who: &Principal,
+        id: &str,
+        request: VersionRequest,
+        now: Timestamp,
+    ) -> Answer {
+        let id = share_id(id)?;
+        if request.format == Format::Html {
+            return Err(ApiCode::KindNotServed.into());
+        }
+        let text =
+            DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
+        // This does less than an idempotent publish would: it takes no key,
+        // so a client that repeats a post whose answer was lost writes a
+        // second version with the same content. The owner finds the number
+        // with `flare shares`. A key would need a column in every store.
+        let shares = self.flares.shares();
+        let number = shares
+            .publish(who, &id, ShareContent::Document(text), now)
+            .await
+            .map_err(share_error)?;
+        let opened = shares
+            .open(who, &id, Some(number))
+            .await
+            .map_err(share_error)?;
+        let mut share = summary(&opened.share, standing(opened.standing));
+        share.version = number.get();
+        json(201, &share)
     }
 
     async fn list(&self, who: &Principal, scope: Scope, limit: usize) -> Answer {
@@ -343,6 +376,7 @@ where
                 Call::Create(request) => self.create(who, request, now).await,
                 Call::List { scope, limit } => self.list(who, scope, limit).await,
                 Call::Open(id) => self.open(who, &id).await,
+                Call::Publish(id, request) => self.publish(who, &id, request, now).await,
                 Call::Grant(id, request) => self.grant(who, &id, request, now).await,
                 Call::Activity {
                     flares,

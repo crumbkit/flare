@@ -22,12 +22,15 @@
   ],
   "$defs": {
     "SharedOut": {
-      "description": "A share that `flare share` made or `flare grant` granted.",
+      "description": "A share that `flare share` made or updated, or `flare grant` granted.",
       "type": "object",
       "properties": {
         "granted": {
-          "description": "The addresses that now hold a role on it.",
-          "type": "array",
+          "description": "The addresses that now hold a role on it; none after `--update`, which does not report them.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           }
@@ -37,8 +40,11 @@
           "type": "string"
         },
         "responds_to": {
-          "description": "The flares it responds to.",
-          "type": "array",
+          "description": "The flares it responds to; none after `--update`, which does not report them.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "string"
           }
@@ -46,11 +52,18 @@
         "title": {
           "description": "The share's title.",
           "type": "string"
+        },
+        "version": {
+          "description": "The share's latest version.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
         }
       },
       "required": [
         "id",
         "title",
+        "version",
         "granted",
         "responds_to"
       ]

@@ -101,6 +101,9 @@ Routes:
   responds to.
 - `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
 - `GET /api/shares/<id>` reads a share.
+- `POST /api/shares/<id>/versions` publishes the next version of a share,
+  from a `format` and `content`. Only the owner may, and the answer is the
+  share summary with the new `version`.
 - `POST /api/grants/<id>` grants a share to more addresses.
 - `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
   responses to flares that the caller may read, oldest first, at most 100

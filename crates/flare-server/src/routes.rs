@@ -114,7 +114,7 @@ const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
 const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 22] = [
+pub(crate) static ROUTES: [Route; 23] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -233,6 +233,13 @@ pub(crate) static ROUTES: [Route; 22] = [
     ),
     route(
         Method::POST,
+        "/api/shares/<name>/versions",
+        TOKEN,
+        Handler::Api(ApiRoute::PublishVersion),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
         "/api/grants/<name>",
         TOKEN,
         Handler::Api(ApiRoute::Grant),
@@ -258,10 +265,17 @@ pub(crate) enum Found<'p> {
     Nothing,
 }
 
-/// The text after a pattern's prefix when `path` matches it.
+/// The text after a pattern's prefix when `path` matches it. A pattern
+/// with text after `<name>` takes exactly one non-empty segment for the
+/// name, so `/api/shares/<name>/versions` never matches a path with more
+/// segments.
 fn matches<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
-    match pattern.strip_suffix("<name>") {
-        Some(prefix) => path.strip_prefix(prefix),
+    match pattern.split_once("<name>") {
+        Some((prefix, "")) => path.strip_prefix(prefix),
+        Some((prefix, suffix)) => path
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(suffix))
+            .filter(|name| !name.is_empty() && !name.contains('/')),
         None => (pattern == path).then_some(""),
     }
 }

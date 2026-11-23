@@ -17,5 +17,5 @@ pub use problem::{ApiCode, ProblemDocument, Recovery};
 pub use time::utc;
 pub use wire::{
     ActivityItem, ActivityPage, ExchangeRequest, FlareRef, Format, GrantRequest, OpenedShare, Role,
-    ShareList, ShareRequest, ShareSummary, Shared, TokenIssued,
+    ShareList, ShareRequest, ShareSummary, Shared, TokenIssued, VersionRequest,
 };
