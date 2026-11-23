@@ -19,9 +19,11 @@ pub mod stand_in;
 
 use flare_aws::{Fault, HostedConfig, Stores};
 use flare_core::{
-    DocumentText, Email, FileBytes, FileId, FileStore, FileStoreError, GrantStore, MediaType,
-    NewFile, Principal, Role, ShareContent, ShareError, ShareId, ShareStore, ShareStoreError,
-    ShareTitle, ShareVersion, Shares, Timestamp,
+    Digest, DocumentText, Email, FileBytes, FileId, FileStore, FileStoreError, GrantStore,
+    LoginCode, MediaType, NewFile, NewLink, NewToken, Position, Principal, ResponseStore,
+    ResponseStoreError, Role, ShareContent, ShareError, ShareId, ShareStore, ShareStoreError,
+    ShareTitle, ShareVersion, Shares, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    UsedCode,
 };
 use stand_in::{endpoints, fresh_config, s3_client};
 
@@ -298,4 +300,98 @@ async fn a_lost_revoke_by_an_admin_whose_role_ends_meanwhile_does_not_answer_suc
     assert_eq!(revoked, Err(ShareError::Unavailable));
     let reader = Stores::connect_at(&config, &endpoints());
     assert_eq!(reader.grants.get(&id, &bob.principal_id()).await, Ok(None));
+}
+
+fn login_code(owner: &Email, byte: u8) -> LoginCode {
+    LoginCode::new(
+        Digest::from_bytes([byte; 32]),
+        owner.clone(),
+        4000,
+        Timestamp::from_secs(100),
+    )
+}
+
+fn new_token(owner: &Email, byte: u8, at: u64) -> NewToken {
+    NewToken::new(
+        TokenId::from_random([byte; 16]),
+        Digest::from_bytes([byte; 32]),
+        owner.clone(),
+        TokenLabel::try_from("laptop").unwrap(),
+        Timestamp::from_secs(at),
+    )
+}
+
+fn new_link(response: u8, flare: u8) -> NewLink {
+    NewLink::new(
+        ShareId::from_random([response; 16]),
+        ShareId::from_random([flare; 16]),
+        ShareVersion::try_from(1).unwrap(),
+        Timestamp::from_secs(7),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn token_and_link_writes_whose_answers_are_lost_answer_success() {
+    let (_, healthy, faulty) = pair(Fault::LoseEveryAnswer).await;
+    let (_, owner) = person("owner@x.com");
+    let code = login_code(&owner, 1);
+    assert_eq!(faulty.tokens.issue_code(code.clone()).await, Ok(()));
+    let used = faulty
+        .tokens
+        .use_code(code.digest(), Timestamp::from_secs(110))
+        .await;
+    assert_eq!(used, Ok(UsedCode::new(owner.clone(), 4000)));
+
+    let first = new_token(&owner, 2, 10);
+    assert_eq!(faulty.tokens.create(first.clone()).await, Ok(None));
+    let second = new_token(&owner, 3, 20);
+    assert_eq!(
+        faulty.tokens.create(second.clone()).await,
+        Ok(Some(first.id().clone()))
+    );
+    assert_eq!(
+        faulty
+            .tokens
+            .revoke(second.id(), &owner, Timestamp::from_secs(30))
+            .await,
+        Ok(())
+    );
+    let revoked = healthy.tokens.get(second.id()).await.unwrap();
+    assert_eq!(revoked.revoked(), Some(Timestamp::from_secs(30)));
+
+    let linked = faulty.responses.link(new_link(4, 5)).await.unwrap();
+    assert_eq!(linked.position, Position::new(1));
+    assert_eq!(healthy.responses.head().await, Ok(Position::new(1)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn token_and_link_writes_that_never_arrive_answer_unavailable_and_write_nothing() {
+    let (_, healthy, faulty) = pair(Fault::DropEveryRequest).await;
+    let (_, owner) = person("owner@x.com");
+    let code = login_code(&owner, 1);
+    assert_eq!(
+        faulty.tokens.issue_code(code.clone()).await,
+        Err(TokenStoreError::Unavailable)
+    );
+    assert_eq!(
+        healthy
+            .tokens
+            .use_code(code.digest(), Timestamp::from_secs(110))
+            .await,
+        Err(TokenStoreError::CodeRefused)
+    );
+    let token = new_token(&owner, 2, 10);
+    assert_eq!(
+        faulty.tokens.create(token.clone()).await,
+        Err(TokenStoreError::Unavailable)
+    );
+    assert_eq!(
+        healthy.tokens.get(token.id()).await,
+        Err(TokenStoreError::NotFound)
+    );
+    assert_eq!(
+        faulty.responses.link(new_link(4, 5)).await,
+        Err(ResponseStoreError::Unavailable)
+    );
+    assert_eq!(healthy.responses.head().await, Ok(Position::new(0)));
 }

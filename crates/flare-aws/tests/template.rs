@@ -70,6 +70,15 @@ fn the_table_has_string_keys_pk_and_sk_and_no_index() {
 }
 
 #[test]
+fn the_table_deletes_expired_login_codes_through_its_ttl_attribute() {
+    let table = resource("SharesTable");
+    assert_eq!(
+        table["Properties"]["TimeToLiveSpecification"],
+        json!({"AttributeName": "expires_at", "Enabled": true})
+    );
+}
+
+#[test]
 fn the_table_bills_on_demand_keeps_point_in_time_recovery_and_resists_deletion() {
     let table = resource("SharesTable");
     let properties = &table["Properties"];

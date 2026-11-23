@@ -1,5 +1,7 @@
 use super::{Key, entry_of, grantee_of};
-use flare_core::{PrincipalId, ShareId, ShareVersion, Timestamp};
+use flare_core::{
+    Digest, Email, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
+};
 use proptest::prelude::*;
 use std::collections::HashSet;
 
@@ -22,6 +24,15 @@ fn every_key(
         Key::share_count(person),
         Key::owner_entry(person, created, other),
         Key::grantee_entry(person, created, other),
+        Key::code(&Digest::from_bytes([share.as_str().as_bytes()[0]; 32])),
+        Key::token(&TokenId::try_from(share.as_str()).unwrap()),
+        Key::label_slot(
+            &Email::try_from("a@x.com").unwrap(),
+            &TokenLabel::try_from(person.as_str()).unwrap(),
+        ),
+        Key::sequence(),
+        Key::pair(share, other),
+        Key::link(share, Position::new(created.as_secs())),
     ]
 }
 
@@ -121,4 +132,19 @@ fn grants_of_an_address_and_a_longer_address_have_different_keys() {
     assert_eq!(grantee_of("N#grants"), None);
     assert_eq!(entry_of("N#shares"), None);
     assert_eq!(entry_of("E#12#short"), None);
+}
+
+#[test]
+fn link_keys_sort_in_position_order() {
+    let flare = ShareId::from_random([3; 16]);
+    let mut keys: Vec<String> = [u64::MAX, 10, 9, 0, 100]
+        .iter()
+        .map(|at| Key::link(&flare, Position::new(*at)).sk)
+        .collect();
+    keys.sort();
+    let positions: Vec<String> = [0, 9, 10, 100, u64::MAX]
+        .iter()
+        .map(|at| Key::link(&flare, Position::new(*at)).sk)
+        .collect();
+    assert_eq!(keys, positions);
 }

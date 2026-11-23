@@ -68,3 +68,14 @@ fn a_login_code_expires_60_seconds_after_issue() {
     assert!(code.is_live(Timestamp::from_secs(1_059)));
     assert!(!code.is_live(Timestamp::from_secs(1_060)));
 }
+
+#[test]
+fn a_used_code_built_from_its_parts_equals_the_one_its_login_code_gives() {
+    let code = LoginCode::new(
+        Digest::from_bytes([1; 32]),
+        owner(),
+        4321,
+        Timestamp::from_secs(5),
+    );
+    assert_eq!(UsedCode::new(owner(), 4321), code.used());
+}

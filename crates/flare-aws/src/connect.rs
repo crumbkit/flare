@@ -1,10 +1,13 @@
-//! [`Stores`]: the three stores on one table and one bucket, built from a
+//! [`Stores`]: the five stores on one table and one bucket, built from a
 //! [`HostedConfig`] and the AWS provider chain, and the check that a server
 //! makes before it listens.
 
 use crate::config::HostedConfig;
 use crate::dynamodb::retry::Policy;
-use crate::dynamodb::{DynamoClient, DynamoGrantStore, DynamoShareStore, Faults, Table};
+use crate::dynamodb::{
+    DynamoClient, DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore,
+    Faults, Table,
+};
 use crate::s3::{Bucket, S3Client, S3FileStore};
 use aws_sdk_dynamodb::types::{KeyType, ScalarAttributeType};
 use std::time::Duration;
@@ -12,7 +15,7 @@ use std::time::Duration;
 /// How long one attempt of one call may take before the SDK gives up on it.
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(6);
 
-/// The share, grant and file stores of a hosted flare.
+/// The share, grant, file, token and response stores of a hosted flare.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Stores {
@@ -22,6 +25,10 @@ pub struct Stores {
     pub grants: DynamoGrantStore,
     /// The files of shares, in the bucket.
     pub files: S3FileStore,
+    /// Login codes and CLI tokens, in the table.
+    pub tokens: DynamoTokenStore,
+    /// The links from responses to flares, in the table.
+    pub responses: DynamoResponseStore,
     table: Table,
     bucket: Bucket,
 }
@@ -90,6 +97,8 @@ impl Stores {
             shares: DynamoShareStore::from_table(table.clone()),
             grants: DynamoGrantStore::from_table(table.clone()),
             files: S3FileStore::from_bucket(bucket.clone()),
+            tokens: DynamoTokenStore::from_table(table.clone()),
+            responses: DynamoResponseStore::from_table(table.clone()),
             table,
             bucket,
         }

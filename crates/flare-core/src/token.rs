@@ -382,5 +382,13 @@ pub struct UsedCode {
     pub port: u16,
 }
 
+impl UsedCode {
+    /// What a used code of `owner`, issued for `port`, gave.
+    #[must_use]
+    pub fn new(owner: Email, port: u16) -> Self {
+        Self { owner, port }
+    }
+}
+
 #[cfg(test)]
 mod tests;
