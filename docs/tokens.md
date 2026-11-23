@@ -57,6 +57,16 @@ token.
 - A request with an expired, revoked or unknown token answers 401
   `flare::tokens::sign_in_needed`. The command prints `flare login <server>`
   as the next step.
+- An active token authenticates only while the server's `oidc.admit` rule
+  admits its owner's address, and the server checks this on every request.
+  Under an `emails` rule, once the server runs with the owner's address
+  taken off the list, every token of that owner answers 401
+  `flare::tokens::sign_in_needed`, and the stored token does not change.
+  If the address goes back on the list before the token expires, the token
+  works again.
+- Under a `domain` or `anyone` rule the server cannot tell from an address
+  whether its account still belongs to the domain, so a token keeps working
+  until it expires or its owner revokes it.
 - `flare logout --yes` revokes the token, deletes the Keychain item and
   forgets `login.json`. A token the server no longer knows still counts as
   logged out.
@@ -79,8 +89,9 @@ token.
 
 - The server never stores a raw code or token, and never logs one.
 - A code is marked used before the token it buys is written.
-- An expired or revoked token never authenticates, and the check runs on
-  every request.
+- An expired or revoked token never authenticates, nor does a token whose
+  owner the admit rule no longer admits, and the check runs on every
+  request.
 - A token authenticates as its owner's verified address and no other.
 - Login codes and tokens live in the DynamoDB table, so they survive a
   restart of the server, unlike browser sessions.

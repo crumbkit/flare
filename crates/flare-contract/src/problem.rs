@@ -91,7 +91,7 @@ codes! {
         |_| hint("name each recipient by address, such as --with ana@example.org")),
     RecipientsUnavailable => ("flare::recipients::unavailable", 503, "The recipients directory did not answer.",
         |_| Recovery::Retry),
-    SignInNeeded => ("flare::tokens::sign_in_needed", 401, "Your token is missing, unknown, expired or revoked.",
+    SignInNeeded => ("flare::tokens::sign_in_needed", 401, "Your token is missing, unknown, expired or revoked, or this server no longer admits its owner.",
         |server| Recovery::Run { call: format!("flare login {server}") }),
     CodeRefused => ("flare::tokens::code_refused", 403, "The login code is unknown, used or expired.",
         |server| Recovery::Run { call: format!("flare login {server}") }),

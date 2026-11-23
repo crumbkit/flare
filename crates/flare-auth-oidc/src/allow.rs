@@ -258,6 +258,20 @@ impl Admit {
         }
     }
 
+    /// Whether the rule admits `email`, judged from the address alone, as
+    /// a CLI token's check does on every request. Under
+    /// [`Admit::Emails`] the address must be on the list. The
+    /// [`Admit::Domain`] and [`Admit::Anyone`] rules admit every address,
+    /// because the `hd` claim that decides a domain sign-in is only in an
+    /// ID token.
+    #[must_use]
+    pub fn admits(&self, email: &Email) -> bool {
+        match self {
+            Self::Emails(allow) => allow.by_email(email).is_some(),
+            Self::Domain(_) | Self::Anyone(_) => true,
+        }
+    }
+
     /// The domain to send as the `hd` parameter of the authorisation
     /// request. Google then offers only that organisation's accounts. A
     /// person can change the parameter, so it admits nobody.

@@ -222,6 +222,12 @@ impl OidcConfig {
         &self.redirect_uri
     }
 
+    /// Who may sign in.
+    #[must_use]
+    pub fn admit(&self) -> &Admit {
+        &self.admit
+    }
+
     /// Sets how long a session lasts from its sign-in.
     #[must_use]
     pub fn with_session_lifetime(mut self, lifetime: Duration) -> Self {

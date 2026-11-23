@@ -12,8 +12,9 @@ This file records the notable changes to flare. The format follows
   keeps a token in the macOS Keychain. The server stores only the token's
   SHA-256 hash, and a token expires 90 days after its creation. A new login
   with the same label revokes the older token, and `flare logout --yes`
-  revokes the token and deletes it. `docs/tokens.md` gives the life of
-  login codes and tokens.
+  revokes the token and deletes it. A token stops working once the
+  server's `emails` admit rule no longer lists its owner.
+  `docs/tokens.md` gives the life of login codes and tokens.
 - `flare share <file> --with <addresses> --re <flare>` shares a Markdown
   file with named people as a response to flares. `flare grant`, `flare
   shares` and `flare activity` grant a share to more people, list shares

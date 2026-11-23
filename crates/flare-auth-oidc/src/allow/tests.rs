@@ -148,3 +148,30 @@ fn the_anyone_rule_admits_any_verified_address_as_its_own_principal_and_refuses_
     );
     assert_eq!(admit.hosted_domain_hint(), None);
 }
+
+#[test]
+fn an_allow_list_still_admits_a_listed_address_and_no_longer_admits_one_taken_off_the_list() {
+    let both = AllowList::new(vec![
+        entry("ana@example.org", "ana"),
+        entry("bob@example.org", "bob"),
+    ])
+    .unwrap();
+    let ana = Email::try_from("Ana@Example.org").unwrap();
+    let bob = Email::try_from("bob@example.org").unwrap();
+    assert!(Admit::Emails(both).admits(&ana));
+    let bob_only = AllowList::new(vec![entry("bob@example.org", "bob")]).unwrap();
+    assert!(!Admit::Emails(bob_only.clone()).admits(&ana));
+    // The admitted twin: the address still on the list is admitted.
+    assert!(Admit::Emails(bob_only).admits(&bob));
+}
+
+#[test]
+fn the_domain_and_anyone_rules_admit_every_address_because_an_address_alone_carries_no_hd_claim() {
+    let rule = DomainRule::new(
+        WorkspaceDomain::try_from("example.com").unwrap(),
+        Reach::Everything,
+    );
+    let elsewhere = Email::try_from("ana@secondary.example").unwrap();
+    assert!(Admit::Domain(rule).admits(&elsewhere));
+    assert!(Admit::Anyone(Reach::Everything).admits(&elsewhere));
+}

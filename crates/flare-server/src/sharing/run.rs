@@ -239,10 +239,12 @@ where
             Err(TokenStoreError::NotFound) => return TokenCheck::Refused(ApiCode::SignInNeeded),
             Err(_) => return TokenCheck::Refused(ApiCode::TokensUnavailable),
         };
-        if !same(stored.digest(), &presented) || !stored.is_active(now) {
+        let owner = stored.owner();
+        if !same(stored.digest(), &presented) || !stored.is_active(now) || !self.admit.admits(owner)
+        {
             return TokenCheck::Refused(ApiCode::SignInNeeded);
         }
-        let owner = stored.owner().clone();
+        let owner = owner.clone();
         TokenCheck::Principal(Principal::with_email(owner.principal_id(), owner))
     }
 

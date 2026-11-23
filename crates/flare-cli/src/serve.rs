@@ -22,7 +22,8 @@ use crate::env::Snapshot;
 use crate::{log, open};
 use flare_auth_loopback::{Loopback, Served as Reach, local_principal};
 use flare_auth_oidc::{
-    ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator, OidcConfig,
+    Admit, ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator,
+    OidcConfig,
 };
 use flare_aws::{
     DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
@@ -189,9 +190,10 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
         secret_file,
         sharing,
     } = hosted;
+    let admit = oidc.admit().clone();
     let oidc = connect(oidc, &Secret::File(secret_file)).await?;
     let sharing = match sharing {
-        Some(config) => Some(share_api(config).await?),
+        Some(config) => Some(share_api(config, admit).await?),
         None => None,
     };
     let mut signals = Signals::install()?;
@@ -221,8 +223,8 @@ type HostedSharing = Sharing<
 >;
 
 /// The share API on the configured table and bucket, which it checks
-/// first.
-async fn share_api(config: SharingConfig) -> Result<HostedSharing, Failed> {
+/// first, accepting a token only while `admit` admits its owner.
+async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing, Failed> {
     let stores = Stores::connect(&config.stores).await;
     stores
         .check()
@@ -236,7 +238,7 @@ async fn share_api(config: SharingConfig) -> Result<HostedSharing, Failed> {
         stores.responses,
         config.creators,
     );
-    Ok(Sharing::new(flares, stores.tokens, AddressesOnly))
+    Ok(Sharing::new(flares, stores.tokens, AddressesOnly, admit))
 }
 
 /// Serves `app` until a signal or, on the local site, the idle exit.

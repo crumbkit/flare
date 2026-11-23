@@ -97,7 +97,8 @@ Routes:
   a page.
 
 - Every `/api/` route except the exchange needs a bearer token. A missing,
-  expired or revoked token answers 401 `flare::tokens::sign_in_needed`.
+  expired or revoked token answers 401 `flare::tokens::sign_in_needed`, and
+  so does the token of an owner that `oidc.admit` no longer admits.
 - Every refusal is an RFC 9457 problem document with a `code` such as
   `flare::shares::not_found`.
 - A flare the caller may not read answers exactly as a missing one, 404

@@ -6,6 +6,7 @@
 use crate::faulty::{Faults, FaultyRecipients, FaultyResponses, FaultyShares, FaultyTokens};
 use crate::harness::{Call, Reply, cookie_pair};
 use crate::hosted::{Admits, Hosted, SESSION};
+use flare_auth_oidc::{Admit, Reach};
 use flare_core::memory::MemoryGrantStore;
 use flare_core::{Creators, Email, Flares};
 use flare_server::Sharing;
@@ -58,7 +59,8 @@ impl Api {
             let recipients = FaultyRecipients {
                 fail: switches.recipients.clone(),
             };
-            app.with_sharing(Sharing::new(flares, tokens, recipients))
+            let admit = Admit::Anyone(Reach::Everything);
+            app.with_sharing(Sharing::new(flares, tokens, recipients, admit))
         })
         .await;
         Self { hosted, faults }

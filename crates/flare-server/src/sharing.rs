@@ -19,6 +19,7 @@ mod tokens;
 
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 
+use flare_auth_oidc::Admit;
 use flare_contract::{ApiCode, ExchangeRequest, GrantRequest, ShareRequest};
 use flare_core::{Email, Flares, Principal, Timestamp};
 use secrecy::SecretString;
@@ -29,23 +30,27 @@ use std::pin::Pin;
 /// A boxed future that the [`Api`] trait returns.
 pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The share API's parts: the [`Flares`] service, the token store and the
-/// directory that resolves `--with` identifiers.
+/// The share API's parts: the [`Flares`] service, the token store, the
+/// directory that resolves `--with` identifiers and the admit rule that
+/// every token's owner must still pass.
 pub struct Sharing<S, G, R, T, X> {
     flares: Flares<S, G, R>,
     tokens: T,
     recipients: X,
+    admit: Admit,
 }
 
 impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
-    /// The share API over `flares`, keeping tokens in `tokens` and
-    /// resolving recipients with `recipients`.
+    /// The share API over `flares`, keeping tokens in `tokens`, resolving
+    /// recipients with `recipients` and accepting a token only while
+    /// `admit`, the site's sign-in rule, admits its owner's address.
     #[must_use]
-    pub fn new(flares: Flares<S, G, R>, tokens: T, recipients: X) -> Self {
+    pub fn new(flares: Flares<S, G, R>, tokens: T, recipients: X, admit: Admit) -> Self {
         Self {
             flares,
             tokens,
             recipients,
+            admit,
         }
     }
 }
@@ -115,7 +120,8 @@ pub(crate) enum TokenCheck {
     /// The text is not a flare token, so the deployment's authenticator
     /// decides.
     NotOurs,
-    /// A flare token that does not authenticate, or a store failure.
+    /// A flare token that does not authenticate, whose owner the admit
+    /// rule no longer admits, or a store failure.
     Refused(ApiCode),
 }
 
@@ -139,3 +145,6 @@ pub(crate) trait Api: Send + Sync {
     /// Runs one request of an authenticated caller.
     fn run<'a>(&'a self, who: &'a Principal, call: Call, now: Timestamp) -> Boxed<'a, Answer>;
 }
+
+#[cfg(test)]
+mod tests;
