@@ -11,6 +11,7 @@
 
 use super::Ctx;
 use super::edit::read_body;
+use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
@@ -181,14 +182,32 @@ where
                 .await
                 .unwrap_or_else(|refusal| refused(refusal, origin)));
         }
-        ApiRoute::Exchange => match body_of::<ExchangeRequest, _, _, _, _>(ctx, body).await? {
-            Ok(request) => api.exchange(request, now).await,
-            Err(refusal) => Err(refusal),
-        },
+        ApiRoute::Exchange => {
+            let answer = match body_of::<ExchangeRequest, _, _, _, _>(ctx, body).await? {
+                Ok(request) => api.exchange(request, now).await,
+                Err(refusal) => Err(refusal),
+            };
+            ctx.shared.count(match &answer {
+                Ok(_) => Event::TokenExchanged,
+                Err(_) => Event::TokenRefused,
+            });
+            answer
+        }
         _ => match caller(ctx, api, credential.as_ref(), now).await {
-            Err(refusal) => Err(refusal),
+            Err(refusal) => {
+                if refusal.code.status() == 401 {
+                    ctx.shared.count(Event::TokenRefused);
+                }
+                Err(refusal)
+            }
             Ok(who) => match call(ctx, route, name, body).await? {
-                Ok(call) => api.run(&who, call, now).await,
+                Ok(call) => {
+                    let answer = api.run(&who, call, now).await;
+                    if route == ApiRoute::CreateShare && answer.is_ok() {
+                        ctx.shared.count(Event::ShareCreated);
+                    }
+                    answer
+                }
                 Err(refusal) => Err(refusal),
             },
         },
