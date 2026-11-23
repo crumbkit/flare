@@ -1,0 +1,19 @@
+{
+  "name": "@flare/headless",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./comments/thread": "./src/comments/thread.ts",
+    "./comments/composer": "./src/comments/composer.ts",
+    "./comments/a11y": "./src/comments/a11y.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
