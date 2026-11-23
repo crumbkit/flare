@@ -1,22 +1,22 @@
-# Working on hangar
+# Working on flare
 
-hangar serves agent-written pages from a board and works on board records
-through them. It is a Cargo workspace. `hangar-core` holds the types and
-traits that the other crates code against. The two `hangar-auth-*` crates
-sign people in, `hangar-board` keeps pages and records in a board,
-`hangar-render` renders pages, `hangar-server` serves them, and `hangar-cli`
-builds the `hangar` command. The rules are the Rust standards that
+flare serves agent-written pages from a board and works on board records
+through them. It is a Cargo workspace. `flare-core` holds the types and
+traits that the other crates code against. The two `flare-auth-*` crates
+sign people in, `flare-board` keeps pages and records in a board,
+`flare-render` renders pages, `flare-server` serves them, and `flare-cli`
+builds the `flare` command. The rules are the Rust standards that
 [rust-standards.toml](rust-standards.toml) adopts. A change is ready when the
 steps of the `lane` job in [.github/workflows/ci.yml](.github/workflows/ci.yml)
 pass with `CARGO_BUILD_WARNINGS=deny`. Tests that run the board program read
-its path from `HANGAR_TEST_BOARD`. hangar-aws's tests read stand-in URLs
-from `HANGAR_TEST_DYNAMODB` and `HANGAR_TEST_S3`.
+its path from `FLARE_TEST_BOARD`. flare-aws's tests read stand-in URLs
+from `FLARE_TEST_DYNAMODB` and `FLARE_TEST_S3`.
 
 - Write the test first, named as a sentence (BASE-36).
 - Give each new dependency a reason in `Cargo.toml` (BASE-23).
 - A new implementation of `Authenticator`, `PageStore`, `RecordStore`,
   `ShareStore`, `GrantStore` or `FileStore` calls every function of the
-  matching suite in `hangar_core::contract` from its own tests.
+  matching suite in `flare_core::contract` from its own tests.
 
 ## Writing
 

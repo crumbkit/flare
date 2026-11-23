@@ -1,6 +1,6 @@
-# Running hangar on a host
+# Running flare on a host
 
-`hangar serve` serves a board's pages as a hosted site when its config has a
+`flare serve` serves a board's pages as a hosted site when its config has a
 `hosted` section. People sign in with Google and read the pages that the
 config's `admit` rule lets them reach. This page says what the operator sets
 up around it.
@@ -8,7 +8,7 @@ up around it.
 ## What the hosted site serves
 
 - `/up`, for health checks. It answers 200 with no sign-in.
-- The stylesheet, `/` and `/hangar/`, the index of pages.
+- The stylesheet, `/` and `/flare/`, the index of pages.
 - `/pages/<name>`, the newest version of a page.
 - `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in.
 - Every other path answers 404, including bindings and forms, which only
@@ -18,11 +18,11 @@ up around it.
 
 ```json
 {
-  "hosted": { "origin": "https://hangar.example.com", "listen": "127.0.0.1:8080" },
+  "hosted": { "origin": "https://flare.example.com", "listen": "127.0.0.1:8080" },
   "oidc": {
     "issuer": "https://accounts.google.com",
     "client_id": "<from the Google console>",
-    "client_secret_file": "/run/secrets/hangar-client-secret",
+    "client_secret_file": "/run/secrets/flare-client-secret",
     "admit": { "domain": "example.com", "reach": "everything" }
   }
 }
@@ -44,38 +44,38 @@ up around it.
   one lets that account sign in. A `domain` rule admits only accounts of
   the Workspace domain, so it avoids this.
 - Register `<origin>/auth/oidc/callback` as the redirect URI of the Google
-  client, such as `https://hangar.example.com/auth/oidc/callback`.
-- A config error exits with `hangar::config::invalid` and names the key.
+  client, such as `https://flare.example.com/auth/oidc/callback`.
+- A config error exits with `flare::config::invalid` and names the key.
 
 ## The client secret file
 
-- `hangar serve` reads the file once, at start.
-- The file must be a regular file, owned by the user hangar runs as or by
+- `flare serve` reads the file once, at start.
+- The file must be a regular file, owned by the user flare runs as or by
   root, not writable by group or others, and 1 to 4,096 bytes long. One
   trailing newline is dropped.
 - A symlink is followed, so a container secret mount works.
 - A world-readable file is accepted, because container runtimes mount
   secrets that way by default. Mode 0400 is recommended.
-- A file that breaks a rule exits with `hangar::oidc::secret_unavailable`.
+- A file that breaks a rule exits with `flare::oidc::secret_unavailable`.
   The message names the path and the rule, and never the content.
 
 ## The proxy
 
-hangar does not terminate TLS. A reverse proxy in front of it does, and
+flare does not terminate TLS. A reverse proxy in front of it does, and
 forwards plain HTTP to `hosted.listen`.
 
-- The proxy must pass the Host header through unchanged. hangar refuses a
+- The proxy must pass the Host header through unchanged. flare refuses a
   request whose Host is not the origin's host with 403
   `request::host`.
-- The proxy must not add an Authorization header. hangar refuses a request
+- The proxy must not add an Authorization header. flare refuses a request
   that has one with 401 `auth::bad_credential`.
-- hangar reads no `X-Forwarded-*` or `Forwarded` header, and it does not
+- flare reads no `X-Forwarded-*` or `Forwarded` header, and it does not
   use the peer address.
 - Only the proxy may reach `hosted.listen`. Bind it to a loopback or
   private address, or firewall it. A client that reaches it directly
   skips the proxy's rate limits.
 - Rate-limit `/auth/oidc/start` and `/auth/oidc/callback` per client at the
-  proxy. hangar cannot tell clients apart behind the proxy. It lets 4
+  proxy. flare cannot tell clients apart behind the proxy. It lets 4
   callbacks wait on Google at once. The next 16 callbacks queue for a
   slot in the order they arrived, for up to 10 seconds each, and answer
   503 `server::busy` when the wait runs out. A callback that finds 16
@@ -94,13 +94,13 @@ with a burst of 10, and answers 429 past that. `limit_req_zone` belongs in
 the `http` block, which a file in `conf.d` is included into:
 
 ```nginx
-limit_req_zone $binary_remote_addr zone=hangar_sign_in:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=flare_sign_in:10m rate=10r/m;
 
 server {
     listen 443 ssl;
-    server_name hangar.example.com;
+    server_name flare.example.com;
     location /auth/oidc/ {
-        limit_req zone=hangar_sign_in burst=10 nodelay;
+        limit_req zone=flare_sign_in burst=10 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
@@ -115,7 +115,7 @@ server {
 Caddy passes Host through and adds no Authorization header by default:
 
 ```text
-hangar.example.com {
+flare.example.com {
 	reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -123,15 +123,15 @@ hangar.example.com {
 Stock Caddy has no per-client rate limit, so this example sets none. To
 add one, build Caddy with the third-party `rate_limit` module from
 `github.com/mholt/caddy-ratelimit` using `xcaddy`, or put a proxy that has
-one, such as nginx above, in front of hangar.
+one, such as nginx above, in front of flare.
 
 On fly.io, the edge proxy terminates TLS and passes Host through. Set
 `internal_port` to the port of `hosted.listen`, and bind `hosted.listen` to
 `0.0.0.0` or `[::]` so the edge can reach it. That address is also
 reachable from every other machine in the same fly.io organisation over
-its private network, without the edge proxy, so run hangar in an
+its private network, without the edge proxy, so run flare in an
 organisation that holds no machine you do not trust. The configuration
-below sets no per-client rate limit, so on fly.io hangar's callback queue
+below sets no per-client rate limit, so on fly.io flare's callback queue
 is the only limit on sign-in requests:
 
 ```toml
@@ -146,7 +146,7 @@ is the only limit on sign-in requests:
 ## One process
 
 - Sessions and the key that seals pending sign-ins live in the memory of
-  one process. Run exactly one hangar process behind an origin.
+  one process. Run exactly one flare process behind an origin.
 - A second process, or an old and a new process that overlap during a
   deploy, fail sign-ins at random and honour each session on only one of
   them. Stop the old process before starting the new one.
@@ -163,8 +163,8 @@ is the only limit on sign-in requests:
 
 ## The domain name
 
-- hangar sets only `__Host-` cookies, which are bound to its exact host.
-- Serve hangar on a name whose parent domain has no untrusted subdomains.
+- flare sets only `__Host-` cookies, which are bound to its exact host.
+- Serve flare on a name whose parent domain has no untrusted subdomains.
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.
 - Every reply carries `Strict-Transport-Security: max-age=63072000`, so a

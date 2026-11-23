@@ -1,0 +1,12 @@
+Explore flare's commands
+
+Usage: flare commands [OPTIONS] <COMMAND>
+
+Commands:
+  list  List a branch of flare's commands with their arguments and examples
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Global flags: --json, --fields <FIELD>, --long, --full, --no-input. `flare commands --help` describes them.
+Next: flare commands <COMMAND> -h

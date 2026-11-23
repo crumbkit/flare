@@ -934,6 +934,150 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
+name = "flare-auth-loopback"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "crumbkit-durable",
+ "flare-auth-loopback",
+ "flare-core",
+ "http",
+ "libc",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "flare-auth-oidc"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "base64 0.23.1",
+ "crumbkit-process",
+ "flare-auth-oidc",
+ "flare-core",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "jsonwebtoken",
+ "libc",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "flare-aws"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-lc-rs",
+ "aws-sdk-dynamodb",
+ "aws-sdk-s3",
+ "flare-aws",
+ "flare-core",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "flare-board"
+version = "0.1.0"
+dependencies = [
+ "crumbkit-process",
+ "flare-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "flare-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crumbkit",
+ "crumbkit-process",
+ "crumbkit-test",
+ "crumbkit-usage",
+ "flare-auth-loopback",
+ "flare-auth-oidc",
+ "flare-board",
+ "flare-core",
+ "flare-render",
+ "flare-server",
+ "reqwest",
+ "schemars",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "flare-core"
+version = "0.1.0"
+dependencies = [
+ "flare-core",
+ "secrecy",
+ "thiserror",
+]
+
+[[package]]
+name = "flare-render"
+version = "0.1.0"
+dependencies = [
+ "flare-core",
+ "html5ever",
+ "mustache2",
+ "proptest",
+ "pulldown-cmark",
+ "secrecy",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "flare-server"
+version = "0.1.0"
+dependencies = [
+ "aws-lc-rs",
+ "base64 0.23.1",
+ "flare-auth-loopback",
+ "flare-auth-oidc",
+ "flare-board",
+ "flare-core",
+ "flare-render",
+ "flare-server",
+ "form_urlencoded",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "secrecy",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1053,150 +1197,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "hangar-auth-loopback"
-version = "0.1.0"
-dependencies = [
- "aws-lc-rs",
- "crumbkit-durable",
- "hangar-auth-loopback",
- "hangar-core",
- "http",
- "libc",
- "secrecy",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "hangar-auth-oidc"
-version = "0.1.0"
-dependencies = [
- "aws-lc-rs",
- "base64 0.23.1",
- "crumbkit-process",
- "hangar-auth-oidc",
- "hangar-core",
- "http-body-util",
- "hyper",
- "hyper-util",
- "jsonwebtoken",
- "libc",
- "reqwest",
- "secrecy",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "hangar-aws"
-version = "0.1.0"
-dependencies = [
- "aws-config",
- "aws-lc-rs",
- "aws-sdk-dynamodb",
- "aws-sdk-s3",
- "hangar-aws",
- "hangar-core",
- "proptest",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "hangar-board"
-version = "0.1.0"
-dependencies = [
- "crumbkit-process",
- "hangar-core",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "hangar-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crumbkit",
- "crumbkit-process",
- "crumbkit-test",
- "crumbkit-usage",
- "hangar-auth-loopback",
- "hangar-auth-oidc",
- "hangar-board",
- "hangar-core",
- "hangar-render",
- "hangar-server",
- "reqwest",
- "schemars",
- "secrecy",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "hangar-core"
-version = "0.1.0"
-dependencies = [
- "hangar-core",
- "secrecy",
- "thiserror",
-]
-
-[[package]]
-name = "hangar-render"
-version = "0.1.0"
-dependencies = [
- "hangar-core",
- "html5ever",
- "mustache2",
- "proptest",
- "pulldown-cmark",
- "secrecy",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "hangar-server"
-version = "0.1.0"
-dependencies = [
- "aws-lc-rs",
- "base64 0.23.1",
- "form_urlencoded",
- "hangar-auth-loopback",
- "hangar-auth-oidc",
- "hangar-board",
- "hangar-core",
- "hangar-render",
- "hangar-server",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "secrecy",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
