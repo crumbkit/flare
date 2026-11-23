@@ -8,6 +8,11 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare schemas list` lists the JSON documents that flare prints, and
+  `flare schemas show <id>...` prints the JSON Schema of each of 1 to 100
+  ids, so an agent learns the shape of `flare ... --json` from flare
+  itself. An id that names no document fails with
+  `flare::schemas::not_found`, whose recovery runs `flare schemas list`.
 - `flare show <id> [--version n]` prints one version of a share you can
   open, with its title, owner, your role, the latest version and the
   Markdown. `GET /api/shares/<id>` takes `?version=n`, and its answer

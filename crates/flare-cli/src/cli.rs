@@ -1,6 +1,9 @@
 //! `flare`'s command-line grammar and tool record.
 
+mod schemas;
 mod sharing;
+
+pub(crate) use schemas::SchemasCommand;
 
 pub(crate) use sharing::{
     ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs, ShowArgs,
@@ -68,6 +71,12 @@ pub(crate) enum Verb {
         /// What to do with the commands.
         #[command(subcommand)]
         command: CommandsVerb,
+    },
+    /// Explore the JSON documents that flare prints
+    Schemas {
+        /// What to do with the documents.
+        #[command(subcommand)]
+        command: SchemasCommand,
     },
     /// Review flare's own use
     #[command(name = "self")]
@@ -308,6 +317,8 @@ pub const TOOL: Tool = Tool::new()
                     ])
                     .effects(Effects::read_only())
                     .document(COMMANDS_LIST),
+                schemas::LIST_LEAF,
+                schemas::SHOW_LEAF,
                 Leaf::new(&["self", "usage"])
                     .examples(&[Example::new(&[], "Report the findings of the last 7 days")])
                     .effects(Effects::read_only())
