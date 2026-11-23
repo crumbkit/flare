@@ -1,5 +1,5 @@
 //! The items of response links and of the position counter, and the
-//! transaction that writes a link.
+//! transaction that writes a link. Comments and cursors share the counter.
 //!
 //! One link is two items: the pair item under the response's partition,
 //! keyed by the flare, which makes a repeat find the first link, and the
@@ -66,25 +66,9 @@ pub(crate) const PAIRS: &str = PAIR_PREFIX;
 /// moves from `head`, and both items are put only if absent.
 pub(crate) fn link(table: &str, link: &ResponseLink, head: Position) -> Option<Transaction> {
     let mut transaction = Transaction::default();
-    let (condition, read) = if head.get() == 0 {
-        ("attribute_not_exists(#n)", None)
-    } else {
-        ("#n = :read", Some((":read", number(head.get()))))
-    };
-    let mut value_pairs = vec![(":next", number(link.position.get()))];
-    value_pairs.extend(read);
-    let counter = Update::builder()
-        .table_name(table)
-        .set_key(Some(key_map(&Key::sequence())))
-        .update_expression("SET #n = :next")
-        .condition_expression(condition)
-        .set_expression_attribute_names(Some(names(&[("#n", attr::COUNT)])))
-        .set_expression_attribute_values(Some(values(value_pairs)))
-        .build()
-        .ok()?;
     transaction.push(
         ItemRole::Sequence,
-        TransactWriteItem::builder().update(counter).build(),
+        sequence_update(table, head, link.position)?,
     );
     let pair = keyed(
         &Key::pair(&link.response, &link.flare),
@@ -97,4 +81,31 @@ pub(crate) fn link(table: &str, link: &ResponseLink, head: Position) -> Option<T
     );
     transaction.push(ItemRole::LinkItem, put(table, listed, Some(ABSENT))?);
     Some(transaction)
+}
+
+/// The write that moves the position counter from `head` to `next`, only
+/// if the counter still holds `head`. Every item that takes a position
+/// carries it, so two of them cannot take the same one.
+pub(crate) fn sequence_update(
+    table: &str,
+    head: Position,
+    next: Position,
+) -> Option<TransactWriteItem> {
+    let (condition, read) = if head.get() == 0 {
+        ("attribute_not_exists(#n)", None)
+    } else {
+        ("#n = :read", Some((":read", number(head.get()))))
+    };
+    let mut value_pairs = vec![(":next", number(next.get()))];
+    value_pairs.extend(read);
+    let counter = Update::builder()
+        .table_name(table)
+        .set_key(Some(key_map(&Key::sequence())))
+        .update_expression("SET #n = :next")
+        .condition_expression(condition)
+        .set_expression_attribute_names(Some(names(&[("#n", attr::COUNT)])))
+        .set_expression_attribute_values(Some(values(value_pairs)))
+        .build()
+        .ok()?;
+    Some(TransactWriteItem::builder().update(counter).build())
 }

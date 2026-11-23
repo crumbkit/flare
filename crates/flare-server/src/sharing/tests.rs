@@ -5,7 +5,8 @@ use super::{Api, Sharing, TokenCheck};
 use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
 use flare_contract::ApiCode;
 use flare_core::memory::{
-    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTokenStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemoryShareStore,
+    MemoryTokenStore,
 };
 use flare_core::{
     AddressesOnly, Creators, Email, Flares, NewToken, PrincipalId, Timestamp, TokenId, TokenLabel,
@@ -59,8 +60,15 @@ fn mint(id: &str, owner: &str) -> Minted {
 async fn sharing(
     tokens: &[&Minted],
     admit: Admit,
-) -> Sharing<MemoryShareStore, MemoryGrantStore, MemoryResponseStore, MemoryTokenStore, AddressesOnly>
-{
+) -> Sharing<
+    MemoryShareStore,
+    MemoryGrantStore,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+    MemoryTokenStore,
+    AddressesOnly,
+> {
     let store = MemoryTokenStore::default();
     for minted in tokens {
         let token = NewToken::new(
@@ -76,6 +84,8 @@ async fn sharing(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
         MemoryResponseStore::new(),
+        MemoryCommentStore::new(),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     );
     Sharing::new(flares, store, AddressesOnly, admit)

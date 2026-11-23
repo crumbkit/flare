@@ -17,9 +17,11 @@
 //! the share, so the owner finishes with [`Flares::grant`].
 
 mod activity;
+mod comments;
 mod people;
 
-pub use activity::{ActivityItem, ActivityPage};
+pub use activity::{ActivityItem, ActivityPage, CommentActivity, ResponseActivity};
+pub use comments::{CommentDraft, CommentThread, Posted};
 pub use people::{AddressesOnly, Creators, RecipientError, Recipients};
 
 use crate::auth::Principal;
@@ -27,7 +29,7 @@ use crate::email::Email;
 use crate::response::NewLink;
 use crate::share::{Share, ShareContent, ShareId, ShareTitle};
 use crate::sharing::{ShareError, Shares, Standing};
-use crate::store::{GrantStore, ResponseStore, ShareStore};
+use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
 use crate::time::Timestamp;
 use crate::{Role, ShareVersion};
 
@@ -65,6 +67,28 @@ pub enum FlareError {
     /// The response store could not answer.
     #[error("the response store is unavailable")]
     ResponsesUnavailable,
+    /// No such comment, or the caller cannot open its flare, or the
+    /// author deleted it.
+    #[error("no such comment")]
+    CommentNotFound,
+    /// Only a comment's author edits or deletes it.
+    #[error("only the author edits or deletes a comment")]
+    NotCommentAuthor,
+    /// A reply names a reply as its parent, and a reply has no replies.
+    #[error("a reply has no replies")]
+    ReplyToReply,
+    /// The flare holds the most comments and replies it may.
+    #[error("the flare holds the most comments it may")]
+    TooManyComments,
+    /// The caller has no cursor of that name.
+    #[error("no such cursor")]
+    CursorNotFound,
+    /// The caller holds the most cursors they may.
+    #[error("the caller holds the most cursors they may")]
+    TooManyCursors,
+    /// The comment or cursor store could not answer.
+    #[error("the comment store is unavailable")]
+    CommentsUnavailable,
 }
 
 /// A flare to share.
@@ -113,9 +137,11 @@ pub struct Flared {
 
 /// The service: [`Shares`] with the creators rule and the response store.
 #[derive(Debug)]
-pub struct Flares<S, G, R> {
+pub struct Flares<S, G, R, C, U> {
     shares: Shares<S, G>,
     responses: R,
+    comments: C,
+    cursors: U,
     creators: Creators,
 }
 
@@ -139,13 +165,25 @@ fn flare_refused(error: ShareError) -> FlareError {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
-    /// A service over the three stores, admitting `creators`.
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
+    Flares<S, G, R, C, U>
+{
+    /// A service over the five stores, admitting `creators`. The response
+    /// and comment stores share one position sequence.
     #[must_use]
-    pub fn new(shares: S, grants: G, responses: R, creators: Creators) -> Self {
+    pub fn new(
+        shares: S,
+        grants: G,
+        responses: R,
+        comments: C,
+        cursors: U,
+        creators: Creators,
+    ) -> Self {
         Self {
             shares: Shares::new(shares, grants),
             responses,
+            comments,
+            cursors,
             creators,
         }
     }

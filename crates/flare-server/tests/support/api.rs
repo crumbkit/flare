@@ -7,7 +7,9 @@ use crate::faulty::{Faults, FaultyRecipients, FaultyResponses, FaultyShares, Fau
 use crate::harness::{Call, Reply, cookie_pair};
 use crate::hosted::{Admits, Hosted, SESSION};
 use flare_auth_oidc::{Admit, Reach};
-use flare_core::memory::MemoryGrantStore;
+use flare_core::memory::{
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+};
 use flare_core::{Creators, Email, Flares};
 use flare_server::Sharing;
 use serde_json::{Value, json};
@@ -40,6 +42,7 @@ impl Api {
                     .map(|name| Email::try_from(format!("{name}@example.com").as_str()).unwrap())
                     .collect(),
             );
+            let sequence = MemorySequence::new();
             let flares = Flares::new(
                 FaultyShares {
                     fail: switches.shares.clone(),
@@ -48,8 +51,10 @@ impl Api {
                 MemoryGrantStore::new(),
                 FaultyResponses {
                     fail: switches.responses.clone(),
-                    ..FaultyResponses::default()
+                    inner: MemoryResponseStore::with_sequence(sequence.clone()),
                 },
+                MemoryCommentStore::with_sequence(sequence),
+                MemoryCursorStore::new(),
                 creators,
             );
             let tokens = FaultyTokens {

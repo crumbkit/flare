@@ -6,6 +6,7 @@
 //! `impl Future<Output = …> + Send`, so this crate needs no runtime and no
 //! `async-trait`. No signature names an HTTP, SDK or Board type.
 
+mod comments;
 mod errors;
 mod files;
 mod fill_types;
@@ -14,6 +15,7 @@ mod responses;
 mod shares;
 mod tokens;
 
+pub use comments::{Added, CommentStore, CommentStoreError, CursorStore};
 pub use errors::{MoveError, PageStoreError, ReadError, Rejection, WriteError};
 pub use files::{FileStore, FileStoreError};
 pub use fill_types::FillTypes;

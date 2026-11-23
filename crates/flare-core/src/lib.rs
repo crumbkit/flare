@@ -17,6 +17,7 @@
 
 mod auth;
 mod binding;
+mod comment;
 pub mod contract;
 mod email;
 mod error;
@@ -39,12 +40,17 @@ mod token;
 
 pub use auth::{Access, AuthError, Authenticator, Credential, Decision, Principal, Resource};
 pub use binding::Binding;
+pub use comment::{
+    Comment, CommentAction, CommentBody, CommentEvent, CommentId, CommentKey, CursorName,
+    MAX_COMMENT_CHARS, MAX_COMMENTS_PER_FLARE, MAX_CURSORS_PER_PERSON, NewComment,
+};
 pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
-    ActivityItem, ActivityPage, AddressesOnly, Creators, FlareError, Flared, Flares, MAX_FLARES,
-    NewFlare, RecipientError, Recipients,
+    ActivityItem, ActivityPage, AddressesOnly, CommentActivity, CommentDraft, CommentThread,
+    Creators, FlareError, Flared, Flares, MAX_FLARES, NewFlare, Posted, RecipientError, Recipients,
+    ResponseActivity,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
@@ -67,9 +73,10 @@ pub use share::{
 };
 pub use sharing::{Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
-    FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, MoveError, PageStore,
-    PageStoreError, ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError,
-    ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
+    Added, CommentStore, CommentStoreError, CursorStore, FileStore, FileStoreError, FillTypes,
+    GrantStore, GrantStoreError, MoveError, PageStore, PageStoreError, ReadError, RecordStore,
+    Rejection, ResponseStore, ResponseStoreError, ShareStore, ShareStoreError, TokenStore,
+    TokenStoreError, WriteError,
 };
 pub use time::Timestamp;
 pub use token::{

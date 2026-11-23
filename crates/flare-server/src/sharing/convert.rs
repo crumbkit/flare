@@ -40,8 +40,10 @@ pub(super) fn standing(standing: Standing) -> WireRole {
 }
 
 /// The contract's activity item.
-pub(super) fn item(item: &ActivityItem) -> WireItem {
-    WireItem::Response {
+/// A comment event has no contract form yet, so it is left out.
+pub(super) fn item(item: &ActivityItem) -> Option<WireItem> {
+    let item = item.as_response()?;
+    Some(WireItem::Response {
         flare: item.flare.as_str().to_owned(),
         share: item.response.id().as_str().to_owned(),
         title: item.response.title().as_str().to_owned(),
@@ -57,7 +59,7 @@ pub(super) fn item(item: &ActivityItem) -> WireItem {
                 title: share.title().as_str().to_owned(),
             })
             .collect(),
-    }
+    })
 }
 
 /// The code of a share service refusal. A refused share and a missing one

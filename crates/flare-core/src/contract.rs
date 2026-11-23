@@ -21,6 +21,8 @@
 use std::fmt;
 
 pub mod authenticator;
+pub mod comment_store;
+pub mod cursor_store;
 mod executor;
 pub mod file_store;
 pub mod grant_store;
@@ -157,6 +159,21 @@ clauses! {
     RotationWaitsThirtyDays => "a rotation before the newest key is 30 days old changes nothing, and one at 30 days writes the next id",
     AnOldKeyReadsForOneHourAfterRotation => "an old key reads for 1 hour after the next key was written and not after, and the newest key always reads",
     ConcurrentCallsAgreeOnOneKey => "two key calls that run together answer one key, and two rotations that run together advance the id by one",
+    ACommentReadsBack => "a comment and a reply read back by id and in their flare's list with author, parent, text, time and position",
+    AFlaresListHoldsOnlyItsComments => "a flare's list holds only that flare's comments and replies, oldest first",
+    EveryChangeIsAnEventAtALargerPosition => "each create, edit and delete of a comment is an event at a larger position than the one before, naming the comment, its author and what happened",
+    EventsAreBoundedByPositionAndLimit => "a flare's events hold those above the given position and up to the bound, at most the limit, and none of another flare",
+    ARepeatedKeyAnswersTheFirstComment => "a repeat of one author's key on one flare answers the first comment and writes nothing, and another key, author or flare writes a new comment",
+    ConcurrentCommentsGetDistinctPositions => "two comments that run together get two different positions, and two with one key give one created and one repeated",
+    AnEditReplacesTheTextAndKeepsTheRest => "an edit replaces the text and sets the edit time and keeps the author, parent, creation time and position",
+    ADeleteErasesTheTextAndKeepsTheRest => "a delete erases the text and keeps the rest, a second delete changes nothing and writes no event, and an edit of a deleted comment is refused",
+    AnUnknownCommentIsNotFound => "an unknown comment is not found by a read, an edit or a delete, and nothing is written",
+    ConcurrentEditAndDeleteLeaveOneConsistentState => "an edit and a delete that run together leave the comment deleted, and an edit that succeeded left its event",
+    TheFlareLimitHolds => "a flare at the comment limit refuses the next comment and writes nothing, still answers a repeat with the first comment, and does not affect another flare",
+    AnAdvanceMakesTheCursor => "a cursor that was never advanced is absent, and an advance makes it and reads back",
+    ACursorNeverMovesBack => "an advance to a lower position keeps the higher one and answers it",
+    CursorsAreKeptApart => "cursors of two people or of two names do not meet",
+    TheCursorLimitHolds => "a person at the cursor limit cannot make another cursor and can still move one, and another person is not affected",
     FixtureIsUnusable => "the fixture holds a value that its type refuses",
     TheStoreFailedUnexpectedly => "the store returned an error that no clause expects",
 }

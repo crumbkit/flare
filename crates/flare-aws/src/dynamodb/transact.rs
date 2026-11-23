@@ -46,6 +46,13 @@ pub(crate) enum ItemRole {
     SessionGuard,
     SealingKeyItem,
     OldSealingKey,
+    CommentItem,
+    CommentPointer,
+    CommentEvent,
+    CommentKeySlot,
+    CommentCount,
+    CursorItem,
+    CursorCount,
 }
 
 /// The items of one transaction, with the role of each.
@@ -129,7 +136,7 @@ pub(crate) fn put(table: &str, item: Item, condition: Option<&str>) -> Option<Tr
 
 /// Adds `delta` to the count item at `key`. A positive delta applies only
 /// below `max`.
-fn count(table: &str, key: &Key, delta: i64, max: usize) -> Option<TransactWriteItem> {
+pub(crate) fn count(table: &str, key: &Key, delta: i64, max: usize) -> Option<TransactWriteItem> {
     let mut update = Update::builder()
         .table_name(table)
         .set_key(Some(key_map(key)))

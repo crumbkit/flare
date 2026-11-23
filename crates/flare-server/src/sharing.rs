@@ -33,19 +33,19 @@ pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// The share API's parts: the [`Flares`] service, the token store, the
 /// directory that resolves `--with` identifiers and the admit rule that
 /// every token's owner must still pass.
-pub struct Sharing<S, G, R, T, X> {
-    flares: Flares<S, G, R>,
+pub struct Sharing<S, G, R, C, U, T, X> {
+    flares: Flares<S, G, R, C, U>,
     tokens: T,
     recipients: X,
     admit: Admit,
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
     /// The share API over `flares`, keeping tokens in `tokens`, resolving
     /// recipients with `recipients` and accepting a token only while
     /// `admit`, the site's sign-in rule, admits its owner's address.
     #[must_use]
-    pub fn new(flares: Flares<S, G, R>, tokens: T, recipients: X, admit: Admit) -> Self {
+    pub fn new(flares: Flares<S, G, R, C, U>, tokens: T, recipients: X, admit: Admit) -> Self {
         Self {
             flares,
             tokens,
@@ -55,7 +55,7 @@ impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
     }
 }
 
-impl<S, G, R, T, X> fmt::Debug for Sharing<S, G, R, T, X> {
+impl<S, G, R, C, U, T, X> fmt::Debug for Sharing<S, G, R, C, U, T, X> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.debug_struct("Sharing").finish_non_exhaustive()
     }

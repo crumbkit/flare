@@ -48,6 +48,12 @@ pub(crate) mod attr {
     pub(crate) const PRINCIPAL: &str = "principal";
     pub(crate) const EMAIL: &str = "email";
     pub(crate) const BYTES: &str = "bytes";
+    pub(crate) const COMMENT: &str = "comment";
+    pub(crate) const PARENT: &str = "parent";
+    pub(crate) const AUTHOR: &str = "author";
+    pub(crate) const BODY: &str = "body";
+    pub(crate) const EDITED: &str = "edited";
+    pub(crate) const ACTION: &str = "action";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.
@@ -68,6 +74,11 @@ pub(crate) enum ItemKind {
     SessionLink,
     SessionGuard,
     SealingKey,
+    Comment,
+    CommentPointer,
+    CommentEvent,
+    CommentKeySlot,
+    Cursor,
 }
 
 impl ItemKind {
@@ -89,6 +100,11 @@ impl ItemKind {
             Self::SessionLink => "session link",
             Self::SessionGuard => "session guard",
             Self::SealingKey => "sealing key",
+            Self::Comment => "comment",
+            Self::CommentPointer => "comment pointer",
+            Self::CommentEvent => "comment event",
+            Self::CommentKeySlot => "comment key slot",
+            Self::Cursor => "cursor",
         }
     }
 }
@@ -113,6 +129,11 @@ impl Rev {
     #[cfg(test)]
     pub(crate) fn from_bytes(bytes: [u8; 16]) -> Self {
         Self(crate::dynamodb::hex(&bytes))
+    }
+
+    /// The `rev` that an item holds.
+    pub(crate) fn from_text(text: &str) -> Self {
+        Self(text.to_owned())
     }
 
     /// The `rev` as text.

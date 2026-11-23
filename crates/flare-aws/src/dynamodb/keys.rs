@@ -8,8 +8,8 @@
 //! 20 digits.
 
 use flare_core::{
-    Digest, Email, KeyId, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId,
-    TokenLabel,
+    CommentId, CommentKey, CursorName, Digest, Email, KeyId, Position, PrincipalId, ShareId,
+    ShareVersion, Timestamp, TokenId, TokenLabel,
 };
 
 /// The sort key prefix of an owner or grantee entry. A list is a query of
@@ -159,6 +159,78 @@ impl Key {
     pub(crate) fn link(flare: &ShareId, position: Position) -> Self {
         Self::new(flare_partition(flare), link_sort_key(position))
     }
+
+    /// The item that says which flare and position hold a comment.
+    pub(crate) fn comment_pointer(id: &CommentId) -> Self {
+        Self::new(format!("CMT#{}", id.as_str()), "CMT")
+    }
+
+    /// The comment created at `position`, under its flare's comment
+    /// partition.
+    pub(crate) fn comment(flare: &ShareId, position: Position) -> Self {
+        Self::new(comment_partition(flare), comment_sort_key(position))
+    }
+
+    /// The event at `position`, under the flare's comment partition.
+    pub(crate) fn comment_event(flare: &ShareId, position: Position) -> Self {
+        Self::new(comment_partition(flare), event_sort_key(position))
+    }
+
+    /// The slot that names the comment one author sent with one key. The
+    /// key, which holds no `#`, is the sort key's variable last part.
+    pub(crate) fn comment_key(flare: &ShareId, author: &PrincipalId, key: &CommentKey) -> Self {
+        Self::new(
+            comment_partition(flare),
+            format!("K#{}#{}", author.as_str(), key.as_str()),
+        )
+    }
+
+    /// The number of comments and replies of a flare.
+    pub(crate) fn comment_count(flare: &ShareId) -> Self {
+        Self::new(comment_partition(flare), "N")
+    }
+
+    /// A person's cursor.
+    pub(crate) fn cursor(owner: &PrincipalId, name: &CursorName) -> Self {
+        Self::new(
+            cursor_partition(owner),
+            format!("{CURSOR_PREFIX}{}", name.as_str()),
+        )
+    }
+
+    /// The number of a person's cursors.
+    pub(crate) fn cursor_count(owner: &PrincipalId) -> Self {
+        Self::new(cursor_partition(owner), "COUNT")
+    }
+}
+
+/// The sort key prefix of a comment under its flare's comment partition.
+pub(crate) const COMMENT_PREFIX: &str = "C#";
+
+/// The sort key prefix of an event under its flare's comment partition.
+pub(crate) const EVENT_PREFIX: &str = "E#";
+
+/// The sort key prefix of a cursor under its person's partition.
+pub(crate) const CURSOR_PREFIX: &str = "N#";
+
+/// The partition of a flare's comments, events, key slots and count.
+pub(crate) fn comment_partition(flare: &ShareId) -> String {
+    format!("CMTF#{}", flare.as_str())
+}
+
+/// The partition of a person's cursors and their count.
+pub(crate) fn cursor_partition(owner: &PrincipalId) -> String {
+    format!("CUR#{}", owner.as_str())
+}
+
+/// `C#<position>` in 20 digits.
+pub(crate) fn comment_sort_key(position: Position) -> String {
+    format!("{COMMENT_PREFIX}{:020}", position.get())
+}
+
+/// `E#<position>` in 20 digits.
+pub(crate) fn event_sort_key(position: Position) -> String {
+    format!("{EVENT_PREFIX}{:020}", position.get())
 }
 
 /// The partition of the sealing keys of the sign-in state.

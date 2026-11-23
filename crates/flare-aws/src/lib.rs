@@ -30,7 +30,7 @@ pub use connect::{CheckError, Stores};
 #[cfg(any(test, feature = "testing"))]
 pub use connect::{EndpointUrl, Endpoints, Fault};
 pub use dynamodb::{
-    DynamoGrantStore, DynamoResponseStore, DynamoSealingKeys, DynamoSessionStore, DynamoShareStore,
-    DynamoTokenStore,
+    DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
+    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTokenStore,
 };
 pub use s3::S3FileStore;

@@ -1,6 +1,6 @@
 //! [`DynamoResponseStore`], flare-core's `ResponseStore` on the table.
 
-mod items;
+pub(crate) mod items;
 
 use crate::dynamodb::Table;
 use crate::dynamodb::cancel::Classified;
@@ -49,7 +49,7 @@ async fn read_pair(
         .map_err(malformed)
 }
 
-async fn read_head(table: &Table) -> Result<Position, ()> {
+pub(crate) async fn read_head(table: &Table) -> Result<Position, ()> {
     let item = table
         .get(&Key::sequence(), ItemKind::Sequence)
         .await

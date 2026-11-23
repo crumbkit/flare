@@ -1,6 +1,6 @@
 //! The in-memory [`ResponseStore`].
 
-use super::locked;
+use super::{MemorySequence, locked};
 use crate::store::{ResponseStore, ResponseStoreError};
 use crate::{NewLink, Position, ResponseLink, ShareId};
 use std::sync::Mutex;
@@ -10,6 +10,7 @@ use std::sync::Mutex;
 #[derive(Default)]
 pub struct MemoryResponseStore {
     links: Mutex<Vec<ResponseLink>>,
+    sequence: MemorySequence,
 }
 
 impl std::fmt::Debug for MemoryResponseStore {
@@ -26,6 +27,17 @@ impl MemoryResponseStore {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// A store that takes its positions from `sequence`, which a
+    /// [`MemoryCommentStore`](super::MemoryCommentStore) built with the
+    /// same sequence shares.
+    #[must_use]
+    pub fn with_sequence(sequence: MemorySequence) -> Self {
+        Self {
+            links: Mutex::default(),
+            sequence,
+        }
+    }
 }
 
 impl ResponseStore for MemoryResponseStore {
@@ -37,15 +49,17 @@ impl ResponseStore for MemoryResponseStore {
         {
             return Ok(first.clone());
         }
-        let head = links.last().map_or(0, |last| last.position.get());
-        let stored = link.at_position(Position::new(head.saturating_add(1)));
+        let position = self
+            .sequence
+            .next()
+            .ok_or(ResponseStoreError::Unavailable)?;
+        let stored = link.at_position(position);
         links.push(stored.clone());
         Ok(stored)
     }
 
     async fn head(&self) -> Result<Position, ResponseStoreError> {
-        let links = locked(&self.links).ok_or(ResponseStoreError::Unavailable)?;
-        Ok(links.last().map_or(Position::new(0), |last| last.position))
+        self.sequence.head().ok_or(ResponseStoreError::Unavailable)
     }
 
     async fn to_flare(

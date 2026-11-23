@@ -10,9 +10,9 @@ use flare_contract::{
     ShareList, ShareRequest, Shared, TokenIssued, utc,
 };
 use flare_core::{
-    DocumentText, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position,
-    Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    CommentStore, CursorStore, DocumentText, Email, FlareError, Flared, GrantStore, LoginCode,
+    NewFlare, NewToken, Position, Principal, Recipients, ResponseStore, ShareContent, ShareError,
+    ShareId, ShareStore, ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -59,11 +59,13 @@ fn shared(flared: &Flared, role: WireRole) -> Shared {
     }
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X>
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
 {
@@ -213,7 +215,7 @@ where
         json(
             200,
             &ActivityPage {
-                items: page.items.iter().map(item).collect(),
+                items: page.items.iter().filter_map(item).collect(),
                 cursor: Cursor::new(page.last.get()).to_string(),
                 more: page.more,
             },
@@ -308,11 +310,13 @@ where
     }
 }
 
-impl<S, G, R, T, X> Api for Sharing<S, G, R, T, X>
+impl<S, G, R, C, U, T, X> Api for Sharing<S, G, R, C, U, T, X>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
 {

@@ -5,8 +5,8 @@
 use crate::config::HostedConfig;
 use crate::dynamodb::retry::Policy;
 use crate::dynamodb::{
-    DynamoClient, DynamoGrantStore, DynamoResponseStore, DynamoSealingKeys, DynamoSessionStore,
-    DynamoShareStore, DynamoTokenStore, Faults, Table,
+    DynamoClient, DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
+    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTokenStore, Faults, Table,
 };
 use crate::s3::{Bucket, S3Client, S3FileStore};
 use aws_sdk_dynamodb::types::{KeyType, ScalarAttributeType};
@@ -29,6 +29,11 @@ pub struct Stores {
     pub tokens: DynamoTokenStore,
     /// The links from responses to flares, in the table.
     pub responses: DynamoResponseStore,
+    /// Comments and replies, in the table, which share the responses'
+    /// position counter.
+    pub comments: DynamoCommentStore,
+    /// Named activity cursors, in the table.
+    pub cursors: DynamoCursorStore,
     /// Browser sessions, in the table.
     pub sessions: DynamoSessionStore,
     /// The keys that seal the sign-in state, in the table.
@@ -103,6 +108,8 @@ impl Stores {
             files: S3FileStore::from_bucket(bucket.clone()),
             tokens: DynamoTokenStore::from_table(table.clone()),
             responses: DynamoResponseStore::from_table(table.clone()),
+            comments: DynamoCommentStore::from_table(table.clone()),
+            cursors: DynamoCursorStore::from_table(table.clone()),
             sessions: DynamoSessionStore::from_table(table.clone()),
             keys: DynamoSealingKeys::from_table(table.clone()),
             table,

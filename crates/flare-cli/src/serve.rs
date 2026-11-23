@@ -26,8 +26,8 @@ use flare_auth_oidc::{
     OidcConfig,
 };
 use flare_aws::{
-    DynamoGrantStore, DynamoResponseStore, DynamoSealingKeys, DynamoSessionStore, DynamoShareStore,
-    DynamoTokenStore, Stores,
+    DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
+    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTokenStore, Stores,
 };
 use flare_board::BoardStore;
 use flare_core::{AddressesOnly, Flares};
@@ -249,6 +249,8 @@ type HostedSharing = Sharing<
     DynamoShareStore,
     DynamoGrantStore,
     DynamoResponseStore,
+    DynamoCommentStore,
+    DynamoCursorStore,
     DynamoTokenStore,
     AddressesOnly,
 >;
@@ -270,6 +272,8 @@ async fn share_api(
         stores.shares,
         stores.grants,
         stores.responses,
+        stores.comments,
+        stores.cursors,
         config.creators,
     );
     Ok(Sharing::new(flares, stores.tokens, AddressesOnly, admit))
