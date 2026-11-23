@@ -29,6 +29,11 @@ function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
 }
 
+/** The line beside Comment that says who can read a comment on the page. */
+export function audienceLine(owner: string): string {
+  return `${firstName(owner)} and everyone this page is shared with can read it.`;
+}
+
 export function fieldLabel(target: Target): string {
   switch (target.kind) {
     case "comment":

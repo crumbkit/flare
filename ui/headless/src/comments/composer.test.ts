@@ -6,11 +6,17 @@ import {
   createComposer,
   type Draft,
   type DraftKey,
+  hasUnsentText,
   isDraftKey,
+  overLimitLength,
   type SendResult,
+  sendInactive,
+  sendShown,
+  showsAudience,
+  showsSendHint,
 } from "./composer.ts";
-import { priya, reply } from "./testThread.ts";
-import type { Reply } from "./thread.ts";
+import { jonas, priya, reply } from "./testThread.ts";
+import type { Reply, Target } from "./thread.ts";
 
 const posted = reply("r3", "c2", priya, "Only for a cancelled sailing.");
 
@@ -235,5 +241,65 @@ describe("composer", () => {
     c.subscribe(listener);
     c.edit("");
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("what a field shows", () => {
+  const page: Target = { kind: "comment" };
+  const toJonas: Target = { kind: "reply", to: jonas };
+  const draft = { key: "key-1", text: "Only" };
+  const composing = (text: string): Extract<ComposerState<Reply>, { status: "composing" }> => {
+    if (!isDraftKey(draft.key)) throw new Error("unreachable");
+    return { status: "composing", draft: { key: draft.key, text } };
+  };
+  const failed = (failure: "no-answer" | "refused"): ComposerState<Reply> => {
+    if (!isDraftKey(draft.key)) throw new Error("unreachable");
+    return { status: "failed", draft: { key: draft.key, text: "Only" }, failure };
+  };
+
+  it("an empty page field's Comment is inactive, and an empty reply field's Reply stays active", () => {
+    expect(sendInactive({ status: "idle" }, page, 2000)).toBe(true);
+    expect(sendInactive({ status: "idle" }, toJonas, 2000)).toBe(false);
+    expect(sendInactive(composing("  "), toJonas, 2000)).toBe(false);
+  });
+
+  it("Send is inactive while sending and over the limit, in either field", () => {
+    for (const target of [page, toJonas]) {
+      expect(sendInactive(composing("Only"), target, 2000)).toBe(false);
+      expect(sendInactive(composing("Only"), target, 3)).toBe(true);
+      expect(sendInactive({ status: "sending", draft: composing("x").draft }, target, 2000)).toBe(
+        true,
+      );
+    }
+  });
+
+  it("Send is hidden after a refusal and shown in every other state", () => {
+    expect(sendShown(failed("refused"))).toBe(false);
+    expect(sendShown(failed("no-answer"))).toBe(true);
+    expect(sendShown({ status: "idle" })).toBe(true);
+  });
+
+  it("text is unsent while composing, sending or failed", () => {
+    expect(hasUnsentText({ status: "idle" })).toBe(false);
+    expect(hasUnsentText({ status: "sent", posted })).toBe(false);
+    expect(hasUnsentText(composing("Only"))).toBe(true);
+    expect(hasUnsentText({ status: "sending", draft: composing("x").draft })).toBe(true);
+    expect(hasUnsentText(failed("refused"))).toBe(true);
+  });
+
+  it("the over-limit length counts characters, and is absent within the limit", () => {
+    expect(overLimitLength(composing("⛴⛴⛴⛴"), 3)).toBe(4);
+    expect(overLimitLength(composing("⛴⛴⛴"), 3)).toBeUndefined();
+    expect(overLimitLength({ status: "idle" }, 3)).toBeUndefined();
+  });
+
+  it("the page field says who can read it while idle or composing, and gives the send hint only while composing", () => {
+    expect(showsAudience({ status: "idle" }, page)).toBe(true);
+    expect(showsAudience(composing("Only"), page)).toBe(true);
+    expect(showsAudience({ status: "sending", draft: composing("x").draft }, page)).toBe(false);
+    expect(showsAudience({ status: "idle" }, toJonas)).toBe(false);
+    expect(showsSendHint(composing("Only"), page)).toBe(true);
+    expect(showsSendHint({ status: "idle" }, page)).toBe(false);
+    expect(showsSendHint(composing("Only"), toJonas)).toBe(false);
   });
 });

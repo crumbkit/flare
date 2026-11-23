@@ -3,6 +3,7 @@
 // the label, the field, the send button, the failure alert and the live
 // region. It renders nothing, so the app styles every element itself.
 import {
+  audienceLine,
   failureAction,
   failureMessage,
   fieldLabel,
@@ -14,12 +15,17 @@ import {
   tooLongReason,
 } from "@flare/headless/comments/a11y";
 import {
-  blocker,
   type ComposerState,
   createComposer,
   type DraftKey,
+  hasUnsentText,
   isDraftKey,
+  overLimitLength,
   type Send,
+  sendInactive,
+  sendShown,
+  showsAudience,
+  showsSendHint,
 } from "@flare/headless/comments/composer";
 import type { Target } from "@flare/headless/comments/thread";
 import {
@@ -76,6 +82,8 @@ export interface ComposerProps<P> {
         readonly "aria-busy"?: true;
       }
     | undefined;
+  /** The page field's line saying who can read a comment, while idle or composing. */
+  readonly audience: string | undefined;
   /** The page field's send hint while it holds text. */
   readonly hint: string | undefined;
   /** Why the text cannot be sent, when it is over the limit. */
@@ -134,8 +142,7 @@ export function useComposer<P>(options: UseComposerOptions<P>): ComposerProps<P>
   }, [state]);
 
   // Leaving the page with unsent text asks first.
-  const unsent =
-    state.status === "composing" || state.status === "sending" || state.status === "failed";
+  const unsent = hasUnsentText(state);
   useEffect(() => {
     if (!unsent) return;
     const ask = (event: Event) => event.preventDefault();
@@ -144,18 +151,16 @@ export function useComposer<P>(options: UseComposerOptions<P>): ComposerProps<P>
   }, [unsent]);
 
   const submit = () => void composer.submit();
-  const blocked = blocker(state, maxLength);
   const sending = state.status === "sending";
   const failure = state.status === "failed" ? state : undefined;
+  const overLength = overLimitLength(state, maxLength);
   const reason =
-    blocked === "too-long"
-      ? { id: reasonId, text: tooLongReason([...textOf(state)].length, maxLength) }
-      : undefined;
+    overLength === undefined
+      ? undefined
+      : { id: reasonId, text: tooLongReason(overLength, maxLength) };
   let describedBy: string | undefined;
   if (failure) describedBy = alertId;
   else if (reason) describedBy = reason.id;
-  // The mockup leaves an empty reply field's button active; pressing it does nothing.
-  const inactive = blocked !== undefined && !(target.kind === "reply" && blocked === "empty");
 
   return {
     state,
@@ -189,18 +194,18 @@ export function useComposer<P>(options: UseComposerOptions<P>): ComposerProps<P>
       ...(target.kind === "reply" ? { "aria-label": fieldLabel(target) } : {}),
       ...(describedBy ? { "aria-describedby": describedBy } : {}),
     },
-    submitProps:
-      failure?.failure === "refused"
-        ? undefined
-        : {
-            ...(target.kind === "comment"
-              ? { type: "submit" as const }
-              : { type: "button" as const, onClick: submit }),
-            children: submitText(target, sending),
-            ...(inactive ? { "aria-disabled": true as const } : {}),
-            ...(sending ? { "aria-busy": true as const } : {}),
-          },
-    hint: target.kind === "comment" && state.status === "composing" ? sendHint : undefined,
+    submitProps: !sendShown(state)
+      ? undefined
+      : {
+          ...(target.kind === "comment"
+            ? { type: "submit" as const }
+            : { type: "button" as const, onClick: submit }),
+          children: submitText(target, sending),
+          ...(sendInactive(state, target, maxLength) ? { "aria-disabled": true as const } : {}),
+          ...(sending ? { "aria-busy": true as const } : {}),
+        },
+    audience: showsAudience(state, target) ? audienceLine(options.owner) : undefined,
+    hint: showsSendHint(state, target) ? sendHint : undefined,
     blockedReason: reason,
     failure: failure && {
       alertProps: { role: "alert", id: alertId },

@@ -55,6 +55,17 @@ describe("the page comment field", () => {
     expect(screen.getByText("Ctrl or ⌘ + Enter to send")).toBeInTheDocument();
   });
 
+  it("says who can read a comment while idle and while composing", async () => {
+    const { send } = pendingSend<Comment>();
+    render(<PageField send={send} threadIsEmpty={false} />);
+    const line = "Ana and everyone this page is shared with can read it.";
+    expect(screen.getByText(line)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox"), "Could");
+    expect(screen.getByText(line)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(screen.queryByText(line)).not.toBeInTheDocument();
+  });
+
   it("adds a line on Enter and sends on Ctrl or Command with Enter", async () => {
     const { send, calls } = pendingSend<Comment>();
     render(<PageField send={send} threadIsEmpty={false} />);

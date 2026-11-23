@@ -2,6 +2,8 @@
 // sent post. The composer does no input or output of its own: it calls the
 // `send` it is given and reports each change to its listeners.
 
+import type { Target } from "./thread.ts";
+
 declare const draftKeyBrand: unique symbol;
 
 /**
@@ -45,10 +47,14 @@ export type ComposerState<P> =
 /** Why a composer cannot send now. */
 export type Blocker = "empty" | "too-long" | "sending" | "refused";
 
+// A string's length counts UTF-16 code units; the limit counts characters.
+function characters(text: string): number {
+  return [...text].length;
+}
+
 function textBlocker(text: string, maxLength: number): Blocker | undefined {
   if (text.trim() === "") return "empty";
-  // A string's length counts UTF-16 code units; the limit counts characters.
-  return [...text].length > maxLength ? "too-long" : undefined;
+  return characters(text) > maxLength ? "too-long" : undefined;
 }
 
 export function blocker<P>(state: ComposerState<P>, maxLength: number): Blocker | undefined {
@@ -63,6 +69,47 @@ export function blocker<P>(state: ComposerState<P>, maxLength: number): Blocker 
     case "failed":
       return state.failure === "refused" ? "refused" : textBlocker(state.draft.text, maxLength);
   }
+}
+
+/**
+ * Whether the send button shows as inactive. A blocked page field's Comment
+ * is inactive. An empty reply field's Reply stays active, as the mockup draws
+ * it, and pressing it does nothing.
+ */
+export function sendInactive<P>(
+  state: ComposerState<P>,
+  target: Target,
+  maxLength: number,
+): boolean {
+  const reason = blocker(state, maxLength);
+  if (reason === undefined) return false;
+  return !(target.kind === "reply" && reason === "empty");
+}
+
+/** Whether the field shows a send button. A refusal leaves nothing to send. */
+export function sendShown<P>(state: ComposerState<P>): boolean {
+  return !(state.status === "failed" && state.failure === "refused");
+}
+
+/** Whether the field holds text the server has not stored, so leaving the page asks first. */
+export function hasUnsentText<P>(state: ComposerState<P>): boolean {
+  return state.status === "composing" || state.status === "sending" || state.status === "failed";
+}
+
+/** The text's length in characters when it is over `maxLength`, and undefined otherwise. */
+export function overLimitLength<P>(state: ComposerState<P>, maxLength: number): number | undefined {
+  if (blocker(state, maxLength) !== "too-long" || !("draft" in state)) return undefined;
+  return characters(state.draft.text);
+}
+
+/** Whether the page field shows who can read a comment: while it is idle or composing. */
+export function showsAudience<P>(state: ComposerState<P>, target: Target): boolean {
+  return target.kind === "comment" && (state.status === "idle" || state.status === "composing");
+}
+
+/** Whether the page field shows its send hint: while it is composing. */
+export function showsSendHint<P>(state: ComposerState<P>, target: Target): boolean {
+  return target.kind === "comment" && state.status === "composing";
 }
 
 export function canRetry<P>(state: ComposerState<P>): boolean {

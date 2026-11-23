@@ -128,6 +128,7 @@ export function PageField({ send, threadIsEmpty, maxLength = 2000, onSent }: Pag
       {composer.submitProps && (
         <div>
           {composer.hint && <span>{composer.hint}</span>}
+          {composer.audience && <span>{composer.audience}</span>}
           <button {...composer.submitProps} />
         </div>
       )}

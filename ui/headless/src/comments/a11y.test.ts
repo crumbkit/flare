@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  audienceLine,
   failureAction,
   failureMessage,
   fieldLabel,
@@ -50,6 +51,12 @@ describe("copy", () => {
     );
     expect(failureAction("no-answer")).toBe("Retry");
     expect(failureAction("refused")).toBe("Copy text");
+  });
+
+  it("the page field says who can read a comment, naming the owner by first name", () => {
+    expect(audienceLine("Ana Okafor")).toBe(
+      "Ana and everyone this page is shared with can read it.",
+    );
   });
 
   it("a screen reader hears which kind of post was sent", () => {
