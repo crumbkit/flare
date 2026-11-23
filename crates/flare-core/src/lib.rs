@@ -29,6 +29,8 @@ mod page;
 mod provenance;
 mod record;
 mod response;
+mod sealing;
+mod session;
 mod share;
 mod sharing;
 mod store;
@@ -52,6 +54,13 @@ pub use page::{
 pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
 pub use response::{MAX_PAGE, NewLink, Position, ResponseLink};
+pub use sealing::{
+    KEY_GRACE, KEY_ROTATE_AFTER, KeyBytes, KeyId, SealingKey, SealingKeys, SealingKeysError,
+};
+pub use session::{
+    MAX_SESSIONS_PER_PERSON, NewSession, SESSION_CAP, SESSION_IDLE, SESSION_REFRESH, SessionRule,
+    SessionStore, SessionStoreError,
+};
 pub use share::{
     DocumentText, Listing, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewShare, NewVersion,
     Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion, SharedVersion,

@@ -26,6 +26,8 @@ mod pages;
 mod records;
 #[cfg(any(test, feature = "testing"))]
 mod responses;
+mod sealing;
+mod sessions;
 #[cfg(any(test, feature = "testing"))]
 mod shares;
 #[cfg(any(test, feature = "testing"))]
@@ -39,6 +41,8 @@ pub use pages::MemoryPageStore;
 pub use records::MemoryRecordStore;
 #[cfg(any(test, feature = "testing"))]
 pub use responses::MemoryResponseStore;
+pub use sealing::MemorySealingKeys;
+pub use sessions::{MAX_MEMORY_SESSIONS, MemorySessionStore};
 #[cfg(any(test, feature = "testing"))]
 pub use shares::MemoryShareStore;
 #[cfg(any(test, feature = "testing"))]

@@ -27,6 +27,8 @@ pub mod grant_store;
 pub mod page_store;
 pub mod record_store;
 pub mod response_store;
+pub mod sealing_keys;
+pub mod session_store;
 pub mod share_store;
 pub mod token_store;
 
@@ -144,6 +146,17 @@ clauses! {
     AFlaresListHoldsOnlyItsLinks => "a flare's list holds only links to that flare",
     AResponsesListNamesEveryFlare => "a response's list names every flare it links to",
     TheLimitBoundsAListOldestFirst => "a flare's list holds at most the limit, oldest first",
+    ASessionLivesTwelveHoursFromSignIn => "a session reads back as its principal until 12 hours after it was created, and is unknown from then on",
+    ARequestSlidesTheExpiryAtMostEveryTenMinutes => "a request less than 10 minutes into a session's idle life leaves its expiry where it was, and a later request moves it to 12 hours from that request",
+    ASessionEndsSevenDaysAfterSignIn => "a session that is used every 11 hours stops sliding at 7 days after sign-in and is unknown from then on",
+    APersonHoldsEightSessions => "a person's ninth session ends the one with the earliest expiry and leaves another person's sessions",
+    ASignInReplacesTheOldSession => "a sign-in that names the browser's old session ends it in the step that creates the new one",
+    RemovingEndsSessions => "a removed session is unknown, removing an unknown session changes nothing, and removing every session of a person leaves another person's",
+    HoldsFollowsLiveSessions => "a person holds a session while one is live and not after the last one expires or is removed",
+    TheFirstCallWritesKeyOne => "the first call on an empty key store writes key 1 from its bytes and later calls answer that key",
+    RotationWaitsThirtyDays => "a rotation before the newest key is 30 days old changes nothing, and one at 30 days writes the next id",
+    AnOldKeyReadsForOneHourAfterRotation => "an old key reads for 1 hour after the next key was written and not after, and the newest key always reads",
+    ConcurrentCallsAgreeOnOneKey => "two key calls that run together answer one key, and two rotations that run together advance the id by one",
     FixtureIsUnusable => "the fixture holds a value that its type refuses",
     TheStoreFailedUnexpectedly => "the store returned an error that no clause expects",
 }
