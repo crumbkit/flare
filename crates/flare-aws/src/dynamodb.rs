@@ -12,6 +12,8 @@ mod keys;
 mod read;
 mod responses;
 pub(crate) mod retry;
+mod sealing;
+mod sessions;
 mod settle;
 mod shares;
 mod tokens;
@@ -19,6 +21,8 @@ pub(crate) mod transact;
 
 pub use grants::DynamoGrantStore;
 pub use responses::DynamoResponseStore;
+pub use sealing::DynamoSealingKeys;
+pub use sessions::DynamoSessionStore;
 pub use shares::DynamoShareStore;
 pub use tokens::DynamoTokenStore;
 

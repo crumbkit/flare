@@ -217,25 +217,33 @@ is the only limit on sign-in requests:
     path = "/up"
 ```
 
-## One process
+## More than one process
 
-- Sessions and the key that seals pending sign-ins live in the memory of
-  one process. Run exactly one flare process behind an origin.
+- When `hosted.stores` is set, sessions and the keys that seal pending
+  sign-ins live in the table, so any number of processes behind one origin
+  honour each other's sessions and sign-ins, and a restart or a deploy
+  signs nobody out.
+- Without `hosted.stores`, sessions and keys live in the memory of one
+  process. Run exactly one process, and expect a restart to sign everyone
+  out and void every sign-in in progress.
 - Shares, login codes and CLI tokens live in the table and the bucket, so
   a restart keeps them.
-- A second process, or an old and a new process that overlap during a
-  deploy, fail sign-ins at random and honour each session on only one of
-  them. Stop the old process before starting the new one.
-- A restart signs everyone out and voids every sign-in in progress.
+- The table's TTL deletes expired sessions and old keys. Every read
+  compares the expiry with the clock first, so a late deletion changes no
+  answer.
 
 ## Sessions and revocation
 
-- A session lasts 12 hours. A person keeps at most 8 sessions; a ninth
-  sign-in ends the one that expires first. The server holds at most 1,024
-  sessions.
+- A session expires 12 hours after the last request that extended it. A
+  request extends it only when 10 minutes of the 12 hours are used, so a
+  busy page costs a few writes an hour. No session lives longer than 7 days
+  after sign-in. A person keeps at most 8 sessions; a ninth sign-in ends the
+  one that expires first. Without `hosted.stores` the process holds at most
+  1,024 sessions.
 - A person removed from the `admit` rule keeps a live session until it
-  expires. Restarting the process is the only way to end every session at
-  once.
+  expires. With `hosted.stores`, ending every session of one person means
+  deleting the items under `SESSOF#<person id>` and the sessions they
+  name; without it, restarting the process ends every session.
 
 ## The domain name
 

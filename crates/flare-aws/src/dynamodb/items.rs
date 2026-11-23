@@ -45,6 +45,9 @@ pub(crate) mod attr {
     pub(crate) const FLARE: &str = "flare";
     pub(crate) const VERSION: &str = "version";
     pub(crate) const POSITION: &str = "position";
+    pub(crate) const PRINCIPAL: &str = "principal";
+    pub(crate) const EMAIL: &str = "email";
+    pub(crate) const BYTES: &str = "bytes";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.
@@ -61,6 +64,10 @@ pub(crate) enum ItemKind {
     LabelSlot,
     Link,
     Sequence,
+    Session,
+    SessionLink,
+    SessionGuard,
+    SealingKey,
 }
 
 impl ItemKind {
@@ -78,6 +85,10 @@ impl ItemKind {
             Self::LabelSlot => "token label",
             Self::Link => "response link",
             Self::Sequence => "response sequence",
+            Self::Session => "session",
+            Self::SessionLink => "session link",
+            Self::SessionGuard => "session guard",
+            Self::SealingKey => "sealing key",
         }
     }
 }

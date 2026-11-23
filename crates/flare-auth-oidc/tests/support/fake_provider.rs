@@ -680,7 +680,7 @@ pub async fn sign_in_replacing(
     fake: &Fake,
     old: Option<&Credential>,
 ) -> Result<SignedIn, SignInRefusal> {
-    let start = authenticator.start(return_to()).expect("a start");
+    let start = authenticator.start(return_to()).await.expect("a start");
     let query = fake.approve(start.redirect());
     let kept = KeptState::from_cookie(start.kept().expose());
     authenticator.complete(&query, Some(&kept), old).await

@@ -4,17 +4,23 @@
 use crate::allow::Admit;
 use crate::clock::{Clock, SystemClock};
 use crate::config::OidcConfig;
-use crate::flow::{Callback, KeptState, Outcome, ReturnTo, Sealer, SignInStart, begin};
+use crate::flow::{Callback, KeptState, Outcome, ReturnTo, SignInStart, begin};
 use crate::keys::{KeyCache, KeyError, KeySet};
 use crate::provider::Provider;
 use crate::refusal::{ConnectError, SignInRefusal, TokenFault};
+use crate::seal::Sealer;
 use crate::secret::ClientSecretSource;
 use crate::session::{Sessions, SignedIn};
+use crate::stores::{DynKeys, DynSessions};
 use crate::token::{self, Expected};
-use flare_core::{Access, AuthError, Authenticator, Credential, Decision, Principal, Resource};
+use flare_core::memory::{MemorySealingKeys, MemorySessionStore};
+use flare_core::{
+    Access, AuthError, Authenticator, Credential, Decision, Principal, Resource, SealingKeys,
+    SessionStore,
+};
 use secrecy::SecretString;
 use std::fmt;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 
 /// Signs people in with an OpenID Connect provider and authenticates the
 /// sessions it creates. The crate docs give its state tables.
@@ -24,12 +30,8 @@ pub struct OidcAuthenticator<C: Clock = SystemClock> {
     provider: Provider,
     keys: KeyCache,
     sealer: Sealer,
-    sessions: Mutex<Sessions>,
+    sessions: Sessions,
     clock: C,
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl OidcAuthenticator {
@@ -47,6 +49,23 @@ impl OidcAuthenticator {
     ) -> Result<Self, ConnectError> {
         Self::connect_with_clock(config, secret, SystemClock).await
     }
+
+    /// [`OidcAuthenticator::connect`] with stores for the sessions and the
+    /// sealing keys, which a hosted site that runs on more than one process
+    /// shares between its processes, such as the DynamoDB stores of
+    /// `flare-aws`.
+    ///
+    /// # Errors
+    ///
+    /// As [`OidcAuthenticator::connect`].
+    pub async fn connect_stored(
+        config: OidcConfig,
+        secret: &impl ClientSecretSource,
+        sessions: impl SessionStore + 'static,
+        keys: impl SealingKeys + 'static,
+    ) -> Result<Self, ConnectError> {
+        Self::connect_with_stores(config, secret, SystemClock, sessions, keys).await
+    }
 }
 
 impl<C: Clock> OidcAuthenticator<C> {
@@ -60,8 +79,38 @@ impl<C: Clock> OidcAuthenticator<C> {
         secret: &impl ClientSecretSource,
         clock: C,
     ) -> Result<Self, ConnectError> {
+        Self::connect_with_stores(
+            config,
+            secret,
+            clock,
+            MemorySessionStore::new(),
+            MemorySealingKeys::new(),
+        )
+        .await
+    }
+
+    /// [`OidcAuthenticator::connect`] with a clock of the caller's and
+    /// stores for the sessions and the sealing keys. A hosted site that
+    /// runs on more than one process passes stores that every process
+    /// shares, such as the DynamoDB stores of `flare-aws`.
+    ///
+    /// # Errors
+    ///
+    /// As [`OidcAuthenticator::connect`].
+    pub async fn connect_with_stores(
+        config: OidcConfig,
+        secret: &impl ClientSecretSource,
+        clock: C,
+        sessions: impl SessionStore + 'static,
+        keys: impl SealingKeys + 'static,
+    ) -> Result<Self, ConnectError> {
         let secret = secret.client_secret().map_err(ConnectError::Secret)?;
-        let sealer = Sealer::new(&config.client_id).ok_or(ConnectError::NoRandomness)?;
+        let keys: Arc<dyn DynKeys> = Arc::new(keys);
+        let sealer = Sealer::new(keys, &config.client_id);
+        let sessions = Sessions::new(
+            Arc::new(sessions) as Arc<dyn DynSessions>,
+            config.session_lifetime,
+        );
         let provider = Provider::discover(&config.issuer, config.deadlines).await?;
         let body = provider
             .fetch_keys()
@@ -74,7 +123,7 @@ impl<C: Clock> OidcAuthenticator<C> {
             secret,
             provider,
             sealer,
-            sessions: Mutex::new(Sessions::default()),
+            sessions,
             clock,
         })
     }
@@ -87,7 +136,7 @@ impl<C: Clock> OidcAuthenticator<C> {
     /// Returns [`SignInRefusal::NoRandomness`] when the system's random
     /// number generator fails, and [`SignInRefusal::CannotSeal`] when the
     /// sign-in cannot be sealed.
-    pub fn start(&self, return_to: ReturnTo) -> Result<SignInStart, SignInRefusal> {
+    pub async fn start(&self, return_to: ReturnTo) -> Result<SignInStart, SignInRefusal> {
         begin(
             &self.provider.endpoints.authorization,
             &self.config,
@@ -95,6 +144,7 @@ impl<C: Clock> OidcAuthenticator<C> {
             return_to,
             self.clock.now(),
         )
+        .await
     }
 
     /// Completes a sign-in from the provider's callback. `query` is the
@@ -123,7 +173,7 @@ impl<C: Clock> OidcAuthenticator<C> {
     ) -> Result<SignedIn, SignInRefusal> {
         let callback = Callback::parse(query)?;
         let kept = kept.ok_or(SignInRefusal::NoKeptState)?;
-        let pending = self.sealer.open(kept, self.clock.now())?;
+        let pending = self.sealer.open(kept, self.clock.now()).await?;
         if !pending.matches(&callback.state) {
             return Err(SignInRefusal::WrongState);
         }
@@ -159,20 +209,22 @@ impl<C: Clock> OidcAuthenticator<C> {
             .config
             .admit
             .principal(&verified.email, verified.hd.as_ref())?;
-        lock(&self.sessions).create(
-            principal,
-            pending.return_to,
-            self.config.session_lifetime,
-            self.clock.now(),
-            old,
-        )
+        self.sessions
+            .create(principal, pending.return_to, self.clock.now(), old)
+            .await
     }
 
     /// Ends the session of `credential`. A credential that names no session
     /// changes nothing.
-    pub fn sign_out(&self, credential: &Credential) {
-        if let Credential::Session(secret) = credential {
-            lock(&self.sessions).remove(secret);
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AuthError::Unavailable`] when the session store cannot
+    /// answer, and the session may then still be live.
+    pub async fn sign_out(&self, credential: &Credential) -> Result<(), AuthError> {
+        match credential {
+            Credential::Session(secret) => self.sessions.remove(secret).await,
+            _ => Ok(()),
         }
     }
 }
@@ -184,8 +236,9 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
         let Credential::Session(secret) = credential else {
             return Err(AuthError::Rejected);
         };
-        lock(&self.sessions)
+        self.sessions
             .principal(secret, self.clock.now())
+            .await?
             .ok_or(AuthError::Rejected)
     }
 
@@ -205,11 +258,15 @@ impl<C: Clock> Authenticator for OidcAuthenticator<C> {
                 .by_principal(principal.id())
                 .is_some_and(|entry| entry.reach().reaches(resource)),
             Admit::Domain(rule) => {
-                lock(&self.sessions).holds(principal.id(), self.clock.now())
+                self.sessions
+                    .holds(principal.id(), self.clock.now())
+                    .await?
                     && rule.reach().reaches(resource)
             }
             Admit::Anyone(reach) => {
-                lock(&self.sessions).holds(principal.id(), self.clock.now())
+                self.sessions
+                    .holds(principal.id(), self.clock.now())
+                    .await?
                     && reach.reaches(resource)
             }
         };

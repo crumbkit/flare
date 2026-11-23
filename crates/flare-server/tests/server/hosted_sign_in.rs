@@ -50,7 +50,7 @@ async fn a_hosted_server_signs_a_person_in_with_exactly_these_cookies() {
             "Secure",
             "HttpOnly",
             "SameSite=Lax",
-            &format!("Max-Age={}", 12 * 60 * 60)
+            &format!("Max-Age={}", 7 * 24 * 60 * 60)
         ]
     );
     assert!(!session.contains("Domain"));

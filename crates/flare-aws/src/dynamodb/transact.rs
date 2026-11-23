@@ -40,6 +40,12 @@ pub(crate) enum ItemRole {
     Sequence,
     PairItem,
     LinkItem,
+    SessionItem,
+    OldSession,
+    SessionLink,
+    SessionGuard,
+    SealingKeyItem,
+    OldSealingKey,
 }
 
 /// The items of one transaction, with the role of each.

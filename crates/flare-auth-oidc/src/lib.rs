@@ -2,9 +2,8 @@
 //! Google, and implements [`flare_core::Authenticator`] for the sessions it
 //! creates.
 //!
-//! [`OidcAuthenticator::connect`] reads the client secret, draws the key that
-//! seals pending sign-ins, fetches the provider's discovery document and key
-//! set, and checks both. [`OidcAuthenticator::start`] returns the provider
+//! [`OidcAuthenticator::connect`] reads the client secret, fetches the
+//! provider's discovery document and key set, and checks both. [`OidcAuthenticator::start`] returns the provider
 //! URL to send the browser to and the sealed state for the server to keep in
 //! a cookie. [`OidcAuthenticator::complete`] takes the callback's query, the
 //! kept state and the browser's current session, if any, exchanges the code
@@ -13,11 +12,13 @@
 //! routes, cookies or pages; the server that hosts it does.
 //!
 //! The crate accepts only ID tokens signed with RS256, asks for no refresh
-//! token and stores no ID token or access token. Its sessions and its
-//! sealing key live in the memory of one process, so a restart signs
-//! everyone out, voids every pending sign-in and leaves nothing to repair.
-//! Two processes behind one origin each refuse the other's kept values and
-//! sessions, so a server that hosts the crate runs as one process.
+//! token and stores no ID token or access token. Sessions and the keys
+//! that seal pending sign-ins live in two stores that the caller passes to
+//! [`OidcAuthenticator::connect_stored`]. [`OidcAuthenticator::connect`]
+//! uses the in-memory stores of `flare-core`, so a restart signs everyone
+//! out and two processes refuse each other's sessions and kept values. A
+//! site that runs more than one process passes stores that every process
+//! shares, such as the DynamoDB stores of `flare-aws`.
 //!
 //! # ID token checks, in order
 //!
@@ -74,20 +75,27 @@
 //!
 //! A domain principal is on no list, so [`flare_core::Authenticator::authorize`]
 //! allows it exactly while at least one of its sessions is live, and the
-//! rule's [`Reach`] covers the resource. It checks each session's expiry
-//! under the session lock, so a session that has expired but is not yet
-//! removed authorises nobody.
+//! rule's [`Reach`] covers the resource. The store compares each session's
+//! expiry with the time of the request, so a session that has expired but
+//! is not yet removed authorises nobody.
 //!
 //! # Limits
 //!
 //! - A pending sign-in opens for 10 minutes after its `start`. The crate
 //!   stores no pending sign-in, so starts have no limit and none evicts
 //!   another.
-//! - At most 1,024 sessions are live, each for 12 hours unless
-//!   [`OidcConfig::with_session_lifetime`] sets another lifetime. A sign-in
-//!   at the limit, after expired sessions, the browser's old session and
-//!   the principal's earliest-expiring session beyond 8 are removed, gets
-//!   [`SignInRefusal::TooManySessions`].
+//! - A session expires 12 hours after the request that last extended it,
+//!   unless [`OidcConfig::with_session_lifetime`] sets another idle life,
+//!   and never later than 7 days after sign-in. A request extends a
+//!   session only when 10 minutes of its idle life are used. The in-memory
+//!   store holds at most 1,024 sessions, and a sign-in at that limit, after
+//!   expired sessions, the browser's old session and the principal's
+//!   earliest-expiring session beyond 8 are removed, gets
+//!   [`SignInRefusal::TooManySessions`]. The DynamoDB store has no such
+//!   limit.
+//! - A store that cannot answer gives [`SignInRefusal::StoreUnavailable`]
+//!   to a start or a callback and [`flare_core::AuthError::Unavailable`] to
+//!   a request.
 //! - One principal holds at most 8 live sessions. Its next sign-in ends the
 //!   one with the earliest expiry.
 //! - A callback query of more than 4,096 bytes is
@@ -102,19 +110,22 @@
 //!
 //! Owned by `flow.rs`. `start` seals the issue time, state, nonce, PKCE
 //! verifier and return-to value with AES-256-GCM into the kept value, which
-//! the server keeps in a cookie. The key is 32 random bytes drawn at
-//! `connect` and held only in memory; the associated data is a fixed label
-//! and the client ID; each nonce is four zero bytes and a per-process
-//! counter, so no nonce repeats under the key. Nothing is stored
-//! server-side.
+//! the server keeps in a cookie. The key is one of the numbered keys of the
+//! key store: 32 random bytes, replaced after 30 days, and readable for an
+//! hour after its replacement, so a sign-in that began under it finishes.
+//! The kept value is the key's number, a dot and the base64url of a random
+//! 12-byte nonce followed by the ciphertext. The associated data is a fixed
+//! label and the client ID. A process keeps a key it read for 5 minutes,
+//! and a kept value that names an unknown key costs one read of the store
+//! before it is refused. Nothing else is stored server-side.
 //!
 //! | State | Event | Guard | Next state |
 //! | --- | --- | --- | --- |
 //! | absent | `start` | none | sealed (in the browser) |
-//! | sealed | `complete` with the kept value | it opens under this process's key and client ID, was issued under 10 minutes ago and at most 60 seconds ahead, and its state equals the query's, compared in constant time | opened |
+//! | sealed | `complete` with the kept value | it opens under its numbered key and the client ID, was issued under 10 minutes ago and at most 60 seconds ahead, and its state equals the query's, compared in constant time | opened |
 //! | sealed | `complete` with a value that does not open, is expired or is ahead | none | refused as [`SignInRefusal::UnknownState`] |
 //! | sealed | `complete` with a value whose state differs | none | refused as [`SignInRefusal::WrongState`] |
-//! | sealed | the process restarts | none | void; it no longer opens |
+//! | sealed | the key's grace ends | none | void; it no longer opens |
 //! | opened | the token exchange and ID token checks | none | a session, or a refusal |
 //!
 //! A kept value opens again until it is 10 minutes old. A second callback
@@ -126,25 +137,26 @@
 //!
 //! # Session
 //!
-//! Owned by `session.rs`, keyed by the SHA-256 of the session secret. It
-//! holds the principal and the expiry.
+//! Owned by `session.rs`, which passes each state change to the session
+//! store, keyed by the SHA-256 of the session secret. The store holds the
+//! principal, the creation time and the expiry.
 //!
 //! | State | Event | Guard | Next state |
 //! | --- | --- | --- | --- |
 //! | absent | `complete` succeeds under [`Admit::Emails`] | every ID token check passed, the email is verified and on the allow-list, and fewer than 1,024 sessions are live after expired ones, the old session and the principal's evicted session are removed | live |
 //! | absent | `complete` succeeds under [`Admit::Domain`] | every ID token check passed, the email is verified, the signed `hd` claim is a string equal to the configured domain without regard to ASCII letter case, the lower-cased email is a valid principal id, and fewer than 1,024 sessions are live after expired ones, the old session and the principal's evicted session are removed | live |
 //! | absent | `complete` under [`Admit::Domain`] with no `hd`, another `hd` or an unverified email | none | absent; the sign-in is refused |
-//! | live | `authenticate` | the expiry is in the future | live |
+//! | live | `authenticate` | the expiry is in the future | live; the expiry moves to 12 hours ahead, no later than 7 days after sign-in, when 10 minutes of the idle life are used |
 //! | live | `authenticate` after the expiry | none | expired (removed) |
 //! | live | `sign_out` | none | signed out (removed) |
 //! | live | `complete` succeeds with it as the old session | every check of that sign-in passed | replaced (removed in the step that creates the new session) |
 //! | live | its principal's 9th sign-in | it has the earliest expiry of the principal's 8 | evicted (removed) |
 //!
-//! `create` draws the new secret, removes expired sessions, then removes
-//! the old session, then the principal's earliest-expiring session while
-//! it holds 8, and refuses only when 1,024 sessions remain. A refusal at
-//! any step removes nothing that is live. No event extends a session. The secret is returned once, in
-//! [`SignedIn`], and the crate keeps only its hash.
+//! `create` draws the new secret and asks the store to create the session
+//! in one step that also ends the old session and the principal's
+//! earliest-expiring session while it holds 8. An error leaves every live
+//! session as it was. The secret is returned once, in [`SignedIn`], and the
+//! store keeps only its hash.
 //!
 //! Under [`Admit::Domain`], a session exists only for an email that the
 //! provider's signed ID token marks verified and whose signed `hd` claim
@@ -191,8 +203,10 @@ mod keychain;
 mod keys;
 mod provider;
 mod refusal;
+mod seal;
 mod secret;
 mod session;
+mod stores;
 mod token;
 
 pub use allow::{Admit, AllowEntry, AllowList, DomainRule, Reach, WorkspaceDomain};

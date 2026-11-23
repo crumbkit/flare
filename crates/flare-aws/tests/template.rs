@@ -70,7 +70,7 @@ fn the_table_has_string_keys_pk_and_sk_and_no_index() {
 }
 
 #[test]
-fn the_table_deletes_expired_login_codes_through_its_ttl_attribute() {
+fn the_table_deletes_expired_codes_sessions_and_keys_through_its_ttl_attribute() {
     let table = resource("SharesTable");
     assert_eq!(
         table["Properties"]["TimeToLiveSpecification"],

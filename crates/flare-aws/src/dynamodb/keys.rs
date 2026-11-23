@@ -8,7 +8,8 @@
 //! 20 digits.
 
 use flare_core::{
-    Digest, Email, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
+    Digest, Email, KeyId, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId,
+    TokenLabel,
 };
 
 /// The sort key prefix of an owner or grantee entry. A list is a query of
@@ -24,6 +25,12 @@ pub(crate) const PAIR_PREFIX: &str = "F#";
 
 /// The sort key prefix of a link under a flare's partition.
 pub(crate) const LINK_PREFIX: &str = "P#";
+
+/// The sort key prefix of a session's link under its person's partition.
+pub(crate) const SESSION_LINK_PREFIX: &str = "S#";
+
+/// The sort key prefix of a sealing key, under the key partition.
+pub(crate) const SEALING_KEY_PREFIX: &str = "V#";
 
 /// The digits of an inverted time in an entry's sort key.
 const TIME_DIGITS: usize = 20;
@@ -103,6 +110,38 @@ impl Key {
         )
     }
 
+    /// A browser session, by the digest of its secret.
+    pub(crate) fn session(digest: &Digest) -> Self {
+        Self::new(format!("SESS#{}", digest.to_hex()), "SESS")
+    }
+
+    /// The link from a person to one of their sessions, which sorts by the
+    /// session's expiry.
+    pub(crate) fn session_link(person: &PrincipalId, expires: Timestamp, digest: &Digest) -> Self {
+        Self::new(
+            session_partition(person),
+            format!(
+                "{SESSION_LINK_PREFIX}{:020}#{}",
+                expires.as_secs(),
+                digest.to_hex()
+            ),
+        )
+    }
+
+    /// The item that every sign-in of one person writes, so two sign-ins of
+    /// a person cannot both pass the person's session limit.
+    pub(crate) fn session_guard(person: &PrincipalId) -> Self {
+        Self::new(session_partition(person), "GUARD")
+    }
+
+    /// One sealing key.
+    pub(crate) fn sealing_key(id: KeyId) -> Self {
+        Self::new(
+            SEALING_PARTITION.to_owned(),
+            format!("{SEALING_KEY_PREFIX}{:010}", id.get()),
+        )
+    }
+
     /// The counter of response positions, which holds the head.
     pub(crate) fn sequence() -> Self {
         Self::new("SEQ#responses".to_owned(), "SEQ")
@@ -120,6 +159,49 @@ impl Key {
     pub(crate) fn link(flare: &ShareId, position: Position) -> Self {
         Self::new(flare_partition(flare), link_sort_key(position))
     }
+}
+
+/// The partition of the sealing keys of the sign-in state.
+pub(crate) const SEALING_PARTITION: &str = "KEY#SIGNIN";
+
+/// The partition of a person's session links.
+pub(crate) fn session_partition(person: &PrincipalId) -> String {
+    format!("SESSOF#{}", person.as_str())
+}
+
+/// The id of a sealing key's sort key, or `None` for any other sort key.
+pub(crate) fn sealing_key_of(sort_key: &str) -> Option<KeyId> {
+    let digits = sort_key.strip_prefix(SEALING_KEY_PREFIX)?;
+    if digits.len() != 10 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    KeyId::new(digits.parse().ok()?)
+}
+
+/// The lowest and highest sort keys of the links of sessions that expire
+/// after `now`.
+pub(crate) fn live_links(now: Timestamp) -> (String, String) {
+    (
+        format!(
+            "{SESSION_LINK_PREFIX}{:020}#",
+            now.as_secs().saturating_add(1)
+        ),
+        format!("{SESSION_LINK_PREFIX}99999999999999999999#~"),
+    )
+}
+
+/// The expiry and the session digest of a link's sort key, or `None` for
+/// any other sort key.
+pub(crate) fn link_of(sort_key: &str) -> Option<(Timestamp, Digest)> {
+    let rest = sort_key.strip_prefix(SESSION_LINK_PREFIX)?;
+    let (digits, hex) = rest.split_once('#')?;
+    if digits.len() != TIME_DIGITS || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some((
+        Timestamp::from_secs(digits.parse().ok()?),
+        Digest::from_hex(hex)?,
+    ))
 }
 
 /// The partition of the links from a response.

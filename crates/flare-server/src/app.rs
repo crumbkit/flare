@@ -195,11 +195,11 @@ where
     pub(crate) async fn sweep_forever(self) {
         loop {
             tasks::tick(self.shared.limits.sweep_every).await;
-            self.sweep();
+            self.sweep().await;
         }
     }
 
-    pub(crate) fn sweep(&self) {
+    pub(crate) async fn sweep(&self) {
         let shared = &self.shared;
         let now = shared.clock.now();
         if let Site::Local { gate, state } = &shared.site {
@@ -210,7 +210,7 @@ where
         shared.forms.expire(now);
         for session in shared.handover.expire(now) {
             if let Some(oidc) = shared.site.oidc() {
-                oidc.sign_out(&session);
+                let _ = oidc.sign_out(&session).await;
             }
         }
     }

@@ -6,6 +6,18 @@ This file records the notable changes to flare. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A hosted site whose config has `hosted.stores` keeps browser sessions and
+  the sign-in sealing keys in DynamoDB, so several processes share them and
+  a deploy signs nobody out. A session now expires 12 hours after its last
+  extending request, at most 7 days after sign-in, and a request extends it
+  at most every 10 minutes. The sealing key rotates every 30 days, and each
+  sealed sign-in uses a random nonce. Without `hosted.stores` the in-memory
+  stores stay.
+- `OidcAuthenticator::start` and `sign_out` are `async`, and
+  `OidcAuthenticator::connect_stored` takes the session and key stores.
+
 ### Added
 
 - `flare login <server>` signs in to a hosted flare in the browser and

@@ -88,7 +88,7 @@ where
 
 /// `GET /auth/oidc/finish?code=`: redeems a hand-over code and sets the
 /// OpenID Connect session's cookie on the launch host.
-pub(crate) fn finish<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
+pub(crate) async fn finish<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
 where
     P: PageStore,
     R: RecordStore,
@@ -100,7 +100,7 @@ where
         Redeemed::Handed(handed) => handed,
         Redeemed::Expired(session) => {
             if let Some(oidc) = ctx.shared.site.oidc() {
-                oidc.sign_out(&session);
+                let _ = oidc.sign_out(&session).await;
             }
             return Err(Code::HandoverUnknown.into());
         }
