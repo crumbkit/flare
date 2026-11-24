@@ -97,18 +97,33 @@ fn slow_limits() -> Limits {
     limits
 }
 
+// Each test past the walk runs few walks of 100,000 commits, because each
+// one takes seconds and a test is stopped after 60 seconds.
+
 #[test]
-fn pins_saves_moves_and_fit_checks_keep_working_past_the_logs_walk() {
+fn pins_saves_and_fit_checks_keep_working_past_the_logs_walk() {
     let board = ScratchBoard::new();
     board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
     let store = board.store_with(board.program(), slow_limits());
     let first = publish(&store, "one");
-    let second = publish(&store, "two");
+    publish(&store, "two");
     board.filler(PAST_THE_WALK);
 
     assert_eq!(text_at(&store, &first), "one");
     block_on(store.save_binding(binding(&first), &store)).unwrap();
     block_on(store.check_fit(&view(), &store)).unwrap();
+}
+
+#[test]
+fn moves_keep_working_past_the_logs_walk_and_listings_answer_unavailable() {
+    let board = ScratchBoard::new();
+    board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
+    let store = board.store_with(board.program(), slow_limits());
+    let first = publish(&store, "one");
+    let second = publish(&store, "two");
+    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    board.filler(PAST_THE_WALK);
+
     block_on(store.move_binding(&view(), &first, &second, &store, &mover())).unwrap();
     let moved = block_on(store.binding(&view())).unwrap();
     assert_eq!(moved.pin().version(), &second);

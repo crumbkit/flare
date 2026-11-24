@@ -66,13 +66,17 @@ pub(crate) async fn latest(
 /// When that walk is not complete, the version is a shallow clone's
 /// boundary, where every file looks added, and the answer is
 /// `Unavailable`. A commit the board does not hold is not found. Then the
-/// record's log from `HEAD` decides whether `HEAD` reaches the version.
+/// record's log from `HEAD` decides whether `HEAD` reaches the version,
+/// unless the newest-row walk already stopped before its end, past 100,000
+/// commits or at a shallow boundary, in which case the version is accepted
+/// unchecked.
 pub(crate) async fn at(board: &Arc<Board>, pin: &PagePin) -> Result<PublishedPage, PageStoreError> {
     let version = pin.version().as_str();
     if !is_commit(version) {
         return Err(PageStoreError::NotFound);
     }
-    if let Newest::Is = is_newest(board, pin.name(), version).await? {
+    let newest = is_newest(board, pin.name(), version).await?;
+    if let Newest::Is = newest {
         return read_version(board, pin.name(), pin.version()).await;
     }
     let log = match board
@@ -96,7 +100,9 @@ pub(crate) async fn at(board: &Arc<Board>, pin: &PagePin) -> Result<PublishedPag
         }
         _ => return Err(PageStoreError::NotFound),
     }
-    reachable(board, pin.name(), version).await?;
+    if let Newest::Other = newest {
+        reachable(board, pin.name(), version).await?;
+    }
     read_version(board, pin.name(), pin.version()).await
 }
 

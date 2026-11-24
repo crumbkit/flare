@@ -55,14 +55,18 @@ pub(crate) async fn newest(board: &Arc<Board>, name: &PageName) -> Result<LogRow
     }
 }
 
-/// What the newest row from `HEAD` says about `version`.
+/// What the newest row from `HEAD` says about a version.
 pub(crate) enum Newest {
     /// The version is the newest row of a complete walk, so it changed the
     /// record, `HEAD` reaches it and it is no shallow boundary.
     Is,
-    /// The newest row is another commit, the walk found no row, or the walk
-    /// was not complete; a further read decides.
-    Undecided,
+    /// A complete walk lists another newest row, or no row, so the walk of
+    /// every row from `HEAD` decides whether it lists the version.
+    Other,
+    /// The walk was not complete, past 100,000 commits or at a shallow
+    /// clone's boundary. A walk of every row from `HEAD` would stop at the
+    /// same place, so it would decide nothing.
+    Unreached,
 }
 
 /// Whether `version` is the newest row of the page record's log from
@@ -72,12 +76,16 @@ pub(crate) async fn is_newest(
     name: &PageName,
     version: &str,
 ) -> Result<Newest, PageStoreError> {
-    match newest(board, name).await {
-        Ok(row) if row.commit == version && row.blob.is_some() => Ok(Newest::Is),
-        Ok(_) | Err(PageStoreError::NotFound | PageStoreError::Unavailable) => {
-            Ok(Newest::Undecided)
+    match board.log(&record_path(name), None, Rows::Newest).await {
+        Ok(log) if !log.summary.complete => Ok(Newest::Unreached),
+        Ok(log) => match log.data.first() {
+            Some(row) if row.commit == version && row.blob.is_some() => Ok(Newest::Is),
+            _ => Ok(Newest::Other),
+        },
+        Err(Failure::Board(failure)) if failure.code == "board::path::not_found" => {
+            Ok(Newest::Other)
         }
-        Err(other) => Err(other),
+        Err(other) => unavailable(other),
     }
 }
 
@@ -90,7 +98,8 @@ pub(crate) async fn is_newest(
 /// past 100,000 commits or at a shallow clone's boundary, and does not list
 /// the version, the version is accepted unchecked, so a page whose history
 /// is longer than the walk can still be pinned (an accepted gap in
-/// docs/board-store.md).
+/// docs/board-store.md). A caller that already knows the walk is not
+/// complete skips this read.
 pub(crate) async fn reachable(
     board: &Arc<Board>,
     name: &PageName,
