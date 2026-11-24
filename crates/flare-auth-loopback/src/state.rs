@@ -280,6 +280,22 @@ pub enum StateError {
     },
 }
 
+impl StateError {
+    /// The directory or file the error names, or `None` for an error that
+    /// names no path.
+    #[must_use]
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Untrusted { path, .. }
+            | Self::Malformed { path }
+            | Self::Newer { path, .. }
+            | Self::NotOpener { path }
+            | Self::Io { path, .. } => Some(path),
+            Self::NoStateHome | Self::Random => None,
+        }
+    }
+}
+
 /// What is wrong with an untrusted directory or file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

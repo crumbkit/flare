@@ -8,6 +8,21 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `GET /api/shares` answers `next`, a cursor, when more shares follow the
+  page, and takes `cursor=<cursor>` to read the page after it.
+  `flare shares --cursor <CURSOR>` resumes a list, a list cut by `--limit`
+  names the next call with its cursor, and `flare shares --with-me --all`
+  lists every share granted to you, past the 500 that one answer holds.
+
+- `flare skills install` writes flare's agent skill to `flare/SKILL.md` in
+  each of `~/.claude/skills`, `~/.agents/skills` and `$CODEX_HOME/skills`
+  that exists, or in the directory that `--dir` names. The skill tells an
+  agent how to sign in, share, read, grant and follow responses with
+  `flare`, and the binary carries it, so the skill matches the installed
+  version. Install replaces only a copy that flare wrote, and `--force`
+  replaces any other. `flare skills check` lists each copy that is missing
+  or differs and exits with 1 when it lists one, and `flare skills print`
+  prints the skill.
 - `flare schemas list` lists the JSON documents that flare prints, and
   `flare schemas show <id>...` prints the JSON Schema of each of 1 to 100
   ids, so an agent learns the shape of `flare ... --json` from flare
@@ -185,6 +200,94 @@ This file records the notable changes to flare. The format follows
   1,000 entries. Responses linked before this change are not listed until
   their owner repeats `flare grant <response> --re <flare>`.
   [docs/activity.md](docs/activity.md) describes the index.
+- A flare server's own busy, fault and deadline answers now fail every
+  sharing command with `flare::network::server_error`, in place of
+  `flare::network::bad_answer`, whose repair "check that the server runs
+  flare with the share API" named the wrong cause. The message reads
+  "<server> could not finish the request: <the server's title>", and the
+  fields give `server` and `answer` (`server::busy`, `server::deadline` or
+  `server::fault`). A busy answer recovers with a retry, because the server
+  did no work. A fault or a passed deadline after `flare share` or
+  `flare share --update` may follow a finished write, so it recovers by
+  checking `flare shares` before running again; after any other command it
+  recovers with a retry. Every other code that flare does not know keeps
+  `flare::network::bad_answer`.
+- More failures give their values in fields of the JSON failure document.
+  `flare::login::needed` gives `server`, the saved login's server, which is
+  null when no login is saved, and `flare::login::failed` gives `server`,
+  the server the browser sign-in was for. `flare::keychain::unavailable` gives
+  `action`, the Keychain command that failed: `save`, `read` or `delete`.
+  Every refusal of the share API gives `server`, and
+  `flare::shares::partly_shared` also gives `share`, the share that the
+  server created, when the server names a valid share id.
+- `flare::shares::not_found` now recovers with the hint "check the flare
+  id" and lists "ask the flare's owner to share it with you" as an
+  alternative, in place of one hint that offered both repairs.
+- `flare::state::unusable` now recovers with the hint "fix the state file
+  or directory that the problem names" and lists "remove the state file or
+  directory that the problem names" as an alternative, in place of one
+  hint that offered both repairs.
+- flare's convention tests now run each example that needs no board, flare
+  server, browser or particular date, including the `flare metrics` and
+  `flare share --dry-run` examples on fixture files, and compare its output
+  with a golden file. They also check every path through flare's help
+  against its byte budget.
+- A `flare::state::unusable` failure from the saved login or the login
+  labels file now names the file at the start of its message, so the text
+  form, which prints no fields, says which file to fix. A login.json that
+  flare cannot read or parse reads "the saved login <path> could not be
+  used: <reason>", and a labels.json that flare cannot read, parse or
+  write, or that would pass 64 KiB, reads "the login labels file <path>
+  could not be used: <reason>". A state directory that flare cannot create
+  for either file reads "the state directory <path> could not be created:
+  <reason>". A file past its size limit gives the reason "it is longer than
+  4096 bytes" or "it is longer than 65536 bytes". The `path` field keeps
+  its value. The failure's help line now reads "fix or remove the state
+  file or directory that the problem names".
+- Three failures give the file they name in a field of the JSON failure
+  document, so an agent no longer reads the path out of the message.
+  `flare::board::program_unavailable` gives `program`, the board program
+  flare could not resolve or that did not answer. `flare::state::unusable`
+  gives `path`, the file or directory flare could not use: the saved login
+  or label file, the state directory it could not create, or the loopback
+  state's directory or server file.
+  `flare::opener::failed` gives `program`, the opener that did not start,
+  ran past its deadline or exited with an error. Each field is `null` when
+  flare does not hold the path apart from the message. The messages read
+  as before, except that a board program that does not answer now reads
+  "the board program /path: did not answer".
+- `flare::metrics::unreadable` gives the hint "pass a readable log file"
+  and the alternative "pipe the log to flare metrics on standard input" as
+  two recoveries, in place of one hint that joined them with "or". With
+  standard input on a terminal, its message ends "standard input is a
+  terminal".
+- A failure that needs a new sign-in now gives a `terminal` recovery for
+  `flare login <server>` with the server filled in, because only a person
+  can finish the browser sign-in. This covers `flare::login::needed` with a
+  saved login, `flare::login::failed`, and the server's
+  `flare::tokens::sign_in_needed`, `flare::tokens::code_refused` and
+  `flare::shares::no_email`. With no saved login flare does not know the
+  server, so `flare::login::needed` gives a hint that names `flare login`.
+  These recoveries were `run` recoveries before.
+- `flare::network::bad_answer` recovers with a repair and then a retry:
+  check that the server runs flare with the share API, then run the same
+  command again. In JSON its recovery is of kind `after`. After `flare
+  login`'s token exchange, every step that would run the login again is a
+  `terminal` recovery for `flare login <server>`, because only a person
+  can finish the new sign-in. That covers the step after the check of
+  `flare::network::bad_answer`, and `flare::network::unreachable`,
+  `flare::tokens::unavailable` and `flare::system::unavailable` from the
+  exchange, which recovered with a retry before.
+- A `flare::shares::partly_shared` refusal names `flare grant` as a call
+  with the share the server named, and a `flare::activity::bad_cursor`
+  refusal names `flare activity` with the flare ids the command was given
+  and without a cursor, with an alternative that runs it with `--since`
+  once the right cursor is found.
+- `flare activity` prints its next command as a step: in text, a `Next:`
+  sentence on standard error with `flare activity <id>... --since <cursor>`
+  under it, and in JSON, the same call under `next`. The summary line
+  `Next: --since <cursor>` on standard output is gone, and the JSON
+  `summary.cursor` and `summary.more` stay.
 - The project is renamed from hangar to flare. The crates are `flare-core`,
   `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
   `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.
@@ -224,3 +327,58 @@ This file records the notable changes to flare. The format follows
   session that expires first.
 - `App::new` in `hangar-server` takes a `Site` in place of a `Gate` and a
   `StateDir`.
+
+### Fixed
+
+- A release run whose `release` job cannot read whether the tag already has
+  a release, because of a token, rate-limit, network or GitHub fault, now
+  prints gh's error and `could not read whether <tag> has a release, so the
+  job made no release; re-run the failed jobs once GitHub answers`, and
+  fails before any write. Before this fix the job treated every failed read
+  as "no release" and ran `gh release create`, which hid the cause and could
+  give a tag a second release beside a draft that an earlier run left.
+- `flare share` and `flare share --update` no longer tell the caller to run
+  the same command again after the server answers with success and flare
+  cannot read the answer, or does not answer a request it was sent,
+  because the server may already have made the share or the version, and
+  a second run would make a second one. The failures keep their codes,
+  `flare::network::bad_answer` and `flare::network::unreachable`, and
+  their recovery says to check that `flare shares` does not already list
+  the share or the version before running the command again. A 502, 503
+  or 504 answer with no problem document, which a proxy in front of the
+  server may send after the server made the share, gets the same check,
+  and so does the server's own `flare::shares::unavailable` refusal of a
+  share or a version, which it sends when it does not know whether the
+  write happened; `flare shares` keeps the retry for that refusal. A
+  connection that was refused sends nothing, so it keeps the retry, any
+  other answer that is not a success keeps the server check and retry, and
+  other commands keep their recoveries.
+- The recoveries of `flare::server::not_running` and
+  `flare::server::already_running` carry the `--board` that the failed
+  command was given, so the next `flare serve` or `flare open` names the
+  same board. A `flare::server::port_in_use` for the sign-in port or the
+  hosted listen address, which `flare serve` cannot move, asks for the
+  program that holds the port to stop before `flare serve` runs again; a
+  held `--port` still recovers with `flare serve` without `--port`. The
+  `flare serve` call of `port_in_use` keeps the failed command's `--board`,
+  `--board-program`, `--config` and `--idle-exit`, so a hosted server is
+  not run again as a local one.
+- Sign-ins that arrive while another sign-in is fetching the provider's key
+  set wait for that fetch and take its outcome. When the fetch fails, each
+  of them is refused with the same `ProviderUnavailable` or
+  `ProviderMisbehaved`, so ten sign-ins that arrive while the provider is
+  down cost one fetch and one request deadline. Before, each waiting
+  sign-in fetched again in turn, or was refused as an unknown key. A
+  sign-in that is dropped during its fetch no longer stops the next
+  sign-in with a new key id from fetching for 60 seconds.
+- `BoardStore` publishes a page whose first publish wrote its files and
+  made no commit, which a put stopped at its deadline or answered
+  `board::put::head_moved` leaves behind. The page's first committed
+  version names no previous version. Before, every later publish of that
+  page answered `Unavailable` until a person deleted the files.
+- `save_binding`, `move_binding`, and a publish or a binding whose origin
+  is a page version refuse a version that `HEAD` cannot reach, such as one
+  on another branch or one a reset orphaned, so a binding can no longer pin
+  a version that `versions` does not list. Reading a version with `at`
+  still reads one commit. `docs/board-store.md` holds flare-board's state
+  tables, crash points, invariants and accepted gaps.

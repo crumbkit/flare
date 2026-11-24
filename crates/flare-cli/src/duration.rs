@@ -10,6 +10,17 @@ use std::time::Duration;
 #[cfg(test)]
 mod tests;
 
+/// `duration` as `parse` reads it, in the largest unit that divides it,
+/// such as `8h` for eight hours.
+pub(crate) fn text(duration: Duration) -> String {
+    let seconds = duration.as_secs();
+    let (count, unit) = [(86_400, "d"), (3600, "h"), (60, "m")]
+        .into_iter()
+        .find(|(per, _)| seconds.is_multiple_of(*per))
+        .map_or((seconds, "s"), |(per, unit)| (seconds / per, unit));
+    format!("{count}{unit}")
+}
+
 /// Parses `text` as a duration longer than zero.
 ///
 /// # Errors

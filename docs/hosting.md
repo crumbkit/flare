@@ -124,7 +124,9 @@ Routes:
 - `DELETE /api/tokens/<id>` revokes the caller's token.
 - `POST /api/shares` creates a share, with its grants and the flares it
   responds to.
-- `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
+- `GET /api/shares?scope=mine|with-me&limit=<n>&cursor=<cursor>` lists
+  shares, at most 500 in one answer, newest first. When more follow, the
+  answer's `next` holds the cursor to pass as `cursor` for the next page.
 - `GET /api/shares/<id>` reads a share.
 - `POST /api/shares/<id>/versions` publishes the next version of a share,
   from a `format` and `content`. Only the owner may, and the answer is the
@@ -148,6 +150,10 @@ Routes:
   [activity.md](activity.md) describes.
 - The activity cursor is `fc1.` and a base64url position. A cursor flare did
   not write answers 400 `flare::activity::bad_cursor`.
+- The share list cursor is `fs1.` and base64url of the list's scope, the
+  last entry's time and its share id. A cursor flare did not write, or one
+  of the other scope, answers 400 `flare::shares::bad_cursor`, and two
+  `cursor` values answer 400 `flare::requests::bad_query`.
 
 ## The client secret file
 

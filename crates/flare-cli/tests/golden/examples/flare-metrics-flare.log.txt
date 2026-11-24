@@ -1,0 +1,9 @@
+PagesViewed: 3
+SharesCreated: 1
+SignIns: 1
+Read 7 lines and skipped 2 that are not Flare metric lines.
+DAY         METRIC         COUNT
+2026-11-23  PagesViewed    2
+2026-11-23  SignIns        1
+2026-11-24  PagesViewed    1
+2026-11-24  SharesCreated  1

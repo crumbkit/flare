@@ -192,6 +192,7 @@ impl ResponseStore for DynamoResponseStore {
                 &response_partition(response),
                 PAIRS,
                 MAX_RESPONSE_LINKS,
+                None,
                 ItemKind::Link,
             )
             .await;

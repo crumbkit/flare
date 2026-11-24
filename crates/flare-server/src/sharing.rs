@@ -19,9 +19,11 @@
 //! characters of 32 random bytes, and the store keeps its SHA-256.
 
 mod convert;
+mod list;
 mod run;
 mod tokens;
 
+pub(crate) use convert::list_key;
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 
 use convert::content_error;
@@ -30,7 +32,9 @@ use flare_auth_oidc::Admit;
 use flare_contract::{
     ApiCode, ExchangeRequest, Format, GrantRequest, ShareRequest, VersionRequest,
 };
-use flare_core::{DocumentText, Email, Flares, Principal, ShareTitle, ShareVersion, Timestamp};
+use flare_core::{
+    DocumentText, Email, Flares, ListKey, Principal, ShareTitle, ShareVersion, Timestamp,
+};
 use secrecy::SecretString;
 use std::fmt;
 use std::future::Future;
@@ -70,22 +74,21 @@ impl<S, G, R, T, X> fmt::Debug for Sharing<S, G, R, T, X> {
     }
 }
 
-/// Which shares a list shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Scope {
-    /// The caller's own shares.
-    Mine,
-    /// The shares granted to the caller.
-    WithMe,
-}
+/// Which shares a list shows: the caller's own, or those granted to the
+/// caller. It is the contract's scope, which a share cursor also names.
+pub(crate) use flare_contract::ListScope as Scope;
 
 /// One request to the share API, parsed from its route, query and body.
 #[derive(Debug)]
 pub(crate) enum Call {
     /// `POST /api/shares`.
     Create(ShareRequest),
-    /// `GET /api/shares`.
-    List { scope: Scope, limit: usize },
+    /// `GET /api/shares`, from the first entry or after a key.
+    List {
+        scope: Scope,
+        after: Option<ListKey>,
+        limit: usize,
+    },
     /// `GET /api/shares/{id}`, at a version or at the latest.
     Open(String, Option<ShareVersion>),
     /// `POST /api/shares/{id}/versions`.

@@ -19,7 +19,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/crumbkit/flare"
 # LIB-4: the minimum supported Rust version equals the toolchain pin in
 # rust-toolchain.toml.
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 
 [workspace.dependencies]
 # Random bytes, SHA-256 and constant-time comparison for flare-auth-oidc
@@ -55,7 +55,7 @@ http = "1.5.0"
 # FIFO in its place cannot block the open; tokio and mio already bring it in.
 libc = "0.2.191"
 # Verifies the RS256 signature of an OpenID Connect ID token.
-jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "12.0.0", default-features = false, features = ["aws_lc_rs"] }
 # Renders the Mustache templates of HTML pages in flare-render. Its optional
 # serde feature stays off, because flare-render builds the template data
 # from serde_json values itself.
@@ -93,6 +93,9 @@ flare-server = { path = "crates/flare-server", version = "0.1.0" }
 clap = { version = "=4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
 crumbkit = { version = "=0.6.0", features = ["derive"] }
 crumbkit-usage = "=0.6.0"
+# Installs, checks and prints flare's agent skill (`flare skills`).
+# Evaluated in /evals/hangar-skills-dependencies.
+crumbkit-skills = "=0.6.0"
 # Test-only: the cli profile's convention checks.
 crumbkit-test = "=0.6.0"
 # The JSON Schemas of the binary's documents, which crumbkit's Row and

@@ -78,6 +78,15 @@ raises the version and tag that version.
 | A `build` job fails to build, or the binary does not print `flare <version>` | Yes | Retag |
 | The `formula` job fails because the tap's `scripts/formula` refuses the archive names | Yes | Retag, after the archive names in release.yml are fixed |
 | The `release` job fails | See below | Re-run the failed jobs |
+| The `release` job refuses the tag because its release is already published | No, the release is published | Raise the version and tag it |
+| The `release` job cannot read whether the tag has a release, because the token, a rate limit, the network or GitHub failed | Unchanged: the job writes nothing | Re-run the failed jobs once GitHub answers |
+
+The `version` job's ancestry check catches a tag placed on a commit that is
+not on main, such as a branch commit tagged by mistake. The check runs from
+the release.yml that the tag holds, so a person with write access who tags a
+commit whose release.yml drops the check still publishes that commit. The
+repository has no tag ruleset that limits who creates `v*` tags, so nothing
+stops such a deliberate bypass.
 
 `gh release create` makes a draft release, uploads the files and then
 publishes the draft. When an upload fails, gh deletes the draft, so no
@@ -85,6 +94,23 @@ release exists. When the job is stopped during the upload, by its 10-minute
 timeout or a cancel, the draft stays. The tap reads only published releases,
 so it ignores the draft and keeps the older formula. A re-run of the
 `release` job finds the draft, replaces its files and publishes it.
+
+The `release` job replaces files only on a draft. A manual run, or a re-run
+of the `release` job, on a tag whose release is already published fails with
+`the release v<version> is already published, and a published release keeps
+its archives; raise the version in Cargo.toml and tag the new version`, and
+leaves the release, its archives and SHA256SUMS untouched. The rebuilt
+archives would differ from the published ones, so the tap's formula and every
+installed copy would stop matching the release. The recovery is a new
+version: land a pull request that raises the version and tag that version.
+
+The `release` job first asks gh whether the tag has a release. When gh
+answers `release not found`, the job creates the release. When the read fails
+for any other reason, the job prints gh's error and `could not read whether
+v<version> has a release, so the job made no release; re-run the failed jobs
+once GitHub answers`, and fails before it creates, uploads or publishes
+anything, so a draft left by an earlier run stays the tag's only release. The
+recovery is to re-run the failed jobs.
 
 A pull request that changes the workflow, and a manual run with no tag, run
 every job except `release`, so they build the archives and run the tap check

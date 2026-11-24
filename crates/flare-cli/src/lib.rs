@@ -37,7 +37,7 @@ mod sharing;
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
 
-use cli::{CommandsVerb, SchemasCommand, SelfVerb, Verb};
+use cli::{CommandsVerb, SKILL, SchemasCommand, SelfVerb, Verb};
 use codes::Failed;
 use env::Snapshot;
 use std::process::ExitCode;
@@ -47,7 +47,6 @@ const INTERRUPTED: u8 = 130;
 
 /// Parses the command line, runs the command and returns the exit code.
 /// `interrupted` marks the usage log's line as a run that Ctrl-C ended.
-#[must_use]
 pub fn run(interrupted: impl Fn()) -> ExitCode {
     let (cli, mut run) = match crumbkit::parse::<Cli>(&TOOL) {
         Ok(parsed) => parsed,
@@ -138,6 +137,7 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             let result = Ok::<_, crumbkit::Error>(crumbkit_usage::findings(&mut run, &TOOL, &args));
             crumbkit::finish(run, crumbkit_usage::SELF_USAGE, result)
         }
+        Verb::Skills { command } => crumbkit_skills::run(run, &[SKILL], command),
     }
 }
 

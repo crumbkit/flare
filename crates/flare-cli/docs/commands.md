@@ -12,8 +12,8 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare open`](#flare-open): Open the running server's index, a page or a binding in a browser
 - [`flare publish`](#flare-publish): Publish a new version of a page from an HTML or Markdown file
 - [`flare bind`](#flare-bind): Save a binding that fills a page's slots with records
-- [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
-- [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
+- [`flare login`](#flare-login): Sign in to a flare server and keep its token in the Keychain
+- [`flare logout`](#flare-logout): Revoke this computer's flare token and delete it
 - [`flare share`](#flare-share): Share a Markdown file with named people, or as a response to flares
 - [`flare show`](#flare-show): Show one version of a share you can open, or its latest
 - [`flare grant`](#flare-grant): Grant an existing share to more people
@@ -22,6 +22,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
+- [`flare skills`](#flare-skills): Manage flare's agent skill
 - [`flare self`](#flare-self): Review flare's own use
 
 ### Arguments
@@ -167,7 +168,7 @@ Writes: applies all items or none.
 
 ## `flare login`
 
-Sign in to a flare server in the browser and keep its token in the Keychain
+Sign in to a flare server and keep its token in the Keychain
 
 ### Arguments
 
@@ -193,7 +194,7 @@ Effects: additive, not idempotent, closed-world.
 
 ## `flare logout`
 
-Revoke this computer's token for the flare server and delete it
+Revoke this computer's flare token and delete it
 
 ### Arguments
 
@@ -336,11 +337,12 @@ Effects: additive, not idempotent, closed-world.
 
 List your shares or the shares granted to you
 
-The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+The server lists at most 500 shares in one answer. A list cut short names the next call with --cursor, which resumes the list after the last share printed, and --all follows the cursor until the list ends.
 
 ### Arguments
 
 - `--with-me`: List the shares granted to you in place of your own
+- `--cursor <CURSOR>`: List the shares after this cursor, which an earlier flare shares printed
 - `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
 - `--all`: Print every row
 
@@ -356,6 +358,12 @@ List the 20 newest shares granted to you.
 
 ```sh
 flare shares --with-me --limit 20
+```
+
+List the shares granted to you after the cursor an earlier call printed.
+
+```sh
+flare shares --with-me --cursor fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg
 ```
 
 ### Columns
@@ -536,6 +544,95 @@ flare schemas show flare/shares/v1
 
 - `id`: The document's id, such as `shelf/books-list/v1`.
 - `schema`: The document's 2020-12 JSON Schema.
+
+Effects: read-only, closed-world.
+
+## `flare skills`
+
+Manage flare's agent skill
+
+### Commands
+
+- [`flare skills install`](#flare-skills-install): Install flare's skills into each agent skills directory that exists
+- [`flare skills check`](#flare-skills-check): Check that each installed copy of flare's skills matches this flare
+- [`flare skills print`](#flare-skills-print): Print flare's skill
+
+## `flare skills install`
+
+Install flare's skills into each agent skills directory that exists
+
+### Arguments
+
+- `--dir <DIR>`: Install into this skills directory in place of the agent skills directories
+- `--force`: Replace a file or a link that install did not write with the skill's own folder
+
+### Examples
+
+Install flare's skills into each agent skills directory that exists.
+
+```sh
+flare skills install
+```
+
+Install flare's skills, replacing a file or a link that install did not write.
+
+```sh
+flare skills install --force
+```
+
+### Columns
+
+- `state`: What install did: failed, skipped, written or unchanged.
+- `skill`: The skill's name, which names its folder in each skills directory, such as `shelf`.
+- `dirs`: The skills directories that share this copy, as named. Directories that resolve to one place through a symbolic link share one copy.
+- `reason`: Why install skipped or failed, or what it replaced under --force, such as `linked to /src/shelf/skill`, or null.
+
+### Columns that `--long` adds
+
+- `path`: The SKILL.md file that install wrote or left, or the skill's other file whose write failed, at its real path.
+
+Effects: additive, idempotent, closed-world.
+
+## `flare skills check`
+
+Check that each installed copy of flare's skills matches this flare
+
+### Arguments
+
+- `--dir <DIR>`: Check this skills directory in place of the agent skills directories
+
+### Examples
+
+Report each agent skills directory where flare's skills are missing or differ.
+
+```sh
+flare skills check
+```
+
+### Columns
+
+- `state`: Whether the copy is the binary's: missing, differs, unreadable, linked or current.
+- `skill`: The skill's name, which names its folder in each skills directory, such as `shelf`.
+- `dirs`: The skills directories that share this copy, as named. Directories that resolve to one place through a symbolic link share one copy.
+- `reason`: Why the copy is missing a file, differs, cannot be read or is linked, such as `written by shelf 0.2.0`, `REFERENCE.md is missing` or `linked to /src/shelf/skill`, or null.
+
+### Columns that `--long` adds
+
+- `path`: The SKILL.md file that was checked, at its real path.
+
+Effects: read-only, closed-world.
+
+## `flare skills print`
+
+Print flare's skill
+
+### Examples
+
+Print flare's skill.
+
+```sh
+flare skills print
+```
 
 Effects: read-only, closed-world.
 

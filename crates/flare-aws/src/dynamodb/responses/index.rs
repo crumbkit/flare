@@ -177,6 +177,7 @@ pub(super) async fn unindex(
             &index_partition(reader),
             &index_markers_of(response),
             MAX_MARKERS,
+            None,
             ItemKind::IndexMarker,
         )
         .await

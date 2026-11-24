@@ -24,6 +24,8 @@ crumbkit.workspace = true
 # crumbkit-durable replaces the saved login file whole (DUR-1).
 crumbkit-durable.workspace = true
 crumbkit-process.workspace = true
+# `flare skills` writes the embedded skill into agent skills directories.
+crumbkit-skills.workspace = true
 crumbkit-usage.workspace = true
 flare-auth-loopback.workspace = true
 flare-auth-oidc.workspace = true

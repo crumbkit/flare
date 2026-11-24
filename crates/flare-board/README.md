@@ -30,6 +30,10 @@ A typed Markdown record, such as a task, reads as one JSON object: each
 front-matter field is a key, and the prose after the closing `---` line is
 under `$body`. A write keeps the file's field order and its prose bytes.
 
+[docs/board-store.md](../../docs/board-store.md) lists the states of each
+stored thing, the points where a write can stop, and the invariants
+flare-board keeps.
+
 ## Opening a store
 
 ```rust,no_run

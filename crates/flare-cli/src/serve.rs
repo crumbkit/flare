@@ -13,13 +13,14 @@
 
 use crate::board;
 use crate::cli::ServeArgs;
-use crate::codes::Failed;
+use crate::codes::{Failed, HeldPort};
 use crate::config::{
     self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig, Site as Configured,
 };
 use crate::documents::Served;
 use crate::env::Snapshot;
 use crate::{log, open};
+use crumbkit::Call;
 use flare_auth_loopback::{Loopback, Served as Reach, local_principal};
 use flare_auth_oidc::{
     Admit, ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator,
@@ -130,6 +131,28 @@ impl Signals {
 ///
 /// Returns the failure that stopped it before or while it served.
 pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
+    serve_board(args, env).await.map_err(|failed| {
+        failed
+            .for_board(args.board.board.as_deref())
+            .serving_again(again(args))
+    })
+}
+
+/// `flare serve` with the arguments of `args` except `--port`, which a
+/// held port's recovery leaves out.
+fn again(args: &ServeArgs) -> Call {
+    let path = |call: Call, name: &'static str, value: Option<&Path>| match value {
+        Some(value) => call.value(name, value.display().to_string()),
+        None => call,
+    };
+    let call = path(Call::new(&["serve"]), "board", args.board.board.as_deref());
+    let call = path(call, "board_program", args.board.board_program.as_deref());
+    let call = path(call, "config", args.config.as_deref());
+    call.value("idle_exit", crate::duration::text(args.idle_exit))
+}
+
+/// Serves the board that `args` names.
+async fn serve_board(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
     let (root, store) = board::checked_store(&args.board, env).await?;
     let config = config::load(args.config.as_deref(), env)?;
     let metrics = Metrics::new(config.metrics);
@@ -139,9 +162,14 @@ pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Sto
     }
 }
 
-fn bind_failed(error: BindError) -> Failed {
+/// The failure of a bind, where `held` says which port a held `port` is.
+fn bind_failed(error: BindError, held: impl Fn(u16) -> HeldPort) -> Failed {
     match error {
-        BindError::PortInUse { port } => Failed::PortInUse { port },
+        BindError::PortInUse { port } => Failed::PortInUse {
+            port,
+            held: held(port),
+            again: None,
+        },
         other => system(other),
     }
 }
@@ -159,13 +187,22 @@ async fn local(
         None => None,
     };
     if open::answers(root, env).await {
-        return Err(Failed::AlreadyRunning);
+        return Err(Failed::AlreadyRunning { board: None });
     }
     let state = board::loopback_state(root, env)?;
     let mut signals = Signals::install()?;
     let wanted = oidc.as_ref().map(|_| SIGN_IN_PORT);
-    let listeners = Listeners::bind(args.port, wanted).map_err(bind_failed)?;
+    let listeners = Listeners::bind(args.port, wanted).map_err(|error| {
+        bind_failed(error, |port| {
+            if wanted == Some(port) && args.port != port {
+                HeldPort::SignIn
+            } else {
+                HeldPort::Launch
+            }
+        })
+    })?;
     let principal = local_principal(&env.user()).map_err(|error| Failed::StateUnusable {
+        path: None,
         problem: format!("the account name is not a principal: {error}"),
     })?;
     let loopback = Loopback::new(listeners.port(), principal, Reach::Everything).map_err(system)?;
@@ -211,7 +248,8 @@ async fn hosted(
         None => None,
     };
     let mut signals = Signals::install()?;
-    let listeners = Listeners::bind_hosted(listen).map_err(bind_failed)?;
+    let listeners =
+        Listeners::bind_hosted(listen).map_err(|error| bind_failed(error, |_| HeldPort::Hosted))?;
     log::start();
     tracing::info!(
         board = %root.display(),
@@ -276,9 +314,7 @@ async fn serve(
         .serve(app, shutdown)
         .await
         .map_err(|error| match error {
-            ServeError::State(error) => Failed::StateUnusable {
-                problem: error.to_string(),
-            },
+            ServeError::State(error) => board::state_unusable(&error),
             other => system(other),
         })?;
     let stop = match stopped {

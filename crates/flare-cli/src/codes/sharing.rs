@@ -4,8 +4,18 @@
 //! a caller sees `flare::shares::not_a_creator` whether it reads the API or
 //! the command. No message holds a token or a login code.
 
-use crumbkit::{Call, Code, Failure, Recovery};
+mod calls;
+mod next_run;
+
+pub(crate) use calls::{activity_call, shares_call};
+pub use next_run::NextRun;
+
+use super::Failed;
+use super::sign_in::sign_in;
+use crumbkit::{Call, Code, Failure, Field, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
+use flare_core::ShareId;
+use next_run::{bad_answer, check_shares, retry};
 use std::fmt;
 
 /// No login is saved, or the Keychain holds no token for it.
@@ -18,6 +28,9 @@ pub const LOGIN_INVALID_SERVER: Code<'static> = Code::from_spelling("flare::logi
 pub const KEYCHAIN_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::keychain::unavailable");
 /// The server did not answer.
 pub const NETWORK_UNREACHABLE: Code<'static> = Code::from_spelling("flare::network::unreachable");
+/// The server answered that it was too busy for the request, or failed or
+/// stopped while it ran.
+pub const NETWORK_SERVER_ERROR: Code<'static> = Code::from_spelling("flare::network::server_error");
 /// The server answered with something that is not the share API's answer.
 pub const NETWORK_BAD_ANSWER: Code<'static> = Code::from_spelling("flare::network::bad_answer");
 /// The file to share could not be read.
@@ -32,15 +45,25 @@ pub const FILES_UNKNOWN_FORMAT: Code<'static> = Code::from_spelling("flare::file
 pub enum SharingFailed {
     /// No login is saved, or its token is gone from the Keychain.
     #[error("no flare login is saved on this computer{}", for_server(server.as_deref()))]
-    #[failure(code = LOGIN_NEEDED, recovery = Recovery::Run(Call::new(&["login"]).arg("server")))]
+    #[failure(
+        code = LOGIN_NEEDED,
+        recovery = sign_in(server.as_deref()),
+        field(server = server.as_deref())
+    )]
     LoginNeeded {
         /// The server of the saved login, when there is one.
         server: Option<String>,
     },
     /// The browser sign-in did not hand back a login code.
     #[error("the browser sign-in did not finish: {problem}")]
-    #[failure(code = LOGIN_FAILED, recovery = Recovery::Run(Call::new(&["login"]).arg("server")))]
+    #[failure(
+        code = LOGIN_FAILED,
+        recovery = sign_in(Some(server)),
+        field(server = server)
+    )]
     LoginFailed {
+        /// The server the sign-in was for.
+        server: String,
         /// What went wrong.
         problem: String,
     },
@@ -62,6 +85,7 @@ pub enum SharingFailed {
     #[failure(
         code = KEYCHAIN_UNAVAILABLE,
         recovery = Recovery::Retry,
+        field(action = *action),
         alternative = Recovery::hint("flare keeps its token in the macOS Keychain through /usr/bin/security; on another system, FLARE_KEYCHAIN names a program that takes the same commands")
     )]
     KeychainUnavailable {
@@ -72,18 +96,44 @@ pub enum SharingFailed {
     },
     /// The server did not answer.
     #[error("{server} did not answer: {problem}")]
-    #[failure(code = NETWORK_UNREACHABLE, recovery = Recovery::Retry, field(server = server))]
+    #[failure(
+        code = NETWORK_UNREACHABLE,
+        recovery = retry(*next),
+        field(server = server)
+    )]
     Unreachable {
         /// The server.
         server: String,
         /// What went wrong.
         problem: String,
+        /// What the silence means for running the command again.
+        next: NextRun,
+    },
+    /// The server was too busy for the request, or failed or stopped while
+    /// it ran.
+    #[error("{server} could not finish the request: {title}")]
+    #[failure(
+        code = NETWORK_SERVER_ERROR,
+        recovery = retry(*next),
+        field(server = server),
+        field(answer = *answer)
+    )]
+    ServerError {
+        /// The server.
+        server: String,
+        /// The server's code: `server::busy`, `server::deadline` or
+        /// `server::fault`.
+        answer: &'static str,
+        /// The server's title.
+        title: String,
+        /// What the answer means for running the command again.
+        next: NextRun,
     },
     /// The server's answer is not the share API's answer.
     #[error("{server} answered with something flare cannot read: {problem}")]
     #[failure(
         code = NETWORK_BAD_ANSWER,
-        hint = "check that the server runs flare with the share API, then try again",
+        recovery = bad_answer(*next),
         field(server = server)
     )]
     BadAnswer {
@@ -91,6 +141,8 @@ pub enum SharingFailed {
         server: String,
         /// What is wrong with the answer.
         problem: String,
+        /// What the answer means for running the command again.
+        next: NextRun,
     },
     /// The file to share could not be read.
     #[error("{path} could not be read: {problem}")]
@@ -127,6 +179,26 @@ pub enum SharingFailed {
     },
 }
 
+impl Failed {
+    /// The same failure of a `flare shares` with `--with-me` when `with_me`
+    /// holds, when it is a refusal of the share API.
+    pub(crate) fn for_shares(self, with_me: bool) -> Self {
+        match self {
+            Self::Refused(refused) => Self::Refused(refused.for_shares(with_me)),
+            other => other,
+        }
+    }
+
+    /// The same failure naming `flares`, the flares a `flare activity`
+    /// asked about, when it is a refusal of the share API.
+    pub(crate) fn for_flares(self, flares: &[ShareId]) -> Self {
+        match self {
+            Self::Refused(refused) => Self::Refused(refused.for_flares(flares)),
+            other => other,
+        }
+    }
+}
+
 fn for_server(server: Option<&str>) -> String {
     server.map_or_else(String::new, |server| format!(" for {server}"))
 }
@@ -137,6 +209,19 @@ pub struct Refused {
     code: ApiCode,
     detail: Option<String>,
     server: String,
+    /// The share that a partly finished share created, when the server
+    /// named one that parses as a share id.
+    share: Option<ShareId>,
+    /// The flares of the `flare activity` that was refused, which a
+    /// `bad_cursor` recovery names.
+    flares: Vec<ShareId>,
+    /// Whether the `flare shares` that was refused listed the shares
+    /// granted to the caller, which a `shares::bad_cursor` recovery names.
+    with_me: bool,
+    /// Whether the refused request was a write of a share or a version
+    /// whose outcome the server does not know, which `shares::unavailable`
+    /// says after a write, so the recovery checks `flare shares` first.
+    maybe_written: bool,
 }
 
 impl Refused {
@@ -146,6 +231,53 @@ impl Refused {
             code,
             detail,
             server: server.to_owned(),
+            share: None,
+            flares: Vec::new(),
+            with_me: false,
+            maybe_written: false,
+        }
+    }
+
+    /// The same refusal of a `flare activity` that asked about `flares`.
+    pub(crate) fn for_flares(mut self, flares: &[ShareId]) -> Self {
+        self.flares = flares.to_vec();
+        self
+    }
+
+    /// The same refusal of a `flare shares` that listed the shares granted
+    /// to the caller when `with_me` holds.
+    pub(crate) fn for_shares(mut self, with_me: bool) -> Self {
+        self.with_me = with_me;
+        self
+    }
+
+    /// The same refusal naming the share that the problem document's
+    /// `share` field names. A value that is not a share id is dropped, and
+    /// the recovery then names the share with a placeholder.
+    pub(crate) fn naming(mut self, share: Option<&str>) -> Self {
+        self.share = share.and_then(|text| ShareId::try_from(text).ok());
+        self
+    }
+
+    /// The typed call that replaces the API's hint for `partly_shared` and
+    /// the two `bad_cursor` codes, whose hints name `flare grant`, `flare
+    /// activity` and `flare shares` in prose for API callers, or `None` for
+    /// every other code. crumbkit
+    /// renders the call against flare's commands, so a renamed command or
+    /// flag fails the tests in place of printing a stale command.
+    fn typed_call(&self) -> Option<Recovery> {
+        match self.code {
+            ApiCode::PartlyShared => {
+                let grant = Call::new(&["grant"]);
+                let grant = match &self.share {
+                    Some(share) => grant.value("id", share.as_str()),
+                    None => grant.arg("id"),
+                };
+                Some(Recovery::Run(grant.arg("with").arg("re")))
+            }
+            ApiCode::BadCursor => Some(Recovery::Run(activity_call(&self.flares))),
+            ApiCode::SharesBadCursor => Some(Recovery::Run(shares_call(self.with_me))),
+            _ => None,
         }
     }
 }
@@ -174,15 +306,59 @@ impl Failure for Refused {
         Code::from_spelling(self.code.text())
     }
 
-    /// The API's recovery for the code. A `run` recovery is `flare login`
-    /// with the server, the only command the API names.
+    /// The recovery for the code. A `shares::unavailable` refusal of a
+    /// write checks `flare shares` first. `partly_shared` and `bad_cursor`
+    /// take the typed call that `Refused::typed_call` builds. `not_found`
+    /// takes the first of the API hint's two repairs, and
+    /// `Refused::alternatives` gives the second. Every other
+    /// code takes the API's recovery, where a `run` recovery, which the API
+    /// uses only for `flare login`, becomes the `terminal` sign-in that
+    /// `sign_in` builds, because only a person can finish it.
     fn recovery(&self) -> Recovery {
+        if self.maybe_written {
+            return check_shares();
+        }
+        if let Some(typed) = self.typed_call() {
+            return typed;
+        }
+        if self.code == ApiCode::ShareNotFound {
+            return Recovery::hint("check the flare id");
+        }
         match self.code.recovery(&self.server) {
-            ApiRecovery::Run { .. } => {
-                Recovery::Run(Call::new(&["login"]).value("server", self.server.clone()))
-            }
+            ApiRecovery::Run { .. } => sign_in(Some(&self.server)),
             ApiRecovery::Retry => Recovery::Retry,
             ApiRecovery::Hint { text } => Recovery::hint(text),
+        }
+    }
+
+    /// The server, which a dry run has none of, and the share a partly
+    /// finished share created, when the server named one.
+    fn fields(&self) -> Vec<Field<'_>> {
+        let server = (!self.server.is_empty()).then(|| Field::new("server", self.server.as_str()));
+        let share = self
+            .share
+            .as_ref()
+            .map(|share| Field::new("share", share.as_str()));
+        server.into_iter().chain(share).collect()
+    }
+
+    /// A bad cursor can also be replaced by the cursor that the last `flare
+    /// activity` or `flare shares` printed, and a flare that is not found
+    /// can be shared with the caller by its owner.
+    fn alternatives(&self) -> Vec<Recovery> {
+        match self.code {
+            ApiCode::BadCursor => vec![Recovery::after(
+                "find the cursor that the last flare activity printed",
+                Then::Run(activity_call(&self.flares).arg("since")),
+            )],
+            ApiCode::ShareNotFound => {
+                vec![Recovery::hint("ask the flare's owner to share it with you")]
+            }
+            ApiCode::SharesBadCursor => vec![Recovery::after(
+                "find the cursor that the last flare shares printed",
+                Then::Run(shares_call(self.with_me).arg("cursor")),
+            )],
+            _ => Vec::new(),
         }
     }
 }
@@ -204,3 +380,6 @@ pub(crate) const API_CODES: [Code<'static>; API_COUNT] = {
     }
     codes
 };
+
+#[cfg(test)]
+mod tests;

@@ -33,8 +33,7 @@ pub(crate) fn run(args: &MetricsArgs) -> Result<Listing<MetricRow, MetricTotals>
         if input.is_terminal() {
             return Err(Failed::MetricsUnreadable {
                 path: shown.to_owned(),
-                problem: "standard input is a terminal; pass a log file, or pipe the log in"
-                    .to_owned(),
+                problem: "standard input is a terminal".to_owned(),
             });
         }
         read(input.lock(), shown, &mut totals)?;
