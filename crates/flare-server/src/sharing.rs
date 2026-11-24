@@ -213,6 +213,38 @@ pub(crate) enum TokenCheck {
     Refused(ApiCode),
 }
 
+/// One version of a Markdown share, as the reading page shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reading {
+    /// The share's title.
+    pub(crate) title: String,
+    /// The owner's address.
+    pub(crate) owner: String,
+    /// Whether the reader is the owner.
+    pub(crate) own: bool,
+    /// The addresses the share is granted to, for its owner and its
+    /// admins. A reader may not list the grants, so the page says it is
+    /// shared with them.
+    pub(crate) with: Option<Vec<String>>,
+    /// The version shown.
+    pub(crate) version: u32,
+    /// When the version was published, in seconds since 1970.
+    pub(crate) published: u64,
+    /// The version's Markdown.
+    pub(crate) markdown: String,
+}
+
+/// Why the reading page cannot show a share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReadRefusal {
+    /// The share is missing, the reader has no standing in it, the version
+    /// does not exist or the share is not Markdown. Each answers the same,
+    /// so a reader cannot tell a refused share from a missing one.
+    NotFound,
+    /// A store did not answer.
+    Unavailable,
+}
+
 /// The share API with its stores' types erased.
 pub(crate) trait Api: Send + Sync {
     /// Checks a bearer token at `now`.
@@ -236,6 +268,15 @@ pub(crate) trait Api: Send + Sync {
 
     /// Runs one request of an authenticated caller.
     fn run<'a>(&'a self, who: &'a Principal, call: Call, now: Timestamp) -> Boxed<'a, Answer>;
+
+    /// Opens share `id` for the reading page: version `version` when the
+    /// query names one, and the latest otherwise.
+    fn read<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: Option<&'a str>,
+    ) -> Boxed<'a, Result<Reading, ReadRefusal>>;
 }
 
 #[cfg(test)]

@@ -58,6 +58,8 @@ pub(crate) enum Handler {
     Launch,
     Finish,
     Style,
+    Asset,
+    Read,
     Root,
     Index,
     Page,
@@ -119,7 +121,7 @@ const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 const BROWSER: (Need, Option<Access>) = (Need::TokenOrCookie, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 29] = [
+pub(crate) static ROUTES: [Route; 31] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -153,10 +155,24 @@ pub(crate) static ROUTES: [Route; 29] = [
     ),
     route(
         Method::GET,
+        "/flare/assets/<name>",
+        OPEN,
+        Handler::Asset,
+        Sites::Both,
+    ),
+    route(
+        Method::GET,
         "/",
         (Need::Credential, None),
         Handler::Root,
         Sites::Both,
+    ),
+    route(
+        Method::GET,
+        "/s/<name>",
+        (Need::Credential, None),
+        Handler::Read,
+        Sites::Hosted,
     ),
     route(Method::GET, "/flare/", READ, Handler::Index, Sites::Both),
     route(

@@ -1,24 +1,39 @@
 //! [`Flares::activity`]: the responses and comment events of one or more
 //! flares since a position, oldest first.
 //!
-//! A call reads the response store's head first and then the links and
-//! comment events up to it, which share one sequence of positions, so an
-//! item written during the call is left for the next call and none is
-//! skipped. A comment event shows to everyone who can open the flare, with
-//! the comment's text as it is now, or none after a delete. Each call opens every named flare and every response
-//! again, so a cursor grants nothing by itself. A response the caller
-//! cannot open is left out without a trace: the page holds no count of
-//! hidden responses, and when the page is not cut short its cursor is the
-//! store's head, which every response to any flare moves. A call that
+//! Responses come from the caller's own activity index (see the `index`
+//! module), which holds an entry only for a response the caller could
+//! open when the entry was written, so a call never reads a response
+//! someone else hid from the caller. Comment events come from the comment
+//! store: a comment event shows to everyone who can open the flare, with
+//! the comment's text as it is now, or none after a delete. Index entries,
+//! links and comment events all take positions from one sequence, so a
+//! call reads the response store's head first and then the entries and
+//! events up to it, and an item written during the call is left for the
+//! next call and none is skipped. Each call opens every named flare and
+//! every response again, so neither a cursor nor an entry grants anything
+//! by itself, and an entry whose response the caller can no longer open is
+//! skipped without a trace. The page holds no count of hidden responses,
+//! and when the page is not cut short its cursor is the store's head,
+//! which every link, entry and comment event anywhere moves. A call that
 //! reads past hidden responses reads on until its page holds `limit`
-//! items or every response up to the head is read, so a page that says
-//! more items follow is full.
+//! items or every item up to the head is read, so a page that says more
+//! items follow is full unless the call examined its most.
+//!
+//! An entry's position is its own, so a response the caller gains access
+//! to after their cursor shows as new activity, even when its link is
+//! older than the cursor.
+//!
+//! One call examines at most [`MAX_EXAMINED`] index entries and comment
+//! events together. Only entries the caller can no longer open and events
+//! of comments that are gone can fill that many without filling the page,
+//! so a page cut by it can be short and say that more follow.
 
 use super::{FlareError, Flares, MAX_FLARES, flare_refused, once_each};
 use crate::auth::Principal;
 use crate::comment::{CommentAction, CommentBody, CommentEvent, CommentId};
 use crate::name::PrincipalId;
-use crate::response::{MAX_PAGE, Position, ResponseLink};
+use crate::response::{IndexEntry, MAX_PAGE, Position, Reader};
 use crate::share::{Share, ShareId, ShareVersion};
 use crate::sharing::ShareError;
 use crate::store::{
@@ -77,6 +92,10 @@ pub struct CommentActivity {
     /// The item's position, which a cursor counts.
     pub position: Position,
 }
+
+/// The most index entries one activity call examines before it answers
+/// the items it found, with `more` set.
+pub const MAX_EXAMINED: usize = 1_000;
 
 /// One response to a flare that the caller can open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +160,11 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 .map_err(flare_refused)?;
         }
         let limit = limit.clamp(1, MAX_PAGE);
+        let reader = Reader::Person(
+            who.email()
+                .map(crate::Email::principal_id)
+                .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))?,
+        );
         let head = self
             .responses
             .head()
@@ -148,25 +172,30 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
             .map_err(|_| FlareError::ResponsesUnavailable)?;
         let mut items = Vec::new();
         let mut last = after;
+        let mut examined = 0_usize;
         loop {
-            let (entries, cut_at) = self.read(&flares, last, head, limit).await?;
+            let (entries, cut_at) = self.read(&reader, &flares, last, head, limit).await?;
             for entry in entries {
-                if items.len() == limit {
+                if items.len() == limit || examined == MAX_EXAMINED {
                     return Ok(ActivityPage {
                         items,
                         last,
                         more: true,
                     });
                 }
+                examined = examined.saturating_add(1);
                 last = entry.position();
                 if let Some(item) = self.item(who, entry).await? {
                     items.push(item);
                 }
             }
             match cut_at {
-                // A cut read leaves links above `cut_at`, so the call reads
-                // on from there until the page fills or no read is cut.
-                Some(position) if items.len() < limit => last = position,
+                // A cut read leaves entries above `cut_at`, so the call
+                // reads on from there until the page fills, the call has
+                // examined its most, or no read is cut.
+                Some(position) if items.len() < limit && examined < MAX_EXAMINED => {
+                    last = position;
+                }
                 Some(position) => {
                     return Ok(ActivityPage {
                         items,
@@ -185,13 +214,15 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         }
     }
 
-    /// The links and comment events of `flares` above `after` and up to
-    /// `head`, oldest first, with the position where the earliest cut read
-    /// stopped. Each read stops after `limit + 1` entries, so only the
-    /// entries at or below that position are complete across every flare
-    /// and every store, and the rest are dropped for the next read.
+    /// The caller's index entries and the comment events on `flares`
+    /// above `after` and up to `head`, oldest first, with the position
+    /// where the earliest cut read stopped. Each read stops after
+    /// `limit + 1` items, so only the items at or below that position are
+    /// complete across every flare and every store, and the rest are
+    /// dropped for the next read.
     async fn read(
         &self,
+        reader: &Reader,
         flares: &[ShareId],
         after: Position,
         head: Position,
@@ -201,9 +232,9 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         let mut cut_at: Option<Position> = None;
         let bound = limit.saturating_add(1);
         for flare in flares {
-            let links = self
+            let indexed = self
                 .responses
-                .to_flare(flare, after, head, bound)
+                .visible(reader, flare, after, head, bound)
                 .await
                 .map_err(|_| FlareError::ResponsesUnavailable)?;
             let events = self
@@ -212,7 +243,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 .await
                 .map_err(|_| FlareError::CommentsUnavailable)?;
             for (len, stop) in [
-                (links.len(), links.last().map(|link| link.position)),
+                (indexed.len(), indexed.last().map(|entry| entry.position)),
                 (events.len(), events.last().map(|event| event.position)),
             ] {
                 if len > limit
@@ -221,7 +252,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                     cut_at = Some(cut_at.map_or(stop, |known| known.min(stop)));
                 }
             }
-            entries.extend(links.into_iter().map(Entry::Link));
+            entries.extend(indexed.into_iter().map(Entry::Index));
             entries.extend(events.into_iter().map(Entry::Event));
         }
         if let Some(stop) = cut_at {
@@ -239,7 +270,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         entry: Entry,
     ) -> Result<Option<ActivityItem>, FlareError> {
         match entry {
-            Entry::Link(link) => self.response_item(who, link).await,
+            Entry::Index(indexed) => self.response_item(who, indexed).await,
             Entry::Event(event) => self.comment_item(event).await,
         }
     }
@@ -263,25 +294,25 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         })))
     }
 
-    /// The item for `link`, or `None` when the caller cannot open the
+    /// The item for `entry`, or `None` when the caller cannot open the
     /// response.
     async fn response_item(
         &self,
         who: &Principal,
-        link: ResponseLink,
+        entry: IndexEntry,
     ) -> Result<Option<ActivityItem>, FlareError> {
-        let response = match self.shares.open(who, &link.response, None).await {
+        let response = match self.shares.open(who, &entry.response, None).await {
             Ok(opened) => opened.share,
             Err(ShareError::NotFound) => return Ok(None),
             Err(other) => return Err(FlareError::Share(other)),
         };
         let others = self
             .responses
-            .of_response(&link.response)
+            .of_response(&entry.response)
             .await
             .map_err(|_| FlareError::ResponsesUnavailable)?;
         let mut also = Vec::new();
-        for other in others.iter().filter(|other| other.flare != link.flare) {
+        for other in others.iter().filter(|other| other.flare != entry.flare) {
             match self.shares.open(who, &other.flare, None).await {
                 Ok(opened) => also.push(opened.share),
                 Err(ShareError::NotFound) => {}
@@ -289,26 +320,26 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
             }
         }
         Ok(Some(ActivityItem::Response(ResponseActivity {
-            flare: link.flare,
+            flare: entry.flare,
             response,
-            version: link.version,
-            at: link.at,
+            version: entry.version,
+            at: entry.at,
             also,
-            position: link.position,
+            position: entry.position,
         })))
     }
 }
 
-/// A link or a comment event, read together.
+/// An index entry or a comment event, read together.
 enum Entry {
-    Link(ResponseLink),
+    Index(IndexEntry),
     Event(CommentEvent),
 }
 
 impl Entry {
     fn position(&self) -> Position {
         match self {
-            Self::Link(link) => link.position,
+            Self::Index(entry) => entry.position,
             Self::Event(event) => event.position,
         }
     }

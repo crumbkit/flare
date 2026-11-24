@@ -78,5 +78,7 @@ mod ops;
 mod pages;
 #[path = "server/process.rs"]
 mod process;
+#[path = "server/reading.rs"]
+mod reading;
 #[path = "server/versions.rs"]
 mod versions;

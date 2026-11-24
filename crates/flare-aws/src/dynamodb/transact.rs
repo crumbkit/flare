@@ -53,6 +53,8 @@ pub(crate) enum ItemRole {
     CommentCount,
     CursorItem,
     CursorCount,
+    IndexMarker,
+    IndexEntry,
 }
 
 /// The items of one transaction, with the role of each.

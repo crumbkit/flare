@@ -1,6 +1,9 @@
 //! [`Reply`]: every answer the server gives, and the one function that
 //! turns it into a response with the threat model's policy and its six
-//! other headers, so no handler can leave one out.
+//! other headers, so no handler can leave one out. A reading page with code
+//! or a diagram adds `script-src 'self'` to the policy, a hosted reply adds
+//! `connect-src 'self'`, and an embedded asset, whose name holds its
+//! content's hash, is cached for a year.
 
 use crate::app::bytes_alias::Body;
 use crate::site::SiteKind;
@@ -19,15 +22,27 @@ pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-in
 /// connections to their own origin, which the comment routes need.
 pub(crate) const HOSTED_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
+/// The policy of a reading page with code or a diagram: flare's policy with
+/// the page's own scripts allowed. /evals/flare-reading-scripts-under-csp
+/// found that Shiki and Mermaid run under it with no violation, and need no
+/// `'unsafe-eval'`, worker or `blob:` source.
+pub(crate) const SCRIPT_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; script-src 'self'";
+
+/// The policy of a hosted reading page with code or a diagram: the hosted
+/// policy with the page's own scripts allowed.
+pub(crate) const HOSTED_SCRIPT_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; script-src 'self'";
+
+/// How long a browser keeps an embedded asset: a year, without asking
+/// again, because a new build gives a changed file a new name.
+const IMMUTABLE: &str = "public, max-age=31536000, immutable";
+
 const CORP: HeaderName = HeaderName::from_static("cross-origin-resource-policy");
 const COOP: HeaderName = HeaderName::from_static("cross-origin-opener-policy");
 
-/// The headers every reply carries.
-const FIXED: [(HeaderName, &str); 7] = [
-    (CONTENT_SECURITY_POLICY, POLICY),
+/// The headers every reply carries, beside its policy and its cache rule.
+const FIXED: [(HeaderName, &str); 5] = [
     (X_CONTENT_TYPE_OPTIONS, "nosniff"),
     (REFERRER_POLICY, "same-origin"),
-    (CACHE_CONTROL, "no-store"),
     (CORP, "same-origin"),
     (COOP, "same-origin"),
     (X_FRAME_OPTIONS, "DENY"),
@@ -48,6 +63,8 @@ pub(crate) struct Reply {
     body: Bytes,
     location: Option<String>,
     cookies: Vec<String>,
+    scripts: bool,
+    immutable: bool,
 }
 
 impl Reply {
@@ -59,6 +76,8 @@ impl Reply {
             body: Bytes::new(),
             location: None,
             cookies: Vec::new(),
+            scripts: false,
+            immutable: false,
         }
     }
 
@@ -87,6 +106,20 @@ impl Reply {
             location: Some(location),
             ..Self::empty(StatusCode::SEE_OTHER)
         }
+    }
+
+    /// Lets the page run flare's own scripts: its policy becomes
+    /// [`SCRIPT_POLICY`].
+    pub(crate) fn with_scripts(mut self) -> Self {
+        self.scripts = true;
+        self
+    }
+
+    /// Marks the reply as an embedded asset that never changes under its
+    /// name, so browsers cache it for a year.
+    pub(crate) fn immutable(mut self) -> Self {
+        self.immutable = true;
+        self
     }
 
     /// Adds a `Set-Cookie` header.
@@ -125,14 +158,23 @@ impl Reply {
         let mut response = Response::new(Body::new(self.body));
         *response.status_mut() = self.status;
         let headers = response.headers_mut();
+        let policy = match (site, self.scripts) {
+            (SiteKind::Hosted, true) => HOSTED_SCRIPT_POLICY,
+            (SiteKind::Hosted, false) => HOSTED_POLICY,
+            (_, true) => SCRIPT_POLICY,
+            (_, false) => POLICY,
+        };
+        let cache = if self.immutable {
+            IMMUTABLE
+        } else {
+            "no-store"
+        };
+        headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(policy));
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static(cache));
         for (name, value) in FIXED {
             headers.insert(name, HeaderValue::from_static(value));
         }
         if site == SiteKind::Hosted {
-            headers.insert(
-                CONTENT_SECURITY_POLICY,
-                HeaderValue::from_static(HOSTED_POLICY),
-            );
             headers.insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
         }
         for (name, value) in extra {

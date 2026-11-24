@@ -5,11 +5,13 @@
 //! a key. Share ids are 32 lower-case hexadecimal characters, version
 //! numbers are 10 digits and times are 20 digits. A login code's digest is
 //! 64 hexadecimal characters, a token id is 32 and a response position is
-//! 20 digits.
+//! 20 digits. An activity index entry's sort key names its flare before
+//! its position, both of fixed length, so one reader's entries on one flare
+//! sort in position order.
 
 use flare_core::{
-    CommentId, CommentKey, CursorName, Digest, Email, KeyId, Position, PrincipalId, ShareId,
-    ShareVersion, Timestamp, TokenId, TokenLabel,
+    CommentId, CommentKey, CursorName, Digest, Email, KeyId, Position, PrincipalId, Reader,
+    ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
 };
 
 /// The sort key prefix of an owner or grantee entry. A list is a query of
@@ -31,6 +33,14 @@ pub(crate) const SESSION_LINK_PREFIX: &str = "S#";
 
 /// The sort key prefix of a sealing key, under the key partition.
 pub(crate) const SEALING_KEY_PREFIX: &str = "V#";
+
+/// The sort key prefix of an activity index entry, under its reader's
+/// partition.
+pub(crate) const INDEX_ENTRY_PREFIX: &str = "A#";
+
+/// The sort key prefix of an activity index marker, under its reader's
+/// partition.
+pub(crate) const INDEX_MARKER_PREFIX: &str = "R#";
 
 /// The digits of an inverted time in an entry's sort key.
 const TIME_DIGITS: usize = 20;
@@ -160,6 +170,23 @@ impl Key {
         Self::new(flare_partition(flare), link_sort_key(position))
     }
 
+    /// The activity index entry of `reader` on `flare` at `position`.
+    pub(crate) fn index_entry(reader: &Reader, flare: &ShareId, position: Position) -> Self {
+        Self::new(
+            index_partition(reader),
+            index_entry_sort_key(flare, position),
+        )
+    }
+
+    /// The marker of `reader`'s entry for `response` on `flare`, which
+    /// holds the entry's position.
+    pub(crate) fn index_marker(reader: &Reader, response: &ShareId, flare: &ShareId) -> Self {
+        Self::new(
+            index_partition(reader),
+            format!("{}{}", index_markers_of(response), flare.as_str()),
+        )
+    }
+
     /// The item that says which flare and position hold a comment.
     pub(crate) fn comment_pointer(id: &CommentId) -> Self {
         Self::new(format!("CMT#{}", id.as_str()), "CMT")
@@ -274,6 +301,27 @@ pub(crate) fn link_of(sort_key: &str) -> Option<(Timestamp, Digest)> {
         Timestamp::from_secs(digits.parse().ok()?),
         Digest::from_hex(hex)?,
     ))
+}
+
+/// The partition of a reader's activity index.
+pub(crate) fn index_partition(reader: &Reader) -> String {
+    match reader {
+        Reader::Person(person) => format!("ACT#{}", person.as_str()),
+    }
+}
+
+/// `A#<flare>#<position>`, with the position in 20 digits.
+pub(crate) fn index_entry_sort_key(flare: &ShareId, position: Position) -> String {
+    format!(
+        "{INDEX_ENTRY_PREFIX}{}#{:020}",
+        flare.as_str(),
+        position.get()
+    )
+}
+
+/// `R#<response>#`, the prefix of every marker of one response.
+pub(crate) fn index_markers_of(response: &ShareId) -> String {
+    format!("{INDEX_MARKER_PREFIX}{}#", response.as_str())
 }
 
 /// The partition of the links from a response.

@@ -109,13 +109,14 @@ async fn a_client_that_asks_for_json_gets_a_problem_document_with_the_code() {
 }
 
 /// The routes that answer without a credential.
-const OPEN: [&str; 6] = [
+const OPEN: [&str; 7] = [
     "/up",
     "/ready",
     "/launch",
     "/launch/probe",
     "/auth/oidc/finish",
     "/flare/style.css",
+    "/flare/assets/<name>",
 ];
 
 #[tokio::test]

@@ -8,6 +8,19 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- flare's stylesheet takes the light and dark colours of the signed Flare
+  mockup, so pages at `/pages/<name>`, the edit form and the conflict view
+  change colour.
+- `flare activity` reads a per-reader index that flare writes when a
+  response is linked and when a share is granted, so one call reads only
+  responses the caller can open. A flare's readers can no longer stall its
+  owner's activity by posting thousands of responses the owner cannot open.
+  A response granted to you after your cursor now shows as new activity.
+  `flare grant` indexes every named person again, so repeating a grant
+  repairs entries that a failed write left out. One call examines at most
+  1,000 index entries and comment events together. Responses linked before this change are not listed until
+  their owner repeats `flare grant <response> --re <flare>`.
+  [docs/activity.md](docs/activity.md) describes the index.
 - A hosted site whose config has `hosted.stores` keeps browser sessions and
   the sign-in sealing keys in DynamoDB, so several processes share them and
   a deploy signs nobody out. A session now expires 12 hours after its last
@@ -155,6 +168,20 @@ This file records the notable changes to flare. The format follows
   `StateDir`.
 
 ### Added
+
+- A hosted site shows a Markdown share at `/s/<id>` to a signed-in reader
+  the share is granted to, in the signed Flare layout: a header with the
+  flare name and the reader's initials, a line naming who shared it, with
+  whom, the version and the date, then the article. `?version=<n>` shows an
+  older version. A refused share and a missing share give the same
+  not-found page. Mermaid diagrams are drawn, code is coloured by Shiki
+  with a Copy button, tables scroll in their own box on a narrow screen,
+  and a "Figure N." paragraph directly after a diagram, table or code block
+  becomes its caption. `docs/reading.md` lists the languages and diagram
+  types. The page uses IBM Plex Sans and JetBrains Mono, which flare
+  serves from its own origin at `/flare/assets/`; they are vendored in
+  `crates/flare-server/fonts/` with their SIL Open Font License files, and
+  no request goes to a third-party font host.
 
 - `GET /api/shares` answers `next`, a cursor, when more shares follow the
   page, and takes `cursor=<cursor>` to read the page after it.

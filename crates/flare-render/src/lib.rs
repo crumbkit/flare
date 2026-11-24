@@ -15,9 +15,11 @@
 //!   into a [`RecordWrite`], [`Outcome::Unchanged`] or a [`Conflict`].
 //! - [`conflict_view`] draws a conflict and the form that saves the edit
 //!   onto the newer record.
+//! - [`article`] renders a Markdown share for the reading page.
 //! - [`stylesheet`] is the stylesheet that the markup's class names use.
 
 mod apply;
+mod article;
 mod body;
 mod check;
 mod conflict;
@@ -33,6 +35,7 @@ mod token;
 mod values;
 
 pub use apply::{ApplyError, Conflict, Outcome, RecordWrite};
+pub use article::{Article, article};
 pub use check::{Flaw, FlawKind, TemplateFlaws, check_page};
 pub use conflict::conflict_view;
 pub use form::{FormError, FormTarget, LocalPath, LocalPathError, Notice, edit_form};

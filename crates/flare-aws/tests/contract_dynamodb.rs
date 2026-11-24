@@ -15,7 +15,7 @@ pub mod stand_in;
 
 use flare_aws::Stores;
 use flare_core::contract::grant_store::{self, GrantFixture};
-use flare_core::contract::response_store::{self, ResponseFixture};
+use flare_core::contract::response_store::{self, ResponseFixture, index as response_index};
 use flare_core::contract::sealing_keys::{self, KeyFixture};
 use flare_core::contract::session_store::{self, SessionFixture};
 use flare_core::contract::share_store::{self, ShareFixture};
@@ -168,6 +168,24 @@ mod keys {
 
     concurrent_suite!(sealing_keys, keys, KeyFixture;
         concurrent_calls_agree_on_one_key,
+    );
+}
+
+mod index {
+    use super::*;
+
+    suite!(response_index, responses, ResponseFixture;
+        an_entry_reads_back_only_for_its_reader_and_flare,
+        each_entry_takes_a_new_position_and_the_head_follows,
+        a_repeated_entry_keeps_its_first_position,
+        unindex_removes_only_the_readers_entries_for_the_response,
+        a_readers_list_holds_only_newer_entries_up_to_the_bound,
+        an_index_of_many_entries_writes_each,
+        pairs_name_the_links_from_each_response_to_the_flare,
+    );
+
+    concurrent_suite!(response_index, responses, ResponseFixture;
+        concurrent_indexes_get_distinct_positions,
     );
 }
 

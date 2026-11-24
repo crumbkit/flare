@@ -64,6 +64,8 @@ pub(crate) enum ItemKind {
     CommentEvent,
     CommentKeySlot,
     Cursor,
+    IndexEntry,
+    IndexMarker,
 }
 
 impl ItemKind {
@@ -90,6 +92,8 @@ impl ItemKind {
             Self::CommentEvent => "comment event",
             Self::CommentKeySlot => "comment key slot",
             Self::Cursor => "cursor",
+            Self::IndexEntry => "activity index entry",
+            Self::IndexMarker => "activity index marker",
         }
     }
 }

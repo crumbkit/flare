@@ -108,8 +108,9 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
 - A request with an `Authorization` header is a token request, whatever
   cookies it holds.
 - Hosted pages carry `connect-src 'self'`, which limits the requests a
-  page makes to the site's own origin. The policy has no `script-src`, so a
-  hosted page runs no script today.
+  page makes to the site's own origin. Only a reading page with code or a
+  diagram adds `script-src 'self'` (see [reading.md](reading.md)), so every
+  other hosted page runs no script.
 
 ## Crash points
 

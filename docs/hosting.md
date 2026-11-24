@@ -10,6 +10,11 @@ up around it.
 - `/up`, for health checks. It answers 200 with no sign-in.
 - The stylesheet, `/` and `/flare/`, the index of pages.
 - `/pages/<name>`, the newest version of a page.
+- `/s/<id>`, the reading page of a Markdown share, for a signed-in reader
+  the share is granted to. `?version=<n>` shows an older version.
+  [reading.md](reading.md) describes the page.
+- `/flare/assets/<file>`, the reading page's script files, with a cache of
+  one year.
 - `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in.
 - The share API, when the config has `hosted.stores`. The share API
   section below lists its routes.
@@ -151,7 +156,8 @@ Routes:
 - A flare the caller may not read answers exactly as a missing one, 404
   `flare::shares::not_found`.
 - Activity shows only responses the caller may read. It gives no count of
-  the others.
+  the others. It reads a per-reader index that
+  [activity.md](activity.md) describes.
 - The activity cursor is `fc1.` and a base64url position. A cursor flare did
   not write answers 400 `flare::activity::bad_cursor`.
 - The share list cursor is `fs1.` and base64url of the list's scope, the
@@ -292,7 +298,8 @@ is the only limit on sign-in requests:
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.
 - A hosted reply's `Content-Security-Policy` has `connect-src 'self'`,
-  which limits the requests a page makes to this site's origin. It has no
-  `script-src`, so a hosted page runs no script today.
+  which limits the requests a page makes to this site's origin. Only a
+  reading page with code or a diagram adds `script-src 'self'`, so every
+  other hosted page runs no script.
 - Every reply carries `Strict-Transport-Security: max-age=63072000`, so a
   browser that has visited uses HTTPS for two years.

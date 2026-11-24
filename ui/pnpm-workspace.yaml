@@ -1,6 +1,8 @@
-# pnpm reads its settings from this file. The workspace holds Flare's
-# headless comment core and its React binding.
+# pnpm reads its settings from this file. The workspace holds the reading
+# page's script, which flare-server embeds, and Flare's headless comment
+# core and its React binding.
 packages:
+  - flare
   - headless
   - react
 

@@ -32,6 +32,10 @@ tracing.workspace = true
 # Parses and normalises the hosted site's public origin.
 url.workspace = true
 
+[build-dependencies]
+# Reads Vite's manifest, which names the reading page's entry script.
+serde_json.workspace = true
+
 [features]
 # Exposes PublicOrigin::loopback_http, an http origin on localhost for tests
 # that serve a hosted site without TLS. The flare command never enables

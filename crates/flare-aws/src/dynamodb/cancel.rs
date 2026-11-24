@@ -76,7 +76,8 @@ fn rank(role: ItemRole) -> u8 {
         | ItemRole::CommentItem
         | ItemRole::CommentPointer
         | ItemRole::CommentKeySlot
-        | ItemRole::CursorItem => 1,
+        | ItemRole::CursorItem
+        | ItemRole::IndexMarker => 1,
         ItemRole::GrantCount
         | ItemRole::ShareCount
         | ItemRole::LabelSlot
@@ -92,7 +93,8 @@ fn rank(role: ItemRole) -> u8 {
         | ItemRole::LinkItem
         | ItemRole::SessionItem
         | ItemRole::SessionLink
-        | ItemRole::CommentEvent => 3,
+        | ItemRole::CommentEvent
+        | ItemRole::IndexEntry => 3,
     }
 }
 

@@ -6,6 +6,7 @@
 mod api;
 mod edit;
 mod oidc;
+mod read;
 
 pub(crate) use api::ApiRoute;
 mod view;
@@ -278,6 +279,8 @@ where
             "text/css; charset=utf-8",
             docs::stylesheet(),
         )),
+        (Handler::Asset, _) => crate::assets::serve(name),
+        (Handler::Read, Some((admitted, _))) => read::page(ctx, &admitted, name).await,
         (Handler::Probe, _) => probe(ctx),
         (Handler::Launch, _) => launch::launch(ctx),
         (Handler::Finish, _) => launch::finish(ctx).await,

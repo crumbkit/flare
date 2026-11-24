@@ -10,7 +10,9 @@ use flare_auth_oidc::{Admit, Reach};
 use flare_core::memory::{
     MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
 };
-use flare_core::{Creators, Email, Flares};
+use flare_core::{
+    Creators, DocumentText, Email, Flares, Principal, ShareContent, ShareId, Shares, Timestamp,
+};
 use flare_server::Sharing;
 use serde_json::{Value, json};
 use url::Url;
@@ -28,6 +30,8 @@ pub struct Api {
     pub hosted: Hosted,
     /// The stores' fault switches.
     pub faults: Faults,
+    /// The share store the API keeps its shares in.
+    pub shares: FaultyShares,
 }
 
 impl Api {
@@ -52,6 +56,11 @@ impl Api {
     pub async fn start_full(admit: Admit, extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
+        let shares = FaultyShares {
+            fail: faults.shares.clone(),
+            ..FaultyShares::default()
+        };
+        let store = shares.clone();
         let hosted = Hosted::start_attached(Admits::Domain, None, move |app| {
             let admit = admit.clone();
             let creators = Creators::only(
@@ -62,14 +71,12 @@ impl Api {
             );
             let sequence = MemorySequence::new();
             let flares = Flares::new(
-                FaultyShares {
-                    fail: switches.shares.clone(),
-                    ..FaultyShares::default()
-                },
+                store,
                 MemoryGrantStore::new(),
                 FaultyResponses {
                     fail: switches.responses.clone(),
                     inner: MemoryResponseStore::with_sequence(sequence.clone()),
+                    fail_index: switches.index.clone(),
                 },
                 MemoryCommentStore::with_sequence(sequence),
                 MemoryCursorStore::new(),
@@ -85,7 +92,48 @@ impl Api {
             extra(app.with_sharing(Sharing::new(flares, tokens, recipients, admit)))
         })
         .await;
-        Self { hosted, faults }
+        Self {
+            hosted,
+            faults,
+            shares,
+        }
+    }
+
+    /// Publishes `markdown` as the next version of share `id`, as its owner
+    /// `<owner>@example.com`.
+    pub async fn publish(&self, owner: &str, id: &str, markdown: &str) {
+        let email = Email::try_from(format!("{owner}@example.com").as_str()).unwrap();
+        let who = Principal::with_email(email.principal_id(), email);
+        Shares::new(self.shares.clone(), MemoryGrantStore::new())
+            .publish(
+                &who,
+                &ShareId::try_from(id).unwrap(),
+                ShareContent::Document(DocumentText::try_from(markdown).unwrap()),
+                Timestamp::from_secs(1_795_219_200),
+            )
+            .await
+            .unwrap();
+    }
+
+    /// Shares `markdown` titled `title` with `with`, which must succeed, and
+    /// returns its id.
+    pub async fn share_markdown(
+        &self,
+        token: &str,
+        title: &str,
+        markdown: &str,
+        with: &[&str],
+    ) -> String {
+        let body = json!({
+            "title": title,
+            "format": "markdown",
+            "content": markdown,
+            "with": with,
+            "re": [],
+        });
+        let (status, shared) = self.json("POST", "/api/shares", Some(token), body).await;
+        assert_eq!(status, 201, "{shared}");
+        shared["share"]["id"].as_str().unwrap().to_owned()
     }
 
     /// The origin, as `flare login` names it.

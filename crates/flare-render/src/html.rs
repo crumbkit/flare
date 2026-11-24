@@ -22,6 +22,11 @@ impl Html {
         Self(out)
     }
 
+    /// Markup this crate built, with every outside value escaped.
+    pub(crate) fn trusted(markup: String) -> Self {
+        Self(markup)
+    }
+
     /// The markup.
     #[must_use]
     pub fn as_str(&self) -> &str {
