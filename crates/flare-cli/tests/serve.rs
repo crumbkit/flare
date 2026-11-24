@@ -35,6 +35,7 @@ use flare_auth_loopback::StateDir;
 use run::{Home, Ran};
 use secrecy::ExposeSecret as _;
 use std::io::{BufRead as _, BufReader};
+use std::os::unix::fs::PermissionsExt as _;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -410,6 +411,31 @@ fn open_names_a_page_or_a_binding_and_refuses_an_unknown_name() {
     home.run(&["open", "no-such-page", "--board", &root])
         .assert_failed("flare::pages::not_found");
     running.stop("-TERM");
+}
+
+#[test]
+fn serve_names_an_untrusted_state_directory_in_the_path_field() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let state = StateDir::for_board(&home.state(), &board.root());
+    std::fs::create_dir_all(state.path()).unwrap();
+    let chmod = |mode| {
+        std::fs::set_permissions(state.path(), std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    chmod(0o755);
+    let (root, program) = paths(&board);
+    let mut args = serve_args(&board, &root, &program);
+    args.push("--json");
+    let ran = home.run(&args);
+    ran.assert_failed("flare::state::unusable");
+    let printed: serde_json::Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"path": state.path().to_str().unwrap()}),
+        "{printed}"
+    );
+    chmod(0o700);
+    Running::start(&home, &board, &[]).stop("-TERM");
 }
 
 #[test]

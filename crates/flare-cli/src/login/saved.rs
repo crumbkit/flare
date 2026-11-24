@@ -19,6 +19,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+mod tests;
+
 /// The largest login file flare reads, in bytes.
 const MAX_BYTES: u64 = 4096;
 
@@ -54,17 +57,17 @@ fn read_capped(path: &Path, limit: u64) -> Result<Option<String>, Failed> {
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(unusable(error)),
+        Err(error) => return Err(unusable(path, error)),
     };
     let mut text = String::new();
     file.take(limit + 1)
         .read_to_string(&mut text)
-        .map_err(unusable)?;
+        .map_err(|error| unusable(path, error))?;
     if u64::try_from(text.len()).unwrap_or(u64::MAX) > limit {
-        return Err(unusable(format!(
-            "{} is longer than {limit} bytes",
-            path.display()
-        )));
+        return Err(unusable(
+            path,
+            format!("{} is longer than {limit} bytes", path.display()),
+        ));
     }
     Ok(Some(text))
 }
@@ -72,14 +75,15 @@ fn read_capped(path: &Path, limit: u64) -> Result<Option<String>, Failed> {
 /// Replaces the file at `path` with `bytes`, mode 0600.
 fn write(path: &Path, bytes: &[u8]) -> Result<(), Failed> {
     if let Some(directory) = path.parent() {
-        std::fs::create_dir_all(directory).map_err(unusable)?;
+        std::fs::create_dir_all(directory).map_err(|error| unusable(directory, error))?;
     }
-    write_atomically(path, bytes, Mode::Private).map_err(unusable)
+    write_atomically(path, bytes, Mode::Private).map_err(|error| unusable(path, error))
 }
 
 fn labels(env: &Snapshot) -> Result<BTreeMap<String, String>, Failed> {
-    match read_capped(&labels_path(env)?, MAX_LABEL_BYTES)? {
-        Some(text) => serde_json::from_str(&text).map_err(unusable),
+    let path = labels_path(env)?;
+    match read_capped(&path, MAX_LABEL_BYTES)? {
+        Some(text) => serde_json::from_str(&text).map_err(|error| unusable(&path, error)),
         None => Ok(BTreeMap::new()),
     }
 }
@@ -104,18 +108,21 @@ pub(crate) fn remember_label(env: &Snapshot, server: &str, label: &str) -> Resul
         return Ok(());
     }
     labels.insert(server.to_owned(), label.to_owned());
-    let bytes = serde_json::to_vec_pretty(&labels).map_err(unusable)?;
+    let path = labels_path(env)?;
+    let bytes = serde_json::to_vec_pretty(&labels).map_err(|error| unusable(&path, error))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_LABEL_BYTES {
-        return Err(unusable(format!(
-            "the labels file would pass {MAX_LABEL_BYTES} bytes"
-        )));
+        return Err(unusable(
+            &path,
+            format!("the labels file would pass {MAX_LABEL_BYTES} bytes"),
+        ));
     }
-    write(&labels_path(env)?, &bytes)
+    write(&path, &bytes)
 }
 
-fn unusable(problem: impl std::fmt::Display) -> Failed {
+/// [`Failed::StateUnusable`] for the file or directory at `path`.
+fn unusable(path: &Path, problem: impl std::fmt::Display) -> Failed {
     Failed::StateUnusable {
-        path: None,
+        path: Some(path.display().to_string()),
         problem: format!("the saved login could not be used: {problem}"),
     }
 }
@@ -127,8 +134,11 @@ fn unusable(problem: impl std::fmt::Display) -> Failed {
 /// Returns [`Failed::StateUnusable`] for a file that cannot be read or is
 /// not a saved login.
 pub(crate) fn load(env: &Snapshot) -> Result<Option<Saved>, Failed> {
-    match read_capped(&path(env)?, MAX_BYTES)? {
-        Some(text) => serde_json::from_str(&text).map(Some).map_err(unusable),
+    let path = path(env)?;
+    match read_capped(&path, MAX_BYTES)? {
+        Some(text) => serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|error| unusable(&path, error)),
         None => Ok(None),
     }
 }
@@ -148,8 +158,9 @@ pub(crate) fn required(env: &Snapshot) -> Result<Saved, Failed> {
 ///
 /// Returns [`Failed::StateUnusable`].
 pub(crate) fn store(env: &Snapshot, saved: &Saved) -> Result<(), Failed> {
-    let bytes = serde_json::to_vec_pretty(saved).map_err(unusable)?;
-    write(&path(env)?, &bytes)
+    let path = path(env)?;
+    let bytes = serde_json::to_vec_pretty(saved).map_err(|error| unusable(&path, error))?;
+    write(&path, &bytes)
 }
 
 /// Removes the saved login. A missing file counts as removed.
@@ -158,9 +169,10 @@ pub(crate) fn store(env: &Snapshot, saved: &Saved) -> Result<(), Failed> {
 ///
 /// Returns [`Failed::StateUnusable`].
 pub(crate) fn forget(env: &Snapshot) -> Result<(), Failed> {
-    match std::fs::remove_file(path(env)?) {
+    let path = path(env)?;
+    match std::fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(unusable(error)),
+        Err(error) => Err(unusable(&path, error)),
     }
 }

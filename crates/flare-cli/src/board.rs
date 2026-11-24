@@ -3,7 +3,7 @@
 
 use crate::codes::Failed;
 use crate::env::Snapshot;
-use flare_auth_loopback::StateDir;
+use flare_auth_loopback::{StateDir, StateError};
 use flare_board::{BoardConfig, BoardStore, Committer, OpenError, ProgramError};
 use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
@@ -63,12 +63,17 @@ pub(crate) fn root(given: Option<&Path>, need: Need, env: &Snapshot) -> Result<P
 ///
 /// Returns [`Failed::StateUnusable`] when neither is an absolute path.
 pub(crate) fn state_home(env: &Snapshot) -> Result<PathBuf, Failed> {
-    flare_auth_loopback::state_home(env.get("XDG_STATE_HOME"), env.get("HOME")).map_err(|error| {
-        Failed::StateUnusable {
-            path: None,
-            problem: error.to_string(),
-        }
-    })
+    flare_auth_loopback::state_home(env.get("XDG_STATE_HOME"), env.get("HOME"))
+        .map_err(|error| state_unusable(&error))
+}
+
+/// [`Failed::StateUnusable`] for `error`, with the path it names, so
+/// `flare open` and `flare serve` report the loopback state alike.
+pub(crate) fn state_unusable(error: &StateError) -> Failed {
+    Failed::StateUnusable {
+        path: error.path().map(|path| path.display().to_string()),
+        problem: error.to_string(),
+    }
 }
 
 /// The loopback state directory of the board at `root`.
@@ -126,7 +131,7 @@ pub(crate) fn open(root: &Path, program: PathBuf, env: &Snapshot) -> Result<Boar
         .create(&children)
         .map_err(|error| Failed::StateUnusable {
             path: Some(children.display().to_string()),
-            problem: error.to_string(),
+            problem: format!("{}: {error}", children.display()),
         })?;
     let committer = Committer::new("flare", "flare@localhost").map_err(unavailable)?;
     let config = BoardConfig::new(

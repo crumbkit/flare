@@ -162,10 +162,7 @@ fn record(root: &std::path::Path, env: &Snapshot) -> Result<ServerRecord, Failed
         Err(StateError::Malformed { .. }) => {
             Err(not_running("server.json is not a flare server file"))
         }
-        Err(error) => Err(Failed::StateUnusable {
-            path: None,
-            problem: error.to_string(),
-        }),
+        Err(error) => Err(board::state_unusable(&error)),
     }
 }
 

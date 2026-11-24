@@ -188,7 +188,9 @@ This file records the notable changes to flare. The format follows
   document, so an agent no longer reads the path out of the message.
   `flare::board::program_unavailable` gives `program`, the board program
   flare could not resolve or that did not answer. `flare::state::unusable`
-  gives `path`, the state directory flare could not create.
+  gives `path`, the file or directory flare could not use: the saved login
+  or label file, the state directory it could not create, or the loopback
+  state's directory or server file.
   `flare::opener::failed` gives `program`, the opener that did not start,
   ran past its deadline or exited with an error. Each field is `null` when
   flare does not hold the path apart from the message. The messages read
