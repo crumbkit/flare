@@ -17,7 +17,7 @@ mod shares;
 pub(crate) use grants::{grants, revoke};
 
 pub(crate) use images::LocalImage;
-pub(crate) use shares::shares;
+pub(crate) use shares::{row, shares};
 
 use crate::cli::{GrantArgs, ShareArgs, ShowArgs};
 use crate::client::{self, Api};

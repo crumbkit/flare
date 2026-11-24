@@ -1,0 +1,50 @@
+Search the shares you can open, newest first
+
+A word or a "quoted phrase" matches inside a title, in any case. type:markdown or type:html filters by kind, and from:me, from: an address or from: a name this server knows filters by who shared it. A comma means any of, as in from:ana,me, a leading minus leaves a part out, and a space means every part must match. docs/search.md in the flare repository has more examples.
+
+Usage: flare search [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>
+          The search, such as 'budget -type:html' or 'from:me "review notes"'
+
+Options:
+      --limit <N>
+          Print at most this many rows, up to 500
+          
+          [default: 50]
+
+      --all
+          Print every row
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare search 'budget -type:html'
+          List the shares you can open whose title holds budget, leaving out HTML shares
+
+  flare search 'from:ana@example.org,me "review notes"' --limit 20
+          List the 20 newest shares from ana or you whose title holds review notes
+
+Columns:
+  id       The share's id.
+  title    The share's title.
+  owner    The owner's identifier.
+  role     The caller's role: `owner`, `admin` or `reader`.
+  version  The latest version.
+  created  When it was created, in RFC 3339 UTC.
+
+Effects: read-only, closed-world.

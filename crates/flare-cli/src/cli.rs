@@ -3,6 +3,7 @@
 pub(crate) mod comments;
 mod files;
 mod schemas;
+mod search;
 mod sharing;
 mod skills;
 mod teams;
@@ -12,6 +13,7 @@ pub(crate) use comments::{
 };
 pub(crate) use files::{FilesVerb, SweepArgs};
 pub(crate) use schemas::SchemasCommand;
+pub(crate) use search::SearchArgs;
 pub(crate) use skills::{FlareSkills, SKILL};
 
 pub(crate) use sharing::{
@@ -104,6 +106,15 @@ pub(crate) enum Verb {
     CommentEdit(CommentEditArgs),
     /// Delete a comment or reply you wrote
     CommentDelete(CommentDeleteArgs),
+    /// Search the shares you can open, newest first
+    ///
+    /// A word or a "quoted phrase" matches inside a title, in any case.
+    /// type:markdown or type:html filters by kind, and from:me, from: an
+    /// address or from: a name this server knows filters by who shared it.
+    /// A comma means any of, as in from:ana,me, a leading minus leaves a
+    /// part out, and a space means every part must match. docs/search.md
+    /// in the flare repository has more examples.
+    Search(SearchArgs),
     /// Manage a hosted site's image files
     Files {
         /// What to do with the files.
@@ -256,7 +267,7 @@ pub const TOOL: Tool = Tool::new()
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "show",
                     "grant", "revoke", "grants", "shares", "activity", "comments", "comment",
-                    "reply", "comment-edit", "comment-delete", "metrics",
+                    "reply", "comment-edit", "comment-delete", "search", "metrics",
                 ],
                 ROOT,
             )
@@ -346,6 +357,7 @@ pub const TOOL: Tool = Tool::new()
     comments::REPLY_LEAF,
     comments::EDIT_LEAF,
     comments::DELETE_LEAF,
+    search::LEAF,
     Leaf::new(&["metrics"])
         .examples(&[
             Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),
@@ -381,5 +393,10 @@ pub const TOOL: Tool = Tool::new()
     )
     .failures(
         Failures::new()
-            .exits(&[Exit::new(130, "Ctrl-C stopped the server.").commands(&[&["serve"]])]),
+            .exits(&[
+                Exit::new(130, "Ctrl-C stopped the server.").commands(&[&["serve"]]),
+                Exit::new(2, "The search has an error, so it did not run.")
+                    .commands(&[&["search"]])
+                    .failures(&[crate::codes::search::SEARCH_INVALID]),
+            ]),
     );

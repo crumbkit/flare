@@ -3,6 +3,7 @@
 
 use super::calls::{activity_call, shares_call};
 use super::next_run::check_shares;
+use crate::codes::search::Searched;
 use crate::codes::sign_in::sign_in;
 use crumbkit::{Call, Code, Failure, Field, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
@@ -32,6 +33,8 @@ pub struct Refused {
     /// a keyed write, such as a comment, that `comments::unavailable` says
     /// may have happened.
     pub(super) again: Option<Box<Call>>,
+    /// The query and errors of a search that did not run.
+    pub(in crate::codes) searched: Box<Searched>,
 }
 
 impl Refused {
@@ -46,6 +49,7 @@ impl Refused {
             with_me: false,
             maybe_written: false,
             again: None,
+            searched: Box::default(),
         }
     }
 
@@ -93,6 +97,10 @@ impl std::error::Error for Refused {}
 impl Failure for Refused {
     fn code(&self) -> Code<'_> {
         Code::from_spelling(self.code.text())
+    }
+
+    fn causes(&self) -> Vec<String> {
+        self.searched.causes()
     }
 
     /// The recovery for the code. A `shares::unavailable` refusal of a

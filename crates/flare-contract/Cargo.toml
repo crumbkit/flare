@@ -10,6 +10,9 @@ rust-version.workspace = true
 [dependencies]
 # The cursor's text is base64url of its position.
 base64.workspace = true
+# A search's parsed parts and errors become the answer's `parsed` and the
+# problem document's `errors`.
+flare-query.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

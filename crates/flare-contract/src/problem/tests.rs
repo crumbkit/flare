@@ -1,4 +1,5 @@
 use super::*;
+use crate::{SearchError, SearchSpan};
 
 #[test]
 fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
@@ -15,6 +16,7 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
         "comments",
         "cursors",
         "images",
+        "search",
     ];
     for code in ApiCode::ALL {
         let parts: Vec<&str> = code.text().split("::").collect();
@@ -175,4 +177,37 @@ fn an_oversized_image_answers_413_every_other_image_refusal_422_and_the_format_r
         panic!("the format refusal gives a hint");
     };
     assert!(text.contains("PNG") && text.contains("SVG"), "{text}");
+}
+
+#[test]
+fn an_invalid_search_answers_422_and_lists_each_error_with_its_code_span_and_fix() {
+    let error = SearchError {
+        code: "flare::search::unknown_filter".to_owned(),
+        span: SearchSpan { start: 0, end: 4 },
+        message: "There is no filter called form; did you mean from?".to_owned(),
+    };
+    let problem = ProblemDocument::new(ApiCode::SearchInvalid, "https://f.example")
+        .with_errors(vec![error.clone()]);
+    let value = serde_json::to_value(&problem).unwrap();
+    assert_eq!(value["status"], 422);
+    assert_eq!(value["code"], "flare::search::invalid");
+    assert_eq!(value["errors"][0]["code"], "flare::search::unknown_filter");
+    assert_eq!(value["errors"][0]["span"]["end"], 4);
+    let back: ProblemDocument = serde_json::from_value(value).unwrap();
+    assert_eq!(back.errors, vec![error]);
+    let person = ProblemDocument::new(ApiCode::UnknownPerson, "https://f.example");
+    assert_eq!(person.status, 422);
+    assert_eq!(person.code, "flare::search::unknown_person");
+}
+
+#[test]
+fn a_problem_without_search_errors_has_no_errors_field() {
+    let problem = ProblemDocument::new(ApiCode::ShareNotFound, "https://f.example");
+    let value = serde_json::to_value(&problem).unwrap();
+    assert!(value.get("errors").is_none(), "{value}");
+    let read: ProblemDocument = serde_json::from_str(
+        r#"{"type":"about:blank","title":"t","status":404,"code":"flare::shares::not_found"}"#,
+    )
+    .unwrap();
+    assert!(read.errors.is_empty());
 }

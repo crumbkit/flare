@@ -29,6 +29,7 @@ fn refused(code: ApiCode, index: usize) -> Refusal {
         code,
         detail: Some(format!("image {}", index + 1)),
         share: None,
+        errors: Vec::new(),
     }
 }
 
@@ -56,6 +57,7 @@ fn checked(markdown: &str, parts: &[ImagePart]) -> Result<Vec<ImagePath>, Refusa
             code: ApiCode::TooManyImages,
             detail: Some(format!("{} images", parts.len())),
             share: None,
+            errors: Vec::new(),
         });
     }
     let shown = flare_render::image_paths(markdown);

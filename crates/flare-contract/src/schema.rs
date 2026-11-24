@@ -4,8 +4,9 @@
 use crate::{
     ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread, ExchangeRequest, GrantList,
     GrantRequest, MembersChanged, MembersRequest, NamedCursor, NewComment, OpenedShare,
-    ProblemDocument, Reply, RevokeRequest, Revoked, ShareList, ShareRequest, Shared, TeamDeleted,
-    TeamList, TeamRequest, TeamShown, TokenIssued, TransferRequest, VersionRequest,
+    ProblemDocument, Reply, RevokeRequest, Revoked, SearchAnswer, SearchFields, ShareList,
+    ShareRequest, Shared, TeamDeleted, TeamList, TeamRequest, TeamShown, TokenIssued,
+    TransferRequest, VersionRequest,
 };
 use schemars::generate::SchemaSettings;
 use std::fmt;
@@ -45,6 +46,8 @@ pub fn generate() -> String {
     generator.subschema_for::<NewComment>();
     generator.subschema_for::<CommentEdit>();
     generator.subschema_for::<NamedCursor>();
+    generator.subschema_for::<SearchAnswer>();
+    generator.subschema_for::<SearchFields>();
     generator.subschema_for::<ProblemDocument>();
     let defs = generator.take_definitions(true);
     let document = serde_json::json!({

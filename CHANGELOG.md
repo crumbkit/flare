@@ -274,6 +274,16 @@ This file records the notable changes to flare. The format follows
   team they are not in as `team:*`, in `flare grants` and on the reading page. Team members see the responses and comments on flares
   their team can open in `flare activity`. `docs/teams.md` gives the life
   of teams and group grants.
+- `flare search '<query>'` and `GET /api/search?q=<query>` find the shares
+  you can open whose titles match a short query: words, "quoted phrases",
+  `type:markdown` or `type:html`, `from:me`, `from:` an address or a name
+  the server knows, a comma for any of, and a leading minus to leave a part
+  out. A query with an error runs nothing: the API answers 422 with each
+  error's code, span and fix, and `flare search` prints a caret line under
+  each error and exits with 2. `GET /api/search/fields` lists the filters.
+  docs/search.md describes the syntax, and
+  `crates/flare-query/cases/search-cases.json` holds the cases every parser
+  of it must pass.
 - `GET /api/shares` answers `next`, a cursor, when more shares follow the
   page, and takes `cursor=<cursor>` to read the page after it.
   `flare shares --cursor <CURSOR>` resumes a list, a list cut by `--limit`

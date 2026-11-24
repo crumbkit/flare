@@ -36,7 +36,11 @@ flare-aws.workspace = true
 # commands send and read.
 flare-contract.workspace = true
 flare-core.workspace = true
+# `flare search` parses its query and checks its types before any request.
+flare-query.workspace = true
 flare-render.workspace = true
+# Writes the query of `flare search` into the request's URL.
+form_urlencoded.workspace = true
 flare-server.workspace = true
 reqwest.workspace = true
 schemars.workspace = true

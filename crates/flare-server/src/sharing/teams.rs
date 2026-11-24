@@ -46,6 +46,7 @@ where
             code: ApiCode::TeamNameInvalid,
             detail: Some(error.to_string()),
             share: None,
+            errors: Vec::new(),
         })?;
         let team = self
             .flares

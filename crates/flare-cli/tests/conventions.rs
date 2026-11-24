@@ -13,14 +13,21 @@ use flare_cli::{Cli, TOOL};
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
 /// The tool record declares the root verbs `serve`, `open`, `publish`,
 /// `bind`, `login`, `logout`, `share`, `grant`, `shares`, `activity`,
-/// `comments`, `comment`, `reply`, `comment-edit`, `comment-delete` and
-/// `metrics` with their reason, so they need no opt-out here. `show` is crumbkit's
+/// `comments`, `comment`, `reply`, `comment-edit`, `comment-delete`, `search`
+/// and `metrics` with their reason, so they need no opt-out here. `show` is crumbkit's
 /// built-in verb.
-const ALLOW: &[Allow] = &[Allow::new(
-    Rule::ShowIds,
-    "show",
-    "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
-)];
+const ALLOW: &[Allow] = &[
+    Allow::new(
+        Rule::ShowIds,
+        "show",
+        "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
+    ),
+    Allow::new(
+        Rule::SharedExit,
+        "search",
+        "the query is the command line's one argument, so a query with an error is a refused command line, and exit code 2 keeps that meaning",
+    ),
+];
 
 /// flare's built binary and the directory of its golden files. Each
 /// example runs in a fresh copy of tests/fixtures/examples, which holds the
@@ -39,10 +46,10 @@ const PATHS: PathBudgets<'_> = PathBudgets::new("tests/golden/examples").nodes(&
 )]);
 
 /// The budgets of flare's `-h` pages: crumbkit's default for every page
-/// but the root's, which lists 19 verbs and 6 groups.
+/// but the root's, which lists 20 verbs and 6 groups.
 const BUDGETS: Budgets = Budgets::new().root(
-    1_900,
-    "The root lists 19 verbs, five of them the comment commands, and 6 groups, and each needs a line.",
+    2_000,
+    "The root lists 20 verbs, five of them the comment commands, and 6 groups, and each needs a line.",
 );
 
 /// Everything the checks read, which `conventions!` expands to one test for
@@ -54,9 +61,9 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
-        "activity", "comments", "comment", "reply", "comment-edit", "comment-delete", "metrics",
-        "usage", "install", "check", "print", "revoke", "grants", "create", "add", "remove",
-        "transfer", "delete", "sweep",
+        "activity", "comments", "comment", "reply", "comment-edit", "comment-delete", "search",
+        "metrics", "usage", "install", "check", "print", "revoke", "grants", "create", "add",
+        "remove", "transfer", "delete", "sweep",
     ])
     .examples(EXAMPLES)
     .budgets(BUDGETS)

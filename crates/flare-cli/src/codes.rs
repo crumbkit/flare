@@ -5,6 +5,7 @@
 use crumbkit::{Call, Code, Failure, Recovery};
 
 mod all;
+pub mod search;
 pub mod server;
 pub mod sharing;
 pub mod sign_in;
