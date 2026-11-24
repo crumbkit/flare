@@ -102,6 +102,8 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   expect(label).toBeGreaterThanOrEqual(10.5);
   await expect(page.locator(".code pre.shiki")).toHaveCount(1);
   await expect(page.locator(".code button[data-copy]")).toBeVisible();
+  // The code text is .92em of the block's 13 px, as the mockup draws it.
+  await expect(page.locator(".code pre.shiki > code")).toHaveCSS("font-size", "11.96px");
 
   const table = page.locator(".doc > .scroll").first();
   if (info.project.name === "phone") {

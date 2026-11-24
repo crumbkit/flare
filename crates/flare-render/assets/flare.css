@@ -155,7 +155,7 @@ figcaption { font-size: 13px; color: var(--muted); }
 .code { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); min-width: 0; }
 .code-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .code pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 13px/1.65 var(--font-mono); color: var(--fg); tab-size: 4; }
-.code pre code { font: inherit; background: none; border: 0; padding: 0; }
+.code pre code { font: inherit; font-size: .92em; background: none; border: 0; padding: 0; }
 /* Shiki writes GitHub Light's colours and GitHub Dark's as --shiki-dark. */
 .code pre.shiki { background-color: transparent !important; }
 @media (prefers-color-scheme: dark) {
