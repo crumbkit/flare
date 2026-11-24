@@ -347,7 +347,11 @@ impl Failure for Refused {
             .share
             .as_ref()
             .map(|share| Field::new("share", share.as_str()));
-        server.into_iter().chain(share).collect()
+        server
+            .into_iter()
+            .chain(share)
+            .chain(self.searched.fields())
+            .collect()
     }
 
     /// A bad cursor can also be replaced by the cursor that the last `flare

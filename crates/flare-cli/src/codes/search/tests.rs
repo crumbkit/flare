@@ -42,3 +42,38 @@ fn an_invalid_search_refusal_keeps_the_query_and_every_error() {
     assert_eq!(refused.searched.causes().len(), 3);
     assert_eq!(refused.api_code(), flare_contract::ApiCode::SearchInvalid);
 }
+
+#[test]
+fn an_invalid_search_refusal_names_its_query_and_errors_as_fields() {
+    use crumbkit::{Failure, FieldValue};
+    let errors = flare_query::parse("form:x").unwrap_err();
+    let refused = Refused::invalid_search("form:x", &errors);
+    let fields = refused.fields();
+    let names: Vec<&str> = fields.iter().map(|field| field.name()).collect();
+    assert_eq!(names, ["query", "errors"]);
+    assert_eq!(fields[0].value(), &FieldValue::from("form:x"));
+    let FieldValue::List(listed) = fields[1].value() else {
+        panic!("errors is not a list: {:?}", fields[1].value());
+    };
+    assert_eq!(
+        listed,
+        &[FieldValue::object([
+            ("code", FieldValue::from("flare::search::unknown_filter")),
+            ("start", FieldValue::from(0_u32)),
+            ("end", FieldValue::from(4_u32)),
+            ("message", FieldValue::from(errors[0].message.as_str())),
+        ])]
+    );
+}
+
+#[test]
+fn a_refusal_of_another_code_has_no_search_fields() {
+    use crumbkit::Failure;
+    let refused = Refused::new(
+        flare_contract::ApiCode::SearchInvalid,
+        None,
+        "https://example.test",
+    );
+    let names: Vec<&str> = refused.fields().iter().map(|field| field.name()).collect();
+    assert_eq!(names, ["server"]);
+}
