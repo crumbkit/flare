@@ -8,6 +8,15 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `flare skills install` writes flare's agent skill to `flare/SKILL.md` in
+  each of `~/.claude/skills`, `~/.agents/skills` and `$CODEX_HOME/skills`
+  that exists, or in the directory that `--dir` names. The skill tells an
+  agent how to sign in, share, read, grant and follow responses with
+  `flare`, and the binary carries it, so the skill matches the installed
+  version. Install replaces only a copy that flare wrote, and `--force`
+  replaces any other. `flare skills check` lists each copy that is missing
+  or differs and exits with 1 when it lists one, and `flare skills print`
+  prints the skill.
 - `flare schemas list` lists the JSON documents that flare prints, and
   `flare schemas show <id>...` prints the JSON Schema of each of 1 to 100
   ids, so an agent learns the shape of `flare ... --json` from flare
@@ -175,6 +184,14 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- A failure that needs a new sign-in now gives a `terminal` recovery for
+  `flare login <server>` with the server filled in, because only a person
+  can finish the browser sign-in. This covers `flare::login::needed` with a
+  saved login, `flare::login::failed`, and the server's
+  `flare::tokens::sign_in_needed`, `flare::tokens::code_refused` and
+  `flare::shares::no_email`. With no saved login flare does not know the
+  server, so `flare::login::needed` gives a hint that names `flare login`.
+  These recoveries were `run` recoveries before.
 - `flare::network::bad_answer` recovers with a repair and then a retry:
   check that the server runs flare with the share API, then run the same
   command again. In JSON its recovery is of kind `after`.

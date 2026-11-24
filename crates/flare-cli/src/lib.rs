@@ -37,7 +37,7 @@ mod sharing;
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
 
-use cli::{CommandsVerb, SchemasCommand, SelfVerb, Verb};
+use cli::{CommandsVerb, SKILL, SchemasCommand, SelfVerb, Verb};
 use codes::Failed;
 use env::Snapshot;
 use std::process::ExitCode;
@@ -138,6 +138,7 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             let result = Ok::<_, crumbkit::Error>(crumbkit_usage::findings(&mut run, &TOOL, &args));
             crumbkit::finish(run, crumbkit_usage::SELF_USAGE, result)
         }
+        Verb::Skills { command } => crumbkit_skills::run(run, &[SKILL], command),
     }
 }
 

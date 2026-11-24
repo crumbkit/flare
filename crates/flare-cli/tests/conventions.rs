@@ -26,12 +26,13 @@ const EXAMPLES: Examples<'_> =
     Examples::new(env!("CARGO_BIN_EXE_flare"), "tests/golden/examples").allow(ALLOW);
 
 /// Everything the checks read, which `conventions!` expands to one test for
-/// each check.
+/// each check. `usage`, `install`, `check` and `print` are the verbs that
+/// `self usage` and `skills` add under a resource.
 const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
-        "activity", "metrics", "usage",
+        "activity", "metrics", "usage", "install", "check", "print",
     ])
     .examples(EXAMPLES)
     .skip(
