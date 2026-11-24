@@ -98,7 +98,7 @@ pub enum SharingFailed {
     #[error("{server} did not answer: {problem}")]
     #[failure(
         code = NETWORK_UNREACHABLE,
-        recovery = retry(*next),
+        recovery = retry(next),
         field(server = server)
     )]
     Unreachable {
@@ -114,7 +114,7 @@ pub enum SharingFailed {
     #[error("{server} could not finish the request: {title}")]
     #[failure(
         code = NETWORK_SERVER_ERROR,
-        recovery = retry(*next),
+        recovery = retry(next),
         field(server = server),
         field(answer = *answer)
     )]
@@ -133,7 +133,7 @@ pub enum SharingFailed {
     #[error("{server} answered with something flare cannot read: {problem}")]
     #[failure(
         code = NETWORK_BAD_ANSWER,
-        recovery = bad_answer(*next),
+        recovery = bad_answer(next),
         field(server = server)
     )]
     BadAnswer {
@@ -222,6 +222,10 @@ pub struct Refused {
     /// whose outcome the server does not know, which `shares::unavailable`
     /// says after a write, so the recovery checks `flare shares` first.
     maybe_written: bool,
+    /// The same command with the key it sent, when the refused request was
+    /// a keyed write, such as a comment, that `comments::unavailable` says
+    /// may have happened.
+    again: Option<Box<Call>>,
 }
 
 impl Refused {
@@ -235,6 +239,7 @@ impl Refused {
             flares: Vec::new(),
             with_me: false,
             maybe_written: false,
+            again: None,
         }
     }
 
@@ -259,11 +264,10 @@ impl Refused {
         self
     }
 
-    /// The typed call that replaces the API's hint for `partly_shared`,
-    /// the two `bad_cursor` codes and `cursors::not_found`, whose hints name
-    /// `flare grant`, `flare activity` and `flare shares` in prose for API
-    /// callers, or `None` for every other code. A cursor name that is not
-    /// found starts again from the first activity, without `--since-last`. crumbkit
+    /// The typed call that replaces the API's hint for `partly_shared` and
+    /// the two `bad_cursor` codes, whose hints name `flare grant`, `flare
+    /// activity` and `flare shares` in prose for API callers, or `None` for
+    /// every other code. crumbkit
     /// renders the call against flare's commands, so a renamed command or
     /// flag fails the tests in place of printing a stale command.
     fn typed_call(&self) -> Option<Recovery> {
@@ -276,9 +280,7 @@ impl Refused {
                 };
                 Some(Recovery::Run(grant.arg("with").arg("re")))
             }
-            ApiCode::BadCursor | ApiCode::CursorNotFound => {
-                Some(Recovery::Run(activity_call(&self.flares)))
-            }
+            ApiCode::BadCursor => Some(Recovery::Run(activity_call(&self.flares))),
             ApiCode::SharesBadCursor => Some(Recovery::Run(shares_call(self.with_me))),
             _ => None,
         }
@@ -310,7 +312,8 @@ impl Failure for Refused {
     }
 
     /// The recovery for the code. A `shares::unavailable` refusal of a
-    /// write checks `flare shares` first. `partly_shared` and `bad_cursor`
+    /// write checks `flare shares` first, and a `comments::unavailable`
+    /// refusal of a keyed write repeats the command with its key. `partly_shared` and `bad_cursor`
     /// take the typed call that `Refused::typed_call` builds. `not_found`
     /// takes the first of the API hint's two repairs, and
     /// `Refused::alternatives` gives the second. Every other
@@ -320,6 +323,9 @@ impl Failure for Refused {
     fn recovery(&self) -> Recovery {
         if self.maybe_written {
             return check_shares();
+        }
+        if let Some(again) = &self.again {
+            return Recovery::Run(Call::clone(again));
         }
         if let Some(typed) = self.typed_call() {
             return typed;

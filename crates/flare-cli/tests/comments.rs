@@ -487,24 +487,118 @@ fn a_since_last_call_names_the_next_call_with_the_saved_name_and_a_plain_call_wi
     );
 }
 
+/// The server's answer to a request that failed while it ran.
+fn fault() -> Value {
+    json!({
+        "type": "https://flare.dev/problems/server::fault",
+        "title": "The server failed while answering. The failure is logged.",
+        "status": 500,
+        "code": "server::fault",
+    })
+}
+
+/// The key that the `index`th request to `/api/comments` sent.
+fn sent_key(api: &FakeApi, index: usize) -> String {
+    api.requests_to("/api/comments")[index].json()["key"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
 #[test]
-fn a_cursor_name_the_server_does_not_know_recovers_with_flare_activity_on_the_same_flares() {
+fn a_comment_the_server_failed_on_recovers_by_repeating_the_command_with_the_key_it_drew() {
     let api = FakeApi::start();
     let home = logged_in(&api);
-    let mut refusal = problem("flare::cursors::not_found", 404, &api.origin);
-    refusal["recovery"] = json!({
-        "kind": "hint",
-        "text": "start from the beginning; flare activity --since-last saves the cursor",
-    });
-    api.route("GET", "/api/activity", 404, &refusal);
-    let ran = home.sharing(&["activity", FLARE, "--since-last", "inbox", "--json"]);
-    ran.assert_failed("flare::cursors::not_found");
+    api.route("POST", "/api/comments", 500, &fault());
+    let ran = home.sharing(&["comment", FLARE, "--body", "Looks good", "--json"]);
+    ran.assert_failed("flare::network::server_error");
+    let key = sent_key(&api, 0);
     let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
     assert_eq!(
         printed["recovery"],
-        json!({"kind": "run", "call": format!("flare activity {FLARE}")}),
+        json!({"kind": "run", "call": format!("flare comment {FLARE} --body <TEXT> --key {key}")}),
         "{}",
         ran.all()
     );
-    assert!(api.requests_to("/api/cursors/inbox").is_empty());
+    // The twin with --key already repeats the key, so it runs again as it is.
+    api.route("POST", "/api/comments", 500, &fault());
+    let ran = home.sharing(&[
+        "comment",
+        FLARE,
+        "--body",
+        "Looks good",
+        "--key",
+        "run1",
+        "--json",
+    ]);
+    ran.assert_failed("flare::network::server_error");
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_reply_the_comment_store_did_not_answer_recovers_by_repeating_the_command_with_the_key_it_drew()
+{
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = home.path().join("reply.txt");
+    write(&file, "Agreed\n");
+    api.route(
+        "POST",
+        "/api/comments",
+        503,
+        &problem("flare::comments::unavailable", 503, &api.origin),
+    );
+    let ran = home.sharing(&[
+        "reply",
+        COMMENT,
+        "--flare",
+        FLARE,
+        "--body-file",
+        file.to_str().unwrap(),
+        "--json",
+    ]);
+    ran.assert_failed("flare::comments::unavailable");
+    let key = sent_key(&api, 0);
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "run", "call": format!(
+            "flare reply {COMMENT} --flare {FLARE} --body-file {} --key {key}",
+            file.to_str().unwrap()
+        )}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_comment_the_server_refused_before_it_ran_keeps_its_own_recovery() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "POST",
+        "/api/comments",
+        503,
+        &json!({
+            "type": "https://flare.dev/problems/server::busy",
+            "title": "The server is busy. Try again.",
+            "status": 503,
+            "code": "server::busy",
+        }),
+    );
+    let ran = home.sharing(&["comment", FLARE, "--body", "Looks good", "--json"]);
+    ran.assert_failed("flare::network::server_error");
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
 }

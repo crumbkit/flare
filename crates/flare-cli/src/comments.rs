@@ -9,7 +9,7 @@ use crate::codes::{Failed, Refused};
 use crate::documents::{CommentOut, CommentRow};
 use crate::env::Snapshot;
 use crate::sharing::{body, read_file, session, share_id};
-use crumbkit::Listing;
+use crumbkit::{Call, Listing};
 use flare_auth_loopback::Nonce;
 use flare_contract::{
     ApiCode, Comment, CommentEdit, CommentOrReply, CommentThread, NewComment, Reply,
@@ -40,18 +40,47 @@ fn text(args: &Text) -> Result<String, Failed> {
     }
 }
 
+/// The key of a comment or a reply, and whether flare drew it.
+struct Key {
+    text: String,
+    drawn: bool,
+}
+
 /// The key that `given` names, or a new random one.
-fn key(api: &Api, given: Option<&str>) -> Result<String, Failed> {
+fn key(api: &Api, given: Option<&str>) -> Result<Key, Failed> {
     match given {
         Some(text) => CommentKey::try_from(text)
-            .map(|key| key.as_str().to_owned())
+            .map(|key| Key {
+                text: key.as_str().to_owned(),
+                drawn: false,
+            })
             .map_err(|_| Refused::new(ApiCode::CommentInvalid, None, api.origin()).into()),
         None => Nonce::new()
-            .map(|nonce| nonce.as_str().to_owned())
+            .map(|nonce| Key {
+                text: nonce.as_str().to_owned(),
+                drawn: true,
+            })
             .map_err(|_| Failed::System {
                 problem: "the operating system gave no random bytes for a comment key".to_owned(),
             }),
     }
+}
+
+/// `call` with the text as the caller gave it and `key`: the file's path
+/// when it is printable, or else the argument's placeholder, which keeps a
+/// long or multi-line text out of the recovery.
+fn with_text_and_key(call: Call, text: &Text, key: &str) -> Call {
+    let file = text
+        .body_file
+        .as_deref()
+        .and_then(std::path::Path::to_str)
+        .filter(|path| !path.chars().any(char::is_control));
+    let call = match (&text.body_file, file) {
+        (Some(_), Some(path)) => call.value("body_file", path),
+        (Some(_), None) => call.arg("body_file"),
+        (None, _) => call.arg("body"),
+    };
+    call.value("key", key)
 }
 
 fn out(answer: CommentOrReply) -> Result<CommentOut, Failed> {
@@ -132,11 +161,27 @@ pub(crate) async fn comments(
     Ok(Listing::uncounted(rows, false).described("comments and replies"))
 }
 
-async fn post(api: &Api, request: &NewComment) -> Result<CommentOut, Failed> {
-    let answer: Option<CommentOrReply> = api
-        .send(Method::POST, "/api/comments", Some(request))
-        .await?;
-    out(body(api, answer)?)
+/// Sends `request`. When flare drew its key, a failure that may have made
+/// the comment recovers with `again`, the same command with that key, so a
+/// second run gets the first comment back in place of making a second.
+async fn post(
+    api: &Api,
+    request: &NewComment,
+    drawn: bool,
+    again: impl FnOnce() -> Call,
+) -> Result<CommentOut, Failed> {
+    let answer: Result<Option<CommentOrReply>, Failed> =
+        api.send(Method::POST, "/api/comments", Some(request)).await;
+    answer
+        .and_then(|answer| body(api, answer))
+        .map_err(|failed| {
+            if drawn {
+                failed.after_a_keyed_write(again())
+            } else {
+                failed
+            }
+        })
+        .and_then(out)
 }
 
 /// Runs `flare comment`.
@@ -147,13 +192,18 @@ async fn post(api: &Api, request: &NewComment) -> Result<CommentOut, Failed> {
 pub(crate) async fn comment(args: &CommentArgs, env: &Snapshot) -> Result<CommentOut, Failed> {
     let api = session(env)?;
     let flare = share_id(&api, &args.flare)?;
+    let key = key(&api, args.key.as_deref())?;
     let request = NewComment {
         flare: flare.as_str().to_owned(),
         parent: None,
         body: text(&args.text)?,
-        key: key(&api, args.key.as_deref())?,
+        key: key.text,
     };
-    post(&api, &request).await
+    let again = || {
+        let call = Call::new(&["comment"]).value("flare", flare.as_str());
+        with_text_and_key(call, &args.text, &request.key)
+    };
+    post(&api, &request, key.drawn, again).await
 }
 
 /// Runs `flare reply`.
@@ -164,13 +214,21 @@ pub(crate) async fn comment(args: &CommentArgs, env: &Snapshot) -> Result<Commen
 pub(crate) async fn reply(args: &ReplyArgs, env: &Snapshot) -> Result<CommentOut, Failed> {
     let api = session(env)?;
     let flare = share_id(&api, &args.flare)?;
+    let parent = comment_id(&api, &args.comment)?;
+    let key = key(&api, args.key.as_deref())?;
     let request = NewComment {
         flare: flare.as_str().to_owned(),
-        parent: Some(comment_id(&api, &args.comment)?),
+        parent: Some(parent.clone()),
         body: text(&args.text)?,
-        key: key(&api, args.key.as_deref())?,
+        key: key.text,
     };
-    post(&api, &request).await
+    let again = || {
+        let call = Call::new(&["reply"])
+            .value("comment", parent)
+            .value("flare", flare.as_str());
+        with_text_and_key(call, &args.text, &request.key)
+    };
+    post(&api, &request, key.drawn, again).await
 }
 
 /// Runs `flare comment-edit`.

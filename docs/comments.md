@@ -22,6 +22,13 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
 - `flare comment` and `flare reply` send a key. Without `--key` the CLI
   draws 32 random hex digits for each run. A key is 1 to 64 letters,
   digits, `.`, `_` or `-`.
+- When a comment or a reply with a drawn key fails in a way that may have
+  saved it (a server fault, a passed deadline, a connection dropped after
+  the request was sent, an unreadable success answer, or
+  `flare::comments::unavailable`), the failure's recovery is the same
+  command with `--key <the drawn key>`. Running it returns the saved
+  comment, or saves it once. A command given `--key` recovers with a plain
+  retry, because it already repeats its key.
 - `POST` answers 201 for a new comment and 200 for a repeated key.
 - `flare activity` lists comment, reply, edit and delete events with
   responses, oldest first.

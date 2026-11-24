@@ -40,11 +40,11 @@ macro_rules! codes {
             /// What the caller does next. `server` is the deployment's
             /// origin, which `flare login` names.
             ///
-            /// The hints of `PartlyShared`, `BadCursor`, `SharesBadCursor`
-            /// and `CursorNotFound` stay as wire text for API callers. The
+            /// The hints of `PartlyShared`, `BadCursor` and
+            /// `SharesBadCursor` stay as wire text for API callers. The
             /// `flare` command prints typed calls of `flare grant`, `flare
             /// activity` and `flare shares` in their place, so it never
-            /// prints those four hints.
+            /// prints those three hints.
             #[must_use]
             pub fn recovery(self, server: &str) -> Recovery {
                 let make: fn(&str) -> Recovery = match self { $(Self::$variant => $recovery,)* };
@@ -126,7 +126,7 @@ codes! {
     CommentsUnavailable => ("flare::comments::unavailable", 503, "The comment store did not answer.",
         |_| Recovery::Retry),
     CursorNotFound => ("flare::cursors::not_found", 404, "You have saved no cursor with this name.",
-        |_| hint("start from the beginning; flare activity --since-last saves the cursor")),
+        |_| hint("start from the beginning; GET /api/activity with since_last saves the cursor")),
     TooManyCursors => ("flare::cursors::too_many", 409, "A person keeps at most 32 named cursors.",
         |_| hint("reuse one of your cursor names")),
     BadBody => ("flare::requests::bad_body", 400, "The request's body is not the JSON this route takes.",
