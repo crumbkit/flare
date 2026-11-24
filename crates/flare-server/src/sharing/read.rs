@@ -137,6 +137,8 @@ where
             Standing::Reader | Standing::Stranger => None,
         };
         Ok(Reading {
+            id: id.as_str().to_owned(),
+            comments: self.live_comments(who, &id).await.ok(),
             title: opened.share.title().as_str().to_owned(),
             owner: opened.share.owner().as_str().to_owned(),
             own: opened.standing == Standing::Owner,

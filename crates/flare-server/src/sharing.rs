@@ -259,6 +259,11 @@ pub(crate) enum TokenCheck {
 /// One version of a Markdown share, as the reading page shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Reading {
+    /// The share's id, which the comments section reads its thread by.
+    pub(crate) id: String,
+    /// How many comments and replies on the share are not deleted, or
+    /// `None` when the comment store did not answer.
+    pub(crate) comments: Option<u32>,
     /// The share's title.
     pub(crate) title: String,
     /// The owner's address.

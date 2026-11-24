@@ -1,6 +1,7 @@
-//! Embeds the reading page's script: every file Vite wrote to
-//! `ui/flare/dist/assets`, and the name of the entry file from Vite's
-//! manifest. flare-server serves each file at `/flare/assets/<file>`.
+//! Embeds the reading page's scripts: every file Vite wrote to
+//! `ui/flare/dist/assets`, and the names of the two entry files, reading
+//! and comments, from Vite's manifest. flare-server serves each file at
+//! `/flare/assets/<file>`.
 //!
 //! With no bundle, which is the case when Node has not run, the build warns
 //! and embeds nothing, so pages show plain code and diagram source. With
@@ -11,8 +12,11 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-/// The manifest's key for the entry module.
+/// The manifest's key for the reading entry module.
 const ENTRY_SOURCE: &str = "src/main.ts";
+
+/// The manifest's key for the comments entry module.
+const COMMENTS_SOURCE: &str = "src/comments.tsx";
 
 /// Why the bundle could not be embedded.
 #[derive(Debug)]
@@ -70,7 +74,7 @@ fn main() {
                 "warning={reason}; pages will show plain code and diagram source"
             ));
             String::from(
-                "pub(crate) const ENTRY: Option<&str> = None;\npub(crate) static FILES: &[(&str, &[u8])] = &[];\n",
+                "pub(crate) const ENTRY: Option<&str> = None;\npub(crate) const COMMENTS: Option<&str> = None;\npub(crate) static FILES: &[(&str, &[u8])] = &[];\n",
             )
         }
     };
@@ -85,6 +89,26 @@ fn main() {
             target.display()
         ));
     }
+}
+
+/// The file that the manifest names for the entry module `source`, without
+/// its `assets/` directory.
+fn entry_file<'a>(
+    parsed: &'a serde_json::Value,
+    manifest: &Path,
+    source: &str,
+) -> Result<&'a str, Missing> {
+    parsed
+        .get(source)
+        .and_then(|entry| entry.get("file"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(|file| file.strip_prefix("assets/"))
+        .ok_or_else(|| {
+            Missing::Broken(format!(
+                "{} names no entry file for {source}",
+                manifest.display()
+            ))
+        })
 }
 
 /// The generated source that embeds the bundle in `dist`.
@@ -103,17 +127,8 @@ fn embedded(dist: &Path, manifest: &Path) -> Result<String, Missing> {
     };
     let parsed: serde_json::Value = serde_json::from_str(&text)
         .map_err(|error| Missing::Broken(format!("{} is not JSON: {error}", manifest.display())))?;
-    let entry = parsed
-        .get(ENTRY_SOURCE)
-        .and_then(|entry| entry.get("file"))
-        .and_then(serde_json::Value::as_str)
-        .and_then(|file| file.strip_prefix("assets/"))
-        .ok_or_else(|| {
-            Missing::Broken(format!(
-                "{} names no entry file for {ENTRY_SOURCE}",
-                manifest.display()
-            ))
-        })?;
+    let entry = entry_file(&parsed, manifest, ENTRY_SOURCE)?;
+    let comments = entry_file(&parsed, manifest, COMMENTS_SOURCE)?;
     let assets = dist.join("assets");
     let listing = std::fs::read_dir(&assets).map_err(|error| {
         Missing::Broken(format!("could not list {}: {error}", assets.display()))
@@ -135,13 +150,17 @@ fn embedded(dist: &Path, manifest: &Path) -> Result<String, Missing> {
         }
     }
     files.sort();
-    if !files.iter().any(|(name, _)| name == entry) {
-        return Err(Missing::Broken(format!(
-            "the entry file {entry} is not in {}",
-            assets.display()
-        )));
+    for file in [entry, comments] {
+        if !files.iter().any(|(name, _)| name == file) {
+            return Err(Missing::Broken(format!(
+                "the entry file {file} is not in {}",
+                assets.display()
+            )));
+        }
     }
-    let mut source = format!("pub(crate) const ENTRY: Option<&str> = Some({entry:?});\n");
+    let mut source = format!(
+        "pub(crate) const ENTRY: Option<&str> = Some({entry:?});\npub(crate) const COMMENTS: Option<&str> = Some({comments:?});\n"
+    );
     source.push_str("pub(crate) static FILES: &[(&str, &[u8])] = &[\n");
     for (name, path) in &files {
         let _ = writeln!(

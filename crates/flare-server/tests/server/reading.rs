@@ -16,11 +16,11 @@ fn hosted_policy() -> String {
     POLICY.replace("font-src 'self';", "font-src 'self'; connect-src 'self';")
 }
 
-/// The policy of a page with code or a figure: flare's policy with the
-/// page's own scripts allowed and no `connect-src`, because the reading
-/// scripts make no request.
+/// The policy of a page that loads a script: the hosted policy with the
+/// page's own scripts allowed. Its `connect-src 'self'` lets the comments
+/// section call the comment routes.
 fn script_policy() -> String {
-    format!("{POLICY}; script-src 'self'")
+    format!("{}; script-src 'self'", hosted_policy())
 }
 
 /// A server where alice shared `markdown` with bob, bob's session and the
@@ -80,9 +80,45 @@ async fn a_granted_reader_sees_the_latest_version_of_a_markdown_share() {
     assert!(body.contains("BO</span></header>"), "{body}");
     assert!(body.contains("<figcaption>Figure 1. What happens to one sailing when a forecast arrives.</figcaption>"), "{body}");
     assert!(body.contains("data-lang=\"rust\""), "{body}");
-    for absent in ["Inbox", "Shared by me", "Search", "comments", "responses"] {
+    for absent in ["Inbox", "Shared by me", "Search", "responses"] {
         assert!(!body.contains(absent), "{absent}");
     }
+    assert!(
+        body.contains("<a class=\"chip\" href=\"#comments\">No comments</a>"),
+        "{body}"
+    );
+    assert!(
+        body.contains(&format!("<section id=\"comments\" class=\"comments\" aria-labelledby=\"comments-heading\" data-flare=\"{id}\" data-version=\"1\" data-owner=\"alice@example.com\">")),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn the_line_under_the_title_counts_the_comments_and_replies_that_are_not_deleted() {
+    let (api, bob, id) = shared("Text.\n").await;
+    let token = api.token_for("bob").await;
+    let (status, comment) = api
+        .json(
+            "POST",
+            "/api/comments",
+            Some(&token),
+            serde_json::json!({"flare": id, "body": "A question.", "key": "one"}),
+        )
+        .await;
+    assert_eq!(status, 201, "{comment}");
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    assert!(page.body.contains(">1 comment</a>"), "{}", page.body);
+    let parent = comment["id"].as_str().unwrap();
+    for (key, parent) in [("two", Some(parent)), ("three", None)] {
+        let mut body = serde_json::json!({"flare": id, "body": "More.", "key": key});
+        if let Some(parent) = parent {
+            body["parent"] = serde_json::json!(parent);
+        }
+        let (status, posted) = api.json("POST", "/api/comments", Some(&token), body).await;
+        assert_eq!(status, 201, "{posted}");
+    }
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    assert!(page.body.contains(">3 comments</a>"), "{}", page.body);
 }
 
 #[tokio::test]
@@ -169,41 +205,54 @@ async fn an_unavailable_store_gives_a_503_page_with_retry() {
 }
 
 #[tokio::test]
-async fn only_a_page_with_code_or_a_figure_lets_scripts_run_and_no_policy_allows_eval() {
+async fn a_page_that_loads_a_script_may_call_its_own_origin_and_no_policy_allows_eval() {
     let api = Api::start().await;
     let token = api.token_for("alice").await;
     let bob = api.session("bob").await;
-    let mut expected = Vec::new();
-    for (markdown, scripts) in [
-        ("```rust\nfn x() {}\n```\n", true),
-        ("```mermaid\npie\n  \"a\" : 1\n```\n", true),
-        ("Prose with `inline code`.\n\n| a |\n|---|\n| 1 |\n", false),
-        ("```mermaid\njourney\n  title x\n```\n", true),
+    let mut ids = Vec::new();
+    for markdown in [
+        "```rust\nfn x() {}\n```\n",
+        "```mermaid\npie\n  \"a\" : 1\n```\n",
+        "Prose with `inline code`.\n\n| a |\n|---|\n| 1 |\n",
+        "```mermaid\njourney\n  title x\n```\n",
     ] {
-        let id = api
-            .share_markdown(&token, TITLE, markdown, &["bob@example.com"])
-            .await;
-        expected.push((id, scripts));
+        ids.push(
+            api.share_markdown(&token, TITLE, markdown, &["bob@example.com"])
+                .await,
+        );
     }
-    for (id, scripts) in expected {
+    for id in ids {
         let reply = read(&api, &bob, &format!("/s/{id}")).await;
         assert_eq!(reply.status, 200, "{}", reply.body);
-        let policy = if scripts {
+        // A build with no bundle loads no script; the reading job in CI
+        // builds the bundle and requires it, so every page there loads the
+        // comments entry.
+        let policy = if reply.body.contains("<script") {
             script_policy()
         } else {
             hosted_policy()
         };
         assert_eq!(reply.all("content-security-policy"), vec![policy.as_str()]);
         assert_eq!(reply.all("cache-control"), vec!["no-store"]);
-        assert!(!reply.all("content-security-policy")[0].contains("unsafe-eval"));
-        if scripts {
-            assert!(
-                !reply.all("content-security-policy")[0].contains("connect-src"),
-                "a page whose scripts run may not open connections to the origin"
-            );
-        } else {
-            assert!(!reply.body.contains("<script"), "{}", reply.body);
-        }
+        assert!(!policy.contains("unsafe-eval"));
+        assert!(policy.contains("connect-src 'self'"));
+    }
+}
+
+#[tokio::test]
+async fn a_page_without_code_loads_only_the_comments_entry() {
+    let (api, bob, id) = shared("Prose and a table.\n\n| a |\n|---|\n| 1 |\n").await;
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    let scripts: Vec<&str> = page
+        .body
+        .split("<script type=\"module\" src=\"/flare/assets/")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    // A build with no bundle loads no script.
+    if !scripts.is_empty() {
+        assert_eq!(scripts.len(), 1, "{scripts:?}");
+        assert!(scripts[0].starts_with("comments-"), "{scripts:?}");
     }
 }
 
@@ -356,4 +405,45 @@ async fn a_site_with_no_get_flare_address_shows_every_reader_the_note_and_no_lin
     assert_eq!(reply.status, 200, "{}", reply.body);
     assert!(reply.body.contains("Shared with Flare"), "{}", reply.body);
     assert!(!reply.body.contains("Get Flare"), "{}", reply.body);
+}
+
+/// The comments journey of `ui/flare/tests/acceptance/comments.spec.ts`,
+/// run in Chromium against this server and its memory stores. alice shares
+/// artboard 01's sample with bob, and bob's session cookie, which he got by
+/// signing in through the fake provider, stands for his sign-in in the
+/// browser. The journey posts a comment and a reply, reloads and sees both.
+/// `FLARE_COMMENTS_JOURNEY` names the `ui/flare` directory; with it unset
+/// the test only checks that the page holds the section the journey drives.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reader_comments_and_replies_in_a_browser_and_sees_both_after_a_reload() {
+    let (api, bob, id) = shared(SAMPLE).await;
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    assert!(
+        page.body.contains("<section id=\"comments\""),
+        "{}",
+        page.body
+    );
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "CI names the ui/flare directory for the journey this test starts"
+    )]
+    let Some(ui) = std::env::var_os("FLARE_COMMENTS_JOURNEY") else {
+        return;
+    };
+    let origin = api.hosted.origin.clone();
+    let status = tokio::task::block_in_place(|| {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test runs Playwright, which drives a browser against this server, and waits for it to exit"
+        )]
+        std::process::Command::new("pnpm")
+            .args(["exec", "playwright", "test", "tests/acceptance/comments.spec.ts"])
+            .current_dir(ui)
+            .env("FLARE_JOURNEY_ORIGIN", &origin)
+            .env("FLARE_JOURNEY_COOKIE", &bob)
+            .env("FLARE_JOURNEY_SHARE", &id)
+            .status()
+    })
+    .unwrap();
+    assert!(status.success(), "the comments journey failed: {status}");
 }

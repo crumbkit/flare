@@ -278,12 +278,10 @@ where
     R: ResponseStore,
     C: CommentStore,
     U: CursorStore,
-    T: TokenStore,
-    X: Recipients,
     M: Teams,
 {
     /// How many comments and replies of `flare` their authors have not
-    /// deleted.
+    /// deleted. The reading page shows it, as the opened share does.
     pub(super) async fn live_comments(
         &self,
         who: &Principal,

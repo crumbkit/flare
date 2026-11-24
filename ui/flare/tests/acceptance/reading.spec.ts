@@ -11,7 +11,9 @@ const fonts = join(import.meta.dirname, "../../../../crates/flare-server/fonts")
 
 /**
  * Serves the sample page, the stylesheet, the built files and the fonts that
- * flare-server vendors from one origin.
+ * flare-server vendors from one origin, and answers the comments section's
+ * read with an empty thread. The comments journey, comments.spec.ts, runs
+ * against a real server.
  */
 async function serve(page: Page): Promise<void> {
   const policy = (await readFile(join(sample, "policy.txt"), "utf8")).trim();
@@ -23,6 +25,8 @@ async function serve(page: Page): Promise<void> {
         headers: { "Content-Security-Policy": policy },
         body: await readFile(join(sample, "page.html"), "utf8"),
       });
+    } else if (path === "/api/comments") {
+      await route.fulfill({ json: { flare: "sample", comments: [] } });
     } else if (path === "/flare/style.css") {
       await route.fulfill({
         contentType: "text/css; charset=utf-8",
@@ -78,6 +82,12 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   );
   await expect(page.locator(".share-meta")).toContainText("Shared by alice@example.com with you");
   await expect(page.locator(".bar")).toHaveText(/flare.*BO/s);
+  const comments = page.getByRole("region", { name: "Comments" });
+  await expect(comments.getByText("None yet")).toBeVisible();
+  await expect(page.getByRole("link", { name: "No comments" })).toHaveAttribute(
+    "href",
+    "#comments",
+  );
   const figure = page.locator("figure.diagram");
   await expect(figure).toHaveAttribute("data-diagram", "drawn");
   await expect(figure.locator("figcaption")).toHaveText(

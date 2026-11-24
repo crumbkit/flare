@@ -1,5 +1,7 @@
 //! The reading page's script files, which the build script embeds from
-//! `ui/flare/dist/assets`, served at `/flare/assets/<file>`. Each name
+//! `ui/flare/dist/assets`, served at `/flare/assets/<file>`: the reading
+//! entry, which colours code and draws diagrams, the comments entry, and
+//! the chunks they import. Each name
 //! holds a hash of the file's content, so a reply is cached for a year.
 //! A build with no bundle embeds no file, and the reading page then loads
 //! no script. The same route serves the two fonts that the stylesheet
@@ -14,9 +16,16 @@ mod embedded {
     include!(concat!(env!("OUT_DIR"), "/ui_assets.rs"));
 }
 
-/// The entry script's file name, when the build embedded the bundle.
+/// The reading entry script's file name, when the build embedded the
+/// bundle.
 pub(crate) fn entry() -> Option<&'static str> {
     embedded::ENTRY
+}
+
+/// The comments entry script's file name, when the build embedded the
+/// bundle.
+pub(crate) fn comments_entry() -> Option<&'static str> {
+    embedded::COMMENTS
 }
 
 /// The embedded files, by name.

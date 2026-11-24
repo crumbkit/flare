@@ -51,9 +51,13 @@ where
         || admitted.principal.id().as_str().to_owned(),
         |email| email.as_str().to_owned(),
     );
-    let document = reading::document(&reading, &reader, &article, assets::entry());
+    let entries = reading::Entries {
+        reading: assets::entry(),
+        comments: assets::comments_entry(),
+    };
+    let document = reading::document(&reading, &reader, &article, entries);
     let reply = Reply::html(StatusCode::OK, document);
-    Ok(if article.needs_script() {
+    Ok(if reading::loads_script(&article, entries) {
         reply.with_scripts()
     } else {
         reply

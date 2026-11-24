@@ -1,10 +1,10 @@
 //! [`Reply`]: every answer the server gives, and the one function that
 //! turns it into a response with the threat model's policy and its six
-//! other headers, so no handler can leave one out. A reading page with code
-//! or a diagram carries the script policy, which adds `script-src 'self'`
-//! and no `connect-src`, because the reading scripts make no request. Any
-//! other hosted reply adds `connect-src 'self'`, and an embedded asset,
-//! whose name holds its content's hash, is cached for a year.
+//! other headers, so no handler can leave one out. Every hosted reply adds
+//! `connect-src 'self'`. A reading page that loads a script carries the
+//! script policy, which also adds `script-src 'self'`, so its comments
+//! section can call the comment routes. An embedded asset, whose name holds
+//! its content's hash, is cached for a year.
 
 use crate::app::bytes_alias::Body;
 use crate::site::SiteKind;
@@ -23,11 +23,12 @@ pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-in
 /// connections to their own origin, which the comment routes need.
 pub(crate) const HOSTED_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
-/// The policy of a reading page with code or a diagram: flare's policy with
+/// The policy of a reading page that loads a script: the hosted policy with
 /// the page's own scripts allowed. /evals/flare-reading-scripts-under-csp
 /// found that Shiki and Mermaid run under it with no violation, and need no
-/// `'unsafe-eval'`, worker or `blob:` source.
-pub(crate) const SCRIPT_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; script-src 'self'";
+/// `'unsafe-eval'`, worker or `blob:` source. Its `connect-src 'self'` lets
+/// the comments section read and write comments on the page's own origin.
+pub(crate) const SCRIPT_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; script-src 'self'";
 
 /// How long a browser keeps an embedded asset: a year, without asking
 /// again, because a new build gives a changed file a new name.
