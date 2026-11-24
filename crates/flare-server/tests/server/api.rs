@@ -815,6 +815,39 @@ async fn each_store_that_fails_answers_its_unavailable_code_and_answers_again_on
 }
 
 #[tokio::test]
+async fn a_creators_rule_that_cannot_answer_refuses_a_share_and_a_team_with_503_and_writes_neither()
+{
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    api.faults.creators.store(true, Ordering::SeqCst);
+    let (status, body) = api
+        .json(
+            "POST",
+            "/api/shares",
+            Some(&alice),
+            share_body("Plan", &[], &[]),
+        )
+        .await;
+    assert_eq!((status, code(&body)), (503, "flare::creators::unavailable"));
+    let (status, body) = api
+        .json(
+            "POST",
+            "/api/teams",
+            Some(&alice),
+            json!({ "name": "design" }),
+        )
+        .await;
+    assert_eq!((status, code(&body)), (503, "flare::teams::unavailable"));
+    let (status, mine) = api
+        .read("GET", "/api/shares?scope=mine", Some(&alice))
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(mine["items"], json!([]), "{mine}");
+    api.faults.creators.store(false, Ordering::SeqCst);
+    api.share(&alice, "Plan", &[], &[]).await;
+}
+
+#[tokio::test]
 async fn the_api_answers_404_on_a_hosted_site_without_the_share_api() {
     let hosted = crate::hosted::Hosted::start().await;
     let reply = hosted

@@ -7,6 +7,7 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
         "grants",
         "versions",
         "recipients",
+        "creators",
         "tokens",
         "activity",
         "requests",
@@ -122,4 +123,15 @@ fn a_bad_share_cursor_has_its_own_code_whose_hint_names_flare_shares() {
     assert!(text.contains("flare shares"), "{text}");
     let activity = ProblemDocument::new(ApiCode::BadCursor, "https://f.example");
     assert_eq!(activity.code, "flare::activity::bad_cursor");
+}
+
+#[test]
+fn a_creators_rule_that_cannot_answer_is_a_503_in_the_creators_area_that_asks_for_a_retry() {
+    assert_eq!(
+        ApiCode::CreatorsUnavailable.text(),
+        "flare::creators::unavailable"
+    );
+    assert_eq!(ApiCode::CreatorsUnavailable.status(), 503);
+    let problem = ProblemDocument::new(ApiCode::CreatorsUnavailable, "https://f.example");
+    assert!(matches!(problem.recovery, Some(Recovery::Retry)));
 }

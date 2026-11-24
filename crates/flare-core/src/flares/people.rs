@@ -49,22 +49,55 @@ impl CreatorDomain {
     }
 }
 
-/// Who may create a share, responses included.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Why a [`Creators`] rule could not say whether a person may create.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum Creators {
-    /// Everyone the sign-in admits, by their verified address.
-    Everyone,
-    /// Only these verified addresses and everyone at these domains.
-    Only {
-        /// The addresses.
-        addresses: Vec<Email>,
-        /// The domains.
-        domains: Vec<CreatorDomain>,
-    },
+pub enum CreatorsError {
+    /// The directory that the rule asks did not answer.
+    #[error("the creators directory is unavailable")]
+    Unavailable,
 }
 
-impl Creators {
+/// Who may create a share, responses included, and a team. Each app that
+/// adopts flare supplies its own rule, such as one that asks its directory
+/// for a group; [`AllAdmitted`] is the default.
+///
+/// [`Flares`](super::Flares) asks the rule only about a principal with a
+/// verified address, after the sign-in's admit rule let them in, so an
+/// implementation never sees a principal without one.
+pub trait Creators: Send + Sync {
+    /// Whether `who` may create a share or a team.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CreatorsError::Unavailable`] when the rule's directory
+    /// does not answer.
+    fn may_create(
+        &self,
+        who: &Principal,
+    ) -> impl Future<Output = Result<bool, CreatorsError>> + Send;
+}
+
+/// The default [`Creators`]: every person the sign-in admits may create.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AllAdmitted;
+
+impl Creators for AllAdmitted {
+    async fn may_create(&self, _who: &Principal) -> Result<bool, CreatorsError> {
+        Ok(true)
+    }
+}
+
+/// [`Creators`] from a fixed list: these verified addresses and everyone
+/// at these domains. A principal without a verified address may not
+/// create.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CreatorList {
+    addresses: Vec<Email>,
+    domains: Vec<CreatorDomain>,
+}
+
+impl CreatorList {
     /// Only the people with these addresses.
     #[must_use]
     pub fn only(addresses: Vec<Email>) -> Self {
@@ -74,20 +107,15 @@ impl Creators {
     /// The people with these addresses and everyone at these domains.
     #[must_use]
     pub fn listed(addresses: Vec<Email>, domains: Vec<CreatorDomain>) -> Self {
-        Self::Only { addresses, domains }
+        Self { addresses, domains }
     }
+}
 
-    /// Whether `who` may create a share. A principal with no verified
-    /// address may not.
-    #[must_use]
-    pub fn admits(&self, who: &Principal) -> bool {
-        match (self, who.email()) {
-            (_, None) => false,
-            (Self::Everyone, Some(_)) => true,
-            (Self::Only { addresses, domains }, Some(email)) => {
-                addresses.contains(email) || domains.iter().any(|domain| domain.holds(email))
-            }
-        }
+impl Creators for CreatorList {
+    async fn may_create(&self, who: &Principal) -> Result<bool, CreatorsError> {
+        Ok(who.email().is_some_and(|email| {
+            self.addresses.contains(email) || self.domains.iter().any(|domain| domain.holds(email))
+        }))
     }
 }
 

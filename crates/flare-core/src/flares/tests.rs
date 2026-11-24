@@ -8,18 +8,26 @@ fn person(address: &str) -> Principal {
     )
 }
 
-#[test]
-fn a_creators_list_admits_its_addresses_and_refuses_everyone_else() {
-    let creators = Creators::only(vec![Email::try_from("Ana@Example.org").unwrap()]);
-    assert!(creators.admits(&person("ana@example.org")));
-    assert!(!creators.admits(&person("jo@example.org")));
+fn may_create(creators: &impl Creators, who: &Principal) -> bool {
+    crate::contract::block_on(creators.may_create(who)).unwrap()
 }
 
 #[test]
-fn creators_everyone_admits_any_verified_address_and_no_principal_without_one() {
-    assert!(Creators::Everyone.admits(&person("jo@example.org")));
-    let local = Principal::new(PrincipalId::try_from("local:jo").unwrap());
-    assert!(!Creators::Everyone.admits(&local));
+fn a_creators_list_admits_its_addresses_and_refuses_everyone_else() {
+    let creators = CreatorList::only(vec![Email::try_from("Ana@Example.org").unwrap()]);
+    assert!(may_create(&creators, &person("ana@example.org")));
+    assert!(!may_create(&creators, &person("jo@example.org")));
+}
+
+#[test]
+fn all_admitted_lets_any_principal_it_is_asked_about_create() {
+    for address in [
+        "jo@example.org",
+        "ana@other.example",
+        "sam@mail.example.com",
+    ] {
+        assert!(may_create(&AllAdmitted, &person(address)));
+    }
 }
 
 #[test]
@@ -37,34 +45,34 @@ fn domain(text: &str) -> CreatorDomain {
 
 #[test]
 fn a_creator_domain_admits_its_addresses_and_refuses_other_domains() {
-    let creators = Creators::listed(vec![], vec![domain("@Example.com")]);
-    assert!(creators.admits(&person("ana@example.com")));
-    assert!(!creators.admits(&person("ana@other.example")));
+    let creators = CreatorList::listed(vec![], vec![domain("@Example.com")]);
+    assert!(may_create(&creators, &person("ana@example.com")));
+    assert!(!may_create(&creators, &person("ana@other.example")));
 }
 
 #[test]
 fn a_creator_domain_does_not_admit_a_subdomain_or_a_longer_domain() {
-    let creators = Creators::listed(vec![], vec![domain("@example.com")]);
-    assert!(!creators.admits(&person("ana@mail.example.com")));
-    assert!(!creators.admits(&person("ana@notexample.com")));
+    let creators = CreatorList::listed(vec![], vec![domain("@example.com")]);
+    assert!(!may_create(&creators, &person("ana@mail.example.com")));
+    assert!(!may_create(&creators, &person("ana@notexample.com")));
 }
 
 #[test]
 fn a_list_of_addresses_and_domains_admits_either() {
-    let creators = Creators::listed(
+    let creators = CreatorList::listed(
         vec![Email::try_from("jo@other.example").unwrap()],
         vec![domain("@example.com")],
     );
-    assert!(creators.admits(&person("ana@example.com")));
-    assert!(creators.admits(&person("jo@other.example")));
-    assert!(!creators.admits(&person("sam@other.example")));
+    assert!(may_create(&creators, &person("ana@example.com")));
+    assert!(may_create(&creators, &person("jo@other.example")));
+    assert!(!may_create(&creators, &person("sam@other.example")));
 }
 
 #[test]
-fn a_creator_domain_refuses_a_principal_without_an_address() {
-    let creators = Creators::listed(vec![], vec![domain("@example.com")]);
+fn a_creators_list_refuses_a_principal_without_an_address() {
+    let creators = CreatorList::listed(vec![], vec![domain("@example.com")]);
     let local = Principal::new(PrincipalId::try_from("local:ana").unwrap());
-    assert!(!creators.admits(&local));
+    assert!(!may_create(&creators, &local));
 }
 
 #[test]

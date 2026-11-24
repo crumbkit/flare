@@ -95,6 +95,7 @@ pub(super) fn share_error(error: ShareError) -> ApiCode {
 pub(super) fn flare_error(error: FlareError) -> Refusal {
     match error {
         FlareError::NotACreator => ApiCode::NotACreator.into(),
+        FlareError::CreatorsUnavailable => ApiCode::CreatorsUnavailable.into(),
         FlareError::NotFound => ApiCode::ShareNotFound.into(),
         FlareError::TooManyFlares => ApiCode::TooManyFlares.into(),
         FlareError::PartlyShared {

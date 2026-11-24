@@ -16,7 +16,7 @@
 //! still listed under the name, as one left by a grant that stopped before
 //! it could remove itself, so a new team never inherits a grant.
 
-use super::{Flares, Unfinished};
+use super::{Creators, Flares, Unfinished};
 use crate::auth::Principal;
 use crate::store::{CommentStore, CursorStore, GrantStore, ListKey, ResponseStore, ShareStore};
 use crate::teams::{Group, Team, TeamName, Teams, TeamsError};
@@ -39,8 +39,15 @@ pub struct TeamDeletion {
     pub removed: usize,
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<
+    S: ShareStore,
+    G: GrantStore,
+    R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
+    T: Teams,
+    K: Creators,
+> Flares<S, G, R, C, U, T, K>
 {
     /// Creates a team owned by the caller, who must be a creator. When no
     /// team has the name, grants still listed under it are removed first.
@@ -48,7 +55,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     /// # Errors
     ///
     /// Returns [`TeamsError::NotACreator`], [`TeamsError::Unavailable`]
-    /// when leftover grants cannot be removed, and the refusals of
+    /// when the creators rule cannot answer or leftover grants cannot be
+    /// removed, and the refusals of
     /// [`Teams::create`].
     pub async fn create_team(
         &self,
@@ -59,8 +67,10 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         let Some(owner) = who.email() else {
             return Err(TeamsError::NotACreator);
         };
-        if !self.creators.admits(who) {
-            return Err(TeamsError::NotACreator);
+        match self.creators.may_create(who).await {
+            Ok(true) => {}
+            Ok(false) => return Err(TeamsError::NotACreator),
+            Err(_) => return Err(TeamsError::Unavailable),
         }
         let teams = self.shares.teams();
         if !teams.taken(&name).await? {

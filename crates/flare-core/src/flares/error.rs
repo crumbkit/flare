@@ -8,9 +8,12 @@ use crate::sharing::ShareError;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum FlareError {
-    /// The caller is not on the creators list.
+    /// The deployment's creators rule does not let the caller create.
     #[error("only the deployment's creators may share")]
     NotACreator,
+    /// The deployment's creators rule could not answer.
+    #[error("the creators directory is unavailable")]
+    CreatorsUnavailable,
     /// A named flare does not exist, or the caller cannot open it. The two
     /// give the same answer.
     #[error("no such flare")]

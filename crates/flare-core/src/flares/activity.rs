@@ -136,8 +136,8 @@ pub struct ActivityPage {
     pub more: bool,
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams, K>
+    Flares<S, G, R, C, U, T, K>
 {
     /// The responses to `flares` above `after` that the caller can open,
     /// oldest first, at most `limit` of them (1 to [`MAX_PAGE`]).

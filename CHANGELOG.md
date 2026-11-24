@@ -8,6 +8,20 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- Who may share, respond and create a team is now a rule each app that
+  adopts flare supplies, through flare-core's new `Creators` trait. Its
+  one method, `may_create`, is async and can fail with
+  `CreatorsError::Unavailable`. `Flares` and flare-server's `Sharing` take
+  the rule as a type parameter that defaults to `AllAdmitted`, and
+  `Flares::new` takes the rule where it took the `Creators` enum.
+  `AllAdmitted` replaces `Creators::Everyone` and lets every admitted
+  person create. `CreatorList::only` and `CreatorList::listed` replace
+  `Creators::only` and `Creators::listed` and keep their rule. A rule that
+  cannot answer refuses a share with the new problem
+  `flare::creators::unavailable` (status 503) and a team with
+  `flare::teams::unavailable`, before anything is written. The
+  `hosted.creators` key and its values are unchanged, so no config needs
+  an edit.
 - flare's stylesheet takes the light and dark colours of the signed Flare
   mockup, so pages at `/pages/<name>`, the edit form and the conflict view
   change colour.

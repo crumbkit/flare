@@ -9,7 +9,7 @@ use flare_core::memory::{
     MemoryShareStore,
 };
 use flare_core::{
-    ActivityItem, CommentAction, CommentBody, CommentDraft, CommentId, CommentKey, Creators,
+    ActivityItem, AllAdmitted, CommentAction, CommentBody, CommentDraft, CommentId, CommentKey,
     CursorName, DocumentText, Email, FlareError, Flares, NewFlare, Position, Principal,
     PrincipalId, ShareContent, ShareId, ShareTitle, Timestamp,
 };
@@ -62,7 +62,7 @@ fn service(flare_limit: usize) -> Memory {
         MemoryResponseStore::with_sequence(sequence.clone()),
         MemoryCommentStore::with_sequence(sequence).with_flare_limit(flare_limit),
         MemoryCursorStore::new().with_limit(2),
-        Creators::Everyone,
+        AllAdmitted,
     )
 }
 

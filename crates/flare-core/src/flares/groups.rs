@@ -1,7 +1,7 @@
 //! [`Flares::grant_all`], which grants an existing share to more people,
 //! teams and everyone, and [`Flares::revoke`], which ends grants.
 
-use super::{FlareError, Flared, Flares, once_each};
+use super::{Creators, FlareError, Flared, Flares, once_each};
 use crate::auth::Principal;
 use crate::email::Email;
 use crate::grant::Role;
@@ -36,8 +36,15 @@ fn failed(id: &ShareId, written: usize, cause: ShareError) -> FlareError {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<
+    S: ShareStore,
+    G: GrantStore,
+    R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
+    T: Teams,
+    K: Creators,
+> Flares<S, G, R, C, U, T, K>
 {
     /// Grants Reader on an existing share to each person in `with` who
     /// holds no grant yet, and, for the share's owner, records each flare
@@ -68,6 +75,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     /// [`ShareError::Forbidden`] when someone other than the owner names
     /// `re` or everyone, [`ShareError::TeamNotFound`],
     /// [`ShareError::EveryoneUnbounded`], [`FlareError::NotACreator`],
+    /// [`FlareError::CreatorsUnavailable`],
     /// [`FlareError::NotFound`] for a `re` flare the caller cannot open, and
     /// [`FlareError::PartlyShared`] when a write fails after an earlier one.
     pub async fn grant_all(
@@ -91,7 +99,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
             if opened.standing != Standing::Owner {
                 return Err(FlareError::Share(ShareError::Forbidden));
             }
-            self.creator(who)?;
+            self.creator(who).await?;
             self.openable(who, &re).await?
         };
         let mut granted = Vec::new();

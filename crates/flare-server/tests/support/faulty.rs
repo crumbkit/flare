@@ -3,10 +3,11 @@
 
 use flare_core::memory::{MemoryResponseStore, MemoryShareStore, MemoryTokenStore};
 use flare_core::{
-    AddressesOnly, Digest, Email, IndexEntry, Listing, LoginCode, NewEntry, NewLink, NewShare,
-    NewToken, NewVersion, Position, PrincipalId, Reader, RecipientError, Recipients, ResponseLink,
-    ResponseStore, ResponseStoreError, Share, ShareId, ShareStore, ShareStoreError, ShareVersion,
-    SharedVersion, StoredToken, Timestamp, TokenId, TokenStore, TokenStoreError, UsedCode,
+    AddressesOnly, CreatorList, Creators, CreatorsError, Digest, Email, IndexEntry, Listing,
+    LoginCode, NewEntry, NewLink, NewShare, NewToken, NewVersion, Position, Principal, PrincipalId,
+    Reader, RecipientError, Recipients, ResponseLink, ResponseStore, ResponseStoreError, Share,
+    ShareId, ShareStore, ShareStoreError, ShareVersion, SharedVersion, StoredToken, Timestamp,
+    TokenId, TokenStore, TokenStoreError, UsedCode,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,6 +25,8 @@ pub struct Faults {
     pub index: Arc<AtomicBool>,
     /// Fails the recipients directory.
     pub recipients: Arc<AtomicBool>,
+    /// Fails the creators rule.
+    pub creators: Arc<AtomicBool>,
 }
 
 fn on(switch: &AtomicBool) -> bool {
@@ -224,5 +227,23 @@ impl Recipients for FaultyRecipients {
             return Err(RecipientError::Unavailable);
         }
         AddressesOnly.resolve(identifier).await
+    }
+}
+
+/// A creators list, failing while its switch is on.
+#[derive(Debug)]
+pub struct FaultyCreators {
+    /// The switch.
+    pub fail: Arc<AtomicBool>,
+    /// The list it asks while the switch is off.
+    pub inner: CreatorList,
+}
+
+impl Creators for FaultyCreators {
+    async fn may_create(&self, who: &Principal) -> Result<bool, CreatorsError> {
+        if on(&self.fail) {
+            return Err(CreatorsError::Unavailable);
+        }
+        self.inner.may_create(who).await
     }
 }

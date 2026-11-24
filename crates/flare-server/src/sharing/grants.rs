@@ -6,8 +6,8 @@ use super::run::{json, share_id, shared};
 use super::{Answer, Refusal, Sharing};
 use flare_contract::{ApiCode, GrantList, GrantRequest, RevokeRequest, Revoked, Role as WireRole};
 use flare_core::{
-    CommentStore, CursorStore, Email, GrantStore, Group, Principal, Recipients, ResponseStore,
-    ShareStore, Teams, Timestamp, TokenStore,
+    CommentStore, Creators, CursorStore, Email, GrantStore, Group, Principal, Recipients,
+    ResponseStore, ShareStore, Teams, Timestamp, TokenStore,
 };
 
 /// The refusal of a request that names nobody to revoke.
@@ -19,7 +19,7 @@ fn nobody() -> Refusal {
     }
 }
 
-impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
+impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
 where
     S: ShareStore,
     G: GrantStore,
@@ -29,6 +29,7 @@ where
     T: TokenStore,
     X: Recipients,
     M: Teams,
+    K: Creators,
 {
     /// The people and the groups that the identifiers name, with
     /// everyone added when `everyone` is set. `team:<name>` names a team

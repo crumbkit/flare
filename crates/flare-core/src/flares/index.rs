@@ -47,8 +47,8 @@ use crate::teams::Teams;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Unfinished;
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams, K>
+    Flares<S, G, R, C, U, T, K>
 {
     /// The people who can open `share`: its owner and each grantee, or
     /// `None` when the share does not exist.

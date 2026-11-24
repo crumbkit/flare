@@ -3,18 +3,24 @@
 //! and `names`, which maps usernames to addresses for `--with`. Without
 //! `stores` the hosted site serves no share API.
 //!
-//! `creators` is a list of addresses and `@domain` entries, or the value
-//! `"anyone admitted"`, which lets everyone the `oidc.admit` rule admits
-//! share. Left out, it defaults to that for a `domain` or `emails` rule.
-//! An `anyone` rule admits every verified address, so it needs `creators`
-//! written out, and the operator chooses `"anyone admitted"` on purpose.
+//! `creators` is a list of addresses and `@domain` entries, which selects
+//! flare-core's [`CreatorList`], or the value `"anyone admitted"`, which
+//! selects [`AllAdmitted`] and lets everyone the `oidc.admit` rule admits
+//! share. Left out, it defaults to [`AllAdmitted`] for a `domain` or
+//! `emails` rule. An `anyone` rule admits every verified address, so it
+//! needs `creators` written out, and the operator chooses `"anyone
+//! admitted"` on purpose. An app that embeds flare-server passes its own
+//! [`Creators`] to `Flares::new`; the `flare` command offers only these two.
 //!
 //! `get_flare` is the https address that the reading page's Get Flare link
 //! opens for a reader who has never shared a flare. Left out, the reading
 //! page shows no link to anyone.
 
 use flare_aws::HostedConfig;
-use flare_core::{CreatorDomain, Creators, Email, NamedRecipients};
+use flare_core::{
+    AllAdmitted, CreatorDomain, CreatorList, Creators, CreatorsError, Email, NamedRecipients,
+    Principal,
+};
 use flare_server::GetFlare;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -22,13 +28,31 @@ use std::collections::BTreeMap;
 /// The value of `hosted.creators` that lets every admitted person share.
 const ANYONE_ADMITTED: &str = "anyone admitted";
 
+/// The creators rule that `hosted.creators` selects when the server starts.
+#[derive(Debug)]
+pub(crate) enum HostedCreators {
+    /// Every admitted person: the key left out, or `"anyone admitted"`.
+    All(AllAdmitted),
+    /// The listed addresses and domains.
+    Listed(CreatorList),
+}
+
+impl Creators for HostedCreators {
+    async fn may_create(&self, who: &Principal) -> Result<bool, CreatorsError> {
+        match self {
+            Self::All(all) => all.may_create(who).await,
+            Self::Listed(list) => list.may_create(who).await,
+        }
+    }
+}
+
 /// The share API's settings.
 #[derive(Debug)]
 pub(crate) struct Sharing {
     /// The table and the bucket.
     pub(crate) stores: HostedConfig,
     /// Who may share, responses included.
-    pub(crate) creators: Creators,
+    pub(crate) creators: HostedCreators,
     /// How `--with` turns an identifier into an address.
     pub(crate) recipients: NamedRecipients,
     /// Whether any account the issuer verifies, which with Google is any
@@ -86,10 +110,10 @@ pub(crate) fn sharing(keys: Keys, anyone: bool) -> Result<Option<Sharing>, Strin
                     .to_owned(),
             );
         }
-        None => Creators::Everyone,
+        None => HostedCreators::All(AllAdmitted),
     };
     let recipients = recipients_from(names.unwrap_or_default())?;
-    let open_to_anyone = anyone && creators == Creators::Everyone;
+    let open_to_anyone = anyone && matches!(creators, HostedCreators::All(_));
     let get_flare = get_flare
         .map(|text| GetFlare::try_from(text.as_str()))
         .transpose()
@@ -105,13 +129,15 @@ pub(crate) fn sharing(keys: Keys, anyone: bool) -> Result<Option<Sharing>, Strin
     }))
 }
 
-fn creators_from(value: &Value) -> Result<Creators, String> {
+fn creators_from(value: &Value) -> Result<HostedCreators, String> {
     let bad = || {
         "hosted.creators must be a list of email addresses and @domain entries, such as \"ana@example.com\" and \"@example.com\", or the value \"anyone admitted\""
             .to_owned()
     };
     let list = match value {
-        Value::String(word) if word == ANYONE_ADMITTED => return Ok(Creators::Everyone),
+        Value::String(word) if word == ANYONE_ADMITTED => {
+            return Ok(HostedCreators::All(AllAdmitted));
+        }
         Value::Array(list) => list,
         _ => return Err(bad()),
     };
@@ -124,7 +150,9 @@ fn creators_from(value: &Value) -> Result<Creators, String> {
             addresses.push(Email::try_from(text).map_err(|_| bad())?);
         }
     }
-    Ok(Creators::listed(addresses, domains))
+    Ok(HostedCreators::Listed(CreatorList::listed(
+        addresses, domains,
+    )))
 }
 
 fn recipients_from(names: BTreeMap<String, String>) -> Result<NamedRecipients, String> {

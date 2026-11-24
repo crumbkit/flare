@@ -36,7 +36,8 @@ pub use comments::{CommentDraft, CommentThread, Posted};
 pub use error::FlareError;
 pub use groups::Revoked;
 pub use people::{
-    AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
+    AddressesOnly, AllAdmitted, CreatorDomain, CreatorList, Creators, CreatorsError,
+    NamedRecipients, RecipientError, Recipients,
 };
 pub use team_life::{MAX_SWEPT, TeamDeletion};
 
@@ -118,13 +119,14 @@ struct Responded {
 }
 
 /// The service: [`Shares`] with the creators rule and the response store.
+/// `T` reads and manages teams, and `K` is the app's [`Creators`] rule.
 #[derive(Debug)]
-pub struct Flares<S, G, R, C, U, T = NoTeams> {
+pub struct Flares<S, G, R, C, U, T = NoTeams, K = AllAdmitted> {
     shares: Shares<S, G, T>,
     responses: R,
     comments: C,
     cursors: U,
-    creators: Creators,
+    creators: K,
 }
 
 /// `items` in their first order, each once.
@@ -147,18 +149,12 @@ fn flare_refused(error: ShareError) -> FlareError {
     }
 }
 
-impl<S, G, R, C, U> Flares<S, G, R, C, U> {
-    /// A service over the five stores, admitting `creators`, with no
-    /// teams. The response and comment stores share one position sequence.
+impl<S, G, R, C, U, K> Flares<S, G, R, C, U, NoTeams, K> {
+    /// A service over the five stores, whose `creators` rule says who may
+    /// create, with no teams. The response and comment stores share one
+    /// position sequence.
     #[must_use]
-    pub fn new(
-        shares: S,
-        grants: G,
-        responses: R,
-        comments: C,
-        cursors: U,
-        creators: Creators,
-    ) -> Self {
+    pub fn new(shares: S, grants: G, responses: R, comments: C, cursors: U, creators: K) -> Self {
         Self {
             shares: Shares::new(shares, grants),
             responses,
@@ -169,10 +165,10 @@ impl<S, G, R, C, U> Flares<S, G, R, C, U> {
     }
 }
 
-impl<S, G, R, C, U, T> Flares<S, G, R, C, U, T> {
+impl<S, G, R, C, U, T, K> Flares<S, G, R, C, U, T, K> {
     /// The same service, reading and managing teams through `teams`.
     #[must_use]
-    pub fn with_teams<V>(self, teams: V) -> Flares<S, G, R, C, U, V> {
+    pub fn with_teams<V>(self, teams: V) -> Flares<S, G, R, C, U, V, K> {
         Flares {
             shares: self.shares.with_teams(teams),
             responses: self.responses,
@@ -198,8 +194,8 @@ impl<S, G, R, C, U, T> Flares<S, G, R, C, U, T> {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams, K>
+    Flares<S, G, R, C, U, T, K>
 {
     /// The response store, for tests that read the index. It is not built
     /// into a server, so no caller there can write the index around
@@ -208,18 +204,6 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     #[must_use]
     pub fn responses(&self) -> &R {
         &self.responses
-    }
-
-    /// Checks that `who` has a verified address and is a creator.
-    fn creator(&self, who: &Principal) -> Result<(), FlareError> {
-        if who.email().is_none() {
-            return Err(FlareError::Share(ShareError::NoVerifiedEmail));
-        }
-        if self.creators.admits(who) {
-            Ok(())
-        } else {
-            Err(FlareError::NotACreator)
-        }
     }
 
     /// The latest version of each flare in `re`, which `who` must be able
@@ -264,6 +248,29 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         }
         Ok(())
     }
+}
+
+impl<
+    S: ShareStore,
+    G: GrantStore,
+    R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
+    T: Teams,
+    K: Creators,
+> Flares<S, G, R, C, U, T, K>
+{
+    /// Checks that `who` has a verified address and is a creator.
+    async fn creator(&self, who: &Principal) -> Result<(), FlareError> {
+        if who.email().is_none() {
+            return Err(FlareError::Share(ShareError::NoVerifiedEmail));
+        }
+        match self.creators.may_create(who).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(FlareError::NotACreator),
+            Err(_) => Err(FlareError::CreatorsUnavailable),
+        }
+    }
 
     /// Creates a share owned by the caller, grants Reader to each recipient
     /// and records each `--re` flare as one it responds to.
@@ -272,6 +279,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     ///
     /// Before any write: [`FlareError::Share`] with
     /// [`ShareError::NoVerifiedEmail`], [`FlareError::NotACreator`],
+    /// [`FlareError::CreatorsUnavailable`],
     /// [`FlareError::TooManyFlares`] and [`FlareError::NotFound`] for a
     /// `--re` flare the caller cannot open. The create's own refusals as
     /// [`FlareError::Share`]. After the share exists,
@@ -282,7 +290,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         flare: NewFlare,
         at: Timestamp,
     ) -> Result<Flared, FlareError> {
-        self.creator(who)?;
+        self.creator(who).await?;
         for group in &flare.groups {
             self.shares
                 .check_group(who, group)
