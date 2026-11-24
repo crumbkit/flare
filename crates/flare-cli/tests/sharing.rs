@@ -970,6 +970,115 @@ fn a_server_that_is_not_flare_fails_with_bad_answer_whose_recovery_repairs_then_
     );
 }
 
+/// The repair of a write whose 2xx answer flare could not read.
+const CHECK_SHARES: &str = "check that flare shares does not already list the share or the version this command meant to make";
+
+/// The recovery of a write whose 2xx answer flare could not read: check
+/// `flare shares` before running the command again.
+fn check_shares() -> Value {
+    json!({"kind": "after", "repair": CHECK_SHARES, "then": {"kind": "retry"}})
+}
+
+/// The recovery of an answer whose next run starts clean.
+fn server_check() -> Value {
+    json!({
+        "kind": "after",
+        "repair": "check that the server runs flare with the share API",
+        "then": {"kind": "retry"},
+    })
+}
+
+/// A logged-in home with `review.md`, and the file's path.
+fn with_file(api: &FakeApi) -> (Home, String) {
+    let home = logged_in(api);
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let file = file.to_str().unwrap().to_owned();
+    (home, file)
+}
+
+#[test]
+fn a_share_whose_success_answer_is_not_json_tells_the_caller_to_check_flare_shares_first() {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route("POST", "/api/shares", 200, &json!("lost"));
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+
+    api.route("POST", "/api/shares", 200, &json!("lost"));
+    let ran = home.sharing(&["share", &file]);
+    ran.assert_failed("flare::network::bad_answer");
+    assert!(
+        help_line(&ran).contains(&format!("{CHECK_SHARES}, then run the same command again")),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_new_version_whose_success_answer_is_not_json_tells_the_caller_to_check_flare_shares_first() {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route(
+        "POST",
+        &format!("/api/shares/{PARTLY}/versions"),
+        200,
+        &json!("lost"),
+    );
+    let ran = home.sharing(&["share", &file, "--update", PARTLY, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+}
+
+#[test]
+fn a_share_whose_success_answer_is_cut_short_or_empty_tells_the_caller_to_check_flare_shares_first()
+{
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    for (body, length) in [("{\"share\":", 64), ("", 0)] {
+        api.route_raw("POST", "/api/shares", 200, body, length);
+        let ran = home.sharing(&["share", &file, "--json"]);
+        let printed = failure(&ran, "flare::network::bad_answer");
+        assert_eq!(
+            printed["recovery"],
+            check_shares(),
+            "{body:?}: {}",
+            ran.all()
+        );
+    }
+}
+
+#[test]
+fn a_share_refused_without_a_problem_document_keeps_the_server_check_and_retry() {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route("POST", "/api/shares", 502, &json!("lost"));
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], server_check(), "{}", ran.all());
+}
+
+#[test]
+fn a_grant_or_a_listing_whose_success_answer_is_not_json_keeps_the_server_check_and_retry() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "POST",
+        &format!("/api/grants/{PARTLY}"),
+        200,
+        &json!("lost"),
+    );
+    let ran = home.sharing(&["grant", PARTLY, "--with", "ana@example.org", "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], server_check(), "{}", ran.all());
+
+    api.route("GET", "/api/shares", 200, &json!("lost"));
+    let ran = home.sharing(&["shares", "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], server_check(), "{}", ran.all());
+}
+
 #[test]
 fn a_partly_shared_refusal_names_flare_grant_with_the_share_the_server_named() {
     let api = FakeApi::start();
@@ -1025,12 +1134,13 @@ fn a_partly_shared_refusal_without_a_share_names_flare_grant_with_a_placeholder_
     }
 }
 
-/// The recovery and the alternative of a bad cursor.
-fn assert_bad_cursor(ran: &run::Ran) {
+/// The recovery and the alternative of a bad cursor to `flare activity`
+/// with `flares`, the ids as the command line gave them.
+fn assert_bad_cursor(ran: &run::Ran, flares: &str) {
     let printed = failure(ran, "flare::activity::bad_cursor");
     assert_eq!(
         printed["recovery"],
-        json!({"kind": "run", "call": "flare activity <FLARE>..."}),
+        json!({"kind": "run", "call": format!("flare activity {flares}")}),
         "{}",
         ran.all()
     );
@@ -1039,28 +1149,36 @@ fn assert_bad_cursor(ran: &run::Ran) {
         json!([{
             "kind": "after",
             "repair": "find the cursor that the last flare activity printed",
-            "then": {"kind": "run", "call": "flare activity <FLARE>... --since <CURSOR>"},
+            "then": {"kind": "run", "call": format!("flare activity {flares} --since <CURSOR>")},
         }]),
         "{}",
         ran.all()
     );
 }
 
+/// A second flare's id.
+const OTHER: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
 #[test]
-fn a_cursor_flare_did_not_write_fails_with_bad_cursor_and_names_flare_activity_without_since() {
+fn a_cursor_flare_did_not_write_fails_with_bad_cursor_and_names_flare_activity_with_the_flares() {
     let api = FakeApi::start();
     let home = logged_in(&api);
-    let ran = home.sharing(&["activity", FLARE, "--since", "nonsense", "--json"]);
-    assert_bad_cursor(&ran);
+    let ran = home.sharing(&["activity", OTHER, FLARE, "--since", "nonsense", "--json"]);
+    assert_bad_cursor(&ran, &format!("{OTHER} {FLARE}"));
     assert!(api.requests_to("/api/activity").is_empty());
-    let ran = home.sharing(&["activity", FLARE, "--since", "nonsense"]);
+    let ran = home.sharing(&["activity", OTHER, FLARE, "--since", "nonsense"]);
     ran.assert_failed("flare::activity::bad_cursor");
     assert!(
-        help_line(&ran).contains("flare activity <FLARE>..."),
+        help_line(&ran).contains(&format!("flare activity {OTHER} {FLARE}")),
         "{}",
         ran.all()
     );
+}
 
+#[test]
+fn a_cursor_the_server_refuses_fails_with_bad_cursor_and_names_flare_activity_with_the_flare() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
     let mut refusal = problem("flare::activity::bad_cursor", 400, &api.origin);
     refusal["recovery"] = json!({
         "kind": "hint",
@@ -1068,7 +1186,7 @@ fn a_cursor_flare_did_not_write_fails_with_bad_cursor_and_names_flare_activity_w
     });
     api.route("GET", "/api/activity", 400, &refusal);
     let ran = home.sharing(&["activity", FLARE, "--since", "fc1.AAAAAAAAAAA", "--json"]);
-    assert_bad_cursor(&ran);
+    assert_bad_cursor(&ran, FLARE);
 }
 
 /// Answers the next activity call with one response and `cursor`.
@@ -1109,7 +1227,7 @@ fn activity_names_the_next_call_with_the_flares_and_the_last_cursor_under_next()
         ran.all()
     );
 
-    let other = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    let other = OTHER;
     one_page(&api, "fc1.AAAAAAAAAD0", true);
     let ran = home.sharing(&["activity", other, FLARE, "--json"]);
     ran.assert_ok();

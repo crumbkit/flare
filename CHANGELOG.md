@@ -243,3 +243,18 @@ This file records the notable changes to flare. The format follows
   session that expires first.
 - `App::new` in `hangar-server` takes a `Site` in place of a `Gate` and a
   `StateDir`.
+
+### Fixed
+
+- `flare share` and `flare share --update` no longer tell the caller to run
+  the same command again after the server answers with success and flare
+  cannot read the answer, because the server may already have made the
+  share or the version, and a second run would make a second one. The
+  failure keeps the code `flare::network::bad_answer`, and its recovery
+  says to check that `flare shares` does not already list the share or the
+  version before running the command again. Every other bad answer keeps
+  the server check and retry.
+- A `flare::activity::bad_cursor` refusal names `flare activity` with the
+  flare ids the command was given, such as `flare activity <id> <id>`, in
+  its recovery and its alternative, in place of the `<FLARE>...`
+  placeholder.

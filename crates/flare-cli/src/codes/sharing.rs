@@ -4,6 +4,7 @@
 //! a caller sees `flare::shares::not_a_creator` whether it reads the API or
 //! the command. No message holds a token or a login code.
 
+use super::Failed;
 use crumbkit::{Call, Code, Failure, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
 use flare_core::ShareId;
@@ -84,16 +85,14 @@ pub enum SharingFailed {
     },
     /// The server's answer is not the share API's answer.
     #[error("{server} answered with something flare cannot read: {problem}")]
-    #[failure(
-        code = NETWORK_BAD_ANSWER,
-        recovery = Recovery::after("check that the server runs flare with the share API", Then::Retry),
-        field(server = server)
-    )]
+    #[failure(code = NETWORK_BAD_ANSWER, recovery = bad_answer(*next), field(server = server))]
     BadAnswer {
         /// The server.
         server: String,
         /// What is wrong with the answer.
         problem: String,
+        /// What the answer means for running the command again.
+        next: NextRun,
     },
     /// The file to share could not be read.
     #[error("{path} could not be read: {problem}")]
@@ -130,6 +129,76 @@ pub enum SharingFailed {
     },
 }
 
+/// What an answer that flare cannot read means for running the command
+/// again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NextRun {
+    /// The server answered that the request did not succeed, so the next
+    /// run starts clean.
+    Clean,
+    /// The server answered that the request succeeded. A command whose next
+    /// run ends in the same state, such as a read, `flare grant`, `flare
+    /// login` or `flare logout`, keeps this; a command that writes a share
+    /// or a version turns it into [`NextRun::CheckShares`] with
+    /// `Failed::after_a_write`.
+    AfterSuccess,
+    /// The server may have made the share or the version, and the share API
+    /// takes no idempotency key, so a second run could make a second one.
+    CheckShares,
+}
+
+/// The recovery of [`SharingFailed::BadAnswer`]: check the server and run
+/// the command again, or, after a write that may have happened, check
+/// `flare shares` first.
+fn bad_answer(next: NextRun) -> Recovery {
+    match next {
+        NextRun::Clean | NextRun::AfterSuccess => Recovery::after(
+            "check that the server runs flare with the share API",
+            Then::Retry,
+        ),
+        NextRun::CheckShares => Recovery::after(
+            "check that flare shares does not already list the share or the version this command meant to make",
+            Then::Retry,
+        ),
+    }
+}
+
+impl Failed {
+    /// The same failure for a command that writes a share or a version. A
+    /// success answer that flare could not read may follow a write the
+    /// server made, so its recovery checks `flare shares` before the
+    /// command runs again.
+    pub(crate) fn after_a_write(mut self) -> Self {
+        if let Self::Sharing(SharingFailed::BadAnswer { next, .. }) = &mut self
+            && *next == NextRun::AfterSuccess
+        {
+            *next = NextRun::CheckShares;
+        }
+        self
+    }
+
+    /// The same failure naming `flares`, the flares a `flare activity`
+    /// asked about, when it is a refusal of the share API.
+    pub(crate) fn for_flares(self, flares: &[ShareId]) -> Self {
+        match self {
+            Self::Refused(refused) => Self::Refused(refused.for_flares(flares)),
+            other => other,
+        }
+    }
+}
+
+/// `flare activity` with each of `flares` in the order given, or with a
+/// placeholder when there are none.
+pub(crate) fn activity_call(flares: &[ShareId]) -> Call {
+    let call = Call::new(&["activity"]);
+    if flares.is_empty() {
+        return call.arg("flares");
+    }
+    flares
+        .iter()
+        .fold(call, |call, flare| call.value("flares", flare.as_str()))
+}
+
 fn for_server(server: Option<&str>) -> String {
     server.map_or_else(String::new, |server| format!(" for {server}"))
 }
@@ -143,6 +212,9 @@ pub struct Refused {
     /// The share that a partly finished share created, when the server
     /// named one that parses as a share id.
     share: Option<ShareId>,
+    /// The flares of the `flare activity` that was refused, which a
+    /// `bad_cursor` recovery names.
+    flares: Vec<ShareId>,
 }
 
 impl Refused {
@@ -153,7 +225,14 @@ impl Refused {
             detail,
             server: server.to_owned(),
             share: None,
+            flares: Vec::new(),
         }
+    }
+
+    /// The same refusal of a `flare activity` that asked about `flares`.
+    pub(crate) fn for_flares(mut self, flares: &[ShareId]) -> Self {
+        self.flares = flares.to_vec();
+        self
     }
 
     /// The same refusal naming the share that the problem document's
@@ -179,7 +258,7 @@ impl Refused {
                 };
                 Some(Recovery::Run(grant.arg("with").arg("re")))
             }
-            ApiCode::BadCursor => Some(Recovery::Run(Call::new(&["activity"]).arg("flares"))),
+            ApiCode::BadCursor => Some(Recovery::Run(activity_call(&self.flares))),
             _ => None,
         }
     }
@@ -209,9 +288,11 @@ impl Failure for Refused {
         Code::from_spelling(self.code.text())
     }
 
-    /// The API's recovery for the code. A `run` recovery is `flare login`
-    /// with the server, the only command the API names, which only a person
-    /// can finish, so it prints as a `terminal` recovery.
+    /// The recovery for the code. `partly_shared` and `bad_cursor` take the
+    /// typed call that `Refused::typed_call` builds. Every other code
+    /// takes the API's recovery, where a `run` recovery, which the API uses
+    /// only for `flare login`, becomes the `terminal` sign-in that
+    /// `sign_in` builds, because only a person can finish it.
     fn recovery(&self) -> Recovery {
         if let Some(typed) = self.typed_call() {
             return typed;
@@ -229,7 +310,7 @@ impl Failure for Refused {
         match self.code {
             ApiCode::BadCursor => vec![Recovery::after(
                 "find the cursor that the last flare activity printed",
-                Then::Run(Call::new(&["activity"]).arg("flares").arg("since")),
+                Then::Run(activity_call(&self.flares).arg("since")),
             )],
             _ => Vec::new(),
         }

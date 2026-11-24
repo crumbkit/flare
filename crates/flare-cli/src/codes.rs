@@ -6,7 +6,7 @@ use crumbkit::{Call, Code, Failure, Recovery};
 
 pub mod sharing;
 
-pub use sharing::{Refused, SharingFailed};
+pub use sharing::{NextRun, Refused, SharingFailed};
 
 /// No server answers for the board.
 pub const SERVER_NOT_RUNNING: Code<'static> = Code::from_spelling("flare::server::not_running");

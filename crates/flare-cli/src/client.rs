@@ -6,7 +6,7 @@
 //! server's code; any other answer that is not the expected JSON is
 //! [`SharingFailed::BadAnswer`].
 
-use crate::codes::{Failed, Refused, SharingFailed};
+use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use flare_contract::{ApiCode, ProblemDocument};
 use reqwest::{Client, Method, StatusCode};
 use secrecy::{ExposeSecret as _, SecretString};
@@ -50,10 +50,18 @@ impl Api {
         &self.origin
     }
 
-    fn bad(&self, problem: impl Into<String>) -> Failed {
+    /// A bad answer with `status`. After a success status the server may
+    /// have done what the request asked, which the command that sent it
+    /// weighs with [`Failed::after_a_write`].
+    fn bad(&self, status: StatusCode, problem: impl Into<String>) -> Failed {
         SharingFailed::BadAnswer {
             server: self.origin.clone(),
             problem: problem.into(),
+            next: if status.is_success() {
+                NextRun::AfterSuccess
+            } else {
+                NextRun::Clean
+            },
         }
         .into()
     }
@@ -97,22 +105,29 @@ impl Api {
         let bytes = reply
             .bytes()
             .await
-            .map_err(|_| self.bad("the answer was cut short"))?;
+            .map_err(|_| self.bad(status, "the answer was cut short"))?;
         if status.is_success() {
             if bytes.is_empty() || status == StatusCode::NO_CONTENT {
                 return Ok(None);
             }
             return serde_json::from_slice(&bytes).map(Some).map_err(|error| {
-                self.bad(format!("the answer is not the expected JSON: {error}"))
+                self.bad(
+                    status,
+                    format!("the answer is not the expected JSON: {error}"),
+                )
             });
         }
-        let problem: ProblemDocument = serde_json::from_slice(&bytes)
-            .map_err(|_| self.bad(format!("it answered {status} with no problem document")))?;
+        let problem: ProblemDocument = serde_json::from_slice(&bytes).map_err(|_| {
+            self.bad(
+                status,
+                format!("it answered {status} with no problem document"),
+            )
+        })?;
         match ApiCode::from_text(&problem.code) {
             Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
                 .naming(problem.share.as_deref())
                 .into()),
-            None => Err(self.bad(format!(
+            None => Err(self.bad(status, format!(
                 "it answered {status} with the code {}, which this flare does not know; a newer flare may",
                 problem.code
             ))),

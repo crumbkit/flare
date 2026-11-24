@@ -17,7 +17,7 @@ mod tests;
 
 use crate::cli::LoginArgs;
 use crate::client::Api;
-use crate::codes::{Failed, SharingFailed};
+use crate::codes::{Failed, NextRun, SharingFailed};
 use crate::documents::{LoggedIn, LoggedOut};
 use crate::env::Snapshot;
 use crate::{keychain, opener};
@@ -168,6 +168,7 @@ async fn exchange(origin: &str, code: &SecretString, label: &str) -> Result<Toke
             SharingFailed::BadAnswer {
                 server: origin.to_owned(),
                 problem: "the exchange answered with no token".to_owned(),
+                next: NextRun::AfterSuccess,
             }
             .into()
         })

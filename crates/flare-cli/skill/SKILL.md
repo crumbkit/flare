@@ -23,7 +23,9 @@ called flares, and the owners of those flares can then read it.
   `failures`, each in the same shape.
 - Act on the failure's `recovery` by its `kind`:
   - `run`: run the command in `call`, then run the original command
-    again.
+    again. A word in angle brackets in `call`, such as `<ADDRESS>`, is a
+    value to fill in from the failed command or from the person, and `...`
+    after it means the value may repeat.
   - `terminal`: only a person can run the command in `call`, such as a
     browser sign-in. Ask the person to run it, and wait for them before
     you run the original command again.
