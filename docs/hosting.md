@@ -297,9 +297,10 @@ is the only limit on sign-in requests:
 - Serve flare on a name whose parent domain has no untrusted subdomains.
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.
-- A hosted reply's `Content-Security-Policy` has `connect-src 'self'`,
-  which limits the requests a page makes to this site's origin. Only a
-  reading page with code or a diagram adds `script-src 'self'`, so every
-  other hosted page runs no script.
+- A reading page with code or a diagram carries the script policy, whose
+  `Content-Security-Policy` has `script-src 'self'` and no `connect-src`,
+  so its scripts can make no request. Every other hosted reply's policy
+  has `connect-src 'self'`, which limits the requests a page makes to this
+  site's origin, and those pages run no script.
 - Every reply carries `Strict-Transport-Security: max-age=63072000`, so a
   browser that has visited uses HTTPS for two years.

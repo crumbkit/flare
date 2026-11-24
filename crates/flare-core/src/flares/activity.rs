@@ -25,9 +25,9 @@
 //! older than the cursor.
 //!
 //! One call examines at most [`MAX_EXAMINED`] index entries and comment
-//! events together. Only entries the caller can no longer open and events
-//! of comments that are gone can fill that many without filling the page,
-//! so a page cut by it can be short and say that more follow.
+//! events together. Only entries whose responses the caller can no longer
+//! open can fill that many without filling the page, so a page cut by it
+//! can be short and say that more follow.
 
 use super::{FlareError, Flares, MAX_FLARES, flare_refused, once_each};
 use crate::auth::Principal;
@@ -93,8 +93,9 @@ pub struct CommentActivity {
     pub position: Position,
 }
 
-/// The most index entries one activity call examines before it answers
-/// the items it found, with `more` set.
+/// The most index entries and comment events, counted together, that one
+/// activity call examines before it answers the items it found, with
+/// `more` set.
 pub const MAX_EXAMINED: usize = 1_000;
 
 /// One response to a flare that the caller can open.

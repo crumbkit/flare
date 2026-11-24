@@ -107,10 +107,11 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
   `request::origin` (403).
 - A request with an `Authorization` header is a token request, whatever
   cookies it holds.
-- Hosted pages carry `connect-src 'self'`, which limits the requests a
-  page makes to the site's own origin. Only a reading page with code or a
-  diagram adds `script-src 'self'` (see [reading.md](reading.md)), so every
-  other hosted page runs no script.
+- A reading page with code or a diagram carries the script policy, which
+  has `script-src 'self'` and no `connect-src`, so its scripts can make no
+  request (see [reading.md](reading.md)). Every other hosted page carries
+  `connect-src 'self'`, which limits the requests a page makes to the
+  site's own origin, and runs no script.
 
 ## Crash points
 

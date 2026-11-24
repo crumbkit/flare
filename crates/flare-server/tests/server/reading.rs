@@ -16,9 +16,11 @@ fn hosted_policy() -> String {
     POLICY.replace("font-src 'self';", "font-src 'self'; connect-src 'self';")
 }
 
-/// The hosted policy of a page with code or a figure.
+/// The policy of a page with code or a figure: flare's policy with the
+/// page's own scripts allowed and no `connect-src`, because the reading
+/// scripts make no request.
 fn script_policy() -> String {
-    format!("{}; script-src 'self'", hosted_policy())
+    format!("{POLICY}; script-src 'self'")
 }
 
 /// A server where alice shared `markdown` with bob, bob's session and the
@@ -176,7 +178,12 @@ async fn only_a_page_with_code_or_a_figure_lets_scripts_run_and_no_policy_allows
         assert_eq!(reply.all("content-security-policy"), vec![policy.as_str()]);
         assert_eq!(reply.all("cache-control"), vec!["no-store"]);
         assert!(!reply.all("content-security-policy")[0].contains("unsafe-eval"));
-        if !scripts {
+        if scripts {
+            assert!(
+                !reply.all("content-security-policy")[0].contains("connect-src"),
+                "a page whose scripts run may not open connections to the origin"
+            );
+        } else {
             assert!(!reply.body.contains("<script"), "{}", reply.body);
         }
     }
