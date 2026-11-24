@@ -3,6 +3,11 @@
 //! server's share API. `flare share --dry-run` is the exception:
 //! `dry_run.rs` checks and renders the file and reads neither the login nor
 //! the Keychain. `flare activity` is in `activity.rs`.
+//!
+//! A Markdown file's relative images are read from the file's folder and
+//! sent with it as a form. An image whose file is missing, or whose path
+//! leads outside the folder, through `..` or a link, stops the command
+//! before any request, a dry run included.
 
 mod dry_run;
 mod grants;
@@ -31,6 +36,68 @@ use std::path::Path;
 /// The largest file `flare share` reads, in bytes. The server takes far
 /// less, and refuses a larger document with `flare::shares::too_large`.
 const MAX_FILE: u64 = 4 * 1024 * 1024;
+
+/// One image a document shows: its path as the Markdown wrote it, and its
+/// bytes.
+pub(crate) struct LocalImage {
+    pub(crate) path: String,
+    pub(crate) bytes: Vec<u8>,
+}
+
+/// The most bytes of one image that `flare share` reads. The server
+/// refuses a larger image with `flare::images::too_large`.
+const MAX_IMAGE: u64 = 5 * 1024 * 1024;
+
+/// The images that the Markdown `content` of `file` shows, read from the
+/// file's folder. HTML carries none.
+fn images(file: &Path, format: Format, content: &str) -> Result<Vec<LocalImage>, Failed> {
+    if format != Format::Markdown {
+        return Ok(Vec::new());
+    }
+    let unreadable = |path: &Path, error: std::io::Error| -> Failed {
+        SharingFailed::FileUnreadable {
+            path: path.display().to_string(),
+            problem: error.to_string(),
+        }
+        .into()
+    };
+    let folder = file
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty());
+    let folder = folder.unwrap_or_else(|| Path::new("."));
+    let root = folder
+        .canonicalize()
+        .map_err(|error| unreadable(folder, error))?;
+    let mut images = Vec::new();
+    for path in flare_render::image_paths(content) {
+        let joined = folder.join(&path);
+        let real = match joined.canonicalize() {
+            Ok(real) => real,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(SharingFailed::ImageMissing { image: path }.into());
+            }
+            Err(error) => return Err(unreadable(&joined, error)),
+        };
+        if !real.starts_with(&root) {
+            return Err(SharingFailed::ImageOutsideFolder { image: path }.into());
+        }
+        let mut bytes = Vec::new();
+        std::fs::File::open(&real)
+            .and_then(|opened| opened.take(MAX_IMAGE + 1).read_to_end(&mut bytes))
+            .map_err(|error| unreadable(&joined, error))?;
+        images.push(LocalImage { path, bytes });
+    }
+    Ok(images)
+}
+
+/// The images of what `args` sends.
+fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalImage>, Failed> {
+    let (format, content) = match outgoing {
+        Outgoing::Create(request) => (request.format, &request.content),
+        Outgoing::Update(_, request) => (request.format, &request.content),
+    };
+    images(&args.file, format, content)
+}
 
 /// A client of the saved login's server with its token.
 ///
@@ -151,15 +218,15 @@ pub(crate) async fn share(
     env: &Snapshot,
 ) -> Result<ShareOut, Failed> {
     let outgoing = outgoing(args)?;
+    let images = images_of(args, &outgoing)?;
     if dry_run {
         return dry_run::check(args, outgoing);
     }
     let api = session(env)?;
     match outgoing {
-        Outgoing::Update(id, request) => update(&api, &id, request).await,
+        Outgoing::Update(id, request) => update(&api, &id, request, &images).await,
         Outgoing::Create(request) => {
-            let shared: Shared = api
-                .send(Method::POST, "/api/shares", Some(&request))
+            let shared: Shared = sent(&api, "/api/shares", &request, &images)
                 .await
                 .and_then(|answer| body(&api, answer))
                 .map_err(Failed::after_a_write)?;
@@ -175,13 +242,32 @@ pub(crate) async fn share(
     }
 }
 
+/// Posts `request` to `target`: as JSON when there are no images, and as
+/// a form with them otherwise.
+async fn sent<T: serde::de::DeserializeOwned>(
+    api: &Api,
+    target: &str,
+    request: &impl serde::Serialize,
+    images: &[LocalImage],
+) -> Result<Option<T>, Failed> {
+    if images.is_empty() {
+        api.send(Method::POST, target, Some(request)).await
+    } else {
+        api.send_form(Method::POST, target, request, images).await
+    }
+}
+
 /// Publishes `request` as the next version of the share `id`. The server
 /// answers with the share's summary, whose version is the new number.
-async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<ShareOut, Failed> {
+async fn update(
+    api: &Api,
+    id: &str,
+    request: VersionRequest,
+    images: &[LocalImage],
+) -> Result<ShareOut, Failed> {
     let id = share_id(api, id)?;
     let target = format!("/api/shares/{}/versions", id.as_str());
-    let share: ShareSummary = api
-        .send(Method::POST, &target, Some(&request))
+    let share: ShareSummary = sent(api, &target, &request, images)
         .await
         .and_then(|answer| body(api, answer))
         .map_err(Failed::after_a_write)?;
