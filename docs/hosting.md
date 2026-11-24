@@ -99,8 +99,18 @@ The share API lets people share Markdown files with named people from the
   config.
 - `flare serve` checks the table and the bucket at start and exits with
   `flare::stores::unavailable` when it cannot read them.
-- `creators` says who may share and respond. It is a list of addresses
-  and `@domain` entries, such as `"ana@example.com"` and `"@example.com"`,
+- `creators` says who may share, respond and create a team. Who may
+  create is a rule that each app adopting flare supplies: flare-core's
+  `Creators` trait, which `Flares::new` takes. The default rule,
+  `AllAdmitted`, lets every person the `admit` rule admits create. The
+  optional rule, `CreatorList`, allows only listed addresses and domains.
+  The `flare` command picks one of these two from `creators` when it
+  starts. An app that embeds flare-server passes its own rule, such as one
+  that asks its directory for a group, and a rule whose directory does not
+  answer refuses the request with `flare::creators::unavailable` (status
+  503) before anything is written. In config, `creators` is a list of
+  addresses and `@domain` entries, such as `"ana@example.com"` and
+  `"@example.com"`,
   where a domain entry admits every verified address at exactly that
   domain and not its subdomains. It can instead be the value
   `"anyone admitted"`, which lets everyone the `admit` rule admits share.

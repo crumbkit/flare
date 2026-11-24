@@ -6,11 +6,11 @@ use super::run::json;
 use super::{Answer, Scope, Sharing};
 use flare_contract::{Role as WireRole, ShareList};
 use flare_core::{
-    CommentStore, CursorStore, GrantStore, ListKey, Principal, Recipients, ResponseStore,
+    CommentStore, Creators, CursorStore, GrantStore, ListKey, Principal, Recipients, ResponseStore,
     ShareStore, Teams, TokenStore,
 };
 
-impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
+impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
 where
     S: ShareStore,
     G: GrantStore,
@@ -20,6 +20,7 @@ where
     T: TokenStore,
     X: Recipients,
     M: Teams,
+    K: Creators,
 {
     /// At most `limit` shares of `scope` after `after`, or from the first,
     /// and the cursor of the next page when more follow. With `everyone`,

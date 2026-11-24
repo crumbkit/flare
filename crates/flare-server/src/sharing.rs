@@ -41,8 +41,8 @@ use flare_contract::{
     NewComment, RevokeRequest, ShareRequest, TeamRequest, TransferRequest, VersionRequest,
 };
 use flare_core::{
-    Admission, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal, ShareTitle,
-    ShareVersion, Timestamp,
+    Admission, AllAdmitted, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal,
+    ShareTitle, ShareVersion, Timestamp,
 };
 use secrecy::SecretString;
 use std::fmt;
@@ -52,12 +52,12 @@ use std::pin::Pin;
 /// A boxed future that the [`Api`] trait returns.
 pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The share API's parts: the [`Flares`] service with its teams, the token
-/// store, the directory that resolves `--with` identifiers, the admit rule
-/// that every token's owner must still pass, and the get flare address
-/// that [`Sharing::with_get_flare`] sets.
-pub struct Sharing<S, G, R, C, U, T, X, M = NoTeams> {
-    flares: Flares<S, G, R, C, U, M>,
+/// The share API's parts: the [`Flares`] service with its teams and its
+/// creators rule, the token store, the directory that resolves `--with`
+/// identifiers, the admit rule that every token's owner must still pass,
+/// and the get flare address that [`Sharing::with_get_flare`] sets.
+pub struct Sharing<S, G, R, C, U, T, X, M = NoTeams, K = AllAdmitted> {
+    flares: Flares<S, G, R, C, U, M, K>,
     tokens: T,
     recipients: X,
     admit: Admit,
@@ -77,14 +77,19 @@ fn admission(admit: &Admit) -> Admission {
     }
 }
 
-impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M> {
+impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K> {
     /// The share API over `flares`, keeping tokens in `tokens`, resolving
     /// recipients with `recipients` and accepting a token only while
     /// `admit`, the site's sign-in rule, admits its owner's address. The
     /// share service writes and reads everyone grants under `admit`. Its
     /// reading pages link to no get flare address.
     #[must_use]
-    pub fn new(flares: Flares<S, G, R, C, U, M>, tokens: T, recipients: X, admit: Admit) -> Self {
+    pub fn new(
+        flares: Flares<S, G, R, C, U, M, K>,
+        tokens: T,
+        recipients: X,
+        admit: Admit,
+    ) -> Self {
         Self {
             flares: flares.admitting(admission(&admit)),
             tokens,
@@ -95,7 +100,7 @@ impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M> {
     }
 }
 
-impl<S, G, R, C, U, T, X, M> fmt::Debug for Sharing<S, G, R, C, U, T, X, M> {
+impl<S, G, R, C, U, T, X, M, K> fmt::Debug for Sharing<S, G, R, C, U, T, X, M, K> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.debug_struct("Sharing").finish_non_exhaustive()
     }

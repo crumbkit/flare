@@ -11,8 +11,8 @@ use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareSt
 use crate::teams::Teams;
 use crate::time::Timestamp;
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams, K>
+    Flares<S, G, R, C, U, T, K>
 {
     /// Grants Reader on `response` to the owner of each flare in `flares`,
     /// once per owner. `who` owns the response. An owner who already holds

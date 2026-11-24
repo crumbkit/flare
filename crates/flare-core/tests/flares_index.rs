@@ -11,7 +11,7 @@ use flare_core::memory::{
     MemoryShareStore,
 };
 use flare_core::{
-    ActivityPage, Creators, DocumentText, Email, FlareError, Flares, MAX_EXAMINED, NewEntry,
+    ActivityPage, AllAdmitted, DocumentText, Email, FlareError, Flares, MAX_EXAMINED, NewEntry,
     NewFlare, NewLink, Position, Principal, PrincipalId, Reader, ResponseStore, Revoked,
     ShareContent, ShareId, ShareTitle, ShareVersion, Timestamp,
 };
@@ -64,7 +64,7 @@ fn service() -> Service {
         Instrumented::over(MemoryResponseStore::with_sequence(sequence.clone())),
         MemoryCommentStore::with_sequence(sequence),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     )
 }
 

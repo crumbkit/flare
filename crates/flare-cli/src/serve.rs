@@ -15,7 +15,8 @@ use crate::board;
 use crate::cli::ServeArgs;
 use crate::codes::{Failed, HeldPort};
 use crate::config::{
-    self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig, Site as Configured,
+    self, Hosted, HostedCreators, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig,
+    Site as Configured,
 };
 use crate::documents::Served;
 use crate::env::Snapshot;
@@ -308,6 +309,7 @@ type HostedSharing = Sharing<
     DynamoTokenStore,
     NamedRecipients,
     FlareTeams<DynamoTeamStore>,
+    HostedCreators,
 >;
 
 /// The share API on the configured table and bucket, which it checks

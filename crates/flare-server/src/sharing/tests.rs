@@ -12,7 +12,7 @@ use flare_core::memory::{
     MemoryTokenStore,
 };
 use flare_core::{
-    AddressesOnly, Creators, DocumentText, Email, FlareTeams, Flares, Group, NewFlare, NewToken,
+    AddressesOnly, AllAdmitted, DocumentText, Email, FlareTeams, Flares, Group, NewFlare, NewToken,
     Principal, PrincipalId, Role, ShareContent, ShareId, ShareTitle, TeamName, Timestamp, TokenId,
     TokenLabel, TokenStore as _,
 };
@@ -90,7 +90,7 @@ async fn sharing(
         MemoryResponseStore::new(),
         MemoryCommentStore::new(),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     );
     Sharing::new(flares, store, AddressesOnly, admit)
 }
@@ -146,7 +146,7 @@ async fn an_admin_is_refused_a_new_version_and_the_owner_publishes_it() {
         MemoryResponseStore::new(),
         MemoryCommentStore::new(),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     );
     let id = ShareId::try_from("0123456789abcdef0123456789abcdef").unwrap();
     let text = DocumentText::try_from("# Plan\n").unwrap();
@@ -246,7 +246,7 @@ async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_in_the_lis
         MemoryResponseStore::new(),
         MemoryCommentStore::new(),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()));
     let design = TeamName::try_from("design").unwrap();
@@ -401,7 +401,7 @@ async fn badged(
         MemoryResponseStore::new(),
         MemoryCommentStore::new(),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     );
     let id = share_as(
         &flares,

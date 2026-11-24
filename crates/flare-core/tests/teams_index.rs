@@ -10,8 +10,8 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    ActivityItem, ActivityPage, Admission, CommentBody, CommentDraft, CommentId, CommentKey,
-    Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Group, MailDomain, NewFlare,
+    ActivityItem, ActivityPage, Admission, AllAdmitted, CommentBody, CommentDraft, CommentId,
+    CommentKey, DocumentText, Email, FlareError, FlareTeams, Flares, Group, MailDomain, NewFlare,
     Position, Principal, PrincipalId, Reader, ShareContent, ShareId, ShareTitle, TeamName, Teams,
     Timestamp,
 };
@@ -74,7 +74,7 @@ fn with_design() -> Memory {
         MemoryResponseStore::with_sequence(sequence.clone()),
         MemoryCommentStore::with_sequence(sequence),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
     .admitting(Admission::Domain(

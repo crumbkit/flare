@@ -80,8 +80,8 @@ fn comment_refused(error: CommentStoreError) -> FlareError {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams, K>
+    Flares<S, G, R, C, U, T, K>
 {
     /// Checks that `who` can open `flare` and answers who they are.
     async fn readable(&self, who: &Principal, flare: &ShareId) -> Result<PrincipalId, FlareError> {

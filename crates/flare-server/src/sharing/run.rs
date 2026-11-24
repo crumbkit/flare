@@ -11,9 +11,9 @@ use flare_contract::{
     VersionRequest, utc,
 };
 use flare_core::{
-    CommentStore, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare,
-    NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareVersion, Teams, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    CommentStore, Creators, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode,
+    NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId,
+    ShareStore, ShareVersion, Teams, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -61,7 +61,7 @@ pub(super) fn shared(flared: &Flared, role: WireRole) -> Shared {
     }
 }
 
-impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
+impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
 where
     S: ShareStore,
     G: GrantStore,
@@ -71,6 +71,7 @@ where
     T: TokenStore,
     X: Recipients,
     M: Teams,
+    K: Creators,
 {
     async fn create(&self, who: &Principal, request: ShareRequest, now: Timestamp) -> Answer {
         let (title, text) = check_share(&request)?;
@@ -244,7 +245,7 @@ where
     }
 }
 
-impl<S, G, R, C, U, T, X, M> Api for Sharing<S, G, R, C, U, T, X, M>
+impl<S, G, R, C, U, T, X, M, K> Api for Sharing<S, G, R, C, U, T, X, M, K>
 where
     S: ShareStore,
     G: GrantStore,
@@ -254,6 +255,7 @@ where
     T: TokenStore,
     X: Recipients,
     M: Teams,
+    K: Creators,
 {
     fn admits(&self, who: &Principal) -> bool {
         who.email().is_some_and(|email| self.admit.admits(email))

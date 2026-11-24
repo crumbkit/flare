@@ -9,10 +9,10 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Group, MAX_MEMBERS,
-    MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, MailDomain, NewFlare, Position, Principal, PrincipalId,
-    Role, ShareContent, ShareError, ShareId, ShareTitle, Standing, TeamName, Teams, TeamsError,
-    Timestamp,
+    Admission, AllAdmitted, CreatorList, DocumentText, Email, FlareError, FlareTeams, Flares,
+    Group, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, MailDomain, NewFlare, Position,
+    Principal, PrincipalId, Role, ShareContent, ShareError, ShareId, ShareTitle, Standing,
+    TeamName, Teams, TeamsError, Timestamp,
 };
 
 type Memory = Flares<
@@ -22,6 +22,7 @@ type Memory = Flares<
     MemoryCommentStore,
     MemoryCursorStore,
     FlareTeams<MemoryTeamStore>,
+    CreatorList,
 >;
 
 fn email(text: &str) -> Email {
@@ -77,7 +78,7 @@ fn flare(byte: u8, with: &[&str], groups: Vec<Group>) -> NewFlare {
 
 /// A service whose creators are alice and bob, under `admission`.
 fn memory_admitting(admission: Admission) -> Memory {
-    let creators = Creators::only(vec![email("alice@example.com"), email("bob@example.com")]);
+    let creators = CreatorList::only(vec![email("alice@example.com"), email("bob@example.com")]);
     let sequence = MemorySequence::new();
     Flares::new(
         MemoryShareStore::new(),
@@ -511,7 +512,7 @@ fn the_default_teams_answer_managed_elsewhere_for_every_change() {
         MemoryResponseStore::with_sequence(sequence.clone()),
         MemoryCommentStore::with_sequence(sequence),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     );
     let refused = block_on(flares.create_team(&alice(), team("design"), at(1)));
     assert_eq!(refused, Err(TeamsError::ManagedElsewhere));

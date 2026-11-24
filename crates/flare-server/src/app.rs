@@ -16,7 +16,8 @@ use bytes_alias::Body;
 use flare_auth_loopback::StateError;
 use flare_auth_oidc::{Clock as OidcClock, SystemClock as OidcSystemClock};
 use flare_core::{
-    CommentStore, CursorStore, GrantStore, Recipients, ResponseStore, ShareStore, Teams, TokenStore,
+    CommentStore, Creators, CursorStore, GrantStore, Recipients, ResponseStore, ShareStore, Teams,
+    TokenStore,
 };
 use flare_core::{PageStore, RecordStore};
 use hyper::body::Incoming;
@@ -144,9 +145,9 @@ where
     /// site. Call it before cloning the app; on a cloned app it changes
     /// nothing.
     #[must_use]
-    pub fn with_sharing<SS, G, RS, CS, US, T, X, M>(
+    pub fn with_sharing<SS, G, RS, CS, US, T, X, M, W>(
         mut self,
-        sharing: Sharing<SS, G, RS, CS, US, T, X, M>,
+        sharing: Sharing<SS, G, RS, CS, US, T, X, M, W>,
     ) -> Self
     where
         SS: ShareStore + 'static,
@@ -157,6 +158,7 @@ where
         T: TokenStore + 'static,
         X: Recipients + 'static,
         M: Teams + 'static,
+        W: Creators + 'static,
     {
         if let Some(shared) = Arc::get_mut(&mut self.shared) {
             shared.sharing = Some(Arc::new(sharing));

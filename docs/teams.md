@@ -43,7 +43,7 @@ gives the life of a team, of a member and of a group grant.
 
 | Command | Route | Who may |
 | --- | --- | --- |
-| `flare teams create <name>` | `POST /api/teams` | A person the server's `creators` setting allows |
+| `flare teams create <name>` | `POST /api/teams` | A person the deployment's creators rule allows, which by default is everyone the admit rule admits |
 | `flare teams add <name> --with <people>` | `POST /api/teams/<name>/members` | The team's owner |
 | `flare teams remove <name> --with <people> --yes` | `DELETE /api/teams/<name>/members` | The team's owner, or a member removing only themself |
 | `flare teams list` | `GET /api/teams` | Anyone signed in; it lists their own teams |

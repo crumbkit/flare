@@ -9,7 +9,7 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, Creators, DocumentText, Email, Grant, GrantRevoke, GrantStore, GrantStoreError,
+    Admission, AllAdmitted, DocumentText, Email, Grant, GrantRevoke, GrantStore, GrantStoreError,
     GrantWrite, Group, ListKey, Listing, MAX_SWEPT, MailDomain, NewFlare, Position, Principal,
     PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Team, TeamName, Teams, TeamsError,
     Timestamp,
@@ -226,7 +226,7 @@ fn with_design_over(left: Arc<AtomicUsize>, grants: Arc<MemoryGrantStore>) -> Se
         MemoryResponseStore::with_sequence(sequence.clone()),
         MemoryCommentStore::with_sequence(sequence),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     )
     .with_teams(Racing {
         inner: FlareTeams::new(MemoryTeamStore::new()),

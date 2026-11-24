@@ -9,7 +9,7 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, CommentStore, Creators, CursorStore, DocumentText, Email, FlareTeams, Flares,
+    Admission, AllAdmitted, CommentStore, CursorStore, DocumentText, Email, FlareTeams, Flares,
     GrantStore, Group, MAX_SWEPT, MailDomain, NewFlare, Principal, PrincipalId, ResponseStore,
     ShareContent, ShareId, ShareStore, ShareTitle, TeamName, Teams, TeamsError, Timestamp,
 };
@@ -113,7 +113,7 @@ fn service<T: Teams>(
         MemoryResponseStore::with_sequence(sequence.clone()),
         MemoryCommentStore::with_sequence(sequence),
         MemoryCursorStore::new(),
-        Creators::Everyone,
+        AllAdmitted,
     )
     .with_teams(teams)
     .admitting(Admission::Domain(

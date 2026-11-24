@@ -34,7 +34,7 @@ mod sharing;
 mod tests;
 
 use reach::{ReachSection, reach};
-pub(crate) use sharing::Sharing;
+pub(crate) use sharing::{HostedCreators, Sharing};
 
 /// The local site's only redirect URI: the sign-in host's callback.
 const REDIRECT: &str = "http://localhost:8740/auth/oidc/callback";

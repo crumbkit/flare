@@ -1,4 +1,4 @@
-use super::{Problem, Secret, Site, parse};
+use super::{HostedCreators, Problem, Secret, Site, parse};
 
 const DOMAIN: &str = r#"{"oidc":{"issuer":"https://accounts.google.com","client_id":"abc.apps.googleusercontent.com","admit":{"domain":"example.com","reach":"everything"}}}"#;
 
@@ -201,7 +201,11 @@ fn a_hosted_section_with_stores_serves_the_share_api_and_every_admitted_person_m
     };
     let sharing = hosted.sharing.expect("the share API");
     assert_eq!(sharing.stores.table().as_str(), "flare-shares");
-    assert_eq!(sharing.creators, flare_core::Creators::Everyone);
+    assert!(
+        matches!(sharing.creators, HostedCreators::All(_)),
+        "{:?}",
+        sharing.creators
+    );
 }
 
 #[test]
@@ -220,7 +224,10 @@ fn creators_limit_who_may_share() {
     };
     let creators = hosted.sharing.expect("the share API").creators;
     let ana = flare_core::Email::try_from("ana@example.org").unwrap();
-    assert_eq!(creators, flare_core::Creators::only(vec![ana]));
+    let HostedCreators::Listed(list) = creators else {
+        panic!("a list: {creators:?}");
+    };
+    assert_eq!(list, flare_core::CreatorList::only(vec![ana]));
 }
 
 #[test]
@@ -255,7 +262,7 @@ fn a_credential_in_the_stores_section_is_refused() {
     assert!(matches!(parse(&text), Err(Problem::Invalid(_))));
 }
 
-fn creators_of(extra: &str) -> flare_core::Creators {
+fn creators_of(extra: &str) -> HostedCreators {
     let hosted = match parse(&hosted_with(&format!("{STORES},{extra}")))
         .unwrap()
         .site
@@ -273,18 +280,39 @@ fn person(address: &str) -> flare_core::Principal {
     )
 }
 
+fn may_create(creators: &HostedCreators, address: &str) -> bool {
+    use flare_core::Creators as _;
+    flare_core::contract::block_on(creators.may_create(&person(address))).unwrap()
+}
+
 #[test]
 fn a_creators_domain_entry_admits_that_domain_and_an_address_entry_still_works() {
     let creators = creators_of(r#""creators":["@example.com","jo@other.example"]"#);
-    assert!(creators.admits(&person("ana@example.com")));
-    assert!(creators.admits(&person("jo@other.example")));
-    assert!(!creators.admits(&person("ana@other.example")));
+    assert!(
+        matches!(creators, HostedCreators::Listed(_)),
+        "{creators:?}"
+    );
+    assert!(may_create(&creators, "ana@example.com"));
+    assert!(may_create(&creators, "jo@other.example"));
+    assert!(!may_create(&creators, "ana@other.example"));
+    assert!(!may_create(&creators, "ana@mail.example.com"));
 }
 
 #[test]
 fn the_creators_value_anyone_admitted_lets_every_admitted_person_share() {
     let creators = creators_of(r#""creators":"anyone admitted""#);
-    assert_eq!(creators, flare_core::Creators::Everyone);
+    assert!(matches!(creators, HostedCreators::All(_)), "{creators:?}");
+    assert!(may_create(&creators, "sam@other.example"));
+}
+
+#[test]
+fn creators_left_out_under_a_domain_admit_rule_lets_every_admitted_person_share() {
+    let Site::Hosted(hosted) = parse(&hosted_with(STORES)).unwrap().site else {
+        panic!("a hosted config");
+    };
+    let creators = hosted.sharing.expect("the share API").creators;
+    assert!(matches!(creators, HostedCreators::All(_)), "{creators:?}");
+    assert!(may_create(&creators, "ana@example.com"));
 }
 
 #[test]

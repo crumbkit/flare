@@ -51,10 +51,10 @@ pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
-    ActivityItem, ActivityPage, AddressesOnly, CommentActivity, CommentDraft, CommentThread,
-    CreatorDomain, Creators, FlareError, Flared, Flares, MAX_EXAMINED, MAX_FLARES, MAX_SWEPT,
-    NamedRecipients, NewFlare, Posted, RecipientError, Recipients, ResponseActivity, Revoked,
-    TeamDeletion,
+    ActivityItem, ActivityPage, AddressesOnly, AllAdmitted, CommentActivity, CommentDraft,
+    CommentThread, CreatorDomain, CreatorList, Creators, CreatorsError, FlareError, Flared, Flares,
+    MAX_EXAMINED, MAX_FLARES, MAX_SWEPT, NamedRecipients, NewFlare, Posted, RecipientError,
+    Recipients, ResponseActivity, Revoked, TeamDeletion,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};

@@ -9,10 +9,10 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Grant, GrantRevoke,
-    GrantStore, GrantStoreError, GrantWrite, Group, ListKey, Listing, MailDomain, NewFlare,
-    Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Standing, Team,
-    TeamName, TeamStore, TeamStoreError, Teams, TeamsError, Timestamp,
+    Admission, CreatorList, DocumentText, Email, FlareError, FlareTeams, Flares, Grant,
+    GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Group, ListKey, Listing, MailDomain,
+    NewFlare, Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Standing,
+    Team, TeamName, TeamStore, TeamStoreError, Teams, TeamsError, Timestamp,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,8 +45,8 @@ fn at(seconds: u64) -> Timestamp {
     Timestamp::from_secs(seconds)
 }
 
-fn creators() -> Creators {
-    Creators::only(vec![email("alice@example.com"), email("bob@example.com")])
+fn creators() -> CreatorList {
+    CreatorList::only(vec![email("alice@example.com"), email("bob@example.com")])
 }
 
 fn admission() -> Admission {

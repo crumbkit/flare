@@ -8,20 +8,22 @@ use flare_core::memory::{
     MemoryShareStore,
 };
 use flare_core::{
-    ActivityPage, Creators, DocumentText, Email, FlareError, Flares, MAX_GRANTS, NewFlare,
-    Position, Principal, PrincipalId, Role, ShareContent, ShareError, ShareId, ShareTitle,
-    ShareVersion, Timestamp,
+    ActivityPage, AllAdmitted, CreatorList, DocumentText, Email, FlareError, Flares, MAX_GRANTS,
+    NewFlare, NoTeams, Position, Principal, PrincipalId, Role, ShareContent, ShareError, ShareId,
+    ShareTitle, ShareVersion, Timestamp,
 };
 
-type Memory = Flares<
+type Memory<K = CreatorList> = Flares<
     MemoryShareStore,
     MemoryGrantStore,
     MemoryResponseStore,
     MemoryCommentStore,
     MemoryCursorStore,
+    NoTeams,
+    K,
 >;
 
-fn stores(creators: Creators) -> Memory {
+fn stores<K>(creators: K) -> Memory<K> {
     let sequence = MemorySequence::new();
     Flares::new(
         MemoryShareStore::new(),
@@ -77,7 +79,7 @@ fn at(seconds: u64) -> Timestamp {
 
 /// A service whose creators are alice, bob and carol.
 fn memory() -> Memory {
-    let creators = Creators::only(vec![
+    let creators = CreatorList::only(vec![
         email("alice@example.com"),
         email("bob@example.com"),
         email("carol@example.com"),
@@ -140,7 +142,7 @@ fn a_person_off_the_creators_list_cannot_respond_to_a_flare_they_can_open_and_a_
 
 #[test]
 fn everyone_who_signs_in_may_create_when_creators_is_everyone() {
-    let flares = stores(Creators::Everyone);
+    let flares = stores(AllAdmitted);
     assert!(block_on(flares.share(&outsider(), flare(1, &[], &[]), at(1))).is_ok());
 }
 

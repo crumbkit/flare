@@ -3,7 +3,9 @@
 //! alice, bob and carol. Each person gets a CLI token the way `flare login`
 //! does: a browser session, `/cli/login`, then the code exchange.
 
-use crate::faulty::{Faults, FaultyRecipients, FaultyResponses, FaultyShares, FaultyTokens};
+use crate::faulty::{
+    Faults, FaultyCreators, FaultyRecipients, FaultyResponses, FaultyShares, FaultyTokens,
+};
 use crate::harness::{Call, Reply, cookie_pair};
 use crate::hosted::{Admits, Hosted, HostedApp, SESSION};
 use flare_auth_oidc::{Admit, DomainRule, Reach, WorkspaceDomain};
@@ -12,7 +14,7 @@ use flare_core::memory::{
     MemoryTeamStore,
 };
 use flare_core::{
-    Creators, DocumentText, Email, FlareTeams, Flares, Principal, ShareContent, ShareId, Shares,
+    CreatorList, DocumentText, Email, FlareTeams, Flares, Principal, ShareContent, ShareId, Shares,
     Timestamp,
 };
 use flare_server::{GetFlare, Sharing};
@@ -87,12 +89,17 @@ impl Api {
         let store = shares.clone();
         let hosted = Hosted::start_attached(Admits::Domain, None, move |app| {
             let admit = admit.clone();
-            let creators = Creators::only(
-                ["alice", "bob", "carol"]
-                    .iter()
-                    .map(|name| Email::try_from(format!("{name}@example.com").as_str()).unwrap())
-                    .collect(),
-            );
+            let creators = FaultyCreators {
+                fail: switches.creators.clone(),
+                inner: CreatorList::only(
+                    ["alice", "bob", "carol"]
+                        .iter()
+                        .map(|name| {
+                            Email::try_from(format!("{name}@example.com").as_str()).unwrap()
+                        })
+                        .collect(),
+                ),
+            };
             let sequence = MemorySequence::new();
             let flares = Flares::new(
                 store,

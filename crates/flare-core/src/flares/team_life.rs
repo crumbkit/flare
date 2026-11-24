@@ -21,7 +21,7 @@
 //! manage ([`Teams::manages`] is false) answers
 //! [`TeamsError::ManagedElsewhere`] before any grant is read or removed.
 
-use super::{Flares, Unfinished};
+use super::{Creators, Flares, Unfinished};
 use crate::auth::Principal;
 use crate::store::{CommentStore, CursorStore, GrantStore, ListKey, ResponseStore, ShareStore};
 use crate::teams::{Group, Team, TeamName, Teams, TeamsError};
@@ -47,8 +47,15 @@ pub struct TeamDeletion {
     pub removed: usize,
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
-    Flares<S, G, R, C, U, T>
+impl<
+    S: ShareStore,
+    G: GrantStore,
+    R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
+    T: Teams,
+    K: Creators,
+> Flares<S, G, R, C, U, T, K>
 {
     /// Creates a team owned by the caller, who must be a creator. When no
     /// team has the name, grants still listed under it are removed first,
@@ -58,9 +65,10 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     ///
     /// Returns [`TeamsError::NotACreator`],
     /// [`TeamsError::ManagedElsewhere`] when flare does not manage the
-    /// deployment's teams, [`TeamsError::Unavailable`] when leftover grants
-    /// cannot be removed or more than [`MAX_SWEPT`] are left (a repeat
-    /// removes the next ones), and the refusals of [`Teams::create`].
+    /// deployment's teams, [`TeamsError::Unavailable`] when the creators
+    /// rule cannot answer, when leftover grants cannot be removed or when
+    /// more than [`MAX_SWEPT`] are left (a repeat removes the next ones),
+    /// and the refusals of [`Teams::create`].
     pub async fn create_team(
         &self,
         who: &Principal,
@@ -70,8 +78,10 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         let Some(owner) = who.email() else {
             return Err(TeamsError::NotACreator);
         };
-        if !self.creators.admits(who) {
-            return Err(TeamsError::NotACreator);
+        match self.creators.may_create(who).await {
+            Ok(true) => {}
+            Ok(false) => return Err(TeamsError::NotACreator),
+            Err(_) => return Err(TeamsError::Unavailable),
         }
         let teams = self.shares.teams();
         if !teams.manages() {
