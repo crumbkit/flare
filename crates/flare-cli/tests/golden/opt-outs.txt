@@ -1,19 +1,11 @@
-flare has 6 opt-outs from the conventions.
+flare has 4 opt-outs from the conventions.
 
 listings/show-ids: flare show
   Reason: flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id
   Cost: An agent runs the command once for each id.
 
 suite/skip: Check::PathWeights
-  Reason: The path weights read the example golden files, which the Examples skip leaves out.
-  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
-
-suite/skip: Check::Examples
-  Reason: Every example needs a board and the board program, `serve` does not exit, and `open` and the sharing commands need a running server, so no example has fixed output; tests/pages.rs, tests/serve.rs and tests/sharing.rs run each command on a scratch board or a fake server.
-  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
-
-suite/skip: Check::OutputBudget
-  Reason: It runs the examples, which need a scratch board; see the Examples skip.
+  Reason: With crumbkit's default budget of 8,000 bytes a path, the path of `flare skills print` reads 8,494 bytes, because the command prints the 6,270-byte skill.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 suite/skip: Check::Recoveries
@@ -24,14 +16,86 @@ suite/skip: Check::Twins
   Reason: Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs, tests/open.rs and tests/sharing.rs pair each refused command line with its admitted twin.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
-flare has 3 declarations.
+flare has 27 declarations.
 
 root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare shares, flare activity, flare metrics
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
   Reason: each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes
 
+example-precondition: flare serve
+  Declares: The example runs only in a test run that provides board.
+
+example-precondition: flare serve --board ../notes --idle-exit 1h
+  Declares: The example runs only in a test run that provides board.
+
+example-precondition: flare open
+  Declares: The example runs only in a test run that provides board and server.
+
+example-precondition: flare open kitchen
+  Declares: The example runs only in a test run that provides board and server.
+
+example-precondition: flare publish card.html --name task-card --slots slots.json
+  Declares: The example runs only in a test run that provides board.
+
+example-precondition: flare publish card.md --name task-card --dry-run
+  Declares: The example runs only in a test run that provides board.
+
+example-precondition: flare bind task-card --name kitchen task=/tasks/tap
+  Declares: The example runs only in a test run that provides board.
+
+example-precondition: flare login https://flare.example.org
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare logout
+  Declares: The example runs only in a test run that provides server.
+
 children: flare share
   Declares: The text prints lines under each row for its checks, and help describes them as: A dry run lists its checks.
 
+example-precondition: flare share review.md --with ana@example.org,jo@example.org
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare share review.md --dry-run --out review.html
+  Declares: The example runs only in a test run that provides file.
+
 children: flare show
   Declares: The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file.
+
+example-precondition: flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare shares
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare shares --with-me --limit 20
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare shares --with-me --cursor fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare metrics flare.log
+  Declares: The example runs only in a test run that provides log.
+
+example-precondition: flare metrics flare.log.1 flare.log --json
+  Declares: The example runs only in a test run that provides log.
+
+example-precondition: flare self usage
+  Declares: The example runs only in a test run that provides date.

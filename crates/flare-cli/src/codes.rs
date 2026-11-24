@@ -331,7 +331,8 @@ pub enum Failed {
     #[error("{problem}")]
     #[failure(
         code = STATE_UNUSABLE,
-        hint = "fix or remove the state file or directory that the problem names",
+        hint = "fix the state file or directory that the problem names",
+        alternative = Recovery::hint("remove the state file or directory that the problem names"),
         field(path = path.as_deref())
     )]
     StateUnusable {

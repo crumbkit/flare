@@ -36,16 +36,8 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     ])
     .examples(EXAMPLES)
     .skip(
-        Check::Examples,
-        "Every example needs a board and the board program, `serve` does not exit, and `open` and the sharing commands need a running server, so no example has fixed output; tests/pages.rs, tests/serve.rs and tests/sharing.rs run each command on a scratch board or a fake server.",
-    )
-    .skip(
-        Check::OutputBudget,
-        "It runs the examples, which need a scratch board; see the Examples skip.",
-    )
-    .skip(
         Check::PathWeights,
-        "The path weights read the example golden files, which the Examples skip leaves out.",
+        "With crumbkit's default budget of 8,000 bytes a path, the path of `flare skills print` reads 8,494 bytes, because the command prints the 6,270-byte skill.",
     )
     .skip(
         Check::Recoveries,

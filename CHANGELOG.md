@@ -190,6 +190,35 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- A flare server's own busy, fault and deadline answers now fail every
+  sharing command with `flare::network::server_error`, in place of
+  `flare::network::bad_answer`, whose repair "check that the server runs
+  flare with the share API" named the wrong cause. The message reads
+  "<server> could not finish the request: <the server's title>", and the
+  fields give `server` and `answer` (`server::busy`, `server::deadline` or
+  `server::fault`). A busy answer recovers with a retry, because the server
+  did no work. A fault or a passed deadline after `flare share` or
+  `flare share --update` may follow a finished write, so it recovers by
+  checking `flare shares` before running again; after any other command it
+  recovers with a retry. Every other code that flare does not know keeps
+  `flare::network::bad_answer`.
+- More failures give their values in fields of the JSON failure document.
+  `flare::login::needed` gives `server`, the saved login's server, which is
+  null when no login is saved. `flare::keychain::unavailable` gives
+  `action`, the Keychain command that failed: `save`, `read` or `delete`.
+  Every refusal of the share API gives `server`, and
+  `flare::shares::partly_shared` also gives `share`, the share that the
+  server created, when the server names a valid share id.
+- `flare::shares::not_found` now recovers with the hint "check the flare
+  id" and lists "ask the flare's owner to share it with you" as an
+  alternative, in place of one hint that offered both repairs.
+- `flare::state::unusable` now recovers with the hint "fix the state file
+  or directory that the problem names" and lists "remove the state file or
+  directory that the problem names" as an alternative, in place of one
+  hint that offered both repairs.
+- flare's convention tests now run each example that needs no board, flare
+  server, log file, file to share or particular date, and compare its
+  output with a golden file.
 - A `flare::state::unusable` failure from the saved login or the login
   labels file now names the file at the start of its message, so the text
   form, which prints no fields, says which file to fix. A login.json that
