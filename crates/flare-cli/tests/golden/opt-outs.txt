@@ -1,4 +1,4 @@
-flare has 3 opt-outs from the conventions and sets 1 budget.
+flare has 3 opt-outs from the conventions and sets 2 budgets.
 
 listings/show-ids: flare show
   Reason: flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id
@@ -12,14 +12,19 @@ suite/skip: Check::Twins
   Reason: Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs, tests/open.rs and tests/sharing.rs pair each refused command line with its admitted twin.
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
+help-budget/root: flare
+  Budget: 1800 bytes, where the default is 1500 bytes.
+  Reason: The root lists 17 verbs, five of them the comment commands, and each needs a line.
+  Cost: Each read of the page can cost 300 bytes more than the default, about 75 tokens.
+
 path-budget/command: flare skills print
   Budget: 9000 bytes, where the default is 8000 bytes.
   Reason: It prints the 6,270-byte skill.
   Cost: An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens.
 
-flare has 36 declarations.
+flare has 43 declarations.
 
-root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare metrics
+root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
   Reason: each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes
 
@@ -123,6 +128,27 @@ example-precondition: flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since-last inbox
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare comments 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare comment 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Is this final?'
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare comment 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body-file note.txt --key note-1
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare reply 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --flare 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Yes, ship it'
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare comment-edit 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --body 'Is this final, or a draft?'
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare self usage

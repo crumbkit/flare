@@ -89,7 +89,7 @@
 //!
 //! | State | Entered by | Left by |
 //! | --- | --- | --- |
-//! | signed in | `complete` succeeding, which removes the session of the browser's current cookie, if any, in the same step that creates the new one; the callback sets `__Host-flare_session` (Lax, Max-Age = session life) and answers 303 to the return path | its expiry; a restart; a newer successful sign-in in the same browser; the same principal's 9th sign-in anywhere, which ends its earliest-expiring session. Removal from the admit list does not end it |
+//! | signed in | `complete` succeeding, which removes the session of the browser's current cookie, if any, in the same step that creates the new one; the callback sets `__Host-flare_session` (Lax, Max-Age = the 7-day cap on a session, because a session slides and the server decides when it ends) and answers 303 to the return path | its expiry, 12 hours after the last request that extended it and at most 7 days after sign-in; a restart when the sessions are in memory; a newer successful sign-in in the same browser; the same principal's 9th sign-in anywhere, which ends its earliest-expiring session. Removal from the admit list does not end it |
 //! | refused | a kept value that does not open, is expired or has another state; a provider refusal; a full session table | final; no cookie set; any older session of the browser stays live |
 //!
 //! Before it binds, `flare serve` reads `server.json` and sends the probe;
@@ -233,6 +233,7 @@
 //!     leaves the process only in the exchange's answer.
 
 mod app;
+mod assets;
 mod auth;
 mod checks;
 mod clock;
@@ -249,6 +250,7 @@ mod listen;
 mod metrics;
 pub mod ops;
 mod problem;
+mod reading;
 mod reply;
 mod routes;
 mod schemas;

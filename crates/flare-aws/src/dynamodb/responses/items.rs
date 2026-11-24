@@ -1,5 +1,6 @@
 //! The items of response links, of activity index entries and of the
 //! position counter, and the transactions that write and remove them.
+//! Comments and cursors share the counter.
 //!
 //! One link is two items: the pair item under the response's partition,
 //! keyed by the flare, which makes a repeat find the first link, and the
@@ -100,32 +101,14 @@ pub(crate) fn head_from(item: Option<&Item>) -> Result<Position, Malformed> {
 /// The prefix of the pair items' sort keys.
 pub(crate) const PAIRS: &str = PAIR_PREFIX;
 
-/// Moves the counter from `head`, as read, to `next`.
-fn counter(table: &str, head: Position, next: Position) -> Option<TransactWriteItem> {
-    let (condition, read) = if head.get() == 0 {
-        ("attribute_not_exists(#n)", None)
-    } else {
-        ("#n = :read", Some((":read", number(head.get()))))
-    };
-    let mut value_pairs = vec![(":next", number(next.get()))];
-    value_pairs.extend(read);
-    let update = Update::builder()
-        .table_name(table)
-        .set_key(Some(key_map(&Key::sequence())))
-        .update_expression("SET #n = :next")
-        .condition_expression(condition)
-        .set_expression_attribute_names(Some(names(&[("#n", attr::COUNT)])))
-        .set_expression_attribute_values(Some(values(value_pairs)))
-        .build()
-        .ok()?;
-    Some(TransactWriteItem::builder().update(update).build())
-}
-
 /// The transaction of a link at the position after `head`: the counter
 /// moves from `head`, and both items are put only if absent.
 pub(crate) fn link(table: &str, link: &ResponseLink, head: Position) -> Option<Transaction> {
     let mut transaction = Transaction::default();
-    transaction.push(ItemRole::Sequence, counter(table, head, link.position)?);
+    transaction.push(
+        ItemRole::Sequence,
+        sequence_update(table, head, link.position)?,
+    );
     let pair = keyed(
         &Key::pair(&link.response, &link.flare),
         link_attributes(link),
@@ -139,13 +122,40 @@ pub(crate) fn link(table: &str, link: &ResponseLink, head: Position) -> Option<T
     Some(transaction)
 }
 
+/// The write that moves the position counter from `head` to `next`, only
+/// if the counter still holds `head`. Every item that takes a position
+/// carries it, so two of them cannot take the same one.
+pub(crate) fn sequence_update(
+    table: &str,
+    head: Position,
+    next: Position,
+) -> Option<TransactWriteItem> {
+    let (condition, read) = if head.get() == 0 {
+        ("attribute_not_exists(#n)", None)
+    } else {
+        ("#n = :read", Some((":read", number(head.get()))))
+    };
+    let mut value_pairs = vec![(":next", number(next.get()))];
+    value_pairs.extend(read);
+    let counter = Update::builder()
+        .table_name(table)
+        .set_key(Some(key_map(&Key::sequence())))
+        .update_expression("SET #n = :next")
+        .condition_expression(condition)
+        .set_expression_attribute_names(Some(names(&[("#n", attr::COUNT)])))
+        .set_expression_attribute_values(Some(values(value_pairs)))
+        .build()
+        .ok()?;
+    Some(TransactWriteItem::builder().update(counter).build())
+}
+
 /// The transaction of `entries`, whose positions follow `head` in order:
 /// the counter moves from `head` to the last position, and each entry and
 /// its marker are put only if absent.
 pub(crate) fn index(table: &str, entries: &[IndexEntry], head: Position) -> Option<Transaction> {
     let last = entries.last()?.position;
     let mut transaction = Transaction::default();
-    transaction.push(ItemRole::Sequence, counter(table, head, last)?);
+    transaction.push(ItemRole::Sequence, sequence_update(table, head, last)?);
     for entry in entries {
         let marker = keyed(
             &Key::index_marker(&entry.reader, &entry.response, &entry.flare),

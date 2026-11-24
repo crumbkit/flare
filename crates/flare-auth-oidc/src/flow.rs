@@ -2,38 +2,25 @@
 //! that carries them to the callback, and the callback query parser.
 //!
 //! A pending sign-in lives only in the browser's kept-state cookie, sealed
-//! with AES-256-GCM under a key that exists only in this process's memory,
-//! so no `start` stores anything server-side.
+//! with AES-256-GCM under a key from the sealing key store (`seal.rs`), so
+//! no `start` stores anything server-side.
 
 use crate::clock::unix_seconds;
-use crate::config::{ClientId, ConfigError, OidcConfig};
+use crate::config::{ConfigError, OidcConfig};
 use crate::refusal::SignInRefusal;
-use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
+use crate::seal::Sealer;
 use aws_lc_rs::{constant_time, digest, rand};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use secrecy::zeroize::Zeroize as _;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 use url::Url;
 
-/// How long a pending sign-in stays usable, in seconds.
-const PENDING_SECONDS: u64 = 10 * 60;
-/// How far ahead of the clock a sealed issue time may lie, in seconds.
-const AHEAD_SECONDS: u64 = 60;
 /// The longest callback query that `complete` reads.
 const MAX_QUERY: usize = 4096;
 /// The longest return-to value.
 const MAX_RETURN_TO: usize = 2048;
-/// The length of a random value in base64url: 32 bytes, unpadded.
-const RANDOM_LEN: usize = 43;
-/// The sealed layout: the issue time, then the state, nonce and verifier,
-/// then the return-to value.
-const FIXED_LEN: usize = 8 + 3 * RANDOM_LEN;
-/// The first part of the associated data; the client ID follows it.
-const AAD_LABEL: &[u8] = b"flare-oidc-kept-v1\0";
 
 /// 32 random bytes in base64url, as a secret.
 pub(crate) fn random_secret() -> Result<SecretString, SignInRefusal> {
@@ -87,6 +74,11 @@ impl ReturnTo {
 pub struct KeptState(SecretString);
 
 impl KeptState {
+    /// A value the sealer made.
+    pub(crate) fn from_sealed(value: String) -> Self {
+        Self(SecretString::from(value))
+    }
+
     /// The value as the browser sent it back in the cookie.
     #[must_use]
     pub fn from_cookie(value: &str) -> Self {
@@ -157,6 +149,28 @@ impl Pending {
         })
     }
 
+    /// The issue time, in seconds from the Unix epoch.
+    pub(crate) fn issued(&self) -> u64 {
+        self.issued
+    }
+
+    /// A pending sign-in read back from a kept value.
+    pub(crate) fn from_parts(
+        issued: u64,
+        state: SecretString,
+        nonce: SecretString,
+        verifier: SecretString,
+        return_to: ReturnTo,
+    ) -> Self {
+        Self {
+            issued,
+            state,
+            nonce,
+            verifier,
+            return_to,
+        }
+    }
+
     /// Whether `state` equals the sealed state, compared in constant time.
     pub(crate) fn matches(&self, state: &str) -> bool {
         constant_time::verify_slices_are_equal(
@@ -167,127 +181,9 @@ impl Pending {
     }
 }
 
-/// Seals pending sign-ins into kept values and opens them again, under one
-/// AES-256-GCM key drawn when the authenticator connects.
-///
-/// Each nonce is four zero bytes and the next value of a counter that
-/// starts at zero. The key exists only in this process and is never
-/// reused by another, so the counter never repeats a nonce under it. A
-/// counter that would pass `u64::MAX` refuses to seal rather than wrap.
-pub(crate) struct Sealer {
-    key: LessSafeKey,
-    counter: AtomicU64,
-    aad: Vec<u8>,
-}
-
-impl Sealer {
-    /// A sealer with a new random key, for the client `client`.
-    pub(crate) fn new(client: &ClientId) -> Option<Self> {
-        let mut bytes = [0_u8; 32];
-        rand::fill(&mut bytes).ok()?;
-        let sealer = Self::from_bytes(&bytes, client);
-        bytes.zeroize();
-        sealer
-    }
-
-    fn from_bytes(bytes: &[u8; 32], client: &ClientId) -> Option<Self> {
-        let key = UnboundKey::new(&AES_256_GCM, bytes).ok()?;
-        let mut aad = AAD_LABEL.to_vec();
-        aad.extend_from_slice(client.as_str().as_bytes());
-        Some(Self {
-            key: LessSafeKey::new(key),
-            counter: AtomicU64::new(0),
-            aad,
-        })
-    }
-
-    fn next_nonce(&self) -> Result<[u8; NONCE_LEN], SignInRefusal> {
-        let count = self
-            .counter
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
-                count.checked_add(1)
-            })
-            .map_err(|_| SignInRefusal::CannotSeal)?;
-        let mut nonce = [0_u8; NONCE_LEN];
-        for (slot, byte) in nonce.iter_mut().skip(4).zip(count.to_be_bytes()) {
-            *slot = byte;
-        }
-        Ok(nonce)
-    }
-
-    /// Seals `pending` into a kept value.
-    pub(crate) fn seal(&self, pending: &Pending) -> Result<KeptState, SignInRefusal> {
-        let nonce = self.next_nonce()?;
-        let mut sealed = Vec::with_capacity(FIXED_LEN + pending.return_to.as_str().len() + 16);
-        sealed.extend_from_slice(&pending.issued.to_be_bytes());
-        for value in [&pending.state, &pending.nonce, &pending.verifier] {
-            sealed.extend_from_slice(value.expose_secret().as_bytes());
-        }
-        sealed.extend_from_slice(pending.return_to.as_str().as_bytes());
-        let aad = Aad::from(self.aad.as_slice());
-        if self
-            .key
-            .seal_in_place_append_tag(Nonce::assume_unique_for_key(nonce), aad, &mut sealed)
-            .is_err()
-        {
-            sealed.zeroize();
-            return Err(SignInRefusal::CannotSeal);
-        }
-        let mut value = nonce.to_vec();
-        value.extend_from_slice(&sealed);
-        Ok(KeptState(SecretString::from(URL_SAFE_NO_PAD.encode(value))))
-    }
-
-    /// Opens a kept value. Anything that does not open under this key and
-    /// client, was issued 10 minutes or more before `now`, or was issued
-    /// more than 60 seconds after `now`, is [`SignInRefusal::UnknownState`].
-    pub(crate) fn open(&self, kept: &KeptState, now: SystemTime) -> Result<Pending, SignInRefusal> {
-        let unknown = SignInRefusal::UnknownState;
-        let mut bytes = URL_SAFE_NO_PAD.decode(kept.expose()).map_err(|_| unknown)?;
-        let opened = self.open_bytes(&mut bytes, now);
-        bytes.zeroize();
-        opened.ok_or(unknown)
-    }
-
-    fn open_bytes(&self, bytes: &mut [u8], now: SystemTime) -> Option<Pending> {
-        let (nonce, sealed) = bytes.split_at_mut_checked(NONCE_LEN)?;
-        let nonce = Nonce::try_assume_unique_for_key(nonce).ok()?;
-        let aad = Aad::from(self.aad.as_slice());
-        let plain = self.key.open_in_place(nonce, aad, sealed).ok()?;
-        let (issued, rest) = plain.split_first_chunk::<8>()?;
-        let issued = u64::from_be_bytes(*issued);
-        let now = unix_seconds(now);
-        let expired = now >= issued.checked_add(PENDING_SECONDS)?;
-        let ahead = issued > now.checked_add(AHEAD_SECONDS)?;
-        if expired || ahead {
-            return None;
-        }
-        let text = std::str::from_utf8(rest).ok()?;
-        let (state, rest) = text.split_at_checked(RANDOM_LEN)?;
-        let (nonce, rest) = rest.split_at_checked(RANDOM_LEN)?;
-        let (verifier, return_to) = rest.split_at_checked(RANDOM_LEN)?;
-        Some(Pending {
-            issued,
-            state: SecretString::from(state),
-            nonce: SecretString::from(nonce),
-            verifier: SecretString::from(verifier),
-            return_to: ReturnTo::try_from(return_to).ok()?,
-        })
-    }
-}
-
-impl fmt::Debug for Sealer {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Sealer")
-            .field("sealed", &self.counter.load(Ordering::Relaxed))
-            .finish_non_exhaustive()
-    }
-}
-
 /// Makes a pending sign-in, seals it, and builds the URL that starts it at
 /// the provider.
-pub(crate) fn begin(
+pub(crate) async fn begin(
     authorization: &Url,
     config: &OidcConfig,
     sealer: &Sealer,
@@ -315,7 +211,7 @@ pub(crate) fn begin(
             query.append_pair("hd", domain);
         }
     }
-    let kept = sealer.seal(&pending)?;
+    let kept = sealer.seal(&pending, now).await?;
     Ok(SignInStart { redirect, kept })
 }
 

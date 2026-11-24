@@ -29,6 +29,20 @@
       "budget": null
     },
     {
+      "rule": "help-budget/root",
+      "applies_to": "flare",
+      "reason": "The root lists 17 verbs, five of them the comment commands, and each needs a line.",
+      "costs": [
+        "Each read of the page can cost 300 bytes more than the default, about 75 tokens."
+      ],
+      "budget": {
+        "bytes": 1800,
+        "default": 1500,
+        "extra_bytes": 300,
+        "extra_tokens": 75
+      }
+    },
+    {
       "rule": "path-budget/command",
       "applies_to": "flare skills print",
       "reason": "It prints the 6,270-byte skill.",
@@ -46,7 +60,7 @@
   "declarations": [
     {
       "declaration": "root-verbs",
-      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare metrics",
+      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics",
       "declares": "Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.",
       "reason": "each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes"
     },
@@ -218,6 +232,41 @@
     {
       "declaration": "example-precondition",
       "applies_to": "flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since-last inbox",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare comments 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare comment 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Is this final?'",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare comment 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body-file note.txt --key note-1",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare reply 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --flare 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Yes, ship it'",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare comment-edit 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --body 'Is this final, or a draft?'",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes",
       "declares": "The example runs only in a test run that provides server."
     },
     {

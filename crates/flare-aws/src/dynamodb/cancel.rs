@@ -73,16 +73,29 @@ fn rank(role: ItemRole) -> u8 {
         | ItemRole::PairItem
         | ItemRole::TeamItem
         | ItemRole::MemberItem
+        | ItemRole::SessionGuard
+        | ItemRole::SealingKeyItem
+        | ItemRole::CommentItem
+        | ItemRole::CommentPointer
+        | ItemRole::CommentKeySlot
+        | ItemRole::CursorItem
         | ItemRole::IndexMarker => 1,
         ItemRole::GrantCount
         | ItemRole::ShareCount
         | ItemRole::LabelSlot
         | ItemRole::OldToken
-        | ItemRole::Sequence => 2,
+        | ItemRole::Sequence
+        | ItemRole::OldSealingKey
+        | ItemRole::OldSession
+        | ItemRole::CommentCount
+        | ItemRole::CursorCount => 2,
         ItemRole::Version
         | ItemRole::OwnerEntry
         | ItemRole::GranteeEntry
         | ItemRole::LinkItem
+        | ItemRole::SessionItem
+        | ItemRole::SessionLink
+        | ItemRole::CommentEvent
         | ItemRole::IndexEntry => 3,
     }
 }

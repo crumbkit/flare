@@ -7,8 +7,14 @@ use crate::faulty::{Faults, FaultyRecipients, FaultyResponses, FaultyShares, Fau
 use crate::harness::{Call, Reply, cookie_pair};
 use crate::hosted::{Admits, Hosted, HostedApp, SESSION};
 use flare_auth_oidc::{Admit, DomainRule, Reach, WorkspaceDomain};
-use flare_core::memory::{MemoryGrantStore, MemoryTeamStore};
-use flare_core::{Creators, Email, FlareTeams, Flares};
+use flare_core::memory::{
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryTeamStore,
+};
+use flare_core::{
+    Creators, DocumentText, Email, FlareTeams, Flares, Principal, ShareContent, ShareId, Shares,
+    Timestamp,
+};
 use flare_server::Sharing;
 use serde_json::{Value, json};
 use url::Url;
@@ -26,19 +32,26 @@ pub struct Api {
     pub hosted: Hosted,
     /// The stores' fault switches.
     pub faults: Faults,
+    /// The share store the API keeps its shares in.
+    pub shares: FaultyShares,
 }
 
 impl Api {
     /// A server whose creators are alice, bob and carol at example.com,
     /// under an admit rule that admits anyone.
     pub async fn start() -> Self {
-        Self::start_with(|app| app).await
+        Self::start_full(Admit::Anyone(Reach::Everything), |app| app).await
+    }
+
+    /// As [`Api::start`], with the share API's admit rule `admit`.
+    pub async fn start_admitting(admit: Admit) -> Self {
+        Self::start_full(admit, |app| app).await
     }
 
     /// The server of [`Api::start`], whose app `extra` finishes after the
     /// share API is added, such as by turning metrics on.
     pub async fn start_with(extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
-        Self::start_built(Admit::Anyone(Reach::Everything), extra).await
+        Self::start_full(Admit::Anyone(Reach::Everything), extra).await
     }
 
     /// The same server under an admit rule of the domain example.com.
@@ -47,33 +60,35 @@ impl Api {
         Self::start_admitting(Admit::Domain(DomainRule::new(domain, Reach::Everything))).await
     }
 
-    /// The same server under `admit`.
-    pub async fn start_admitting(admit: Admit) -> Self {
-        Self::start_built(admit, |app| app).await
-    }
-
-    /// The server under `admit`, whose app `extra` finishes.
-    async fn start_built(admit: Admit, extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
+    /// The server of [`Api::start`] with the share API's admit rule `admit`,
+    /// whose app `extra` finishes after the share API is added.
+    pub async fn start_full(admit: Admit, extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
+        let shares = FaultyShares {
+            fail: faults.shares.clone(),
+            ..FaultyShares::default()
+        };
+        let store = shares.clone();
         let hosted = Hosted::start_attached(Admits::Domain, None, move |app| {
+            let admit = admit.clone();
             let creators = Creators::only(
                 ["alice", "bob", "carol"]
                     .iter()
                     .map(|name| Email::try_from(format!("{name}@example.com").as_str()).unwrap())
                     .collect(),
             );
+            let sequence = MemorySequence::new();
             let flares = Flares::new(
-                FaultyShares {
-                    fail: switches.shares.clone(),
-                    ..FaultyShares::default()
-                },
+                store,
                 MemoryGrantStore::new(),
                 FaultyResponses {
                     fail: switches.responses.clone(),
+                    inner: MemoryResponseStore::with_sequence(sequence.clone()),
                     fail_index: switches.index.clone(),
-                    ..FaultyResponses::default()
                 },
+                MemoryCommentStore::with_sequence(sequence),
+                MemoryCursorStore::new(),
                 creators,
             )
             .with_teams(FlareTeams::new(MemoryTeamStore::new()));
@@ -87,7 +102,48 @@ impl Api {
             extra(app.with_sharing(Sharing::new(flares, tokens, recipients, admit)))
         })
         .await;
-        Self { hosted, faults }
+        Self {
+            hosted,
+            faults,
+            shares,
+        }
+    }
+
+    /// Publishes `markdown` as the next version of share `id`, as its owner
+    /// `<owner>@example.com`.
+    pub async fn publish(&self, owner: &str, id: &str, markdown: &str) {
+        let email = Email::try_from(format!("{owner}@example.com").as_str()).unwrap();
+        let who = Principal::with_email(email.principal_id(), email);
+        Shares::new(self.shares.clone(), MemoryGrantStore::new())
+            .publish(
+                &who,
+                &ShareId::try_from(id).unwrap(),
+                ShareContent::Document(DocumentText::try_from(markdown).unwrap()),
+                Timestamp::from_secs(1_795_219_200),
+            )
+            .await
+            .unwrap();
+    }
+
+    /// Shares `markdown` titled `title` with `with`, which must succeed, and
+    /// returns its id.
+    pub async fn share_markdown(
+        &self,
+        token: &str,
+        title: &str,
+        markdown: &str,
+        with: &[&str],
+    ) -> String {
+        let body = json!({
+            "title": title,
+            "format": "markdown",
+            "content": markdown,
+            "with": with,
+            "re": [],
+        });
+        let (status, shared) = self.json("POST", "/api/shares", Some(token), body).await;
+        assert_eq!(status, 201, "{shared}");
+        shared["share"]["id"].as_str().unwrap().to_owned()
     }
 
     /// The origin, as `flare login` names it.
@@ -166,6 +222,15 @@ impl Api {
             Some(token) => call.bearer(token),
             None => call,
         }
+    }
+
+    /// A request as a signed-in browser's script sends it: the session
+    /// `cookie`, the same-origin headers and, for a body, JSON.
+    pub fn browser(&self, method: &str, path: &str, cookie: &str) -> Call {
+        self.hosted
+            .request(method, path)
+            .cookie(cookie)
+            .same_origin()
     }
 
     /// Sends a request with a JSON body and reads the JSON reply.

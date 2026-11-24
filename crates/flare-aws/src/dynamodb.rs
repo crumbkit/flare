@@ -6,20 +6,28 @@
 //! `TransactWriteItems` that the retry loop in [`retry`] sends.
 
 mod cancel;
+mod comments;
+mod cursors;
 mod grants;
 pub(crate) mod items;
 mod keys;
 mod read;
 mod responses;
 pub(crate) mod retry;
+mod sealing;
+mod sessions;
 mod settle;
 mod shares;
 mod teams;
 mod tokens;
 pub(crate) mod transact;
 
+pub use comments::DynamoCommentStore;
+pub use cursors::DynamoCursorStore;
 pub use grants::DynamoGrantStore;
 pub use responses::DynamoResponseStore;
+pub use sealing::DynamoSealingKeys;
+pub use sessions::DynamoSessionStore;
 pub use shares::DynamoShareStore;
 pub use teams::DynamoTeamStore;
 pub use tokens::DynamoTokenStore;

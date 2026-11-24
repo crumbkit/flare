@@ -44,6 +44,10 @@ pub(crate) enum Need {
     /// A bearer token that the share API checks itself; the hosted site
     /// reads no cookie for these routes.
     Token,
+    /// A bearer token that the share API checks itself, or, when the
+    /// request has no Authorization header, the session cookie of a page
+    /// of this site.
+    TokenOrCookie,
 }
 
 /// What a route does.
@@ -54,6 +58,8 @@ pub(crate) enum Handler {
     Launch,
     Finish,
     Style,
+    Asset,
+    Read,
     Root,
     Index,
     Page,
@@ -112,9 +118,10 @@ const fn route(
 const OPEN: (Need, Option<Access>) = (Need::Nothing, None);
 const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
 const TOKEN: (Need, Option<Access>) = (Need::Token, None);
+const BROWSER: (Need, Option<Access>) = (Need::TokenOrCookie, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 32] = [
+pub(crate) static ROUTES: [Route; 40] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -148,10 +155,24 @@ pub(crate) static ROUTES: [Route; 32] = [
     ),
     route(
         Method::GET,
+        "/flare/assets/<name>",
+        OPEN,
+        Handler::Asset,
+        Sites::Both,
+    ),
+    route(
+        Method::GET,
         "/",
         (Need::Credential, None),
         Handler::Root,
         Sites::Both,
+    ),
+    route(
+        Method::GET,
+        "/s/<name>",
+        (Need::Credential, None),
+        Handler::Read,
+        Sites::Hosted,
     ),
     route(Method::GET, "/flare/", READ, Handler::Index, Sites::Both),
     route(
@@ -314,64 +335,57 @@ pub(crate) static ROUTES: [Route; 32] = [
     route(
         Method::GET,
         "/api/activity",
-        TOKEN,
+        BROWSER,
         Handler::Api(ApiRoute::Activity),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/comments",
+        BROWSER,
+        Handler::Api(ApiRoute::Comments),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/comments",
+        BROWSER,
+        Handler::Api(ApiRoute::PostComment),
+        Sites::Hosted,
+    ),
+    route(
+        Method::PATCH,
+        "/api/comments/<name>",
+        BROWSER,
+        Handler::Api(ApiRoute::EditComment),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/comments/<name>",
+        BROWSER,
+        Handler::Api(ApiRoute::DeleteComment),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/cursors/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::Cursor),
+        Sites::Hosted,
+    ),
+    route(
+        Method::PUT,
+        "/api/cursors/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::SaveCursor),
         Sites::Hosted,
     ),
 ];
 
-/// What the table has for a request.
-#[derive(Debug)]
-pub(crate) enum Found<'p> {
-    /// This route, and the name segment when its pattern has one.
-    Route(&'static Route, &'p str),
-    /// A route has this path and another method.
-    MethodNotAllowed,
-    /// No route has this path.
-    Nothing,
-}
+mod find;
 
-/// The text after a pattern's prefix when `path` matches it. A pattern
-/// with text after `<name>` takes exactly one non-empty segment for the
-/// name, so `/api/shares/<name>/versions` never matches a path with more
-/// segments.
-fn matches<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
-    match pattern.split_once("<name>") {
-        Some((prefix, "")) => path.strip_prefix(prefix),
-        Some((prefix, suffix)) => path
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_suffix(suffix))
-            .filter(|name| !name.is_empty() && !name.contains('/')),
-        None => (pattern == path).then_some(""),
-    }
-}
-
-/// The route for `method` and `path` among the routes `site` serves.
-pub(crate) fn find<'p>(method: &Method, path: &'p str, site: SiteKind) -> Found<'p> {
-    let mut path_known = false;
-    for route in ROUTES.iter().filter(|route| route.sites.serves(site)) {
-        if let Some(name) = matches(route.pattern, path) {
-            if route.method == method {
-                return Found::Route(route, name);
-            }
-            path_known = true;
-        }
-    }
-    if path_known {
-        Found::MethodNotAllowed
-    } else {
-        Found::Nothing
-    }
-}
-
-/// The method and pattern of every route the local site's launch host
-/// serves.
-pub(crate) fn listed() -> impl Iterator<Item = (Method, &'static str)> {
-    ROUTES
-        .iter()
-        .filter(|route| route.sites.serves(SiteKind::Local))
-        .map(|route| (route.method.clone(), route.pattern))
-}
+pub(crate) use find::{Found, find, listed};
 
 #[cfg(test)]
 mod tests;

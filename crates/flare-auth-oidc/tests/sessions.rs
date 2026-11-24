@@ -52,10 +52,11 @@ async fn a_bearer_credential_is_rejected_and_the_same_secret_as_a_session_is_acc
 }
 
 #[tokio::test]
-async fn a_session_is_rejected_after_twelve_hours_and_accepted_a_second_before() {
+async fn an_unused_session_is_rejected_after_twelve_hours_and_not_before() {
     let fake = Fake::start().await;
     let (authenticator, clock) = connect(&fake).await;
     let signed_in = sign_in(&authenticator, &fake).await.unwrap();
+    let other = sign_in(&authenticator, &fake).await.unwrap();
     clock.advance(Duration::from_secs(12 * 60 * 60 - 1));
     assert!(
         authenticator
@@ -64,6 +65,27 @@ async fn a_session_is_rejected_after_twelve_hours_and_accepted_a_second_before()
             .is_ok()
     );
     clock.advance(Duration::from_secs(1));
+    assert_eq!(
+        authenticator.authenticate(other.session()).await,
+        Err(AuthError::Rejected)
+    );
+}
+
+#[tokio::test]
+async fn a_session_in_use_lives_past_twelve_hours_and_ends_seven_days_after_sign_in() {
+    let fake = Fake::start().await;
+    let (authenticator, clock) = connect(&fake).await;
+    let signed_in = sign_in(&authenticator, &fake).await.unwrap();
+    for _ in 0..(7 * 24 * 60 / 30) - 1 {
+        clock.advance(Duration::from_secs(30 * 60));
+        assert!(
+            authenticator
+                .authenticate(signed_in.session())
+                .await
+                .is_ok()
+        );
+    }
+    clock.advance(Duration::from_secs(30 * 60));
     assert_eq!(
         authenticator.authenticate(signed_in.session()).await,
         Err(AuthError::Rejected)
@@ -76,7 +98,7 @@ async fn sign_out_rejects_that_session_and_another_session_stays_accepted() {
     let (authenticator, _clock) = connect(&fake).await;
     let first = sign_in(&authenticator, &fake).await.unwrap();
     let second = sign_in(&authenticator, &fake).await.unwrap();
-    authenticator.sign_out(first.session());
+    authenticator.sign_out(first.session()).await.unwrap();
     assert_eq!(
         authenticator.authenticate(first.session()).await,
         Err(AuthError::Rejected)
@@ -294,7 +316,10 @@ async fn a_second_allow_listed_person_signs_in_as_their_own_principal() {
     let fake = Fake::start().await;
     let authenticator = two_entry_authenticator(&fake).await;
     fake.set_email("grace@example.com");
-    let start = authenticator.start(fake_provider::return_to()).unwrap();
+    let start = authenticator
+        .start(fake_provider::return_to())
+        .await
+        .unwrap();
     let query = fake.approve(start.redirect());
     let signed_in = authenticator
         .complete(&query, Some(start.kept()), None)
@@ -347,7 +372,7 @@ async fn authorize_allows_a_domain_principal_only_while_a_session_of_it_is_live(
         ask(&authenticator, &ada, &page("elsewhere")).await,
         Decision::Denied
     );
-    authenticator.sign_out(signed_in.session());
+    authenticator.sign_out(signed_in.session()).await.unwrap();
     assert_eq!(
         ask(&authenticator, &ada, &page(HOME)).await,
         Decision::Denied
@@ -374,12 +399,12 @@ async fn a_domain_principal_with_two_sessions_stays_allowed_after_one_signs_out(
     let ada = principal(EMAIL);
     let first = sign_in(&authenticator, &fake).await.unwrap();
     let second = sign_in(&authenticator, &fake).await.unwrap();
-    authenticator.sign_out(first.session());
+    authenticator.sign_out(first.session()).await.unwrap();
     assert_eq!(
         ask(&authenticator, &ada, &page(HOME)).await,
         Decision::Allowed
     );
-    authenticator.sign_out(second.session());
+    authenticator.sign_out(second.session()).await.unwrap();
     assert_eq!(
         ask(&authenticator, &ada, &page(HOME)).await,
         Decision::Denied

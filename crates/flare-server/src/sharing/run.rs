@@ -1,16 +1,19 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
-use super::convert::{flare_error, item, share_error, standing, summary};
+use super::convert::{flare_error, grant_entry, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
-use super::{Answer, Api, Boxed, Call, Refusal, Sharing, TokenCheck, check_share, check_version};
+use super::{
+    Answer, Api, Boxed, Call, ReadRefusal, Reading, Refusal, Sharing, TokenCheck, check_share,
+    check_version,
+};
 use flare_contract::{
-    ActivityPage, ApiCode, Cursor, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest,
-    Shared, TokenIssued, VersionRequest, utc,
+    ApiCode, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest, Shared, TokenIssued,
+    VersionRequest, utc,
 };
 use flare_core::{
-    Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position, Principal,
-    Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore, ShareVersion, Teams,
-    Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    CommentStore, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare,
+    NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
+    ShareVersion, Standing, Teams, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -58,11 +61,13 @@ pub(super) fn shared(flared: &Flared, role: WireRole) -> Shared {
     }
 }
 
-impl<S, G, R, T, X, M> Sharing<S, G, R, T, X, M>
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
     M: Teams,
@@ -139,7 +144,8 @@ where
             _ => return Err(ApiCode::KindNotServed.into()),
         };
         let version = opened.version.number().get();
-        let share = summary(&opened.share, standing(opened.standing));
+        let mut share = summary(&opened.share, standing(opened.standing));
+        share.comments = self.live_comments(who, &id).await.ok();
         json(
             200,
             &OpenedShare {
@@ -150,39 +156,51 @@ where
         )
     }
 
-    async fn activity(
+    async fn reading(
         &self,
         who: &Principal,
-        flares: &[String],
-        since: Option<&str>,
-        limit: usize,
-    ) -> Answer {
-        let after = match since {
-            Some(text) => Cursor::try_from(text)
-                .map_err(|_| ApiCode::BadCursor)?
-                .position(),
-            None => 0,
+        id: &str,
+        version: Option<&str>,
+    ) -> Result<Reading, ReadRefusal> {
+        let refused = |error: ShareError| match error {
+            ShareError::Unavailable => ReadRefusal::Unavailable,
+            _ => ReadRefusal::NotFound,
         };
-        let ids = flares
-            .iter()
-            .map(|text| share_id(text))
-            .collect::<Result<Vec<_>, _>>();
-        if flares.len() > flare_core::MAX_FLARES {
-            return Err(ApiCode::TooManyFlares.into());
-        }
-        let page = self
-            .flares
-            .activity(who, &ids?, Position::new(after), limit)
-            .await
-            .map_err(flare_error)?;
-        json(
-            200,
-            &ActivityPage {
-                items: page.items.iter().map(item).collect(),
-                cursor: Cursor::new(page.last.get()).to_string(),
-                more: page.more,
-            },
-        )
+        let id = ShareId::try_from(id).map_err(|_| ReadRefusal::NotFound)?;
+        let number = version
+            .map(|text| {
+                text.parse::<u32>()
+                    .ok()
+                    .and_then(|number| ShareVersion::try_from(number).ok())
+                    .ok_or(ReadRefusal::NotFound)
+            })
+            .transpose()?;
+        let shares = self.flares.shares();
+        let opened = shares.open(who, &id, number).await.map_err(refused)?;
+        let ShareContent::Document(text) = opened.version.content() else {
+            return Err(ReadRefusal::NotFound);
+        };
+        let with = match opened.standing {
+            Standing::Owner | Standing::Admin => Some(
+                shares
+                    .listed_grants(who, &id)
+                    .await
+                    .map_err(refused)?
+                    .iter()
+                    .map(|listed| grant_entry(listed).grantee)
+                    .collect(),
+            ),
+            Standing::Reader | Standing::Stranger => None,
+        };
+        Ok(Reading {
+            title: opened.share.title().as_str().to_owned(),
+            owner: opened.share.owner().as_str().to_owned(),
+            own: opened.standing == Standing::Owner,
+            with,
+            version: opened.version.number().get(),
+            published: opened.version.created().as_secs(),
+            markdown: text.as_str().to_owned(),
+        })
     }
 
     async fn revoke(&self, who: &Principal, id: &str, now: Timestamp) -> Answer {
@@ -273,15 +291,21 @@ where
     }
 }
 
-impl<S, G, R, T, X, M> Api for Sharing<S, G, R, T, X, M>
+impl<S, G, R, C, U, T, X, M> Api for Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
     M: Teams,
 {
+    fn admits(&self, who: &Principal) -> bool {
+        who.email().is_some_and(|email| self.admit.admits(email))
+    }
+
     fn authenticate<'a>(
         &'a self,
         token: &'a SecretString,
@@ -332,10 +356,34 @@ where
                 Call::Activity {
                     flares,
                     since,
+                    since_last,
                     limit,
-                } => self.activity(who, &flares, since.as_deref(), limit).await,
+                } => {
+                    self.activity(
+                        who,
+                        &flares,
+                        (since.as_deref(), since_last.as_deref()),
+                        limit,
+                    )
+                    .await
+                }
+                Call::Comments(flare) => self.thread(who, &flare).await,
+                Call::Post(request) => self.post(who, request, now).await,
+                Call::Edit(id, request) => self.edit(who, &id, request, now).await,
+                Call::Delete(id) => self.delete(who, &id, now).await,
+                Call::Cursor(name) => self.cursor(who, &name).await,
+                Call::SaveCursor(name, request) => self.save_cursor(who, &name, request).await,
                 Call::Revoke(id) => self.revoke(who, &id, now).await,
             }
         })
+    }
+
+    fn read<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: Option<&'a str>,
+    ) -> Boxed<'a, Result<Reading, ReadRefusal>> {
+        Box::pin(self.reading(who, id, version))
     }
 }

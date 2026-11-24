@@ -156,7 +156,7 @@ async fn route(
     request: Request<Incoming>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
     let response = match request.uri().path() {
-        "/auth/oidc/start" => start(&authenticator),
+        "/auth/oidc/start" => start(&authenticator).await,
         "/auth/oidc/callback" => {
             let query = request.uri().query().unwrap_or_default().to_owned();
             let kept = kept_state(&request);
@@ -170,11 +170,11 @@ async fn route(
     Ok(response)
 }
 
-fn start(authenticator: &OidcAuthenticator) -> Response<Full<Bytes>> {
+async fn start(authenticator: &OidcAuthenticator) -> Response<Full<Bytes>> {
     let Ok(return_to) = ReturnTo::try_from("/") else {
         return text(StatusCode::INTERNAL_SERVER_ERROR, "ReturnTo");
     };
-    let started = match authenticator.start(return_to) {
+    let started = match authenticator.start(return_to).await {
         Ok(started) => started,
         Err(refusal) => return text(StatusCode::SERVICE_UNAVAILABLE, &format!("{refusal:?}")),
     };

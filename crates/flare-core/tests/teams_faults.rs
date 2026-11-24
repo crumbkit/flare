@@ -5,7 +5,8 @@
 
 use flare_core::contract::block_on;
 use flare_core::memory::{
-    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTeamStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
     Admission, Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Grant, GrantRevoke,
@@ -112,10 +113,13 @@ fn a_team_grant_that_fails_after_the_share_exists_answers_partly_shared_and_a_re
         inner: MemoryGrantStore::new(),
         fail: Arc::clone(&fail),
     };
+    let sequence = MemorySequence::new();
     let flares = Flares::new(
         MemoryShareStore::new(),
         grants,
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         creators(),
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
@@ -216,10 +220,13 @@ fn an_unavailable_team_store_answers_unavailable_to_a_reader_through_a_team_and_
         inner: FlareTeams::new(MemoryTeamStore::new()),
         down: Arc::clone(&down),
     };
+    let sequence = MemorySequence::new();
     let flares = Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         creators(),
     )
     .with_teams(teams)
@@ -313,10 +320,13 @@ fn a_delete_that_stops_before_the_member_pairs_leaves_the_team_deleting_and_a_re
         inner: MemoryTeamStore::new(),
         fail: Arc::clone(&fail),
     };
+    let sequence = MemorySequence::new();
     let flares = Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         creators(),
     )
     .with_teams(FlareTeams::new(store))

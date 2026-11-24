@@ -1,30 +1,18 @@
 //! The in-memory [`ResponseStore`].
 
-use super::locked;
+use super::{MemorySequence, locked};
 use crate::store::{ResponseStore, ResponseStoreError};
 use crate::{IndexEntry, NewEntry, NewLink, Position, Reader, ResponseLink, ShareId};
 use std::sync::Mutex;
 
-/// The links, the index entries and the head, all under one lock.
+/// The links and the index entries, under one lock. Their positions come
+/// from the store's [`MemorySequence`], taken while the lock is held.
 #[derive(Default)]
 struct State {
-    /// The last position given to a link or an entry.
-    head: u64,
     /// The links, in position order.
     links: Vec<ResponseLink>,
     /// The index entries, in position order.
     entries: Vec<IndexEntry>,
-}
-
-impl State {
-    /// The next position, which becomes the head.
-    fn next(&mut self) -> Result<Position, ResponseStoreError> {
-        self.head = self
-            .head
-            .checked_add(1)
-            .ok_or(ResponseStoreError::Unavailable)?;
-        Ok(Position::new(self.head))
-    }
 }
 
 /// A [`ResponseStore`] that keeps its links and index entries in memory,
@@ -32,6 +20,7 @@ impl State {
 #[derive(Default)]
 pub struct MemoryResponseStore {
     state: Mutex<State>,
+    sequence: MemorySequence,
 }
 
 impl std::fmt::Debug for MemoryResponseStore {
@@ -47,6 +36,24 @@ impl MemoryResponseStore {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A store that takes its positions from `sequence`, which a
+    /// [`MemoryCommentStore`](super::MemoryCommentStore) built with the
+    /// same sequence shares.
+    #[must_use]
+    pub fn with_sequence(sequence: MemorySequence) -> Self {
+        Self {
+            state: Mutex::default(),
+            sequence,
+        }
+    }
+
+    /// The next position from the shared sequence, which becomes the head.
+    /// Callers hold the state lock, so a reader that reads the head and
+    /// then the state sees every link and entry at or below the head.
+    fn next(&self) -> Result<Position, ResponseStoreError> {
+        self.sequence.next().ok_or(ResponseStoreError::Unavailable)
     }
 
     /// Every activity index entry, in position order, for tests that check
@@ -67,14 +74,13 @@ impl ResponseStore for MemoryResponseStore {
         {
             return Ok(first.clone());
         }
-        let stored = link.at_position(state.next()?);
+        let stored = link.at_position(self.next()?);
         state.links.push(stored.clone());
         Ok(stored)
     }
 
     async fn head(&self) -> Result<Position, ResponseStoreError> {
-        let state = locked(&self.state).ok_or(ResponseStoreError::Unavailable)?;
-        Ok(Position::new(state.head))
+        self.sequence.head().ok_or(ResponseStoreError::Unavailable)
     }
 
     async fn to_flare(
@@ -134,7 +140,7 @@ impl ResponseStore for MemoryResponseStore {
                     && old.flare == entry.link.flare
             });
             if !held {
-                let position = state.next()?;
+                let position = self.next()?;
                 state.entries.push(entry.at_position(position));
             }
         }

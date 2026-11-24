@@ -50,6 +50,10 @@ holds a grant on both the response and the flare.
   group, or the reverse, gets no entry, so activity does not list that
   response to them. The common case is listed: a response shared with the
   same team as its flare, and with the flare's owner.
+- Comment events on a flare need no group entry. A member who opens the
+  flare through a team reads its comments in activity and in `flare
+  comments`, and can comment. A member removed from the team, or every
+  member of a deleted team, gets not-found for both on the next call.
 
 ## Crash points
 
@@ -97,15 +101,18 @@ holds a grant on both the response and the flare.
   them, newest first, and checks them for links to the flare in batches of
   100. A person who holds more than 500 grants gets no entries for the
   older ones from that grant.
-- One activity call examines at most 1,000 entries. When it reaches that
-  many, it answers the responses it found with `more` true and a cursor at
-  the last entry it examined. Only entries whose responses the caller can
-  no longer open can fill that many without filling the page.
-- Every link and every index transaction moves the one counter, so writes
-  across the whole table take positions one at a time.
-- An activity call reads one list for the caller and one for each group
-  through which the caller opens a flare, for each flare named: at most 16
-  flares, each with at most 34 lists (the caller, 32 teams and everyone).
+- One activity call examines at most 1,000 index entries and comment
+  events, counted together. When it reaches that many, it answers the
+  items it found with `more` true and a cursor at the last entry or event
+  it examined. Only entries whose responses the caller can no longer open
+  can fill that many without filling the page.
+- Every link, every index transaction and every comment, edit and delete
+  moves the one counter, so writes across the whole table take positions
+  one at a time.
+- An activity call reads one index list for the caller and one for each
+  group through which the caller opens a flare, plus the flare's comment
+  events, for each flare named: at most 16 flares, each with at most 34
+  index lists (the caller, 32 teams and everyone).
 - Every share granted to everyone writes its entries to the one
   `ACT#everyone` partition, so under heavy use that partition takes many
   writes; no load test measures it.

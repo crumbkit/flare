@@ -10,8 +10,8 @@
 //! sort in position order.
 
 use flare_core::{
-    Digest, Email, Group, Position, PrincipalId, Reader, ShareId, ShareVersion, TeamName,
-    Timestamp, TokenId, TokenLabel,
+    CommentId, CommentKey, CursorName, Digest, Email, Group, KeyId, Position, PrincipalId, Reader,
+    ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
 };
 
 /// The sort key prefix of an owner or grantee entry. A list is a query of
@@ -28,11 +28,12 @@ pub(crate) const PAIR_PREFIX: &str = "F#";
 /// The sort key prefix of a link under a flare's partition.
 pub(crate) const LINK_PREFIX: &str = "P#";
 
-/// The sort key prefix of a member under a team's partition.
-pub(crate) const MEMBER_PREFIX: &str = "M#";
+/// The sort key prefix of a session's link under its person's partition.
+pub(crate) const SESSION_LINK_PREFIX: &str = "S#";
 
-/// The sort key prefix of a team under a person's partition.
-pub(crate) const TEAM_PREFIX: &str = "T#";
+/// The sort key prefix of a sealing key, under the key partition.
+pub(crate) const SEALING_KEY_PREFIX: &str = "V#";
+
 /// The sort key prefix of an activity index entry, under its reader's
 /// partition.
 pub(crate) const INDEX_ENTRY_PREFIX: &str = "A#";
@@ -100,29 +101,6 @@ impl Key {
 }
 
 impl Key {
-    /// A team's item, which holds its owner, creation time, state and
-    /// member count.
-    pub(crate) fn team(team: &TeamName) -> Self {
-        Self::new(team_partition(team), "META")
-    }
-
-    /// The two items of one member pair: the member under the team, and
-    /// the team under the member.
-    pub(crate) fn member_pair(team: &TeamName, member: &Email) -> (Self, Self) {
-        (
-            Self::new(
-                team_partition(team),
-                format!("{MEMBER_PREFIX}{}", member.as_str()),
-            ),
-            Self::new(
-                member_partition(member),
-                format!("{TEAM_PREFIX}{}", team.as_str()),
-            ),
-        )
-    }
-}
-
-impl Key {
     /// A login code, by the digest of its text.
     pub(crate) fn code(digest: &Digest) -> Self {
         Self::new(format!("CODE#{}", digest.to_hex()), "CODE")
@@ -139,6 +117,38 @@ impl Key {
         Self::new(
             format!("LABELS#{}", owner.as_str()),
             format!("L#{}", label.as_str()),
+        )
+    }
+
+    /// A browser session, by the digest of its secret.
+    pub(crate) fn session(digest: &Digest) -> Self {
+        Self::new(format!("SESS#{}", digest.to_hex()), "SESS")
+    }
+
+    /// The link from a person to one of their sessions, which sorts by the
+    /// session's expiry.
+    pub(crate) fn session_link(person: &PrincipalId, expires: Timestamp, digest: &Digest) -> Self {
+        Self::new(
+            session_partition(person),
+            format!(
+                "{SESSION_LINK_PREFIX}{:020}#{}",
+                expires.as_secs(),
+                digest.to_hex()
+            ),
+        )
+    }
+
+    /// The item that every sign-in of one person writes, so two sign-ins of
+    /// a person cannot both pass the person's session limit.
+    pub(crate) fn session_guard(person: &PrincipalId) -> Self {
+        Self::new(session_partition(person), "GUARD")
+    }
+
+    /// One sealing key.
+    pub(crate) fn sealing_key(id: KeyId) -> Self {
+        Self::new(
+            SEALING_PARTITION.to_owned(),
+            format!("{SEALING_KEY_PREFIX}{:010}", id.get()),
         )
     }
 
@@ -176,6 +186,121 @@ impl Key {
             format!("{}{}", index_markers_of(response), flare.as_str()),
         )
     }
+
+    /// The item that says which flare and position hold a comment.
+    pub(crate) fn comment_pointer(id: &CommentId) -> Self {
+        Self::new(format!("CMT#{}", id.as_str()), "CMT")
+    }
+
+    /// The comment created at `position`, under its flare's comment
+    /// partition.
+    pub(crate) fn comment(flare: &ShareId, position: Position) -> Self {
+        Self::new(comment_partition(flare), comment_sort_key(position))
+    }
+
+    /// The event at `position`, under the flare's comment partition.
+    pub(crate) fn comment_event(flare: &ShareId, position: Position) -> Self {
+        Self::new(comment_partition(flare), event_sort_key(position))
+    }
+
+    /// The slot that names the comment one author sent with one key. The
+    /// key, which holds no `#`, is the sort key's variable last part.
+    pub(crate) fn comment_key(flare: &ShareId, author: &PrincipalId, key: &CommentKey) -> Self {
+        Self::new(
+            comment_partition(flare),
+            format!("K#{}#{}", author.as_str(), key.as_str()),
+        )
+    }
+
+    /// The number of comments and replies of a flare.
+    pub(crate) fn comment_count(flare: &ShareId) -> Self {
+        Self::new(comment_partition(flare), "N")
+    }
+
+    /// A person's cursor.
+    pub(crate) fn cursor(owner: &PrincipalId, name: &CursorName) -> Self {
+        Self::new(
+            cursor_partition(owner),
+            format!("{CURSOR_PREFIX}{}", name.as_str()),
+        )
+    }
+
+    /// The number of a person's cursors.
+    pub(crate) fn cursor_count(owner: &PrincipalId) -> Self {
+        Self::new(cursor_partition(owner), "COUNT")
+    }
+}
+
+/// The sort key prefix of a comment under its flare's comment partition.
+pub(crate) const COMMENT_PREFIX: &str = "C#";
+
+/// The sort key prefix of an event under its flare's comment partition.
+pub(crate) const EVENT_PREFIX: &str = "E#";
+
+/// The sort key prefix of a cursor under its person's partition.
+pub(crate) const CURSOR_PREFIX: &str = "N#";
+
+/// The partition of a flare's comments, events, key slots and count.
+pub(crate) fn comment_partition(flare: &ShareId) -> String {
+    format!("CMTF#{}", flare.as_str())
+}
+
+/// The partition of a person's cursors and their count.
+pub(crate) fn cursor_partition(owner: &PrincipalId) -> String {
+    format!("CUR#{}", owner.as_str())
+}
+
+/// `C#<position>` in 20 digits.
+pub(crate) fn comment_sort_key(position: Position) -> String {
+    format!("{COMMENT_PREFIX}{:020}", position.get())
+}
+
+/// `E#<position>` in 20 digits.
+pub(crate) fn event_sort_key(position: Position) -> String {
+    format!("{EVENT_PREFIX}{:020}", position.get())
+}
+
+/// The partition of the sealing keys of the sign-in state.
+pub(crate) const SEALING_PARTITION: &str = "KEY#SIGNIN";
+
+/// The partition of a person's session links.
+pub(crate) fn session_partition(person: &PrincipalId) -> String {
+    format!("SESSOF#{}", person.as_str())
+}
+
+/// The id of a sealing key's sort key, or `None` for any other sort key.
+pub(crate) fn sealing_key_of(sort_key: &str) -> Option<KeyId> {
+    let digits = sort_key.strip_prefix(SEALING_KEY_PREFIX)?;
+    if digits.len() != 10 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    KeyId::new(digits.parse().ok()?)
+}
+
+/// The lowest and highest sort keys of the links of sessions that expire
+/// after `now`.
+pub(crate) fn live_links(now: Timestamp) -> (String, String) {
+    (
+        format!(
+            "{SESSION_LINK_PREFIX}{:020}#",
+            now.as_secs().saturating_add(1)
+        ),
+        format!("{SESSION_LINK_PREFIX}99999999999999999999#~"),
+    )
+}
+
+/// The expiry and the session digest of a link's sort key, or `None` for
+/// any other sort key.
+pub(crate) fn link_of(sort_key: &str) -> Option<(Timestamp, Digest)> {
+    let rest = sort_key.strip_prefix(SESSION_LINK_PREFIX)?;
+    let (digits, hex) = rest.split_once('#')?;
+    if digits.len() != TIME_DIGITS || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some((
+        Timestamp::from_secs(digits.parse().ok()?),
+        Digest::from_hex(hex)?,
+    ))
 }
 
 /// The partition of a reader's activity index.
@@ -235,26 +360,6 @@ pub(crate) fn grantee_partition(grantee: &PrincipalId) -> String {
     }
 }
 
-/// The partition of a team's item, its members and its grant entries.
-pub(crate) fn team_partition(team: &TeamName) -> String {
-    format!("TEAM#{}", team.as_str())
-}
-
-/// The partition of a person's teams.
-pub(crate) fn member_partition(member: &Email) -> String {
-    format!("MEMBER#{}", member.as_str())
-}
-
-/// The member of a member entry's sort key, or `None` for any other.
-pub(crate) fn member_of(sort_key: &str) -> Option<Email> {
-    Email::try_from(sort_key.strip_prefix(MEMBER_PREFIX)?).ok()
-}
-
-/// The team of a person's team entry's sort key, or `None` for any other.
-pub(crate) fn team_of(sort_key: &str) -> Option<TeamName> {
-    TeamName::try_from(sort_key.strip_prefix(TEAM_PREFIX)?).ok()
-}
-
 /// `E#<inverted time>#<id>`. The time is `u64::MAX - created` in 20 digits,
 /// so an ascending sort lists the newest first and breaks ties by id.
 fn entry_sort_key(created: Timestamp, id: &ShareId) -> String {
@@ -283,6 +388,12 @@ pub(crate) fn entry_of(sort_key: &str) -> Option<(Timestamp, ShareId)> {
 pub(crate) fn grantee_of(sort_key: &str) -> Option<PrincipalId> {
     PrincipalId::try_from(sort_key.strip_prefix(GRANT_PREFIX)?).ok()
 }
+
+mod teams;
+
+pub(crate) use teams::{
+    MEMBER_PREFIX, TEAM_PREFIX, member_of, member_partition, team_of, team_partition,
+};
 
 #[cfg(test)]
 mod tests;

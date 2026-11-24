@@ -195,10 +195,10 @@ async fn a_matching_hd_with_an_email_that_cannot_be_a_principal_id_is_refused_as
 async fn the_authorisation_url_carries_the_domain_as_hd_only_under_the_domain_rule() {
     let fake = Fake::start().await;
     let (domain, _clock) = connect_domain(&fake).await;
-    let start = domain.start(return_to()).unwrap();
+    let start = domain.start(return_to()).await.unwrap();
     assert_eq!(hd_parameter(start.redirect()).as_deref(), Some(DOMAIN));
     let (emails, _clock) = connect(&fake).await;
-    let start = emails.start(return_to()).unwrap();
+    let start = emails.start(return_to()).await.unwrap();
     assert_eq!(hd_parameter(start.redirect()), None);
 }
 
@@ -228,7 +228,7 @@ async fn an_hd_parameter_in_the_callback_query_does_not_admit_a_token_without_th
     let (authenticator, _clock) = connect_domain(&fake).await;
     for (claim, admitted) in [(None, false), (Some(json!(DOMAIN)), true)] {
         fake.set_hd(claim);
-        let start = authenticator.start(return_to()).unwrap();
+        let start = authenticator.start(return_to()).await.unwrap();
         let query = format!(
             "{}&{}",
             fake.approve(start.redirect()),

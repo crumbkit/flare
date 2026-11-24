@@ -1,0 +1,17 @@
+Delete a comment or reply you wrote
+
+Usage: flare comment-delete [OPTIONS] <COMMENT>
+
+Arguments:
+  <COMMENT>  The comment or reply to delete, which only its author may
+
+Options:
+      --yes   Proceed without asking for confirmation
+  -h, --help  Print help (see more with '--help')
+
+Examples:
+  flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
+
+Effects: destructive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare comment-delete --help` describes them.
+Next: flare comment-delete --help explains each column.

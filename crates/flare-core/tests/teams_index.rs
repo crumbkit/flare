@@ -1,20 +1,29 @@
 //! The activity index for team and everyone grants: which group entries
 //! each write leaves, as the exact set of (reader, response, flare), and
-//! what a team member's activity lists through them.
+//! what a team member's activity lists through them, comment events
+//! included.
 #![cfg(test)]
 
 use flare_core::contract::block_on;
 use flare_core::memory::{
-    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTeamStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    ActivityPage, Admission, Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Group,
-    MailDomain, NewFlare, Position, Principal, PrincipalId, Reader, ShareContent, ShareId,
-    ShareTitle, TeamName, Teams, Timestamp,
+    ActivityItem, ActivityPage, Admission, CommentBody, CommentDraft, CommentId, CommentKey,
+    Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Group, MailDomain, NewFlare,
+    Position, Principal, PrincipalId, Reader, ShareContent, ShareId, ShareTitle, TeamName, Teams,
+    Timestamp,
 };
 
-type Memory =
-    Flares<MemoryShareStore, MemoryGrantStore, MemoryResponseStore, FlareTeams<MemoryTeamStore>>;
+type Memory = Flares<
+    MemoryShareStore,
+    MemoryGrantStore,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+    FlareTeams<MemoryTeamStore>,
+>;
 
 fn email(name: &str) -> Email {
     Email::try_from(format!("{name}@example.com").as_str()).unwrap()
@@ -58,10 +67,13 @@ fn flare(byte: u8, with: &[&str], groups: Vec<Group>, re: &[u8]) -> NewFlare {
 /// A service in which alice owns the team design, with bob and carol as
 /// members, and everyone at example.com is admitted.
 fn with_design() -> Memory {
+    let sequence = MemorySequence::new();
     let flares = Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
@@ -117,7 +129,7 @@ fn activity(flares: &Memory, who: &str, byte: u8) -> Result<ActivityPage, FlareE
 fn shown(page: &ActivityPage) -> Vec<ShareId> {
     page.items
         .iter()
-        .map(|item| item.response.id().clone())
+        .filter_map(|item| item.as_response().map(|found| found.response.id().clone()))
         .collect()
 }
 
@@ -214,4 +226,88 @@ fn a_response_a_member_reaches_as_a_person_and_through_the_team_is_listed_once()
     share(&flares, "bob", 2, &[], vec![design()], &[1]);
     // Alice holds an entry of her own and reads the team's entry too.
     assert_eq!(shown(&activity(&flares, "alice", 1).unwrap()), vec![id(2)]);
+}
+
+fn comment(flares: &Memory, who: &str, byte: u8, on: u8) -> Result<(), FlareError> {
+    let draft = CommentDraft::new(
+        CommentId::from_random([byte; 16]),
+        id(on),
+        None,
+        CommentBody::try_from(format!("words {byte}").as_str()).unwrap(),
+        CommentKey::try_from(format!("key-{byte}").as_str()).unwrap(),
+    );
+    block_on(flares.post_comment(&person(who), draft, at(5))).map(|_| ())
+}
+
+/// The comments of a page as their ids.
+fn comments(page: &ActivityPage) -> Vec<CommentId> {
+    page.items
+        .iter()
+        .filter_map(|item| match item {
+            ActivityItem::Comment(found) => Some(found.comment.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_member_comments_on_a_flare_shared_with_the_team_and_every_member_reads_it_in_activity() {
+    let flares = with_design();
+    share(&flares, "alice", 1, &[], vec![design()], &[]);
+    comment(&flares, "bob", 7, 1).unwrap();
+    share(&flares, "carol", 2, &[], vec![design()], &[1]);
+    for member in ["alice", "bob", "carol"] {
+        let page = activity(&flares, member, 1).unwrap();
+        assert_eq!(
+            comments(&page),
+            vec![CommentId::from_random([7; 16])],
+            "{member}"
+        );
+        assert_eq!(shown(&page), vec![id(2)], "{member}");
+    }
+    assert_eq!(
+        activity(&flares, "dave", 1).err(),
+        Some(FlareError::NotFound)
+    );
+}
+
+#[test]
+fn a_removed_member_loses_the_teams_comments_and_responses_and_cannot_comment() {
+    let flares = with_design();
+    share(&flares, "alice", 1, &[], vec![design()], &[]);
+    comment(&flares, "bob", 7, 1).unwrap();
+    share(&flares, "bob", 2, &[], vec![design()], &[1]);
+    let teams = flares.shares().teams();
+    block_on(teams.remove(&email("alice"), &team("design"), &email("carol"))).unwrap();
+    assert_eq!(
+        activity(&flares, "carol", 1).err(),
+        Some(FlareError::NotFound)
+    );
+    assert_eq!(comment(&flares, "carol", 8, 1), Err(FlareError::NotFound));
+}
+
+#[test]
+fn deleting_the_team_ends_its_members_comments_and_responses_on_the_flare() {
+    let flares = with_design();
+    share(&flares, "alice", 1, &[], vec![design()], &[]);
+    comment(&flares, "bob", 7, 1).unwrap();
+    share(&flares, "bob", 2, &[], vec![design()], &[1]);
+    let deleted = block_on(flares.delete_team(&person("alice"), &team("design"))).unwrap();
+    assert!(deleted.finished);
+    for member in ["bob", "carol"] {
+        assert_eq!(
+            activity(&flares, member, 1).err(),
+            Some(FlareError::NotFound),
+            "{member}"
+        );
+        assert_eq!(
+            comment(&flares, member, 9, 1),
+            Err(FlareError::NotFound),
+            "{member}"
+        );
+    }
+    // Alice owns the flare and keeps its comments; the team's entries are gone.
+    let page = activity(&flares, "alice", 1).unwrap();
+    assert_eq!(comments(&page), vec![CommentId::from_random([7; 16])]);
+    assert_eq!(entries(&flares), expect(&[("alice", 2, 1)]));
 }

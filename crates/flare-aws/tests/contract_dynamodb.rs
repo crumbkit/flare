@@ -16,6 +16,8 @@ pub mod stand_in;
 use flare_aws::Stores;
 use flare_core::contract::grant_store::{self, GrantFixture};
 use flare_core::contract::response_store::{self, ResponseFixture, index as response_index};
+use flare_core::contract::sealing_keys::{self, KeyFixture};
+use flare_core::contract::session_store::{self, SessionFixture};
 use flare_core::contract::share_store::{self, ShareFixture};
 use flare_core::contract::team_store::{self, TeamFixture};
 use flare_core::contract::token_store::{self, TokenFixture};
@@ -157,6 +159,34 @@ mod responses {
 
     concurrent_suite!(response_store, responses, ResponseFixture;
         concurrent_links_get_distinct_positions,
+    );
+}
+
+mod sessions {
+    use super::*;
+
+    suite!(session_store, sessions, SessionFixture;
+        a_session_lives_twelve_hours_from_sign_in,
+        a_request_slides_the_expiry_at_most_every_ten_minutes,
+        a_session_ends_seven_days_after_sign_in,
+        a_person_holds_eight_sessions,
+        a_sign_in_replaces_the_old_session,
+        removing_ends_sessions,
+        holds_follows_live_sessions,
+    );
+}
+
+mod keys {
+    use super::*;
+
+    suite!(sealing_keys, keys, KeyFixture;
+        the_first_call_writes_key_one,
+        rotation_waits_thirty_days,
+        an_old_key_reads_for_one_hour_after_rotation,
+    );
+
+    concurrent_suite!(sealing_keys, keys, KeyFixture;
+        concurrent_calls_agree_on_one_key,
     );
 }
 

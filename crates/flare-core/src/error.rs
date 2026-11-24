@@ -62,6 +62,14 @@ pub enum Subject {
     MailDomain,
     /// An [`Audience`](crate::Audience).
     Audience,
+    /// A [`CommentId`](crate::CommentId).
+    CommentId,
+    /// A [`CommentBody`](crate::CommentBody).
+    CommentBody,
+    /// A [`CommentKey`](crate::CommentKey).
+    CommentKey,
+    /// A [`CursorName`](crate::CursorName).
+    CursorName,
 }
 
 impl fmt::Display for Subject {
@@ -95,6 +103,10 @@ impl fmt::Display for Subject {
             Self::TeamName => "team name",
             Self::MailDomain => "mail domain",
             Self::Audience => "audience",
+            Self::CommentId => "comment id",
+            Self::CommentBody => "comment",
+            Self::CommentKey => "comment key",
+            Self::CursorName => "cursor name",
         };
         formatter.write_str(text)
     }

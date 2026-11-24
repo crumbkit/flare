@@ -1,20 +1,23 @@
-List the responses to flares, oldest first
+List responses and comments since a cursor
 
 Usage: flare activity [OPTIONS] <FLARE>...
 
 Arguments:
-  <FLARE>...  The flares whose responses to list, at most 16
+  <FLARE>...  The flares whose responses and comments to list, at most 16
 
 Options:
-      --since <CURSOR>  List only responses after this cursor, which an earlier call printed
-      --limit <N>       Print at most this many rows, up to 100 [default: 50]
-      --all             Print every row
-  -h, --help            Print help (see more with '--help')
+      --since <CURSOR>     List only activity after this cursor, which an earlier call printed
+      --since-last <NAME>  Continue from the cursor saved as NAME, the larger of this computer's and the server's, and save where this call ends
+      --limit <N>          Print at most this many rows, up to 100 [default: 50]
+      --all                Print every row
+  -h, --help               Print help (see more with '--help')
 
 Examples:
   flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
   flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
+  flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since-last inbox
 
-Effects: read-only, closed-world.
+Effects: additive, not idempotent, closed-world.
+Writes: applies all items or none.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare activity --help` describes them.
 Next: flare activity --help explains each column.

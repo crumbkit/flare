@@ -23,13 +23,17 @@
 //! it. The responder never has to name them with `--with`.
 
 mod activity;
+mod comments;
+mod error;
 mod groups;
 mod index;
 mod owners;
 mod people;
 mod team_life;
 
-pub use activity::{ActivityItem, ActivityPage, MAX_EXAMINED};
+pub use activity::{ActivityItem, ActivityPage, CommentActivity, MAX_EXAMINED, ResponseActivity};
+pub use comments::{CommentDraft, CommentThread, Posted};
+pub use error::FlareError;
 pub use groups::Revoked;
 pub use people::{
     AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
@@ -41,7 +45,7 @@ use crate::email::Email;
 use crate::response::NewLink;
 use crate::share::{Share, ShareContent, ShareId, ShareTitle};
 use crate::sharing::{ShareError, Shares};
-use crate::store::{GrantStore, ResponseStore, ShareStore};
+use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
 use crate::teams::{Admission, Group, NoTeams, Teams};
 use crate::time::Timestamp;
 use crate::{PrincipalId, Role, ShareVersion};
@@ -49,39 +53,6 @@ use index::Unfinished;
 
 /// The most flares one share responds to, and one activity call reads.
 pub const MAX_FLARES: usize = 16;
-
-/// Why [`Flares`] refused a request.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[non_exhaustive]
-pub enum FlareError {
-    /// The caller is not on the creators list.
-    #[error("only the deployment's creators may share")]
-    NotACreator,
-    /// A named flare does not exist, or the caller cannot open it. The two
-    /// give the same answer.
-    #[error("no such flare")]
-    NotFound,
-    /// The request names more than [`MAX_FLARES`] flares.
-    #[error("a request names at most {MAX_FLARES} flares")]
-    TooManyFlares,
-    /// The share exists, and a grant or a response link after it failed.
-    /// `granted` grants were written; the owner finishes with a grant.
-    #[error("the share {share} was created, and only {granted} of its grants were written")]
-    PartlyShared {
-        /// The share that exists.
-        share: ShareId,
-        /// How many grants were written.
-        granted: usize,
-        /// Why the next write failed.
-        cause: ShareError,
-    },
-    /// The share service refused.
-    #[error(transparent)]
-    Share(ShareError),
-    /// The response store could not answer.
-    #[error("the response store is unavailable")]
-    ResponsesUnavailable,
-}
 
 /// A flare to share.
 #[derive(Debug, Clone)]
@@ -148,9 +119,11 @@ struct Responded {
 
 /// The service: [`Shares`] with the creators rule and the response store.
 #[derive(Debug)]
-pub struct Flares<S, G, R, T = NoTeams> {
+pub struct Flares<S, G, R, C, U, T = NoTeams> {
     shares: Shares<S, G, T>,
     responses: R,
+    comments: C,
+    cursors: U,
     creators: Creators,
 }
 
@@ -174,26 +147,37 @@ fn flare_refused(error: ShareError) -> FlareError {
     }
 }
 
-impl<S, G, R> Flares<S, G, R> {
-    /// A service over the three stores, admitting `creators`, with no
-    /// teams.
+impl<S, G, R, C, U> Flares<S, G, R, C, U> {
+    /// A service over the five stores, admitting `creators`, with no
+    /// teams. The response and comment stores share one position sequence.
     #[must_use]
-    pub fn new(shares: S, grants: G, responses: R, creators: Creators) -> Self {
+    pub fn new(
+        shares: S,
+        grants: G,
+        responses: R,
+        comments: C,
+        cursors: U,
+        creators: Creators,
+    ) -> Self {
         Self {
             shares: Shares::new(shares, grants),
             responses,
+            comments,
+            cursors,
             creators,
         }
     }
 }
 
-impl<S, G, R, T> Flares<S, G, R, T> {
+impl<S, G, R, C, U, T> Flares<S, G, R, C, U, T> {
     /// The same service, reading and managing teams through `teams`.
     #[must_use]
-    pub fn with_teams<U>(self, teams: U) -> Flares<S, G, R, U> {
+    pub fn with_teams<V>(self, teams: V) -> Flares<S, G, R, C, U, V> {
         Flares {
             shares: self.shares.with_teams(teams),
             responses: self.responses,
+            comments: self.comments,
+            cursors: self.cursors,
             creators: self.creators,
         }
     }
@@ -214,7 +198,9 @@ impl<S, G, R, T> Flares<S, G, R, T> {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
+{
     /// The response store, for tests that read the index. It is not built
     /// into a server, so no caller there can write the index around
     /// [`Flares`].

@@ -52,6 +52,8 @@ pub mod api;
 mod api_routes;
 #[path = "server/authenticators.rs"]
 mod authenticators;
+#[path = "server/comments.rs"]
+mod comments;
 #[path = "server/crashes.rs"]
 mod crashes;
 #[path = "server/edits.rs"]
@@ -76,6 +78,8 @@ mod ops;
 mod pages;
 #[path = "server/process.rs"]
 mod process;
+#[path = "server/reading.rs"]
+mod reading;
 #[path = "server/teams.rs"]
 mod teams;
 #[path = "server/versions.rs"]

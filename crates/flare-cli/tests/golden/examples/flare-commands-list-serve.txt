@@ -1,2 +1,2 @@
 PATH         ABOUT
-flare serve  Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
+flare serve  Serve a board's pages and bindings, locally or behind a TLS proxy, until Ctrl-C

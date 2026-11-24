@@ -5,7 +5,8 @@
 
 use flare_core::contract::block_on;
 use flare_core::memory::{
-    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTeamStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
     Admission, Creators, DocumentText, Email, Grant, GrantRevoke, GrantStore, GrantStoreError,
@@ -151,7 +152,14 @@ impl Teams for Racing {
     }
 }
 
-type Service = Flares<MemoryShareStore, RevokesRunOut, MemoryResponseStore, Racing>;
+type Service = Flares<
+    MemoryShareStore,
+    RevokesRunOut,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+    Racing,
+>;
 
 fn email(name: &str) -> Email {
     Email::try_from(format!("{name}@example.com").as_str()).unwrap()
@@ -204,13 +212,16 @@ fn with_design(left: Arc<AtomicUsize>) -> Service {
 
 /// The same service over `grants`, which the test also writes.
 fn with_design_over(left: Arc<AtomicUsize>, grants: Arc<MemoryGrantStore>) -> Service {
+    let sequence = MemorySequence::new();
     let flares = Flares::new(
         MemoryShareStore::new(),
         RevokesRunOut {
             inner: grants,
             left,
         },
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     )
     .with_teams(Racing {

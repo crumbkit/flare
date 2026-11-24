@@ -18,7 +18,7 @@
 
 use super::{Flares, Unfinished};
 use crate::auth::Principal;
-use crate::store::{GrantStore, ListKey, ResponseStore, ShareStore};
+use crate::store::{CommentStore, CursorStore, GrantStore, ListKey, ResponseStore, ShareStore};
 use crate::teams::{Group, Team, TeamName, Teams, TeamsError};
 use crate::time::Timestamp;
 
@@ -39,7 +39,9 @@ pub struct TeamDeletion {
     pub removed: usize,
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
+{
     /// Creates a team owned by the caller, who must be a creator. When no
     /// team has the name, grants still listed under it are removed first.
     ///

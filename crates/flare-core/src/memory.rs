@@ -19,6 +19,8 @@
 //! poisoned.
 
 #[cfg(any(test, feature = "testing"))]
+mod comments;
+#[cfg(any(test, feature = "testing"))]
 mod files;
 #[cfg(any(test, feature = "testing"))]
 mod grants;
@@ -26,6 +28,10 @@ mod pages;
 mod records;
 #[cfg(any(test, feature = "testing"))]
 mod responses;
+mod sealing;
+#[cfg(any(test, feature = "testing"))]
+mod sequence;
+mod sessions;
 #[cfg(any(test, feature = "testing"))]
 mod shares;
 #[cfg(any(test, feature = "testing"))]
@@ -34,6 +40,8 @@ mod teams;
 mod tokens;
 
 #[cfg(any(test, feature = "testing"))]
+pub use comments::{MemoryCommentStore, MemoryCursorStore};
+#[cfg(any(test, feature = "testing"))]
 pub use files::MemoryFileStore;
 #[cfg(any(test, feature = "testing"))]
 pub use grants::MemoryGrantStore;
@@ -41,6 +49,10 @@ pub use pages::MemoryPageStore;
 pub use records::MemoryRecordStore;
 #[cfg(any(test, feature = "testing"))]
 pub use responses::MemoryResponseStore;
+pub use sealing::MemorySealingKeys;
+#[cfg(any(test, feature = "testing"))]
+pub use sequence::MemorySequence;
+pub use sessions::{MAX_MEMORY_SESSIONS, MemorySessionStore};
 #[cfg(any(test, feature = "testing"))]
 pub use shares::MemoryShareStore;
 #[cfg(any(test, feature = "testing"))]

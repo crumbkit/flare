@@ -7,7 +7,7 @@ use crate::email::Email;
 use crate::grant::Role;
 use crate::share::ShareId;
 use crate::sharing::{ShareError, Standing};
-use crate::store::{GrantStore, ResponseStore, ShareStore};
+use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
 use crate::teams::{Group, Teams};
 use crate::time::Timestamp;
 
@@ -36,7 +36,9 @@ fn failed(id: &ShareId, written: usize, cause: ShareError) -> FlareError {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
+{
     /// Grants Reader on an existing share to each person in `with` who
     /// holds no grant yet, and, for the share's owner, records each flare
     /// in `re` as one it responds to. A person who already holds a role

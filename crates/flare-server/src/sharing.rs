@@ -18,6 +18,8 @@
 //! The store keeps the SHA-256 of the secret. A login code is 43 base64url
 //! characters of 32 random bytes, and the store keeps its SHA-256.
 
+mod activity;
+mod comments;
 mod convert;
 mod grants;
 mod list;
@@ -32,8 +34,8 @@ use convert::content_error;
 
 use flare_auth_oidc::Admit;
 use flare_contract::{
-    ApiCode, ExchangeRequest, Format, GrantRequest, MembersRequest, RevokeRequest, ShareRequest,
-    TeamRequest, TransferRequest, VersionRequest,
+    ApiCode, CommentEdit, ExchangeRequest, Format, GrantRequest, MembersRequest, NamedCursor,
+    NewComment, RevokeRequest, ShareRequest, TeamRequest, TransferRequest, VersionRequest,
 };
 use flare_core::{
     Admission, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal, ShareTitle,
@@ -50,8 +52,8 @@ pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// The share API's parts: the [`Flares`] service with its teams, the token
 /// store, the directory that resolves `--with` identifiers and the admit
 /// rule that every token's owner must still pass.
-pub struct Sharing<S, G, R, T, X, M = NoTeams> {
-    flares: Flares<S, G, R, M>,
+pub struct Sharing<S, G, R, C, U, T, X, M = NoTeams> {
+    flares: Flares<S, G, R, C, U, M>,
     tokens: T,
     recipients: X,
     admit: Admit,
@@ -70,13 +72,13 @@ fn admission(admit: &Admit) -> Admission {
     }
 }
 
-impl<S, G, R, T, X, M> Sharing<S, G, R, T, X, M> {
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M> {
     /// The share API over `flares`, keeping tokens in `tokens`, resolving
     /// recipients with `recipients` and accepting a token only while
     /// `admit`, the site's sign-in rule, admits its owner's address. The
     /// share service writes and reads everyone grants under `admit`.
     #[must_use]
-    pub fn new(flares: Flares<S, G, R, M>, tokens: T, recipients: X, admit: Admit) -> Self {
+    pub fn new(flares: Flares<S, G, R, C, U, M>, tokens: T, recipients: X, admit: Admit) -> Self {
         Self {
             flares: flares.admitting(admission(&admit)),
             tokens,
@@ -86,7 +88,7 @@ impl<S, G, R, T, X, M> Sharing<S, G, R, T, X, M> {
     }
 }
 
-impl<S, G, R, T, X, M> fmt::Debug for Sharing<S, G, R, T, X, M> {
+impl<S, G, R, C, U, T, X, M> fmt::Debug for Sharing<S, G, R, C, U, T, X, M> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.debug_struct("Sharing").finish_non_exhaustive()
     }
@@ -136,8 +138,21 @@ pub(crate) enum Call {
     Activity {
         flares: Vec<String>,
         since: Option<String>,
+        since_last: Option<String>,
         limit: usize,
     },
+    /// `GET /api/comments`.
+    Comments(String),
+    /// `POST /api/comments`.
+    Post(NewComment),
+    /// `PATCH /api/comments/{id}`.
+    Edit(String, CommentEdit),
+    /// `DELETE /api/comments/{id}`.
+    Delete(String),
+    /// `GET /api/cursors/{name}`.
+    Cursor(String),
+    /// `PUT /api/cursors/{name}`.
+    SaveCursor(String, NamedCursor),
     /// `DELETE /api/tokens/{id}`.
     Revoke(String),
 }
@@ -234,11 +249,47 @@ pub(crate) enum TokenCheck {
     Refused(ApiCode),
 }
 
+/// One version of a Markdown share, as the reading page shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Reading {
+    /// The share's title.
+    pub(crate) title: String,
+    /// The owner's address.
+    pub(crate) owner: String,
+    /// Whether the reader is the owner.
+    pub(crate) own: bool,
+    /// The addresses the share is granted to, for its owner and its
+    /// admins. A reader may not list the grants, so the page says it is
+    /// shared with them.
+    pub(crate) with: Option<Vec<String>>,
+    /// The version shown.
+    pub(crate) version: u32,
+    /// When the version was published, in seconds since 1970.
+    pub(crate) published: u64,
+    /// The version's Markdown.
+    pub(crate) markdown: String,
+}
+
+/// Why the reading page cannot show a share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReadRefusal {
+    /// The share is missing, the reader has no standing in it, the version
+    /// does not exist or the share is not Markdown. Each answers the same,
+    /// so a reader cannot tell a refused share from a missing one.
+    NotFound,
+    /// A store did not answer.
+    Unavailable,
+}
+
 /// The share API with its stores' types erased.
 pub(crate) trait Api: Send + Sync {
     /// Checks a bearer token at `now`.
     fn authenticate<'a>(&'a self, token: &'a SecretString, now: Timestamp)
     -> Boxed<'a, TokenCheck>;
+
+    /// Whether the site's admit rule still admits `who`, which a session
+    /// cookie must pass as a bearer token does.
+    fn admits(&self, who: &Principal) -> bool;
 
     /// Issues a login code for `owner` and the CLI on `port`.
     fn issue_code<'a>(
@@ -253,6 +304,15 @@ pub(crate) trait Api: Send + Sync {
 
     /// Runs one request of an authenticated caller.
     fn run<'a>(&'a self, who: &'a Principal, call: Call, now: Timestamp) -> Boxed<'a, Answer>;
+
+    /// Opens share `id` for the reading page: version `version` when the
+    /// query names one, and the latest otherwise.
+    fn read<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: Option<&'a str>,
+    ) -> Boxed<'a, Result<Reading, ReadRefusal>>;
 }
 
 #[cfg(test)]

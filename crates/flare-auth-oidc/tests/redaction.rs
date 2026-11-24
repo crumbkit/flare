@@ -32,7 +32,7 @@ fn assert_hidden(shown: &str, secrets: &[&str]) {
 async fn debug_output_of_the_config_authenticator_start_and_sign_in_hides_every_secret() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let state = start.kept().expose().to_owned();
     let query = fake.approve(start.redirect());
     let code = query

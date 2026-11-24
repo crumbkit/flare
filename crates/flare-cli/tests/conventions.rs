@@ -7,12 +7,13 @@
 #![cfg(test)]
 
 use clap::CommandFactory as _;
-use crumbkit_test::{Allow, Budget, Check, Examples, PathBudgets, Rule, Suite};
+use crumbkit_test::{Allow, Budget, Budgets, Check, Examples, PathBudgets, Rule, Suite};
 use flare_cli::{Cli, TOOL};
 
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
 /// The tool record declares the root verbs `serve`, `open`, `publish`,
-/// `bind`, `login`, `logout`, `share`, `grant`, `shares`, `activity` and
+/// `bind`, `login`, `logout`, `share`, `grant`, `shares`, `activity`,
+/// `comments`, `comment`, `reply`, `comment-edit`, `comment-delete` and
 /// `metrics` with their reason, so they need no opt-out here. `show` is crumbkit's
 /// built-in verb.
 const ALLOW: &[Allow] = &[Allow::new(
@@ -37,6 +38,13 @@ const PATHS: PathBudgets<'_> = PathBudgets::new("tests/golden/examples").nodes(&
     "It prints the 6,270-byte skill.",
 )]);
 
+/// The budgets of flare's `-h` pages: crumbkit's default for every page
+/// but the root's, which lists 17 verbs.
+const BUDGETS: Budgets = Budgets::new().root(
+    1_800,
+    "The root lists 17 verbs, five of them the comment commands, and each needs a line.",
+);
+
 /// Everything the checks read, which `conventions!` expands to one test for
 /// each check. `usage`, `install`, `check` and `print` are the verbs that
 /// `self usage` and `skills` add under a resource, and `create`, `add`,
@@ -45,10 +53,12 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
-        "activity", "metrics", "usage", "install", "check", "print", "revoke", "grants", "create",
-        "add", "remove", "transfer", "delete",
+        "activity", "comments", "comment", "reply", "comment-edit", "comment-delete", "metrics",
+        "usage", "install", "check", "print", "revoke", "grants", "create", "add", "remove",
+        "transfer", "delete",
     ])
     .examples(EXAMPLES)
+    .budgets(BUDGETS)
     .path_budgets(PATHS)
     .skip(
         Check::Recoveries,

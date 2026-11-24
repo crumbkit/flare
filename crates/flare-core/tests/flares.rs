@@ -3,14 +3,35 @@
 #![cfg(test)]
 
 use flare_core::contract::block_on;
-use flare_core::memory::{MemoryGrantStore, MemoryResponseStore, MemoryShareStore};
+use flare_core::memory::{
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryShareStore,
+};
 use flare_core::{
     ActivityPage, Creators, DocumentText, Email, FlareError, Flares, MAX_GRANTS, NewFlare,
     Position, Principal, PrincipalId, Role, ShareContent, ShareError, ShareId, ShareTitle,
     ShareVersion, Timestamp,
 };
 
-type Memory = Flares<MemoryShareStore, MemoryGrantStore, MemoryResponseStore>;
+type Memory = Flares<
+    MemoryShareStore,
+    MemoryGrantStore,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+>;
+
+fn stores(creators: Creators) -> Memory {
+    let sequence = MemorySequence::new();
+    Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
+        creators,
+    )
+}
 
 fn email(text: &str) -> Email {
     Email::try_from(text).unwrap()
@@ -61,12 +82,7 @@ fn memory() -> Memory {
         email("bob@example.com"),
         email("carol@example.com"),
     ]);
-    Flares::new(
-        MemoryShareStore::new(),
-        MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
-        creators,
-    )
+    stores(creators)
 }
 
 /// A service in which alice shared flare 1 with bob.
@@ -124,12 +140,7 @@ fn a_person_off_the_creators_list_cannot_respond_to_a_flare_they_can_open_and_a_
 
 #[test]
 fn everyone_who_signs_in_may_create_when_creators_is_everyone() {
-    let flares = Flares::new(
-        MemoryShareStore::new(),
-        MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
-        Creators::Everyone,
-    );
+    let flares = stores(Creators::Everyone);
     assert!(block_on(flares.share(&outsider(), flare(1, &[], &[]), at(1))).is_ok());
 }
 
@@ -180,7 +191,7 @@ fn a_response_lists_under_its_flare_with_the_version_it_responds_to() {
     assert_eq!(shared.responds_to, vec![id(1)]);
     let page = activity(&flares, &alice(), 0).unwrap();
     assert_eq!(page.items.len(), 1);
-    let item = &page.items[0];
+    let item = page.items[0].as_response().unwrap();
     assert_eq!(item.flare, id(1));
     assert_eq!(item.response.id(), &id(2));
     assert_eq!(item.response.owner().as_str(), "bob@example.com");
@@ -339,6 +350,7 @@ fn a_cursor_returns_only_newer_responses() {
     let ids: Vec<_> = newer
         .items
         .iter()
+        .filter_map(|item| item.as_response())
         .map(|item| item.response.id().clone())
         .collect();
     assert_eq!(ids, vec![id(4)]);
@@ -371,6 +383,7 @@ fn activity_pages_oldest_first_and_says_more_when_the_limit_cuts_it() {
     let ids: Vec<_> = page
         .items
         .iter()
+        .filter_map(|item| item.as_response())
         .map(|item| item.response.id().clone())
         .collect();
     assert_eq!(ids, vec![id(2), id(3)]);
@@ -379,6 +392,7 @@ fn activity_pages_oldest_first_and_says_more_when_the_limit_cuts_it() {
     let ids: Vec<_> = rest
         .items
         .iter()
+        .filter_map(|item| item.as_response())
         .map(|item| item.response.id().clone())
         .collect();
     assert_eq!(ids, vec![id(4)]);
@@ -396,10 +410,15 @@ fn a_response_to_two_flares_names_the_other_only_when_the_caller_can_open_it() {
     ))
     .unwrap();
     let page = activity(&flares, &alice(), 0).unwrap();
-    assert!(page.items[0].also.is_empty(), "alice cannot open flare 5");
+    assert!(
+        page.items[0].as_response().unwrap().also.is_empty(),
+        "alice cannot open flare 5"
+    );
     block_on(flares.grant(&carol(), &id(5), &[email("alice@example.com")], &[], at(4))).unwrap();
     let page = activity(&flares, &alice(), 0).unwrap();
     let also: Vec<_> = page.items[0]
+        .as_response()
+        .unwrap()
         .also
         .iter()
         .map(|share| share.id().clone())
@@ -495,6 +514,7 @@ fn pages(flares: &Memory, who: &Principal, ids: &[ShareId], limit: usize) -> Vec
         pages.push(
             page.items
                 .iter()
+                .filter_map(|item| item.as_response())
                 .map(|item| item.response.id().clone())
                 .collect(),
         );
@@ -549,6 +569,7 @@ fn a_page_that_says_more_follow_is_never_empty_when_hidden_responses_fill_a_read
     let ids: Vec<_> = page
         .items
         .iter()
+        .filter_map(|item| item.as_response())
         .map(|item| item.response.id().clone())
         .collect();
     assert_eq!(ids, vec![id(5)]);

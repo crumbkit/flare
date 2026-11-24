@@ -7,7 +7,8 @@ use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
 use flare_contract::{ApiCode, Format, VersionRequest};
 use flare_core::memory::MemoryTeamStore;
 use flare_core::memory::{
-    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTokenStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemoryShareStore,
+    MemoryTokenStore,
 };
 use flare_core::{
     AddressesOnly, Creators, DocumentText, Email, FlareTeams, Flares, Group, NewFlare, NewToken,
@@ -62,8 +63,15 @@ fn mint(id: &str, owner: &str) -> Minted {
 async fn sharing(
     tokens: &[&Minted],
     admit: Admit,
-) -> Sharing<MemoryShareStore, MemoryGrantStore, MemoryResponseStore, MemoryTokenStore, AddressesOnly>
-{
+) -> Sharing<
+    MemoryShareStore,
+    MemoryGrantStore,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+    MemoryTokenStore,
+    AddressesOnly,
+> {
     let store = MemoryTokenStore::default();
     for minted in tokens {
         let token = NewToken::new(
@@ -79,6 +87,8 @@ async fn sharing(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
         MemoryResponseStore::new(),
+        MemoryCommentStore::new(),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     );
     Sharing::new(flares, store, AddressesOnly, admit)
@@ -133,6 +143,8 @@ async fn an_admin_is_refused_a_new_version_and_the_owner_publishes_it() {
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
         MemoryResponseStore::new(),
+        MemoryCommentStore::new(),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     );
     let id = ShareId::try_from("0123456789abcdef0123456789abcdef").unwrap();
@@ -222,8 +234,8 @@ fn the_version_checks_refuse_html_and_empty_content_and_admit_markdown() {
 }
 
 #[tokio::test]
-async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_and_the_owner_sees_the_name()
-{
+async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_in_the_list_and_the_reading_view()
+ {
     let person =
         |address: &str| Principal::with_email(email(address).principal_id(), email(address));
     let (ana, bob) = (person("ana@example.org"), person("bob@example.org"));
@@ -231,6 +243,8 @@ async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_and_the_ow
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
         MemoryResponseStore::new(),
+        MemoryCommentStore::new(),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()));
@@ -272,4 +286,14 @@ async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_and_the_ow
     assert_eq!(grantees(by_admin), vec!["team:*".to_owned()]);
     let (_, by_owner) = api.run(&ana, call(), NOW).await.unwrap();
     assert_eq!(grantees(by_owner), vec!["team:design".to_owned()]);
+    let read_by_admin = api.read(&bob, id.as_str(), None).await.unwrap();
+    assert_eq!(
+        read_by_admin.with,
+        Some(vec!["bob@example.org".to_owned(), "team:*".to_owned()])
+    );
+    let read_by_owner = api.read(&ana, id.as_str(), None).await.unwrap();
+    assert_eq!(
+        read_by_owner.with,
+        Some(vec!["bob@example.org".to_owned(), "team:design".to_owned()])
+    );
 }

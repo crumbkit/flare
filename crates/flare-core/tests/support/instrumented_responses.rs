@@ -25,6 +25,15 @@ pub(crate) struct Instrumented {
 }
 
 impl Instrumented {
+    /// The store over `inner`, such as a memory store that shares its
+    /// position sequence with a comment store.
+    pub(crate) fn over(inner: MemoryResponseStore) -> Self {
+        Self {
+            inner,
+            ..Self::default()
+        }
+    }
+
     /// The count of links and entries returned since the last call, which
     /// it resets.
     pub(crate) fn take_examined(&self) -> usize {

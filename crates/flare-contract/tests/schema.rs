@@ -54,9 +54,40 @@ fn the_schema_names_every_request_response_and_problem_type() {
         "MembersChanged",
         "TeamDeleted",
         "TransferRequest",
+        "Comment",
+        "Reply",
+        "CommentThread",
+        "CommentOrReply",
+        "NewComment",
+        "CommentEdit",
+        "NamedCursor",
     ] {
         assert!(defs.contains_key(name), "{name} is missing");
     }
+}
+
+#[test]
+fn a_reply_has_a_parent_and_no_replies_so_a_second_level_cannot_be_written() {
+    let generated: serde_json::Value = serde_json::from_str(&schema::generate()).unwrap();
+    let defs = &generated["$defs"];
+    let reply = defs["Reply"]["properties"].as_object().unwrap();
+    assert!(reply.contains_key("parent"));
+    assert!(!reply.contains_key("replies"));
+    let comment = defs["Comment"]["properties"].as_object().unwrap();
+    assert!(comment.contains_key("replies"));
+    assert!(!comment.contains_key("parent"));
+}
+
+#[test]
+fn the_activity_item_kinds_are_response_comment_reply_edited_and_deleted() {
+    let generated: serde_json::Value = serde_json::from_str(&schema::generate()).unwrap();
+    let kinds: Vec<&str> = generated["$defs"]["ActivityItem"]["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|variant| variant["properties"]["kind"]["const"].as_str())
+        .collect();
+    assert_eq!(kinds, ["response", "comment", "reply", "edited", "deleted"]);
 }
 
 #[test]

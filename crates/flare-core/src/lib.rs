@@ -19,6 +19,7 @@
 
 mod auth;
 mod binding;
+mod comment;
 pub mod contract;
 mod email;
 mod error;
@@ -31,6 +32,8 @@ mod page;
 mod provenance;
 mod record;
 mod response;
+mod sealing;
+mod session;
 mod share;
 mod sharing;
 mod store;
@@ -40,13 +43,18 @@ mod token;
 
 pub use auth::{Access, AuthError, Authenticator, Credential, Decision, Principal, Resource};
 pub use binding::Binding;
+pub use comment::{
+    Comment, CommentAction, CommentBody, CommentEvent, CommentId, CommentKey, CursorName,
+    MAX_COMMENT_CHARS, MAX_COMMENTS_PER_FLARE, MAX_CURSORS_PER_PERSON, NewComment,
+};
 pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
-    ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
-    MAX_EXAMINED, MAX_FLARES, MAX_SWEPT, NamedRecipients, NewFlare, RecipientError, Recipients,
-    Revoked, TeamDeletion,
+    ActivityItem, ActivityPage, AddressesOnly, CommentActivity, CommentDraft, CommentThread,
+    CreatorDomain, Creators, FlareError, Flared, Flares, MAX_EXAMINED, MAX_FLARES, MAX_SWEPT,
+    NamedRecipients, NewFlare, Posted, RecipientError, Recipients, ResponseActivity, Revoked,
+    TeamDeletion,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
@@ -56,6 +64,13 @@ pub use page::{
 pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
 pub use response::{IndexEntry, MAX_PAGE, NewEntry, NewLink, Position, Reader, ResponseLink};
+pub use sealing::{
+    KEY_GRACE, KEY_ROTATE_AFTER, KeyBytes, KeyId, SealingKey, SealingKeys, SealingKeysError,
+};
+pub use session::{
+    MAX_SESSIONS_PER_PERSON, NewSession, SESSION_CAP, SESSION_IDLE, SESSION_REFRESH, SessionRule,
+    SessionStore, SessionStoreError,
+};
 pub use share::{
     DocumentText, Listing, MAX_DOCUMENT, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_TITLE, MAX_VERSIONS,
     NewShare, NewVersion, Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion,
@@ -63,9 +78,10 @@ pub use share::{
 };
 pub use sharing::{ListedGrant, Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
-    FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, ListKey, ListPage,
-    MoveError, PageStore, PageStoreError, ReadError, RecordStore, Rejection, ResponseStore,
-    ResponseStoreError, ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
+    Added, CommentStore, CommentStoreError, CursorStore, FileStore, FileStoreError, FillTypes,
+    GrantStore, GrantStoreError, ListKey, ListPage, MoveError, PageStore, PageStoreError,
+    ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError, ShareStore,
+    ShareStoreError, TokenStore, TokenStoreError, WriteError,
 };
 pub use teams::{
     Admission, Audience, FlareTeams, Group, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED,

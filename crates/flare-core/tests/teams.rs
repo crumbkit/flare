@@ -5,7 +5,8 @@
 
 use flare_core::contract::block_on;
 use flare_core::memory::{
-    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTeamStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
     Admission, Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Group, MAX_MEMBERS,
@@ -14,8 +15,14 @@ use flare_core::{
     Timestamp,
 };
 
-type Memory =
-    Flares<MemoryShareStore, MemoryGrantStore, MemoryResponseStore, FlareTeams<MemoryTeamStore>>;
+type Memory = Flares<
+    MemoryShareStore,
+    MemoryGrantStore,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+    FlareTeams<MemoryTeamStore>,
+>;
 
 fn email(text: &str) -> Email {
     Email::try_from(text).unwrap()
@@ -71,10 +78,13 @@ fn flare(byte: u8, with: &[&str], groups: Vec<Group>) -> NewFlare {
 /// A service whose creators are alice and bob, under `admission`.
 fn memory_admitting(admission: Admission) -> Memory {
     let creators = Creators::only(vec![email("alice@example.com"), email("bob@example.com")]);
+    let sequence = MemorySequence::new();
     Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         creators,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
@@ -494,10 +504,13 @@ fn revoke_removes_a_persons_grant_and_a_repeat_finishes_without_error() {
 
 #[test]
 fn the_default_teams_answer_managed_elsewhere_for_every_change() {
+    let sequence = MemorySequence::new();
     let flares = Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
-        MemoryResponseStore::new(),
+        MemoryResponseStore::with_sequence(sequence.clone()),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     );
     let refused = block_on(flares.create_team(&alice(), team("design"), at(1)));

@@ -1,7 +1,7 @@
 //! The arguments and help of `flare login`, `logout`, `share`, `show`,
 //! `grant`, `revoke`, `grants`, `shares` and `activity`.
 
-use crate::documents::{GRANT, GRANTS, REVOKE};
+use crate::documents::{ACTIVITY, GRANT, GRANTS, REVOKE, SHARES};
 use clap::Args;
 use crumbkit::help::{Effects, Example, Leaf};
 use crumbkit::{DryRun, Page, Yes};
@@ -105,13 +105,16 @@ pub(crate) struct SharesArgs {
 /// The arguments of `flare activity`.
 #[derive(Debug, Args)]
 pub(crate) struct ActivityArgs {
-    /// The flares whose responses to list, at most 16
+    /// The flares whose responses and comments to list, at most 16
     #[arg(value_name = "FLARE", required = true, num_args = 1..=MAX_FLARES)]
     pub(crate) flares: Vec<String>,
-    /// List only responses after this cursor, which an earlier call printed
+    /// List only activity after this cursor, which an earlier call printed
     #[arg(long, value_name = "CURSOR")]
     pub(crate) since: Option<String>,
-    /// How many responses to list; --all follows the cursor to the newest.
+    /// Continue from the cursor saved as NAME, the larger of this computer's and the server's, and save where this call ends
+    #[arg(long, value_name = "NAME")]
+    pub(crate) since_last: Option<String>,
+    /// How many items to list; --all follows the cursor to the newest.
     #[command(flatten)]
     pub(crate) page: Page<50, 100>,
 }
@@ -199,3 +202,44 @@ pub(super) const GRANTS_LEAF: Leaf = Leaf::new(&["grants"])
     .needs(&["server"])])
     .effects(Effects::read_only())
     .document(GRANTS);
+
+/// The help leaf of `flare shares`.
+pub(super) const SHARES_LEAF: Leaf = Leaf::new(&["shares"])
+    .examples(&[
+        Example::new(&[], "List your shares, newest first").needs(&["server"]),
+        Example::new(
+            &["--with-me", "--limit", "20"],
+            "List the 20 newest shares granted to you",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &[
+                "--with-me",
+                "--cursor",
+                "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg",
+            ],
+            "List the shares granted to you after the cursor an earlier call printed",
+        )
+        .needs(&["server"]),
+    ])
+    .effects(Effects::read_only())
+    .document(SHARES);
+
+/// The help leaf of `flare activity`.
+pub(super) const ACTIVITY_LEAF: Leaf = Leaf::new(&["activity"])
+    .examples(&[
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+            "List the responses to a flare, oldest first",
+        ).needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
+            "List the activity after the cursor an earlier call printed",
+        ).needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since-last", "inbox"],
+            "List what is new since the last call that used the name inbox, then save where this one ends",
+        ).needs(&["server"]),
+    ])
+    .effects(Effects::additive().all_or_none())
+    .document(ACTIVITY);

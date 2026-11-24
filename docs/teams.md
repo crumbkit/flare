@@ -63,9 +63,10 @@ gives the life of a team, of a member and of a group grant.
   through their active teams. It adds the shares granted to everyone only
   with `--everyone`.
 - A revoke of a grantee that holds no grant changes nothing and succeeds.
-- `flare grants` and `GET /api/grants/<id>` show a share's Admin the grant
-  to a team the Admin does not belong to as `team:*`, so no one outside a
-  team learns its name. The share's owner sees every name.
+- `flare grants`, `GET /api/grants/<id>` and the "with" line of the
+  reading page at `/s/<id>` show a share's Admin the grant to a team the
+  Admin does not belong to as `team:*`, so no one outside a team learns
+  its name. The share's owner sees every name.
 - A name that is not a team the caller belongs to answers
   `flare::teams::not_found` (404). The CLI's recovery is
   `flare teams list`, and its alternative is to ask the team's owner to add

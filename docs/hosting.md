@@ -10,6 +10,11 @@ up around it.
 - `/up`, for health checks. It answers 200 with no sign-in.
 - The stylesheet, `/` and `/flare/`, the index of pages.
 - `/pages/<name>`, the newest version of a page.
+- `/s/<id>`, the reading page of a Markdown share, for a signed-in reader
+  the share is granted to. `?version=<n>` shows an older version.
+  [reading.md](reading.md) describes the page.
+- `/flare/assets/<file>`, the reading page's script files, with a cache of
+  one year.
 - `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in.
 - The share API, when the config has `hosted.stores`. The share API
   section below lists its routes.
@@ -153,11 +158,16 @@ Routes:
   delete teams and change their members. One `DELETE /api/teams/<name>`
   removes at most 200 of the team's grants and answers `finished: false`
   when more remain; the owner repeats it.
-- `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
-  responses to flares that the caller may read, oldest first, at most 100
-  a page.
+- `GET /api/activity?flare=<id>&since=<cursor>&since_last=<name>&limit=<n>`
+  lists the responses and comment events on flares that the caller may
+  read, oldest first, at most 100 a page.
+- `GET` and `POST /api/comments`, `PATCH` and `DELETE /api/comments/<id>`
+  and `GET` and `PUT /api/cursors/<name>` read and write comments and named
+  cursors. `docs/comments.md` gives their life.
 
-- Every `/api/` route except the exchange needs a bearer token. A missing,
+- Every `/api/` route except the exchange needs a bearer token, and the
+  comment routes and activity also take the session cookie of a
+  same-origin browser request. A missing,
   expired or revoked token answers 401 `flare::tokens::sign_in_needed`.
   Under an `emails` admit rule, so does the token of an owner whom the
   list no longer names. Under a `domain` or `anyone` rule a token works
@@ -273,25 +283,34 @@ is the only limit on sign-in requests:
     path = "/up"
 ```
 
-## One process
+## More than one process
 
-- Sessions and the key that seals pending sign-ins live in the memory of
-  one process. Run exactly one flare process behind an origin.
+- When `hosted.stores` is set, sessions and the keys that seal pending
+  sign-ins live in the table, so any number of processes behind one origin
+  honour each other's sessions and sign-ins, and a restart or a deploy
+  signs nobody out.
+- Without `hosted.stores`, sessions and keys live in the memory of one
+  process. Run exactly one process, and expect a restart to sign everyone
+  out and void every sign-in in progress.
 - Shares, login codes and CLI tokens live in the table and the bucket, so
   a restart keeps them.
-- A second process, or an old and a new process that overlap during a
-  deploy, fail sign-ins at random and honour each session on only one of
-  them. Stop the old process before starting the new one.
-- A restart signs everyone out and voids every sign-in in progress.
+- The table's TTL deletes expired sessions and old keys. Every read
+  compares the expiry with the clock first, so a late deletion changes no
+  answer.
 
 ## Sessions and revocation
 
-- A session lasts 12 hours. A person keeps at most 8 sessions; a ninth
-  sign-in ends the one that expires first. The server holds at most 1,024
-  sessions.
+- A session expires 12 hours after the last request that extended it. A
+  request extends it only when 10 minutes of the 12 hours are used, so a
+  busy page costs a few writes an hour. No session lives longer than 7 days
+  after sign-in. A person keeps at most 8 sessions; a ninth sign-in ends the
+  one that expires first. Without `hosted.stores` the process holds at most
+  1,024 sessions.
 - A person removed from the `admit` rule keeps a live session until it
-  expires. Restarting the process is the only way to end every session at
-  once.
+  expires, except on the comment and activity routes, which check the
+  share API's admit rule for a cookie as they do for a token. With `hosted.stores`, ending every session of one person means
+  deleting the items under `SESSOF#<person id>` and the sessions they
+  name; without it, restarting the process ends every session.
 
 ## The domain name
 
@@ -299,5 +318,10 @@ is the only limit on sign-in requests:
 - Serve flare on a name whose parent domain has no untrusted subdomains.
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.
+- A reading page with code or a diagram carries the script policy, whose
+  `Content-Security-Policy` has `script-src 'self'` and no `connect-src`,
+  so its scripts can make no request. Every other hosted reply's policy
+  has `connect-src 'self'`, which limits the requests a page makes to this
+  site's origin, and those pages run no script.
 - Every reply carries `Strict-Transport-Security: max-age=63072000`, so a
   browser that has visited uses HTTPS for two years.

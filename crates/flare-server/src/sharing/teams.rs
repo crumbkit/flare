@@ -9,8 +9,8 @@ use flare_contract::{
     TransferRequest,
 };
 use flare_core::{
-    Email, GrantStore, Principal, Recipients, ResponseStore, ShareStore, Team, TeamName, Teams,
-    Timestamp, TokenStore,
+    CommentStore, CursorStore, Email, GrantStore, Principal, Recipients, ResponseStore, ShareStore,
+    Team, TeamName, Teams, Timestamp, TokenStore,
 };
 
 /// The caller's verified address.
@@ -23,11 +23,13 @@ fn team_name(text: &str) -> Result<TeamName, Refusal> {
     TeamName::try_from(text).map_err(|_| ApiCode::TeamNotFound.into())
 }
 
-impl<S, G, R, T, X, M> Sharing<S, G, R, T, X, M>
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
     M: Teams,

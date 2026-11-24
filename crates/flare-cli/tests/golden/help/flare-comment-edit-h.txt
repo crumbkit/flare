@@ -1,0 +1,18 @@
+Edit a comment or reply you wrote
+
+Usage: flare comment-edit [OPTIONS] <--body <TEXT>|--body-file <FILE>> <COMMENT>
+
+Arguments:
+  <COMMENT>  The comment or reply to edit, which only its author may
+
+Options:
+      --body <TEXT>       The text, 1 to 8,000 characters
+      --body-file <FILE>  A file that holds the text, which is how to send more than one line
+  -h, --help              Print help (see more with '--help')
+
+Examples:
+  flare comment-edit 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --body 'Is this final, or a draft?'
+
+Effects: additive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare comment-edit --help` describes them.
+Next: flare comment-edit --help explains each column.
