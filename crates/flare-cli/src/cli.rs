@@ -1,9 +1,13 @@
 //! `flare`'s command-line grammar and tool record.
 
+pub(crate) mod comments;
 mod schemas;
 mod sharing;
 mod skills;
 
+pub(crate) use comments::{
+    CommentArgs, CommentDeleteArgs, CommentEditArgs, CommentsArgs, ReplyArgs,
+};
 pub(crate) use schemas::SchemasCommand;
 pub(crate) use skills::{FlareSkills, SKILL};
 
@@ -12,7 +16,8 @@ pub(crate) use sharing::{
 };
 
 use crate::documents::{
-    ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
+    ACTIVITY, BIND, COMMENT, COMMENT_DELETE, COMMENT_EDIT, COMMENTS, GRANT, LOGIN, LOGOUT, METRICS,
+    OPEN, PUBLISH, REPLY, SERVE, SHARE, SHARES, SHOW,
 };
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
@@ -42,19 +47,19 @@ pub struct Cli {
 /// flare's commands.
 #[derive(Debug, Subcommand)]
 pub(crate) enum Verb {
-    /// Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
+    /// Serve a board's pages and bindings, locally or behind a TLS proxy, until Ctrl-C
     Serve(ServeArgs),
     /// Open the running server's index, a page or a binding in a browser
     Open(OpenArgs),
-    /// Publish a new version of a page from an HTML or Markdown file
+    /// Publish a page version from an HTML or Markdown file
     Publish(PublishArgs),
-    /// Save a binding that fills a page's slots with records
+    /// Save a binding that fills a page's slots
     Bind(BindArgs),
     /// Sign in to a flare server and keep its token in the Keychain
     Login(LoginArgs),
-    /// Revoke this computer's flare token and delete it
+    /// Revoke and delete this computer's token
     Logout(LogoutArgs),
-    /// Share a Markdown file with named people, or as a response to flares
+    /// Share a Markdown file with people, or as a response to flares
     Share(ShareArgs),
     /// Show one version of a share you can open, or its latest
     Show(ShowArgs),
@@ -66,8 +71,18 @@ pub(crate) enum Verb {
     /// names the next call with --cursor, which resumes the list after the
     /// last share printed, and --all follows the cursor until the list ends.
     Shares(SharesArgs),
-    /// List the responses to flares since a cursor, oldest first
+    /// List responses and comments since a cursor
     Activity(ActivityArgs),
+    /// List a flare's comments and replies
+    Comments(CommentsArgs),
+    /// Comment on a flare
+    Comment(CommentArgs),
+    /// Reply to a comment
+    Reply(ReplyArgs),
+    /// Edit a comment or reply you wrote
+    CommentEdit(CommentEditArgs),
+    /// Delete a comment or reply you wrote
+    CommentDelete(CommentDeleteArgs),
     /// Count the metric lines in a flare server's log, by day
     ///
     /// The counts come from the metric lines that flare serve writes on
@@ -213,7 +228,8 @@ pub const TOOL: Tool = Tool::new()
             .root_verbs(
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "show",
-                    "grant", "shares", "activity", "metrics",
+                    "grant", "shares", "activity", "comments", "comment", "reply",
+                    "comment-edit", "comment-delete", "metrics",
                 ],
                 ROOT,
             )
@@ -335,11 +351,56 @@ pub const TOOL: Tool = Tool::new()
             ).needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
-                "List the responses after the cursor an earlier call printed",
+                "List the activity after the cursor an earlier call printed",
+            ).needs(&["server"]),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since-last", "inbox"],
+                "List what is new since the last call that used the name inbox, then save where this one ends",
             ).needs(&["server"]),
         ])
-        .effects(Effects::read_only())
+        .effects(Effects::additive().all_or_none())
         .document(ACTIVITY),
+    Leaf::new(&["comments"])
+        .examples(&[Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+            "List a flare's comments, each followed by its replies",
+        ).needs(&["server"])])
+        .effects(Effects::read_only())
+        .document(COMMENTS),
+    Leaf::new(&["comment"])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body", "Is this final?"],
+                "Comment on a flare",
+            ).needs(&["server"]),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body-file", "note.txt", "--key", "note-1"],
+                "Comment with the text of a file; running it again writes nothing new",
+            ).needs(&["server"]),
+        ])
+        .effects(Effects::additive())
+        .document(COMMENT),
+    Leaf::new(&["reply"])
+        .examples(&[Example::new(
+            &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--flare", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body", "Yes, ship it"],
+            "Reply to a comment",
+        ).needs(&["server"])])
+        .effects(Effects::additive())
+        .document(REPLY),
+    Leaf::new(&["comment-edit"])
+        .examples(&[Example::new(
+            &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--body", "Is this final, or a draft?"],
+            "Replace the text of your comment",
+        ).needs(&["server"])])
+        .effects(Effects::additive())
+        .document(COMMENT_EDIT),
+    Leaf::new(&["comment-delete"])
+        .examples(&[Example::new(
+            &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--yes"],
+            "Delete your comment without a question",
+        ).needs(&["server"])])
+        .effects(Effects::destructive())
+        .document(COMMENT_DELETE),
     Leaf::new(&["metrics"])
         .examples(&[
             Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),

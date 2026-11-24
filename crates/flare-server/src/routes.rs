@@ -44,6 +44,10 @@ pub(crate) enum Need {
     /// A bearer token that the share API checks itself; the hosted site
     /// reads no cookie for these routes.
     Token,
+    /// A bearer token that the share API checks itself, or, when the
+    /// request has no Authorization header, the session cookie of a page
+    /// of this site.
+    TokenOrCookie,
 }
 
 /// What a route does.
@@ -114,9 +118,10 @@ const fn route(
 const OPEN: (Need, Option<Access>) = (Need::Nothing, None);
 const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
 const TOKEN: (Need, Option<Access>) = (Need::Token, None);
+const BROWSER: (Need, Option<Access>) = (Need::TokenOrCookie, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 25] = [
+pub(crate) static ROUTES: [Route; 31] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -264,8 +269,50 @@ pub(crate) static ROUTES: [Route; 25] = [
     route(
         Method::GET,
         "/api/activity",
-        TOKEN,
+        BROWSER,
         Handler::Api(ApiRoute::Activity),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/comments",
+        BROWSER,
+        Handler::Api(ApiRoute::Comments),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/comments",
+        BROWSER,
+        Handler::Api(ApiRoute::PostComment),
+        Sites::Hosted,
+    ),
+    route(
+        Method::PATCH,
+        "/api/comments/<name>",
+        BROWSER,
+        Handler::Api(ApiRoute::EditComment),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/comments/<name>",
+        BROWSER,
+        Handler::Api(ApiRoute::DeleteComment),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/cursors/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::Cursor),
+        Sites::Hosted,
+    ),
+    route(
+        Method::PUT,
+        "/api/cursors/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::SaveCursor),
         Sites::Hosted,
     ),
 ];

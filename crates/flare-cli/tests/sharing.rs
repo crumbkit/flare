@@ -1713,7 +1713,7 @@ fn activity_names_the_next_call_with_the_flares_and_the_last_cursor_under_next()
     assert_eq!(
         printed["next"],
         json!([{
-            "text": "Read the responses that arrive after these.",
+            "text": "Read the activity that arrives after this.",
             "commands": [{"call": format!("flare activity {FLARE} --since fc1.AAAAAAAAAC8")}],
         }]),
         "{}",
@@ -1734,7 +1734,7 @@ fn activity_names_the_next_call_with_the_flares_and_the_last_cursor_under_next()
     assert_eq!(
         printed["next"],
         json!([{
-            "text": "Read the responses that wait past this page.",
+            "text": "Read the activity that waits past this page.",
             "commands": [{"call": format!("flare activity {other} {FLARE} --since fc1.AAAAAAAAAD0")}],
         }]),
         "{}",
@@ -1757,7 +1757,7 @@ fn activity_in_text_prints_the_next_call_on_standard_error_and_no_summary_line()
     ran.assert_ok();
     assert!(
         ran.stderr.contains(&format!(
-            "Next: Read the responses that arrive after these.\n  flare activity {FLARE} --since fc1.AAAAAAAAAC8\n"
+            "Next: Read the activity that arrives after this.\n  flare activity {FLARE} --since fc1.AAAAAAAAAC8\n"
         )),
         "{}",
         ran.all()

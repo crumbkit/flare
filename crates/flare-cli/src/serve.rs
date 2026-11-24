@@ -27,7 +27,8 @@ use flare_auth_oidc::{
     OidcConfig,
 };
 use flare_aws::{
-    DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
+    DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
+    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTokenStore, Stores,
 };
 use flare_board::BoardStore;
 use flare_core::{Flares, NamedRecipients};
@@ -58,9 +59,20 @@ fn system(error: impl std::fmt::Display) -> Failed {
     }
 }
 
+/// The stores that keep browser sessions and sealing keys in the hosted
+/// site's table, so every process of the site shares them.
+struct Persisted {
+    sessions: DynamoSessionStore,
+    keys: DynamoSealingKeys,
+}
+
 /// Connects the OpenID Connect authenticator, reading the client secret
 /// from where `secret` says.
-async fn connect(config: OidcConfig, secret: &Secret) -> Result<OidcAuthenticator, Failed> {
+async fn connect(
+    config: OidcConfig,
+    secret: &Secret,
+    stored: Option<Persisted>,
+) -> Result<OidcAuthenticator, Failed> {
     match secret {
         Secret::Keychain => {
             let source = KeychainSecret::new(KEYCHAIN_SERVICE).map_err(|error| {
@@ -68,19 +80,25 @@ async fn connect(config: OidcConfig, secret: &Secret) -> Result<OidcAuthenticato
                     problem: error.to_string(),
                 }
             })?;
-            connect_with(config, &source, |problem| Failed::SecretUnavailable {
-                problem,
-            })
+            connect_with(
+                config,
+                &source,
+                |problem| Failed::SecretUnavailable { problem },
+                stored,
+            )
             .await
         }
         Secret::File(path) => {
             let shown = path.display().to_string();
-            connect_with(config, &FileSecret::new(path), |problem| {
-                Failed::SecretFileUnavailable {
+            connect_with(
+                config,
+                &FileSecret::new(path),
+                |problem| Failed::SecretFileUnavailable {
                     path: shown.clone(),
                     problem,
-                }
-            })
+                },
+                stored,
+            )
             .await
         }
     }
@@ -90,15 +108,20 @@ async fn connect_with(
     config: OidcConfig,
     source: &impl ClientSecretSource,
     unreadable: impl Fn(String) -> Failed,
+    stored: Option<Persisted>,
 ) -> Result<OidcAuthenticator, Failed> {
-    OidcAuthenticator::connect(config, source)
-        .await
-        .map_err(|error| match error {
-            ConnectError::Secret(error) => unreadable(error.to_string()),
-            other => Failed::ProviderUnavailable {
-                problem: other.to_string(),
-            },
-        })
+    let connected = match stored {
+        Some(Persisted { sessions, keys }) => {
+            OidcAuthenticator::connect_stored(config, source, sessions, keys).await
+        }
+        None => OidcAuthenticator::connect(config, source).await,
+    };
+    connected.map_err(|error| match error {
+        ConnectError::Secret(error) => unreadable(error.to_string()),
+        other => Failed::ProviderUnavailable {
+            problem: other.to_string(),
+        },
+    })
 }
 
 /// Waits for SIGTERM or Ctrl-C.
@@ -183,7 +206,7 @@ async fn local(
     metrics: Metrics,
 ) -> Result<(Served, Stop), Failed> {
     let oidc = match oidc {
-        Some(LocalOidc { config, secret }) => Some(connect(config, &secret).await?),
+        Some(LocalOidc { config, secret }) => Some(connect(config, &secret, None).await?),
         None => None,
     };
     if open::answers(root, env).await {
@@ -237,15 +260,23 @@ async fn hosted(
         sharing,
     } = hosted;
     let admit = oidc.admit().clone();
-    let oidc = connect(oidc, &Secret::File(secret_file)).await?;
+    let stores = match &sharing {
+        Some(config) => Some(Stores::connect(&config.stores).await),
+        None => None,
+    };
+    let persisted = stores.as_ref().map(|stores| Persisted {
+        sessions: stores.sessions.clone(),
+        keys: stores.keys.clone(),
+    });
+    let oidc = connect(oidc, &Secret::File(secret_file), persisted).await?;
     if sharing.as_ref().is_some_and(|config| config.open_to_anyone) {
         tracing::warn!(
             "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
         );
     }
-    let sharing = match sharing {
-        Some(config) => Some(share_api(*config, admit).await?),
-        None => None,
+    let sharing = match (sharing, stores) {
+        (Some(config), Some(stores)) => Some(share_api(*config, stores, admit).await?),
+        _ => None,
     };
     let mut signals = Signals::install()?;
     let listeners =
@@ -271,14 +302,19 @@ type HostedSharing = Sharing<
     DynamoShareStore,
     DynamoGrantStore,
     DynamoResponseStore,
+    DynamoCommentStore,
+    DynamoCursorStore,
     DynamoTokenStore,
     NamedRecipients,
 >;
 
 /// The share API on the configured table and bucket, which it checks
 /// first, accepting a token only while `admit` admits its owner.
-async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing, Failed> {
-    let stores = Stores::connect(&config.stores).await;
+async fn share_api(
+    config: SharingConfig,
+    stores: Stores,
+    admit: Admit,
+) -> Result<HostedSharing, Failed> {
     stores
         .check()
         .await
@@ -289,6 +325,8 @@ async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing,
         stores.shares,
         stores.grants,
         stores.responses,
+        stores.comments,
+        stores.cursors,
         config.creators,
     );
     let api = Sharing::new(flares, stores.tokens, config.recipients, admit);

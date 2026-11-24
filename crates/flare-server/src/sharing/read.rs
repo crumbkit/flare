@@ -3,8 +3,8 @@
 
 use super::{ReadRefusal, Reading, Sharing};
 use flare_core::{
-    GrantStore, Principal, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareVersion, Standing,
+    CommentStore, CursorStore, GrantStore, Principal, ResponseStore, ShareContent, ShareError,
+    ShareId, ShareStore, ShareVersion, Standing,
 };
 use std::fmt;
 use url::Url;
@@ -58,7 +58,7 @@ impl GetFlare {
     }
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
     /// The share API of `self`, whose reading pages link a reader who has
     /// never shared a flare to `address`.
     #[must_use]
@@ -68,11 +68,13 @@ impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
     }
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X>
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
 {
     /// The get flare address for `who`, reading a share whose standing is
     /// `standing`: the configured address when `who` owns no share, and

@@ -97,13 +97,16 @@ pub(crate) struct SharesArgs {
 /// The arguments of `flare activity`.
 #[derive(Debug, Args)]
 pub(crate) struct ActivityArgs {
-    /// The flares whose responses to list, at most 16
+    /// The flares whose responses and comments to list, at most 16
     #[arg(value_name = "FLARE", required = true, num_args = 1..=MAX_FLARES)]
     pub(crate) flares: Vec<String>,
-    /// List only responses after this cursor, which an earlier call printed
+    /// List only activity after this cursor, which an earlier call printed
     #[arg(long, value_name = "CURSOR")]
     pub(crate) since: Option<String>,
-    /// How many responses to list; --all follows the cursor to the newest.
+    /// Continue from the cursor saved as NAME, the larger of this computer's and the server's, and save where this call ends
+    #[arg(long, value_name = "NAME")]
+    pub(crate) since_last: Option<String>,
+    /// How many items to list; --all follows the cursor to the newest.
     #[command(flatten)]
     pub(crate) page: Page<50, 100>,
 }

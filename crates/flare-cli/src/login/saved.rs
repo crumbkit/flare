@@ -42,30 +42,35 @@ pub(crate) struct Saved {
     pub(crate) owner: String,
 }
 
-/// The two files that this module keeps in flare's state directory.
+/// The files that flare keeps in its state directory: this module's two,
+/// and `cursors.json`, which `crate::cursors` keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StateFile {
+pub(crate) enum StateFile {
     /// `login.json`, the saved login.
     Login,
     /// `labels.json`, the label of the last login to each server.
     Labels,
+    /// `cursors.json`, the named activity cursors of `flare activity
+    /// --since-last`.
+    Cursors,
 }
 
 impl StateFile {
     /// The file's path under the state home that `env` names.
-    fn path(self, env: &Snapshot) -> Result<PathBuf, Failed> {
+    pub(crate) fn path(self, env: &Snapshot) -> Result<PathBuf, Failed> {
         let name = match self {
             Self::Login => "login.json",
             Self::Labels => "labels.json",
+            Self::Cursors => "cursors.json",
         };
         Ok(state_home(env)?.join("flare").join(name))
     }
 
     /// The most bytes flare reads from the file or writes to it.
-    const fn limit(self) -> u64 {
+    pub(crate) const fn limit(self) -> u64 {
         match self {
             Self::Login => MAX_BYTES,
-            Self::Labels => MAX_LABEL_BYTES,
+            Self::Labels | Self::Cursors => MAX_LABEL_BYTES,
         }
     }
 
@@ -74,12 +79,13 @@ impl StateFile {
         match self {
             Self::Login => "the saved login",
             Self::Labels => "the login labels file",
+            Self::Cursors => "the activity cursors file",
         }
     }
 
     /// [`Failed::StateUnusable`] for this file at `path`, whose message
     /// names the file and starts with its path.
-    fn unusable(self, path: &Path, problem: impl std::fmt::Display) -> Failed {
+    pub(crate) fn unusable(self, path: &Path, problem: impl std::fmt::Display) -> Failed {
         Failed::StateUnusable {
             path: Some(path.display().to_string()),
             problem: format!(
@@ -93,7 +99,7 @@ impl StateFile {
 
 /// The text of `file` at `path`, at most its limit in bytes, or `None`
 /// when there is no file.
-fn read_capped(file: StateFile, path: &Path) -> Result<Option<String>, Failed> {
+pub(crate) fn read_capped(file: StateFile, path: &Path) -> Result<Option<String>, Failed> {
     use std::io::Read as _;
     let limit = file.limit();
     let opened = match std::fs::File::open(path) {
@@ -114,7 +120,7 @@ fn read_capped(file: StateFile, path: &Path) -> Result<Option<String>, Failed> {
 
 /// Replaces `file` at `path` with `bytes`, mode 0600, creating its
 /// directory first.
-fn write(path: &Path, file: StateFile, bytes: &[u8]) -> Result<(), Failed> {
+pub(crate) fn write(path: &Path, file: StateFile, bytes: &[u8]) -> Result<(), Failed> {
     if let Some(directory) = path.parent() {
         std::fs::create_dir_all(directory)
             .map_err(|error| directory_uncreatable(directory, error))?;

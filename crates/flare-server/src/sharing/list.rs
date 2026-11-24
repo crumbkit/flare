@@ -6,14 +6,17 @@ use super::run::json;
 use super::{Answer, Scope, Sharing};
 use flare_contract::{Role as WireRole, ShareList};
 use flare_core::{
-    GrantStore, ListKey, Principal, Recipients, ResponseStore, ShareStore, TokenStore,
+    CommentStore, CursorStore, GrantStore, ListKey, Principal, Recipients, ResponseStore,
+    ShareStore, TokenStore,
 };
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X>
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
 {

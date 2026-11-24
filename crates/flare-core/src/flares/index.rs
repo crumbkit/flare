@@ -32,13 +32,17 @@ use crate::email::Email;
 use crate::name::PrincipalId;
 use crate::response::{NewEntry, Reader, ResponseLink};
 use crate::share::ShareId;
-use crate::store::{GrantStore, ResponseStore, ShareStore, ShareStoreError};
+use crate::store::{
+    CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore, ShareStoreError,
+};
 
 /// An index write could not finish; the caller repeats the grant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Unfinished;
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
+    Flares<S, G, R, C, U>
+{
     /// The people who can open `share`: its owner and each grantee, or
     /// `None` when the share does not exist.
     async fn openers(&self, share: &ShareId) -> Result<Option<Vec<PrincipalId>>, Unfinished> {

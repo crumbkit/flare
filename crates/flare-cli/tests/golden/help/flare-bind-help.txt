@@ -1,4 +1,4 @@
-Save a binding that fills a page's slots with records
+Save a binding that fills a page's slots
 
 Usage: flare bind [OPTIONS] --name <NAME> <PAGE> <SLOT=PATH>...
 

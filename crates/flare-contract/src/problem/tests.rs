@@ -10,6 +10,8 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
         "tokens",
         "activity",
         "requests",
+        "comments",
+        "cursors",
     ];
     for code in ApiCode::ALL {
         let parts: Vec<&str> = code.text().split("::").collect();
@@ -60,6 +62,30 @@ fn a_recipient_problem_shows_the_address_form() {
         panic!("{problem:?}");
     };
     assert!(text.contains("ana@example.org"));
+}
+
+#[test]
+fn the_comment_and_cursor_codes_carry_the_statuses_the_routes_answer() {
+    for (code, text, status) in [
+        (ApiCode::CommentNotFound, "flare::comments::not_found", 404),
+        (
+            ApiCode::NotCommentAuthor,
+            "flare::comments::not_author",
+            403,
+        ),
+        (ApiCode::ReplyDepth, "flare::comments::reply_depth", 400),
+        (ApiCode::CommentInvalid, "flare::comments::invalid", 400),
+        (ApiCode::TooManyComments, "flare::comments::too_many", 409),
+        (
+            ApiCode::CommentsUnavailable,
+            "flare::comments::unavailable",
+            503,
+        ),
+        (ApiCode::CursorNotFound, "flare::cursors::not_found", 404),
+        (ApiCode::TooManyCursors, "flare::cursors::too_many", 409),
+    ] {
+        assert_eq!((code.text(), code.status()), (text, status));
+    }
 }
 
 #[test]

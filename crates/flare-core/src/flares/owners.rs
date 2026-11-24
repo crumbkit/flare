@@ -7,10 +7,12 @@ use crate::email::Email;
 use crate::grant::Role;
 use crate::share::ShareId;
 use crate::sharing::ShareError;
-use crate::store::{GrantStore, ResponseStore, ShareStore};
+use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
 use crate::time::Timestamp;
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
+    Flares<S, G, R, C, U>
+{
     /// Grants Reader on `response` to the owner of each flare in `flares`,
     /// once per owner. `who` owns the response. An owner who already holds
     /// a role keeps it, and `who` is skipped because an owner already has

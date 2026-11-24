@@ -55,7 +55,7 @@ where
     }
     if path == "/auth/oidc/start" {
         let return_to = return_to(ctx)?;
-        let start = oidc.start(return_to).map_err(refused)?;
+        let start = oidc.start(return_to).await.map_err(refused)?;
         return Ok(Reply::see_other(start.redirect().as_str().to_owned())
             .cookie(secret::kept_cookie(start.kept())));
     }
@@ -66,12 +66,12 @@ where
             let handed = Handed {
                 session: signed_in.session().clone(),
                 return_to: signed_in.return_to().as_str().to_owned(),
-                lasts: signed_in.expires_in(),
+                lasts: signed_in.cookie_life(),
             };
             match ctx.shared.handover.issue(handed, ctx.now) {
                 Some(issued) => {
                     if let Some(dropped) = issued.dropped {
-                        oidc.sign_out(&dropped);
+                        let _ = oidc.sign_out(&dropped).await;
                     }
                     match ctx.shared.site.gate() {
                         Some(gate) => {
@@ -83,7 +83,7 @@ where
                     }
                 }
                 None => {
-                    oidc.sign_out(signed_in.session());
+                    let _ = oidc.sign_out(signed_in.session()).await;
                     ctx.shared.count(Event::SignInRefused {
                         reason: Reason::NoHandoverSlot,
                     });
@@ -121,7 +121,7 @@ where
 
 /// `GET /auth/oidc/start` on the hosted site: seals the sign-in into
 /// `__Host-flare_oidc_state` and redirects to the provider.
-pub(crate) fn hosted_start<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
+pub(crate) async fn hosted_start<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
 where
     P: PageStore,
     R: RecordStore,
@@ -129,7 +129,7 @@ where
     K: OidcClock,
 {
     let oidc = ctx.shared.site.oidc().ok_or(Code::NotFound)?;
-    let start = oidc.start(return_to(ctx)?).map_err(refused)?;
+    let start = oidc.start(return_to(ctx)?).await.map_err(refused)?;
     Ok(Reply::see_other(start.redirect().as_str().to_owned())
         .cookie(secret::hosted_kept_cookie(start.kept())))
 }
@@ -172,7 +172,7 @@ where
 /// The hosted callback's 303 to the sealed return path, with the session
 /// cookie.
 fn signed_in_reply(signed_in: &SignedIn) -> Reply {
-    let cookie = secret::hosted_session_cookie(signed_in.session_secret(), signed_in.expires_in());
+    let cookie = secret::hosted_session_cookie(signed_in.session_secret(), signed_in.cookie_life());
     let back = signed_in.return_to().as_str();
     let target = ReturnPath::try_from(back).map_or("/flare/", |_| back);
     Reply::see_other(target.to_owned()).cookie(cookie)

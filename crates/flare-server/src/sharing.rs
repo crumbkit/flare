@@ -19,6 +19,8 @@
 //! The store keeps the SHA-256 of the secret. A login code is 43 base64url
 //! characters of 32 random bytes, and the store keeps its SHA-256.
 
+mod activity;
+mod comments;
 mod convert;
 mod list;
 mod read;
@@ -33,7 +35,8 @@ use convert::content_error;
 
 use flare_auth_oidc::Admit;
 use flare_contract::{
-    ApiCode, ExchangeRequest, Format, GrantRequest, ShareRequest, VersionRequest,
+    ApiCode, CommentEdit, ExchangeRequest, Format, GrantRequest, NamedCursor, NewComment,
+    ShareRequest, VersionRequest,
 };
 use flare_core::{
     DocumentText, Email, Flares, ListKey, Principal, ShareTitle, ShareVersion, Timestamp,
@@ -50,21 +53,21 @@ pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// directory that resolves `--with` identifiers and the admit rule that
 /// every token's owner must still pass, and the get flare address that
 /// [`Sharing::with_get_flare`] sets.
-pub struct Sharing<S, G, R, T, X> {
-    flares: Flares<S, G, R>,
+pub struct Sharing<S, G, R, C, U, T, X> {
+    flares: Flares<S, G, R, C, U>,
     tokens: T,
     recipients: X,
     admit: Admit,
     get_flare: Option<GetFlare>,
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
     /// The share API over `flares`, keeping tokens in `tokens`, resolving
     /// recipients with `recipients` and accepting a token only while
     /// `admit`, the site's sign-in rule, admits its owner's address. Its
     /// reading pages link to no get flare address.
     #[must_use]
-    pub fn new(flares: Flares<S, G, R>, tokens: T, recipients: X, admit: Admit) -> Self {
+    pub fn new(flares: Flares<S, G, R, C, U>, tokens: T, recipients: X, admit: Admit) -> Self {
         Self {
             flares,
             tokens,
@@ -75,7 +78,7 @@ impl<S, G, R, T, X> Sharing<S, G, R, T, X> {
     }
 }
 
-impl<S, G, R, T, X> fmt::Debug for Sharing<S, G, R, T, X> {
+impl<S, G, R, C, U, T, X> fmt::Debug for Sharing<S, G, R, C, U, T, X> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.debug_struct("Sharing").finish_non_exhaustive()
     }
@@ -106,8 +109,21 @@ pub(crate) enum Call {
     Activity {
         flares: Vec<String>,
         since: Option<String>,
+        since_last: Option<String>,
         limit: usize,
     },
+    /// `GET /api/comments`.
+    Comments(String),
+    /// `POST /api/comments`.
+    Post(NewComment),
+    /// `PATCH /api/comments/{id}`.
+    Edit(String, CommentEdit),
+    /// `DELETE /api/comments/{id}`.
+    Delete(String),
+    /// `GET /api/cursors/{name}`.
+    Cursor(String),
+    /// `PUT /api/cursors/{name}`.
+    SaveCursor(String, NamedCursor),
     /// `DELETE /api/tokens/{id}`.
     Revoke(String),
 }
@@ -244,6 +260,10 @@ pub(crate) trait Api: Send + Sync {
     /// Checks a bearer token at `now`.
     fn authenticate<'a>(&'a self, token: &'a SecretString, now: Timestamp)
     -> Boxed<'a, TokenCheck>;
+
+    /// Whether the site's admit rule still admits `who`, which a session
+    /// cookie must pass as a bearer token does.
+    fn admits(&self, who: &Principal) -> bool;
 
     /// Issues a login code for `owner` and the CLI on `port`.
     fn issue_code<'a>(

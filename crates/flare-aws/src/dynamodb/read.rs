@@ -115,6 +115,28 @@ impl Table {
         }
     }
 
+    /// The last item of `partition` whose sort key starts with `prefix`,
+    /// or `None` when there is none.
+    pub(crate) async fn query_last(
+        &self,
+        partition: &str,
+        prefix: &str,
+        kind: ItemKind,
+    ) -> Result<Option<Item>, Unavailable> {
+        let sent = self
+            .query_request(partition, prefix, 1, None)
+            .scan_index_forward(false)
+            .send()
+            .await;
+        match sent {
+            Ok(page) => Ok(page.items.unwrap_or_default().into_iter().next()),
+            Err(error) => {
+                log_failure("Query", kind, &error_code(&error), error.request_id());
+                Err(Unavailable)
+            }
+        }
+    }
+
     /// The items at `keys` that the table holds, in no set order, read in
     /// consistent batches of [`KEYS_PER_BATCH`]. DynamoDB can leave keys
     /// unprocessed when it is short of capacity; this read waits with the

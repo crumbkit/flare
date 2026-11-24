@@ -6,9 +6,11 @@ use crate::auth::Principal;
 use crate::email::Email;
 use crate::share::ShareId;
 use crate::sharing::ShareError;
-use crate::store::{GrantStore, ResponseStore, ShareStore};
+use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore> Flares<S, G, R> {
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
+    Flares<S, G, R, C, U>
+{
     /// Ends the grant of `grantee` on a share, as
     /// [`Shares::revoke`](crate::sharing::Shares::revoke) does, and then
     /// removes their activity index entries for the share as a response.
