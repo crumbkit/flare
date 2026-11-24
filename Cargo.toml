@@ -93,6 +93,9 @@ flare-server = { path = "crates/flare-server", version = "0.1.0" }
 clap = { version = "=4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
 crumbkit = { version = "=0.6.0", features = ["derive"] }
 crumbkit-usage = "=0.6.0"
+# Installs, checks and prints flare's agent skill (`flare skills`).
+# Evaluated in /evals/hangar-skills-dependencies.
+crumbkit-skills = "=0.6.0"
 # Test-only: the cli profile's convention checks.
 crumbkit-test = "=0.6.0"
 # The JSON Schemas of the binary's documents, which crumbkit's Row and

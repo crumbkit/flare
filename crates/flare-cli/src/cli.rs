@@ -2,9 +2,11 @@
 
 mod schemas;
 mod sharing;
+mod skills;
 mod teams;
 
 pub(crate) use schemas::SchemasCommand;
+pub(crate) use skills::{FlareSkills, SKILL};
 
 pub(crate) use sharing::{
     ActivityArgs, GrantArgs, GrantsArgs, LoginArgs, LogoutArgs, RevokeArgs, ShareArgs, SharesArgs,
@@ -51,9 +53,9 @@ pub(crate) enum Verb {
     Publish(PublishArgs),
     /// Save a binding that fills a page's slots with records
     Bind(BindArgs),
-    /// Sign in to a flare server in the browser and keep its token in the Keychain
+    /// Sign in to a flare server and keep its token in the Keychain
     Login(LoginArgs),
-    /// Revoke this computer's token for the flare server and delete it
+    /// Revoke this computer's flare token and delete it
     Logout(LogoutArgs),
     /// Share a Markdown file
     Share(ShareArgs),
@@ -63,7 +65,7 @@ pub(crate) enum Verb {
     Grant(GrantArgs),
     /// End grants on a share
     Revoke(RevokeArgs),
-    /// List a share's grants
+    /// List grants
     Grants(GrantsArgs),
     /// Manage teams
     Teams {
@@ -97,6 +99,12 @@ pub(crate) enum Verb {
         /// What to do with the documents.
         #[command(subcommand)]
         command: SchemasCommand,
+    },
+    /// Manage flare's agent skill
+    Skills {
+        /// What to do with the skill.
+        #[command(subcommand)]
+        command: FlareSkills,
     },
     /// Review flare's own use
     #[command(name = "self")]
@@ -379,6 +387,9 @@ pub const TOOL: Tool = Tool::new()
                     .examples(&[Example::new(&[], "Report the findings of the last 7 days")])
                     .effects(Effects::read_only())
                     .document(SELF_USAGE),
+                FlareSkills::install_leaf(&["skills", "install"]),
+                FlareSkills::check_leaf(&["skills", "check"]),
+                FlareSkills::print_leaf(&["skills", "print"]),
             ]),
     )
     .failures(

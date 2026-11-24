@@ -1,4 +1,4 @@
-List a share's grants
+List grants
 
 Usage: flare grants [OPTIONS] <ID>
 

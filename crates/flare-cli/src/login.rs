@@ -101,7 +101,7 @@ pub(crate) async fn login(args: &LoginArgs, env: &Snapshot) -> Result<LoggedIn, 
     };
     // An opener that fails ends the login at once; one that succeeds
     // leaves the wait for the browser running.
-    let waiting = callback.code(&state, LOGIN_WAIT);
+    let waiting = callback.code(&origin, &state, LOGIN_WAIT);
     tokio::pin!(waiting);
     let (code, opened) = tokio::select! {
         code = &mut waiting => (code, None),

@@ -257,6 +257,101 @@ fn share_without_a_login_fails_with_login_needed_and_names_flare_login() {
     assert!(ran.all().contains("flare login"), "{}", ran.all());
 }
 
+/// The `recovery` of the `flare/failure/v1` document that a failed
+/// `--json` run prints.
+fn recovery(ran: &run::Ran) -> Value {
+    let failure: Value =
+        serde_json::from_str(&ran.stdout).unwrap_or_else(|error| panic!("{error}: {}", ran.all()));
+    assert_eq!(failure["schema"], "flare/failure/v1", "{}", ran.all());
+    failure["recovery"].clone()
+}
+
+#[test]
+fn a_login_whose_browser_sign_in_fails_gives_a_terminal_recovery_for_flare_login_with_the_server() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    home.login_opener(Some("0000000000000000aaaaaaaaaaaaaaaa"));
+    api.issue();
+
+    let ran = home.sharing(&["login", &api.origin, "--json"]);
+
+    ran.assert_failed("flare::login::failed");
+    let recovery = recovery(&ran);
+    assert_eq!(recovery["kind"], "terminal", "{}", ran.all());
+    assert_eq!(
+        recovery["call"],
+        format!("flare login {}", api.origin),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_command_with_no_saved_login_hands_the_sign_in_to_a_person_as_a_hint() {
+    let home = Home::new();
+
+    let ran = home.sharing(&["shares", "--json"]);
+
+    ran.assert_failed("flare::login::needed");
+    let recovery = recovery(&ran);
+    assert_eq!(recovery["kind"], "hint", "{}", ran.all());
+    assert!(
+        recovery["text"].as_str().unwrap().contains("flare login"),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_saved_login_whose_token_is_gone_gives_a_terminal_recovery_for_flare_login_with_the_server() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    std::fs::remove_file(home.path().join("keychain-item")).unwrap();
+
+    let ran = home.sharing(&["shares", "--json"]);
+
+    ran.assert_failed("flare::login::needed");
+    let recovery = recovery(&ran);
+    assert_eq!(recovery["kind"], "terminal", "{}", ran.all());
+    assert_eq!(
+        recovery["call"],
+        format!("flare login {}", api.origin),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn each_refusal_that_needs_a_new_sign_in_gives_a_terminal_recovery_for_flare_login_with_the_server()
+{
+    for (code, status) in [
+        ("flare::tokens::sign_in_needed", 401),
+        ("flare::tokens::code_refused", 403),
+        ("flare::shares::no_email", 403),
+    ] {
+        let api = FakeApi::start();
+        let home = logged_in(&api);
+        api.route(
+            "GET",
+            "/api/shares",
+            status,
+            &problem(code, status, &api.origin),
+        );
+
+        let ran = home.sharing(&["shares", "--json"]);
+
+        ran.assert_failed(code);
+        let recovery = recovery(&ran);
+        assert_eq!(recovery["kind"], "terminal", "{code}: {}", ran.all());
+        assert_eq!(
+            recovery["call"],
+            format!("flare login {}", api.origin),
+            "{code}: {}",
+            ran.all()
+        );
+    }
+}
+
 #[test]
 fn a_refusal_from_the_server_keeps_its_code_and_its_hint() {
     let api = FakeApi::start();
