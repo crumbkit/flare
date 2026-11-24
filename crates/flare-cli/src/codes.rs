@@ -66,7 +66,7 @@ pub const BINDINGS_RECORD_NOT_FOUND: Code<'static> =
 pub const BINDINGS_INVALID: Code<'static> = Code::from_spelling("flare::bindings::invalid");
 /// The program that opens the browser failed.
 pub const OPENER_FAILED: Code<'static> = Code::from_spelling("flare::opener::failed");
-/// flare's state directory cannot be used.
+/// A file or directory in flare's state directory cannot be used.
 pub const STATE_UNUSABLE: Code<'static> = Code::from_spelling("flare::state::unusable");
 /// The share API's table or bucket is missing or cannot be read.
 pub const STORES_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::stores::unavailable");
@@ -327,11 +327,11 @@ pub enum Failed {
         /// What went wrong.
         problem: String,
     },
-    /// The state directory cannot be used.
+    /// A file or directory in the state directory cannot be used.
     #[error("{problem}")]
     #[failure(
         code = STATE_UNUSABLE,
-        hint = "fix the state directory as the problem says",
+        hint = "fix or remove the state file or directory that the problem names",
         field(path = path.as_deref())
     )]
     StateUnusable {

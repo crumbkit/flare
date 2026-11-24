@@ -1519,8 +1519,29 @@ fn a_saved_login_that_is_not_json_is_refused_naming_login_json_in_the_path_field
         "{printed}"
     );
     assert_eq!(
-        printed["message"], "the saved login could not be used: expected ident at line 1 column 2",
+        printed["message"],
+        format!(
+            "the saved login {} could not be used: expected ident at line 1 column 2",
+            login.display()
+        ),
         "{printed}"
+    );
+    let ran = home.sharing(&["shares"]);
+    ran.assert_failed("flare::state::unusable");
+    let first = ran.stderr.lines().next().unwrap_or_default();
+    assert!(
+        first.contains(&format!(
+            "the saved login {} could not be used",
+            login.display()
+        )),
+        "{}",
+        ran.all()
+    );
+    assert!(
+        help_line(&ran)
+            .contains("fix or remove the state file or directory that the problem names"),
+        "{}",
+        ran.all()
     );
 }
 
@@ -1539,6 +1560,14 @@ fn a_labels_file_that_is_not_json_is_refused_naming_labels_json_in_the_path_fiel
     assert_eq!(
         printed["fields"],
         json!({"path": labels.to_str().unwrap()}),
+        "{printed}"
+    );
+    assert_eq!(
+        printed["message"],
+        format!(
+            "the login labels file {} could not be used: expected ident at line 1 column 2",
+            labels.display()
+        ),
         "{printed}"
     );
     std::fs::remove_file(&labels).unwrap();

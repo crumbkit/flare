@@ -184,6 +184,18 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- A `flare::state::unusable` failure from the saved login or the login
+  labels file now names the file at the start of its message, so the text
+  form, which prints no fields, says which file to fix. A login.json that
+  flare cannot read or parse reads "the saved login <path> could not be
+  used: <reason>", and a labels.json that flare cannot read, parse or
+  write, or that would pass 64 KiB, reads "the login labels file <path>
+  could not be used: <reason>". A state directory that flare cannot create
+  for either file reads "the state directory <path> could not be created:
+  <reason>". A file past its size limit gives the reason "it is longer than
+  4096 bytes" or "it is longer than 65536 bytes". The `path` field keeps
+  its value. The failure's help line now reads "fix or remove the state
+  file or directory that the problem names".
 - Three failures give the file they name in a field of the JSON failure
   document, so an agent no longer reads the path out of the message.
   `flare::board::program_unavailable` gives `program`, the board program
