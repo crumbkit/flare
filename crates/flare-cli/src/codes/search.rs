@@ -9,7 +9,7 @@
 //! evaluated.
 
 use super::{Failed, Refused};
-use crumbkit::Code;
+use crumbkit::{Code, Field, FieldValue};
 use flare_contract::{ApiCode, SearchError};
 use flare_query::QueryError;
 
@@ -60,6 +60,27 @@ impl Searched {
             )
         });
         std::iter::once(query.clone()).chain(lines).collect()
+    }
+
+    /// The query, once flare knows it, and the errors, each with its code,
+    /// span and message, so an agent reads them without parsing the causes.
+    pub(crate) fn fields(&self) -> Vec<Field<'_>> {
+        if self.errors.is_empty() {
+            return Vec::new();
+        }
+        let errors = self.errors.iter().map(|error| {
+            FieldValue::object([
+                ("code", FieldValue::from(error.code.as_str())),
+                ("start", FieldValue::from(error.span.start)),
+                ("end", FieldValue::from(error.span.end)),
+                ("message", FieldValue::from(error.message.as_str())),
+            ])
+        });
+        let query = self.query.as_ref().map(|query| Field::new("query", query));
+        query
+            .into_iter()
+            .chain([Field::new("errors", FieldValue::list(errors))])
+            .collect()
     }
 }
 
