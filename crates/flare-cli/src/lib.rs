@@ -47,7 +47,6 @@ const INTERRUPTED: u8 = 130;
 
 /// Parses the command line, runs the command and returns the exit code.
 /// `interrupted` marks the usage log's line as a run that Ctrl-C ended.
-#[must_use]
 pub fn run(interrupted: impl Fn()) -> ExitCode {
     let (cli, mut run) = match crumbkit::parse::<Cli>(&TOOL) {
         Ok(parsed) => parsed,
