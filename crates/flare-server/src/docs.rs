@@ -7,11 +7,14 @@ const MARK: &str = "<span class=\"mark\"><svg viewBox=\"0 0 20 20\" aria-hidden=
 
 /// The rules for the server's own markup. flare-render's stylesheet comes
 /// first and holds the tokens these rules use.
-const SERVER_CSS: &str = r"
+const SERVER_CSS: &str = r#"
+/* The fonts come from this origin, at the names `assets::FONTS` serves. */
+@font-face { font-family: "IBM Plex Sans"; font-style: normal; font-weight: 100 700; font-display: swap; src: url("/flare/assets/ibm-plex-sans-latin-e2291e84.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: swap; src: url("/flare/assets/jetbrains-mono-latin-18be4527.woff2") format("woff2"); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 /* flare-server: the band, the mat around the frame, the index */
 body.flare { margin: 0; background: var(--h-chalk); color: var(--h-ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.5; }
 body.flare a { color: var(--h-act); text-underline-offset: 2px; }
-.mono, body.flare code { font-family: var(--font-mono); font-size: 0.86em; overflow-wrap: anywhere; }
+.mono, body.flare :not(pre) > code { font-family: var(--font-mono); font-size: 0.86em; overflow-wrap: anywhere; }
 .band { background: var(--h-tint); border-bottom: 1px solid var(--h-tint-line); padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .mark { font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
 .mark svg { width: 18px; height: 18px; flex: none; }
@@ -26,7 +29,25 @@ body.flare a { color: var(--h-act); text-underline-offset: 2px; }
 .tree li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
 .tree .k { font-weight: 600; min-width: 5em; }
 .tree .d1 { padding-left: 1.5em; }
-";
+
+/* flare-server: the reading page of a share (the mockup's artboard 01) */
+body.reading { background: var(--app); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+.reading *, .reading *::before, .reading *::after { box-sizing: border-box; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 10px 32px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.brand { font-weight: 600; font-size: 15px; color: var(--fg); }
+.who { width: 28px; height: 28px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--muted); flex: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.screen { padding: 28px 32px 36px; display: flex; flex-direction: column; gap: 22px; }
+.reading .doc { width: 100%; margin-inline: auto; }
+.reading .doc > h1 + p { font-size: 18px; color: var(--muted); }
+.share-meta { display: flex; flex-direction: column; gap: 8px; }
+.share-meta .line { font-size: 13px; color: var(--muted); display: flex; gap: 6px 10px; align-items: center; flex-wrap: wrap; }
+.share-meta b { color: var(--fg); font-weight: 600; }
+@media (max-width: 640px) {
+  .bar { padding: 10px 16px; }
+  .screen { padding: 20px 16px 28px; }
+}
+"#;
 
 /// flare-render's stylesheet followed by the server's rules.
 pub(crate) fn stylesheet() -> String {

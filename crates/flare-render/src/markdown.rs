@@ -2,21 +2,160 @@
 //!
 //! A Markdown page is not a template: `{{` stays text, because filling
 //! first would let a record value add Markdown links.
+//!
+//! A fenced block whose language is `mermaid` and whose first word is one of
+//! [`DIAGRAM_TYPES`] becomes a `<figure class="diagram">` that holds its
+//! escaped source; a script draws it. Every other code block becomes a
+//! `<div class="code">` with its language label and a hidden Copy button that
+//! a script shows. A paragraph that starts with "Figure", a number and a full
+//! stop, written directly after a top-level diagram, table or code block,
+//! becomes that block's `<figcaption>`.
 
 use crate::html::escape_into;
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
+
+/// The Mermaid diagram types a page may draw. A Mermaid fence whose source
+/// starts with any other word, such as a `%%{init}%%` directive or front
+/// matter, renders as code. A directive on a later line still reaches
+/// Mermaid; the page is safe because Mermaid keeps `securityLevel` among its
+/// secure keys, which no directive can change.
+pub(crate) const DIAGRAM_TYPES: [&str; 8] = [
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "stateDiagram",
+    "classDiagram",
+    "erDiagram",
+    "gantt",
+    "pie",
+];
+
+/// The label of a code block that names no language.
+const PLAIN: &str = "text";
+
+/// Rendered Markdown, and what scripts it has work for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Rendered {
+    /// The HTML.
+    pub(crate) html: String,
+    /// Whether it holds a code block that a highlighter colours.
+    pub(crate) code: bool,
+    /// Whether it holds a diagram that Mermaid draws.
+    pub(crate) diagrams: bool,
+}
 
 /// Renders Markdown into HTML. Raw HTML shows as escaped text, a link keeps
 /// its target only for `http`, `https`, `mailto` and relative targets, and an
 /// image keeps only a relative source.
 pub(crate) fn to_html(markdown: &str) -> String {
+    render(markdown).html
+}
+
+/// Renders Markdown as [`to_html`] does, and says whether the HTML holds
+/// code or a diagram.
+pub(crate) fn render(markdown: &str) -> Rendered {
     let options =
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let events: Vec<Event<'_>> = Parser::new_ext(markdown, options).collect();
+    let blocks = top_level_blocks(&events);
     let mut writer = Writer::default();
-    for event in Parser::new_ext(markdown, options) {
-        writer.event(event);
+    let mut index = 0;
+    while let Some(&(start, end)) = blocks.get(index) {
+        let block = events.get(start..end).unwrap_or_default();
+        let caption = blocks
+            .get(index + 1)
+            .and_then(|&(start, end)| events.get(start..end))
+            .filter(|next| captionable(block) && is_caption(next));
+        match caption {
+            Some(caption) => {
+                // The caption is the paragraph's inline events, without
+                // its own start and end.
+                let inline = caption
+                    .get(1..caption.len().saturating_sub(1))
+                    .unwrap_or_default();
+                writer.caption = Some(inline.to_vec());
+                index += 2;
+            }
+            None => index += 1,
+        }
+        for event in block {
+            writer.event(event.clone());
+        }
+        writer.caption = None;
     }
-    writer.out
+    Rendered {
+        html: writer.out,
+        code: writer.code,
+        diagrams: writer.diagrams,
+    }
+}
+
+/// The ranges of the top-level blocks in `events`.
+fn top_level_blocks(events: &[Event<'_>]) -> Vec<(usize, usize)> {
+    let mut blocks = Vec::new();
+    let mut depth = 0_usize;
+    let mut start = 0;
+    for (index, event) in events.iter().enumerate() {
+        match event {
+            Event::Start(_) => {
+                if depth == 0 {
+                    start = index;
+                }
+                depth += 1;
+            }
+            Event::End(_) => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    blocks.push((start, index + 1));
+                }
+            }
+            _ if depth == 0 => blocks.push((index, index + 1)),
+            _ => {}
+        }
+    }
+    blocks
+}
+
+/// Whether `block` is one a caption may follow: a diagram, a table or a
+/// code block.
+fn captionable(block: &[Event<'_>]) -> bool {
+    matches!(
+        block.first(),
+        Some(Event::Start(Tag::CodeBlock(_) | Tag::Table(_)))
+    )
+}
+
+/// Whether `block` is a paragraph whose text starts with "Figure", a
+/// number and a full stop, followed by a space or nothing.
+fn is_caption(block: &[Event<'_>]) -> bool {
+    if !matches!(block.first(), Some(Event::Start(Tag::Paragraph))) {
+        return false;
+    }
+    let mut text = String::new();
+    for event in block {
+        if let Event::Text(part) | Event::Code(part) = event {
+            text.push_str(part);
+        }
+    }
+    let Some(rest) = text.strip_prefix("Figure ") else {
+        return false;
+    };
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    let after = rest.get(digits..).unwrap_or_default();
+    digits > 0
+        && after
+            .strip_prefix('.')
+            .is_some_and(|tail| tail.is_empty() || tail.starts_with(char::is_whitespace))
+}
+
+/// The diagram type of a fenced block with `language` and `source`, when
+/// it is a Mermaid diagram a page may draw.
+fn diagram_type(language: &str, source: &str) -> Option<&'static str> {
+    if language != "mermaid" {
+        return None;
+    }
+    let first = source.split_whitespace().next()?;
+    DIAGRAM_TYPES.iter().copied().find(|kind| *kind == first)
 }
 
 /// Whether a link may keep `target`: `http`, `https` and `mailto` targets,
@@ -45,10 +184,25 @@ fn plain(target: &str) -> bool {
         .any(|character| character.is_whitespace() || character.is_control() || character == '\\')
 }
 
+/// A code block being read: its language and its text so far.
+#[derive(Debug)]
+struct CodeBlock {
+    language: Option<String>,
+    text: String,
+}
+
 /// Writes HTML for Markdown events.
 #[derive(Debug, Default)]
-struct Writer {
+struct Writer<'a> {
     out: String,
+    /// The caption of the top-level block being written.
+    caption: Option<Vec<Event<'a>>>,
+    /// The code block being read.
+    block: Option<CodeBlock>,
+    /// Whether a code block was written.
+    code: bool,
+    /// Whether a diagram was written.
+    diagrams: bool,
     /// For each open link, whether it was written as `<a>`.
     links: Vec<bool>,
     /// The image being read: its source when it keeps one, and its
@@ -60,15 +214,19 @@ struct Writer {
     in_head: bool,
 }
 
-impl Writer {
+impl<'a> Writer<'a> {
     fn text(&mut self, text: &str) {
+        if let Some(block) = &mut self.block {
+            block.text.push_str(text);
+            return;
+        }
         match &mut self.image {
             Some((_, alternative)) => alternative.push_str(text),
             None => escape_into(&mut self.out, text),
         }
     }
 
-    fn event(&mut self, event: Event<'_>) {
+    fn event(&mut self, event: Event<'a>) {
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
@@ -100,7 +258,7 @@ impl Writer {
         }
     }
 
-    fn start(&mut self, tag: Tag<'_>) {
+    fn start(&mut self, tag: Tag<'a>) {
         match tag {
             Tag::Paragraph => self.out.push_str("<p>"),
             Tag::Heading { level, .. } => {
@@ -110,15 +268,16 @@ impl Writer {
             }
             Tag::BlockQuote(_) => self.out.push_str("<blockquote>\n"),
             Tag::CodeBlock(kind) => {
-                self.out.push_str("<pre><code");
-                if let CodeBlockKind::Fenced(info) = kind
-                    && let Some(language) = info.split_whitespace().next()
-                {
-                    self.out.push_str(" class=\"language-");
-                    escape_into(&mut self.out, language);
-                    self.out.push('"');
-                }
-                self.out.push('>');
+                let language = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split_whitespace().next().map(str::to_owned)
+                    }
+                    CodeBlockKind::Indented => None,
+                };
+                self.block = Some(CodeBlock {
+                    language,
+                    text: String::new(),
+                });
             }
             Tag::HtmlBlock | Tag::MetadataBlock(_) => {}
             Tag::List(Some(1)) => self.out.push_str("<ol>\n"),
@@ -135,7 +294,12 @@ impl Writer {
             Tag::DefinitionListDefinition => self.out.push_str("<dd>"),
             Tag::Table(alignments) => {
                 self.alignments = alignments;
-                self.out.push_str("<table>\n");
+                if self.caption.is_some() {
+                    self.out.push_str("<figure class=\"table\">\n");
+                }
+                // The box takes focus, so a keyboard can scroll a wide table.
+                self.out
+                    .push_str("<div class=\"scroll\" tabindex=\"0\">\n<table>\n");
             }
             Tag::TableHead => {
                 self.in_head = true;
@@ -206,7 +370,7 @@ impl Writer {
                 self.out.push_str(">\n");
             }
             TagEnd::BlockQuote(_) => self.out.push_str("</blockquote>\n"),
-            TagEnd::CodeBlock => self.out.push_str("</code></pre>\n"),
+            TagEnd::CodeBlock => self.code_end(),
             TagEnd::HtmlBlock | TagEnd::MetadataBlock(_) => {}
             TagEnd::List(true) => self.out.push_str("</ol>\n"),
             TagEnd::List(false) => self.out.push_str("</ul>\n"),
@@ -215,7 +379,12 @@ impl Writer {
             TagEnd::DefinitionList => self.out.push_str("</dl>\n"),
             TagEnd::DefinitionListTitle => self.out.push_str("</dt>\n"),
             TagEnd::DefinitionListDefinition => self.out.push_str("</dd>\n"),
-            TagEnd::Table => self.out.push_str("</tbody>\n</table>\n"),
+            TagEnd::Table => {
+                self.out.push_str("</tbody>\n</table>\n</div>\n");
+                if self.caption.is_some() {
+                    self.close_figure();
+                }
+            }
             TagEnd::TableHead => {
                 self.in_head = false;
                 self.out.push_str("</tr>\n</thead>\n<tbody>\n");
@@ -238,6 +407,57 @@ impl Writer {
             }
             TagEnd::Image => self.image_end(),
         }
+    }
+
+    /// Writes the code block just read as a diagram or as code.
+    fn code_end(&mut self) {
+        let Some(block) = self.block.take() else {
+            return;
+        };
+        let language = block.language.as_deref().unwrap_or(PLAIN);
+        if let Some(kind) = diagram_type(language, &block.text) {
+            self.diagrams = true;
+            self.out.push_str(
+                "<figure class=\"diagram\">\n<pre class=\"diagram-source\" data-diagram=\"",
+            );
+            self.out.push_str(kind);
+            self.out.push_str("\">");
+            escape_into(&mut self.out, &block.text);
+            self.out.push_str("</pre>\n");
+            self.close_figure();
+            return;
+        }
+        self.code = true;
+        if self.caption.is_some() {
+            self.out.push_str("<figure class=\"listing\">\n");
+        }
+        self.out
+            .push_str("<div class=\"code\">\n<div class=\"code-head\"><span class=\"mono\">");
+        escape_into(&mut self.out, language);
+        self.out.push_str(
+            "</span><button class=\"text-btn\" type=\"button\" data-copy hidden>Copy</button></div>\n<pre><code class=\"language-",
+        );
+        escape_into(&mut self.out, language);
+        self.out.push_str("\" data-lang=\"");
+        escape_into(&mut self.out, language);
+        self.out.push_str("\">");
+        escape_into(&mut self.out, &block.text);
+        self.out.push_str("</code></pre>\n</div>\n");
+        if self.caption.is_some() {
+            self.close_figure();
+        }
+    }
+
+    /// Writes the caption, when the block has one, and closes its figure.
+    fn close_figure(&mut self) {
+        if let Some(caption) = self.caption.take() {
+            self.out.push_str("<figcaption>");
+            for event in caption {
+                self.event(event);
+            }
+            self.out.push_str("</figcaption>\n");
+        }
+        self.out.push_str("</figure>\n");
     }
 
     fn image_end(&mut self) {

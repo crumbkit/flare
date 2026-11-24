@@ -8,6 +8,20 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A hosted site shows a Markdown share at `/s/<id>` to a signed-in reader
+  the share is granted to, in the signed Flare layout: a header with the
+  flare name and the reader's initials, a line naming who shared it, with
+  whom, the version and the date, then the article. `?version=<n>` shows an
+  older version. A refused share and a missing share give the same
+  not-found page. Mermaid diagrams are drawn, code is coloured by Shiki
+  with a Copy button, tables scroll in their own box on a narrow screen,
+  and a "Figure N." paragraph directly after a diagram, table or code block
+  becomes its caption. `docs/reading.md` lists the languages and diagram
+  types. The page uses IBM Plex Sans and JetBrains Mono, which flare
+  serves from its own origin at `/flare/assets/`; they are vendored in
+  `crates/flare-server/fonts/` with their SIL Open Font License files, and
+  no request goes to a third-party font host.
+
 - `GET /api/shares` answers `next`, a cursor, when more shares follow the
   page, and takes `cursor=<cursor>` to read the page after it.
   `flare shares --cursor <CURSOR>` resumes a list, a list cut by `--limit`
@@ -190,6 +204,9 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- flare's stylesheet takes the light and dark colours of the signed Flare
+  mockup, so pages at `/pages/<name>`, the edit form and the conflict view
+  change colour.
 - `flare activity` reads a per-reader index that flare writes when a
   response is linked and when a share is granted, so one call reads only
   responses the caller can open. A flare's readers can no longer stall its

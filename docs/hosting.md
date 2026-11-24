@@ -10,6 +10,11 @@ up around it.
 - `/up`, for health checks. It answers 200 with no sign-in.
 - The stylesheet, `/` and `/flare/`, the index of pages.
 - `/pages/<name>`, the newest version of a page.
+- `/s/<id>`, the reading page of a Markdown share, for a signed-in reader
+  the share is granted to. `?version=<n>` shows an older version.
+  [reading.md](reading.md) describes the page.
+- `/flare/assets/<file>`, the reading page's script files, with a cache of
+  one year.
 - `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in.
 - The share API, when the config has `hosted.stores`. The share API
   section below lists its routes.
