@@ -96,6 +96,37 @@ test("a signed-in reader comments on a shared page and replies, and both stay af
   await page.keyboard.press("Tab");
   await expect(section.getByRole("button", { name: "Comment" })).toBeFocused();
 
+  // Once its author deletes the comment, its card keeps its place above the
+  // reply and says so in muted italic type, with no author or time.
+  // The request carries the headers flare-server requires of a cookie write
+  // from one of its own pages.
+  const own = { Origin: origin, "Sec-Fetch-Site": "same-origin" };
+  const listed = await page.request.get(
+    `${origin}/api/comments?flare=${encodeURIComponent(share)}`,
+    { headers: own },
+  );
+  expect(listed.status()).toBe(200);
+  const thread: { comments: { id: string; body?: string | null }[] } = await listed.json();
+  const posted = thread.comments.find((each) => each.body === comment);
+  if (posted === undefined) throw new Error("the comment is not in the thread");
+  const deleted = await page.request.delete(
+    `${origin}/api/comments/${encodeURIComponent(posted.id)}`,
+    { headers: { ...own, "Content-Type": "application/json" } },
+  );
+  const status = deleted.status();
+  expect(status).toBe(200);
+  await page.reload();
+  const orphaned = section.getByRole("article").filter({ hasText: reply });
+  const gone = orphaned.getByText("Its author deleted this comment.");
+  await expect(gone).toBeVisible();
+  await expect(gone).toHaveCSS("font-style", "italic");
+  const muted = await section
+    .locator(".section-head .muted")
+    .evaluate((element) => getComputedStyle(element).color);
+  await expect(gone).toHaveCSS("color", muted);
+  await expect(orphaned.getByText("BO", { exact: true })).toHaveCount(1);
+  await expect(orphaned.getByText(comment)).toHaveCount(0);
+
   expect(await axe(page)).toEqual([]);
   expect(violations).toEqual([]);
   expect(errors).toEqual([]);

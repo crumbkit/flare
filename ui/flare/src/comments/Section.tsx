@@ -1,7 +1,10 @@
 // The comments section at the bottom of a shared page, as artboards 01 to 07
 // of the comment parts mockup (LRJsZhYqKPHcug6pQKw8dA, version
 // 1795398322-8ae4) draw it: the heading with the thread's count, every
-// comment with its replies and a reply field, then the page field.
+// comment with its replies and a reply field, then the page field. A
+// deleted comment that still has replies keeps its place as a line saying
+// so, with no author or time.
+import { deletedText } from "@flare/headless/comments/a11y";
 import type { Comment, Reply, ThreadLoad } from "@flare/headless/comments/thread";
 import { useThread } from "@flare/react/useThread";
 import { useQuery } from "@tanstack/react-query";
@@ -56,8 +59,14 @@ interface CardProps {
 function CommentCard({ comment, flare, owner, clock, onReply }: CardProps) {
   return (
     <article className="card">
-      <Byline post={comment} clock={clock} />
-      <div className="c-body">{comment.body}</div>
+      {comment.deleted ? (
+        <div className="c-body deleted">{deletedText}</div>
+      ) : (
+        <>
+          <Byline post={comment} clock={clock} />
+          <div className="c-body">{comment.body}</div>
+        </>
+      )}
       {comment.replies.map((reply) => (
         <div className="reply" key={reply.id}>
           <Byline post={reply} clock={clock} />

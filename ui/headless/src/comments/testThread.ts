@@ -41,7 +41,15 @@ export function comment(
   body: string,
   replies: readonly Reply[] = [],
 ): Comment {
-  return { kind: "comment", id: commentId(id), author, body, at: "2026-11-21T16:02:00Z", replies };
+  return {
+    kind: "comment",
+    id: commentId(id),
+    author,
+    body,
+    at: "2026-11-21T16:02:00Z",
+    deleted: false,
+    replies,
+  };
 }
 
 // The thread of the mockup's artboard 02: two comments, two replies.

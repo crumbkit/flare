@@ -209,7 +209,7 @@ export function useComposer<P>(options: UseComposerOptions<P>): ComposerProps<P>
     blockedReason: reason,
     failure: failure && {
       alertProps: { role: "alert", id: alertId },
-      message: failureMessage(target, failure.failure, options.owner),
+      message: failureMessage(target, failure.failure, options.owner, failure.draft.text),
       actionProps: {
         type: "button",
         children: failureAction(failure.failure),

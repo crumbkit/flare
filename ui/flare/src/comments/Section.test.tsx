@@ -109,23 +109,24 @@ describe("a session that ended", () => {
 });
 
 describe("text the server does not store", () => {
-  it("says the text holds a control character, and editing it lets the reader send again", async () => {
+  it("names the control character and its position, and editing it lets the reader send again", async () => {
     const server = show();
     server.next.write.push(400);
-    await userEvent.type(
+    await userEvent.click(
       await screen.findByRole("textbox", { name: "Comment on the whole page" }),
-      text,
     );
+    await userEvent.paste("Ring\u0007 twice");
     await userEvent.click(commentButton());
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
-      "Your comment was not sent because it holds a control character, which Flare does not store. Remove it and send again.",
+      "Your comment was not sent because it holds the control character U+0007 at character 5, which Flare does not store. Remove it and send again.",
     );
     expect(within(alert).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
-    await userEvent.type(pageField(), "!");
+    await userEvent.clear(pageField());
+    await userEvent.type(pageField(), text);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await userEvent.click(commentButton());
-    expect(await screen.findByText(`${text}!`)).toBeInTheDocument();
+    expect(await screen.findByText(text)).toBeInTheDocument();
   });
 });
 
@@ -152,6 +153,26 @@ describe("artboard 02: idle", () => {
     expect(pageField()).toHaveAttribute("placeholder", "Write a comment.");
     expect(commentButton()).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText(audience)).toBeInTheDocument();
+  });
+});
+
+describe("a deleted comment that still has replies", () => {
+  it("keeps its place and says its author deleted it, in muted italic, with no author or time", async () => {
+    const [first, second] = mockupComments();
+    if (!first || !second) throw new Error("expected the mockup's two comments");
+    const { body: _, ...rest } = first;
+    show([{ ...rest, deleted: true }, second]);
+    expect(await screen.findByText("2 comments, 2 replies")).toBeInTheDocument();
+    const [card] = screen.getAllByRole("article");
+    if (!card) throw new Error("expected the deleted comment's card");
+    const placeholder = within(card).getByText("Its author deleted this comment.");
+    expect(placeholder).toHaveClass("c-body", "deleted");
+    expect(within(card).queryByText("TR")).not.toBeInTheDocument();
+    expect(within(card).queryByText("tomas.rivera@example.com")).not.toBeInTheDocument();
+    expect(within(card).queryByText("21 Nov, 16:02")).not.toBeInTheDocument();
+    expect(card.querySelectorAll(":scope > .c-head")).toHaveLength(0);
+    expect(within(card).getByText("Yes. All three do.")).toBeInTheDocument();
+    expect(within(card).getByText("AO")).toBeInTheDocument();
   });
 });
 

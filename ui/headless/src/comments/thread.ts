@@ -37,9 +37,15 @@ export interface Comment {
   readonly kind: "comment";
   readonly id: CommentId;
   readonly author: Author;
+  /** The comment's text, which is empty once its author deleted it. */
   readonly body: string;
   /** The instant the server stored the comment, as an RFC 3339 string. */
   readonly at: string;
+  /**
+   * Whether its author deleted the comment. A thread holds a deleted comment
+   * only while replies still hang from it.
+   */
+  readonly deleted: boolean;
   readonly replies: readonly Reply[];
 }
 

@@ -72,14 +72,17 @@ page with unsent text asks first.
   failure keeps the text, says why and offers Copy text with no Retry: the
   reader lost access (403 or 404), the flare already holds 2,000 comments
   and replies (409), the session ended (401), or the text holds a control
-  character the server does not store (400). After the last one, editing the
-  text lets the reader send it again.
+  character the server does not store (400). The last one names the first
+  such character by its code point and its position in characters, such as
+  "the control character U+0007 at character 5", and editing the text lets
+  the reader send it again.
 - After a send, the post joins its thread, the field empties and keeps
   focus, and a screen reader hears "Comment sent" or "Reply sent".
 - An edited comment shows its current text with no edited mark, a deleted
-  reply is left out, and a deleted comment shows "Its author deleted this
-  comment." only while it still has replies. Editing and deleting from the
-  page are not built yet.
+  reply is left out, and a deleted comment stays only while it still has
+  replies. Its card keeps its place above them and shows "Its author deleted
+  this comment." in muted italic type, with no author or time. Editing and
+  deleting from the page are not built yet.
 - New comments from other readers show only after a reload.
 
 The server writes only the section's heading and "Loading comments". When

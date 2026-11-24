@@ -111,6 +111,7 @@ describe("the comments query", () => {
         author: { name: "tomas.rivera@example.com" },
         body: "Can the table also show which vessels carry vehicles?",
         at: "2026-11-21T16:02:00Z",
+        deleted: false,
         replies: [
           {
             kind: "reply",
@@ -128,6 +129,7 @@ describe("the comments query", () => {
         author: { name: "jonas.weber@example.com" },
         body: "Do we pay for a night's stay?",
         at: "2026-11-22T11:27:00Z",
+        deleted: false,
         replies: [],
       },
     ]);
@@ -146,8 +148,8 @@ describe("the comments query", () => {
       vi.fn(async () => json(200, deleted)),
     );
     const loaded = await new QueryClient().fetchQuery(commentsQuery("f1"));
-    expect(loaded.map((c) => [c.id, c.body, c.replies.length])).toEqual([
-      ["c3", "Its author deleted this comment.", 1],
+    expect(loaded.map((c) => [c.id, c.deleted, c.body, c.replies.length])).toEqual([
+      ["c3", true, "", 1],
     ]);
   });
 

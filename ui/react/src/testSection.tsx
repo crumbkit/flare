@@ -47,6 +47,7 @@ export function mockupThread(): readonly Comment[] {
       author: tomas,
       body: "Can the table also show which vessels carry vehicles?",
       at: "2026-11-21T16:02:00Z",
+      deleted: false,
       replies: [postedReply(c1, { name: "Ana Okafor" }, "Yes. All three do.")],
     },
     {
@@ -55,6 +56,7 @@ export function mockupThread(): readonly Comment[] {
       author: jonas,
       body: "Do we pay for a night's stay?",
       at: "2026-11-22T11:27:00Z",
+      deleted: false,
       replies: [],
     },
   ];

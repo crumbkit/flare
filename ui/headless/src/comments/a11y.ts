@@ -12,6 +12,8 @@ export const loadingStatus = "Loading comments";
 export const loadFailedMessage =
   "The comments did not load because Flare did not answer. The page above is unaffected.";
 export const retryText = "Retry";
+/** The line a deleted comment's card shows in place of its author, time and text. */
+export const deletedText = "Its author deleted this comment.";
 /** The hint under the page field while it holds text. */
 export const sendHint = "Ctrl or ⌘ + Enter to send";
 
@@ -64,7 +66,39 @@ export function submitText(target: Target, sending: boolean): string {
   }
 }
 
-export function failureMessage(target: Target, failure: Failure, owner: string): string {
+/**
+ * The first character of `text` that flare-server refuses, a control
+ * character other than tab, line feed and carriage return, with its position
+ * counted in characters from 1.
+ */
+function refusedCharacter(text: string): { codePoint: string; position: number } | undefined {
+  let position = 0;
+  for (const character of text) {
+    position += 1;
+    if (/\p{Cc}/u.test(character) && !"\t\n\r".includes(character)) {
+      const hex = (character.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0");
+      return { codePoint: `U+${hex}`, position };
+    }
+  }
+  return undefined;
+}
+
+function invalidMessage(target: Target, text: string): string {
+  const found = refusedCharacter(text);
+  const what =
+    found === undefined
+      ? "a control character"
+      : `the control character ${found.codePoint} at character ${found.position}`;
+  return `Your ${target.kind} was not sent because it holds ${what}, which Flare does not store. Remove it and send again.`;
+}
+
+/** What a field says when its send of `text` failed. */
+export function failureMessage(
+  target: Target,
+  failure: Failure,
+  owner: string,
+  text: string,
+): string {
   switch (failure) {
     case "no-answer":
       return `Your ${target.kind} was not sent because Flare did not answer. Your text is still in the field.`;
@@ -75,7 +109,7 @@ export function failureMessage(target: Target, failure: Failure, owner: string):
     case "signed-out":
       return `Your ${target.kind} was not sent because your session ended. Copy your text, then reload the page to sign in again.`;
     case "invalid":
-      return `Your ${target.kind} was not sent because it holds a control character, which Flare does not store. Remove it and send again.`;
+      return invalidMessage(target, text);
   }
 }
 

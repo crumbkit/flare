@@ -14,9 +14,6 @@ import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { ApiError, request } from "./client.ts";
 
-/** The text a deleted comment shows when replies still hang from it. */
-export const deletedText = "Its author deleted this comment.";
-
 const commentId = z.string().refine(isCommentId);
 const replyId = z.string().refine(isReplyId);
 
@@ -57,7 +54,8 @@ type WireComment = z.infer<typeof wireComment>;
 
 // The section shows no edited mark and no deleted reply: editing and
 // deleting from the browser come in a later slice, and until then a
-// deleted reply is left out and an edited post shows its current text.
+// deleted reply is left out and an edited post shows its current text. A
+// deleted comment stays only while replies hang from it.
 function reply(wire: WireReply): Reply {
   return {
     kind: "reply",
@@ -76,8 +74,9 @@ function comment(wire: WireComment): Comment | undefined {
     kind: "comment",
     id: wire.id,
     author: { name: wire.author },
-    body: wire.deleted ? deletedText : (wire.body ?? ""),
+    body: wire.deleted ? "" : (wire.body ?? ""),
     at: wire.at,
+    deleted: wire.deleted,
     replies,
   };
 }

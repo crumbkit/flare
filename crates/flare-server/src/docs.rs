@@ -72,6 +72,7 @@ body.reading a.chip:focus-visible { outline: 2px solid var(--accent); outline-of
 .comments .c-head b { font-weight: 600; }
 .comments .c-head time { color: var(--muted); font-size: 12px; }
 .comments .c-body { font-size: 14px; max-width: 68ch; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comments .c-body.deleted { color: var(--muted); font-style: italic; }
 .comments .reply { border-top: 1px solid var(--line-soft); padding-top: 10px; padding-left: 36px; display: flex; flex-direction: column; gap: 6px; }
 .comments textarea, .comments input[type="text"] { font: 14px/1.45 var(--font-body); color: var(--fg); background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 8px 10px; width: 100%; resize: vertical; }
 .comments input[type="text"] { height: 32px; padding-block: 0; }
