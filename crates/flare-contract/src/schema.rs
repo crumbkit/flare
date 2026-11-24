@@ -2,7 +2,8 @@
 //! `schema/flare-api.schema.json` commits.
 
 use crate::{
-    ActivityPage, ExchangeRequest, GrantRequest, OpenedShare, ProblemDocument, ShareList,
+    ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread, ExchangeRequest,
+    GrantRequest, NamedCursor, NewComment, OpenedShare, ProblemDocument, Reply, ShareList,
     ShareRequest, Shared, TokenIssued, VersionRequest,
 };
 use schemars::generate::SchemaSettings;
@@ -26,6 +27,13 @@ pub fn generate() -> String {
     generator.subschema_for::<ActivityPage>();
     generator.subschema_for::<ExchangeRequest>();
     generator.subschema_for::<TokenIssued>();
+    generator.subschema_for::<CommentThread>();
+    generator.subschema_for::<CommentOrReply>();
+    generator.subschema_for::<Comment>();
+    generator.subschema_for::<Reply>();
+    generator.subschema_for::<NewComment>();
+    generator.subschema_for::<CommentEdit>();
+    generator.subschema_for::<NamedCursor>();
     generator.subschema_for::<ProblemDocument>();
     let defs = generator.take_definitions(true);
     let document = serde_json::json!({

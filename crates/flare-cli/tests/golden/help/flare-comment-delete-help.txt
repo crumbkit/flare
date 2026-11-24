@@ -1,0 +1,42 @@
+Delete a comment or reply you wrote
+
+Usage: flare comment-delete [OPTIONS] <COMMENT>
+
+Arguments:
+  <COMMENT>
+          The comment or reply to delete, which only its author may
+
+Options:
+      --yes
+          Proceed without asking for confirmation
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
+          Delete your comment without a question
+
+Columns:
+  id       The comment's or reply's id.
+  flare    The flare it is on.
+  parent   The comment a reply answers; absent for a comment.
+  author   The author's identifier.
+  at       When it was written, in RFC 3339 UTC.
+  edited   When its text last changed, in RFC 3339 UTC; absent when it never did.
+  deleted  Whether its author deleted it.
+  body     Its text; absent once deleted.
+
+Effects: destructive, not idempotent, closed-world.

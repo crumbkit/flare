@@ -79,3 +79,21 @@ fn a_used_code_built_from_its_parts_equals_the_one_its_login_code_gives() {
     );
     assert_eq!(UsedCode::new(owner(), 4321), code.used());
 }
+
+#[test]
+fn a_digest_reads_back_from_its_hex_and_refuses_other_text() {
+    let digest = Digest::from_bytes([0xab; 32]);
+    assert_eq!(Digest::from_hex(&digest.to_hex()), Some(digest));
+    let mixed = Digest::from_bytes(core::array::from_fn(|index| u8::try_from(index).unwrap()));
+    assert_eq!(Digest::from_hex(&mixed.to_hex()), Some(mixed));
+    for bad in [
+        "",
+        "AB",
+        &"A".repeat(64),
+        &"g".repeat(64),
+        &"a".repeat(63),
+        &"a".repeat(66),
+    ] {
+        assert_eq!(Digest::from_hex(bad), None, "{bad}");
+    }
+}

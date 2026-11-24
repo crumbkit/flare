@@ -12,6 +12,10 @@ use crate::share::{check_hex_id, hex_id};
 use crate::time::Timestamp;
 use std::fmt;
 
+mod digest;
+
+pub use digest::Digest;
+
 /// How long a token lives after it is created: 90 days, in seconds.
 pub const TOKEN_LIFE: u64 = 90 * 24 * 60 * 60;
 
@@ -20,42 +24,6 @@ pub const CODE_LIFE: u64 = 60;
 
 /// The longest token label, in bytes.
 const MAX_LABEL: usize = 64;
-
-/// The SHA-256 digest of a secret. Its `Debug` output hides the bytes.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Digest([u8; 32]);
-
-impl Digest {
-    /// The digest with these bytes.
-    #[must_use]
-    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
-        Self(bytes)
-    }
-
-    /// The bytes.
-    #[must_use]
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    /// The bytes as 64 lower-case hexadecimal characters, for a store key.
-    #[must_use]
-    pub fn to_hex(&self) -> String {
-        let mut text = String::with_capacity(64);
-        for half in self.0.chunks(16) {
-            let mut bytes = [0; 16];
-            bytes.copy_from_slice(half);
-            text.push_str(&hex_id(bytes));
-        }
-        text
-    }
-}
-
-impl fmt::Debug for Digest {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Digest(<hidden>)")
-    }
-}
 
 /// The id of a token: 128 random bits as 32 lower-case hexadecimal
 /// characters. The token's text starts with it, so a store finds the token

@@ -1,18 +1,18 @@
-//! Sessions: the table of live sessions, keyed by the hash of their secret,
+//! Sessions: the store of live sessions, keyed by the hash of their secret,
 //! and what a finished sign-in returns.
 
+use crate::clock::unix_seconds;
 use crate::flow::{ReturnTo, hash, random_secret};
 use crate::refusal::SignInRefusal;
-use flare_core::{Credential, Principal, PrincipalId};
+use crate::stores::DynSessions;
+use flare_core::{
+    AuthError, Credential, Digest, NewSession, Principal, PrincipalId, SessionRule,
+    SessionStoreError, Timestamp,
+};
 use secrecy::{ExposeSecret as _, SecretString};
-use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-
-/// How many sessions may be live at once.
-const MAX_SESSIONS: usize = 1024;
-/// How many sessions one principal may hold at once.
-const MAX_PER_PRINCIPAL: usize = 8;
 
 /// What a finished sign-in returns. The session credential appears here
 /// once, and the crate keeps only its hash. Its `Debug` output hides the
@@ -25,6 +25,7 @@ pub struct SignedIn {
     principal: Principal,
     return_to: ReturnTo,
     expires_in: Duration,
+    cookie_life: Duration,
 }
 
 impl SignedIn {
@@ -53,10 +54,18 @@ impl SignedIn {
         &self.return_to
     }
 
-    /// How long the session lasts from now.
+    /// How long the session lasts from now when no request extends it.
     #[must_use]
     pub fn expires_in(&self) -> Duration {
         self.expires_in
+    }
+
+    /// How long the browser keeps the session cookie: the longest the
+    /// session can live from sign-in, 7 days. The store, not the cookie,
+    /// ends a session that has been idle.
+    #[must_use]
+    pub fn cookie_life(&self) -> Duration {
+        self.cookie_life
     }
 }
 
@@ -68,106 +77,104 @@ impl fmt::Debug for SignedIn {
             .field("principal", &"<hidden>")
             .field("return_to", &self.return_to)
             .field("expires_in", &self.expires_in)
+            .field("cookie_life", &self.cookie_life)
             .finish()
     }
 }
 
-#[derive(Debug)]
-struct Live {
-    principal: Principal,
-    expires: SystemTime,
+/// The session store and the rule that decides a session's life.
+#[derive(Clone)]
+pub(crate) struct Sessions {
+    store: Arc<dyn DynSessions>,
+    rule: SessionRule,
 }
 
-/// The live sessions.
-#[derive(Debug, Default)]
-pub(crate) struct Sessions(HashMap<[u8; 32], Live>);
+fn stamp(time: SystemTime) -> Timestamp {
+    Timestamp::from_secs(unix_seconds(time))
+}
+
+fn digest(secret: &SecretString) -> Digest {
+    Digest::from_bytes(hash(secret.expose_secret()))
+}
 
 impl Sessions {
-    /// Creates a session for `principal` that lasts `lifetime`, in a
-    /// browser that holds the session `old`, if any. It draws the new
-    /// secret, removes expired sessions, then decides in this order: the
-    /// session of `old` goes, then the principal's session with the
-    /// earliest expiry while it holds 8, and only then does a table still
-    /// holding 1,024 sessions refuse. A refusal removes nothing that is
-    /// live.
-    pub(crate) fn create(
-        &mut self,
+    pub(crate) fn new(store: Arc<dyn DynSessions>, lifetime: Duration) -> Self {
+        Self {
+            store,
+            rule: SessionRule::new(lifetime.as_secs()),
+        }
+    }
+
+    /// How long a browser keeps the session cookie: the hard cap.
+    pub(crate) fn cookie_life(&self) -> Duration {
+        Duration::from_secs(self.rule.cap())
+    }
+
+    /// Creates a session for `principal` in a browser that holds the
+    /// session `old`, if any. It draws the new secret and writes the
+    /// session in one step with the end of `old` and, past 8 sessions, of
+    /// the person's earliest-expiring one. The credential is returned only
+    /// after the write settled.
+    pub(crate) async fn create(
+        &self,
         principal: Principal,
         return_to: ReturnTo,
-        lifetime: Duration,
         now: SystemTime,
         old: Option<&Credential>,
     ) -> Result<SignedIn, SignInRefusal> {
         let secret = random_secret()?;
-        self.0.retain(|_, live| live.expires > now);
-        let old = match old {
-            Some(Credential::Session(old)) => Some(hash(old.expose_secret())),
+        let replacing = match old {
+            Some(Credential::Session(old)) => Some(digest(old)),
             _ => None,
-        }
-        .filter(|key| self.0.contains_key(key));
-        let mut held: Vec<([u8; 32], SystemTime)> = self
-            .0
-            .iter()
-            .filter(|(key, live)| Some(**key) != old && live.principal.id() == principal.id())
-            .map(|(key, live)| (*key, live.expires))
-            .collect();
-        held.sort_by_key(|(_, expires)| *expires);
-        let evicted: Vec<[u8; 32]> = held
-            .iter()
-            .take(held.len().saturating_sub(MAX_PER_PRINCIPAL - 1))
-            .map(|(key, _)| *key)
-            .collect();
-        let removed = usize::from(old.is_some()) + evicted.len();
-        if self.0.len().saturating_sub(removed) >= MAX_SESSIONS {
-            return Err(SignInRefusal::TooManySessions);
-        }
-        for key in old.iter().chain(&evicted) {
-            self.0.remove(key);
-        }
-        // A lifetime that runs past the end of SystemTime ends the session
-        // at once, and no such lifetime is configured in practice.
-        let expires = now.checked_add(lifetime).unwrap_or(now);
-        self.0.insert(
-            hash(secret.expose_secret()),
-            Live {
-                principal: principal.clone(),
-                expires,
-            },
-        );
+        };
+        let session = NewSession::new(digest(&secret), principal.clone());
+        self.store
+            .create(session, replacing, &self.rule, stamp(now))
+            .await
+            .map_err(|error| match error {
+                SessionStoreError::Full => SignInRefusal::TooManySessions,
+                _ => SignInRefusal::StoreUnavailable,
+            })?;
         Ok(SignedIn {
             session: Credential::Session(secret.clone()),
             secret,
             principal,
             return_to,
-            expires_in: lifetime,
+            expires_in: Duration::from_secs(self.rule.idle()),
+            cookie_life: self.cookie_life(),
         })
     }
 
-    /// The principal of a live session. An expired session is removed.
-    pub(crate) fn principal(
-        &mut self,
+    /// The principal of a live session, which the request extends when the
+    /// rule says so.
+    pub(crate) async fn principal(
+        &self,
         secret: &SecretString,
         now: SystemTime,
-    ) -> Option<Principal> {
-        let key = hash(secret.expose_secret());
-        let live = self.0.get(&key)?;
-        if live.expires > now {
-            return Some(live.principal.clone());
-        }
-        self.0.remove(&key);
-        None
+    ) -> Result<Option<Principal>, AuthError> {
+        self.store
+            .principal(&digest(secret), &self.rule, stamp(now))
+            .await
+            .map_err(|_| AuthError::Unavailable)
     }
 
-    /// Whether a session that has not expired holds `principal`. It scans
-    /// the table, which holds at most 1,024 sessions.
-    pub(crate) fn holds(&self, principal: &PrincipalId, now: SystemTime) -> bool {
-        self.0
-            .values()
-            .any(|live| live.expires > now && live.principal.id() == principal)
+    /// Whether `person` holds a live session.
+    pub(crate) async fn holds(
+        &self,
+        person: &PrincipalId,
+        now: SystemTime,
+    ) -> Result<bool, AuthError> {
+        self.store
+            .holds(person, stamp(now))
+            .await
+            .map_err(|_| AuthError::Unavailable)
     }
 
-    /// Removes a session.
-    pub(crate) fn remove(&mut self, secret: &SecretString) {
-        self.0.remove(&hash(secret.expose_secret()));
+    /// Ends a session.
+    pub(crate) async fn remove(&self, secret: &SecretString) -> Result<(), AuthError> {
+        self.store
+            .remove(&digest(secret))
+            .await
+            .map_err(|_| AuthError::Unavailable)
     }
 }

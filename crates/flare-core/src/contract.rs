@@ -21,12 +21,16 @@
 use std::fmt;
 
 pub mod authenticator;
+pub mod comment_store;
+pub mod cursor_store;
 mod executor;
 pub mod file_store;
 pub mod grant_store;
 pub mod page_store;
 pub mod record_store;
 pub mod response_store;
+pub mod sealing_keys;
+pub mod session_store;
 pub mod share_store;
 pub mod token_store;
 
@@ -145,6 +149,32 @@ clauses! {
     AFlaresListHoldsOnlyItsLinks => "a flare's list holds only links to that flare",
     AResponsesListNamesEveryFlare => "a response's list names every flare it links to",
     TheLimitBoundsAListOldestFirst => "a flare's list holds at most the limit, oldest first",
+    ASessionLivesTwelveHoursFromSignIn => "a session reads back as its principal until 12 hours after it was created, and is unknown from then on",
+    ARequestSlidesTheExpiryAtMostEveryTenMinutes => "a request less than 10 minutes into a session's idle life leaves its expiry where it was, and a later request moves it to 12 hours from that request",
+    ASessionEndsSevenDaysAfterSignIn => "a session that is used every 11 hours stops sliding at 7 days after sign-in and is unknown from then on",
+    APersonHoldsEightSessions => "a person's ninth session ends the one with the earliest expiry and leaves another person's sessions",
+    ASignInReplacesTheOldSession => "a sign-in that names the browser's old session ends it in the step that creates the new one",
+    RemovingEndsSessions => "a removed session is unknown, removing an unknown session changes nothing, and removing every session of a person leaves another person's",
+    HoldsFollowsLiveSessions => "a person holds a session while one is live and not after the last one expires or is removed",
+    TheFirstCallWritesKeyOne => "the first call on an empty key store writes key 1 from its bytes and later calls answer that key",
+    RotationWaitsThirtyDays => "a rotation before the newest key is 30 days old changes nothing, and one at 30 days writes the next id",
+    AnOldKeyReadsForOneHourAfterRotation => "an old key reads for 1 hour after the next key was written and not after, and the newest key always reads",
+    ConcurrentCallsAgreeOnOneKey => "two key calls that run together answer one key, and two rotations that run together advance the id by one",
+    ACommentReadsBack => "a comment and a reply read back by id and in their flare's list with author, parent, text, time and position",
+    AFlaresListHoldsOnlyItsComments => "a flare's list holds only that flare's comments and replies, oldest first",
+    EveryChangeIsAnEventAtALargerPosition => "each create, edit and delete of a comment is an event at a larger position than the one before, naming the comment, its author and what happened",
+    EventsAreBoundedByPositionAndLimit => "a flare's events hold those above the given position and up to the bound, at most the limit, and none of another flare",
+    ARepeatedKeyAnswersTheFirstComment => "a repeat of one author's key on one flare answers the first comment and writes nothing, and another key, author or flare writes a new comment",
+    ConcurrentCommentsGetDistinctPositions => "two comments that run together get two different positions, and two with one key give one created and one repeated",
+    AnEditReplacesTheTextAndKeepsTheRest => "an edit replaces the text and sets the edit time and keeps the author, parent, creation time and position",
+    ADeleteErasesTheTextAndKeepsTheRest => "a delete erases the text and keeps the rest, a second delete changes nothing and writes no event, and an edit of a deleted comment is refused",
+    AnUnknownCommentIsNotFound => "an unknown comment is not found by a read, an edit or a delete, and nothing is written",
+    ConcurrentEditAndDeleteLeaveOneConsistentState => "an edit and a delete that run together leave the comment deleted, and an edit that succeeded left its event",
+    TheFlareLimitHolds => "a flare at the comment limit refuses the next comment and writes nothing, still answers a repeat with the first comment, and does not affect another flare",
+    AnAdvanceMakesTheCursor => "a cursor that was never advanced is absent, and an advance makes it and reads back",
+    ACursorNeverMovesBack => "an advance to a lower position keeps the higher one and answers it",
+    CursorsAreKeptApart => "cursors of two people or of two names do not meet",
+    TheCursorLimitHolds => "a person at the cursor limit cannot make another cursor and can still move one, and another person is not affected",
     AnEntryReadsBackOnlyForItsReaderAndFlare => "an index entry reads back for its reader on its flare, and for no other reader or flare",
     EachEntryTakesANewPositionAndTheHeadFollows => "each new index entry takes a position above every earlier link and entry, and the head is the last one given",
     ARepeatedEntryKeepsItsFirstPosition => "a repeated index entry of one reader, response and flare keeps its first position and moves no position",

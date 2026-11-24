@@ -73,12 +73,14 @@ Who gets an entry:
   them, newest first, and checks them for links to the flare in batches of
   100. A person who holds more than 500 grants gets no entries for the
   older ones from that grant.
-- One activity call examines at most 1,000 entries. When it reaches that
-  many, it answers the responses it found with `more` true and a cursor at
-  the last entry it examined. Only entries whose responses the caller can
-  no longer open can fill that many without filling the page.
-- Every link and every index transaction moves the one counter, so writes
-  across the whole table take positions one at a time.
+- One activity call examines at most 1,000 index entries and comment
+  events, counted together. When it reaches that many, it answers the
+  items it found with `more` true and a cursor at the last entry or event
+  it examined. Only entries whose responses the caller can no longer open
+  can fill that many without filling the page.
+- Every link, every index transaction and every comment, edit and delete
+  moves the one counter, so writes across the whole table take positions
+  one at a time.
 
 ## What a reader sees
 

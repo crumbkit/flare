@@ -54,7 +54,8 @@ or `{ "anyone": true, "reach": ... }`. `reach` is `"everything"` or a list of
 `{ "page": "<name>" }`, `{ "binding": "<name>" }` and `{ "record": "<path>" }`
 entries. Register `http://localhost:8740/auth/oidc/callback` as the redirect
 URI. [docs/hosting.md](docs/hosting.md) gives the hosted config, and
-[docs/tokens.md](docs/tokens.md) the life of a CLI token.
+[docs/tokens.md](docs/tokens.md) the life of a CLI token, and
+[docs/comments.md](docs/comments.md) the life of a comment and a cursor.
 
 `"log": { "metrics": true }` makes `flare serve` write a metric line on
 standard error for each request, share, page view, sign-in and refusal.

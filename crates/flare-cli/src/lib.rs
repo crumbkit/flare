@@ -9,17 +9,21 @@
 //! once into a snapshot, and each command builds flare-board's store,
 //! flare-auth-loopback's state and flare-auth-oidc's authenticator and
 //! calls flare-server. `login`, `logout`, `share`, `show`, `grant`,
-//! `shares` and `activity` call a flare server's share API with the token
-//! that `login` keeps in the Keychain; `share --dry-run` calls no server.
+//! `shares`, `activity`, `comments`, `comment`, `reply`, `comment-edit` and
+//! `comment-delete` call a flare server's share API with the token that
+//! `login` keeps in the Keychain; `share --dry-run` calls no server.
 //! `metrics` totals the metric lines of a server's log. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
 
+mod activity;
 mod bind;
 mod board;
 mod cli;
 mod client;
 pub mod codes;
+mod comments;
 mod config;
+mod cursors;
 mod documents;
 mod duration;
 mod env;
@@ -106,8 +110,32 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             crumbkit::finish(run, documents::SHARES, result)
         }
         Verb::Activity(args) => {
-            let result = block_on(false, sharing::activity(&args, &env));
+            let result = block_on(false, activity::activity(&args, &env));
             crumbkit::finish(run, documents::ACTIVITY, result)
+        }
+        Verb::Comments(args) => {
+            let result = block_on(false, comments::comments(&args, &env));
+            crumbkit::finish(run, documents::COMMENTS, result)
+        }
+        Verb::Comment(args) => {
+            let result = block_on(false, comments::comment(&args, &env));
+            crumbkit::finish(run, documents::COMMENT, result)
+        }
+        Verb::Reply(args) => {
+            let result = block_on(false, comments::reply(&args, &env));
+            crumbkit::finish(run, documents::REPLY, result)
+        }
+        Verb::CommentEdit(args) => {
+            let result = block_on(false, comments::edit(&args, &env));
+            crumbkit::finish(run, documents::COMMENT_EDIT, result)
+        }
+        Verb::CommentDelete(args) => {
+            let question = "Delete this comment? Its text is erased and cannot be restored.";
+            if let Err(refused) = run.confirm(args.yes, question) {
+                return crumbkit::finish(run, documents::COMMENT_DELETE, Err(refused));
+            }
+            let result = block_on(false, comments::delete(&args, &env));
+            crumbkit::finish(run, documents::COMMENT_DELETE, result)
         }
         Verb::Metrics(args) => {
             let result = metrics::run(&args);

@@ -3,12 +3,12 @@
 
 use super::SharingFailed;
 use crate::codes::Failed;
-use crumbkit::{Recovery, Then};
+use crumbkit::{Call, Recovery, Then};
 use flare_contract::ApiCode;
 
 /// What a missing or unreadable answer, or the server's own busy, fault or
 /// deadline answer, means for running the command again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NextRun {
     /// The request did nothing on the server: the server refused it, was
     /// too busy to start it, or flare could not connect and sent nothing.
@@ -20,11 +20,17 @@ pub enum NextRun {
     /// sent. A command whose next run ends in the same
     /// state, such as a read or `flare grant`, keeps this, and a command
     /// that writes a share or a version turns it into
-    /// [`NextRun::CheckShares`] with `Failed::after_a_write`.
+    /// [`NextRun::CheckShares`] with `Failed::after_a_write`, and a
+    /// comment or a reply sent with a key flare drew turns it into
+    /// [`NextRun::Repeat`] with `Failed::after_a_keyed_write`.
     MaybeDone,
     /// The server may have made the share or the version, and the share API
     /// takes no idempotency key, so a second run could make a second one.
     CheckShares,
+    /// The server may have made the comment or the reply, and this call,
+    /// the same command with the key the failed run sent, gets the first
+    /// one back in place of making a second.
+    Repeat(Box<Call>),
 }
 
 /// The recovery after a write that may have happened: check `flare
@@ -39,23 +45,26 @@ pub(super) fn check_shares() -> Recovery {
 /// The recovery of [`SharingFailed::BadAnswer`]: check the server and run
 /// the command again, or, after a write that may have happened, check
 /// `flare shares` first.
-pub(super) fn bad_answer(next: NextRun) -> Recovery {
+pub(super) fn bad_answer(next: &NextRun) -> Recovery {
     match next {
         NextRun::Clean | NextRun::MaybeDone => Recovery::after(
             "check that the server runs flare with the share API",
             Then::Retry,
         ),
         NextRun::CheckShares => check_shares(),
+        NextRun::Repeat(call) => Recovery::Run(Call::clone(call)),
     }
 }
 
 /// The recovery of [`SharingFailed::Unreachable`] and
 /// [`SharingFailed::ServerError`]: run the command again, or, after a write
-/// that may have happened, check `flare shares` first.
-pub(super) fn retry(next: NextRun) -> Recovery {
+/// that may have happened, check `flare shares` first, or repeat the
+/// keyed write with its key.
+pub(super) fn retry(next: &NextRun) -> Recovery {
     match next {
         NextRun::Clean | NextRun::MaybeDone => Recovery::Retry,
         NextRun::CheckShares => check_shares(),
+        NextRun::Repeat(call) => Recovery::Run(Call::clone(call)),
     }
 }
 
@@ -76,6 +85,28 @@ impl Failed {
             ) if *next == NextRun::MaybeDone => *next = NextRun::CheckShares,
             Self::Refused(refused) if refused.code == ApiCode::SharesUnavailable => {
                 refused.maybe_written = true;
+            }
+            _ => {}
+        }
+        self
+    }
+
+    /// The same failure for a write that takes a key, such as `flare
+    /// comment` or `flare reply` with a key flare drew. A request that may
+    /// have reached the server, as [`Failed::after_a_write`] lists, or that
+    /// the server refused with `comments::unavailable`, may have made the
+    /// comment, so its recovery is `again`: the same command with the key
+    /// the failed run sent, which gets the first comment back in place of
+    /// making a second.
+    pub(crate) fn after_a_keyed_write(mut self, again: Call) -> Self {
+        match &mut self {
+            Self::Sharing(
+                SharingFailed::BadAnswer { next, .. }
+                | SharingFailed::Unreachable { next, .. }
+                | SharingFailed::ServerError { next, .. },
+            ) if *next == NextRun::MaybeDone => *next = NextRun::Repeat(Box::new(again)),
+            Self::Refused(refused) if refused.code == ApiCode::CommentsUnavailable => {
+                refused.again = Some(Box::new(again));
             }
             _ => {}
         }

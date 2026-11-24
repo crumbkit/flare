@@ -63,8 +63,8 @@ async fn a_sign_ins_session_secret_is_the_secret_its_session_credential_carries(
 async fn the_authorisation_url_carries_every_parameter_and_two_starts_share_no_value() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let first = authenticator.start(return_to()).unwrap();
-    let second = authenticator.start(return_to()).unwrap();
+    let first = authenticator.start(return_to()).await.unwrap();
+    let second = authenticator.start(return_to()).await.unwrap();
     let one = params(first.redirect());
     let two = params(second.redirect());
     assert_eq!(first.redirect().path(), "/authorize");
@@ -88,10 +88,10 @@ async fn the_authorisation_url_carries_every_parameter_and_two_starts_share_no_v
 async fn a_callback_whose_state_differs_is_refused_and_the_sign_in_then_completes() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let query = fake.approve(start.redirect());
     // Another sign-in's kept value opens, and its state is not the query's.
-    let another = authenticator.start(return_to()).unwrap();
+    let another = authenticator.start(return_to()).await.unwrap();
     let other = KeptState::from_cookie(another.kept().expose());
     assert_refused(
         authenticator.complete(&query, Some(&other), None).await,
@@ -110,7 +110,7 @@ async fn a_callback_whose_state_differs_is_refused_and_the_sign_in_then_complete
 async fn a_callback_with_no_kept_state_is_refused_and_one_with_it_completes() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let query = fake.approve(start.redirect());
     assert_refused(
         authenticator.complete(&query, None, None).await,
@@ -128,7 +128,7 @@ async fn a_callback_with_no_kept_state_is_refused_and_one_with_it_completes() {
 async fn a_second_callback_with_the_same_kept_value_is_refused_by_the_provider_as_code_rejected() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let query = fake.approve(start.redirect());
     assert!(
         authenticator
@@ -149,7 +149,7 @@ async fn a_second_callback_with_the_same_kept_value_is_refused_by_the_provider_a
 async fn a_kept_value_that_does_not_open_is_refused_as_unknown_and_its_own_completes() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let query = fake.approve(start.redirect());
     let forged = KeptState::from_cookie("another-state-value");
     assert_refused(
@@ -170,7 +170,7 @@ async fn a_kept_value_from_another_authenticator_is_refused_as_unknown() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
     let (other, _other_clock) = connect(&fake).await;
-    let start = other.start(return_to()).unwrap();
+    let start = other.start(return_to()).await.unwrap();
     let query = fake.approve(start.redirect());
     assert_refused(
         authenticator
@@ -190,7 +190,7 @@ async fn a_kept_value_from_another_authenticator_is_refused_as_unknown() {
 async fn a_code_the_provider_already_redeemed_is_refused_and_a_fresh_code_is_accepted() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let first = authenticator.start(return_to()).unwrap();
+    let first = authenticator.start(return_to()).await.unwrap();
     let query = fake.approve(first.redirect());
     assert!(
         authenticator
@@ -199,7 +199,7 @@ async fn a_code_the_provider_already_redeemed_is_refused_and_a_fresh_code_is_acc
             .is_ok()
     );
     // A second sign-in whose callback carries the first sign-in's code.
-    let second = authenticator.start(return_to()).unwrap();
+    let second = authenticator.start(return_to()).await.unwrap();
     let code = query
         .split('&')
         .find(|pair| pair.starts_with("code="))
@@ -404,7 +404,7 @@ async fn a_token_with_a_bad_signature_is_refused_and_a_good_signature_is_accepte
 async fn a_provider_error_callback_is_refused_without_a_token_request() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let query = fake.deny(start.redirect());
     assert_refused(
         authenticator
@@ -453,9 +453,9 @@ async fn a_token_reply_without_an_id_token_gives_provider_misbehaved() {
 async fn a_pending_sign_in_older_than_ten_minutes_is_refused_and_a_younger_one_completes() {
     let fake = Fake::start().await;
     let (authenticator, clock) = connect(&fake).await;
-    let old = authenticator.start(return_to()).unwrap();
+    let old = authenticator.start(return_to()).await.unwrap();
     clock.advance(Duration::from_secs(1));
-    let young = authenticator.start(return_to()).unwrap();
+    let young = authenticator.start(return_to()).await.unwrap();
     clock.advance(Duration::from_secs(599));
     let old_query = fake.approve(old.redirect());
     assert_refused(
@@ -477,10 +477,10 @@ async fn a_pending_sign_in_older_than_ten_minutes_is_refused_and_a_younger_one_c
 async fn a_sign_in_completes_after_a_thousand_later_starts() {
     let fake = Fake::start().await;
     let (authenticator, clock) = connect(&fake).await;
-    let first = authenticator.start(return_to()).unwrap();
+    let first = authenticator.start(return_to()).await.unwrap();
     for _ in 0..1000 {
         clock.advance(Duration::from_millis(1));
-        authenticator.start(return_to()).unwrap();
+        authenticator.start(return_to()).await.unwrap();
     }
     let query = fake.approve(first.redirect());
     assert!(
@@ -495,7 +495,7 @@ async fn a_sign_in_completes_after_a_thousand_later_starts() {
 async fn the_provider_receives_the_verifier_and_the_client_secret_only_in_the_token_body() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
-    let start = authenticator.start(return_to()).unwrap();
+    let start = authenticator.start(return_to()).await.unwrap();
     let authorization = start.redirect().to_string();
     let query = fake.approve(start.redirect());
     assert!(

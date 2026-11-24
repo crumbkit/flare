@@ -178,7 +178,11 @@ pub enum SignInRefusal {
     /// [`Admit::Domain`](crate::Admit::Domain) it cannot be a principal id.
     #[error("the account is not allowed to sign in")]
     NotAllowed,
-    /// 1,024 sessions are live.
+    /// The session store or the sealing key store could not answer, so no
+    /// sign-in began or finished and no session was written.
+    #[error("the session or key store is unavailable")]
+    StoreUnavailable,
+    /// 1,024 sessions are live in a memory-backed store.
     #[error("too many sessions are live")]
     TooManySessions,
     /// The system's random number generator failed.
@@ -209,6 +213,7 @@ impl SignInRefusal {
             self,
             Self::ProviderUnavailable
                 | Self::TooManySessions
+                | Self::StoreUnavailable
                 | Self::NoRandomness
                 | Self::CannotSeal
         )

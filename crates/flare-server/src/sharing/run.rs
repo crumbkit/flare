@@ -1,19 +1,19 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
-use super::convert::{flare_error, item, recipient_error, share_error, standing, summary};
+use super::convert::{flare_error, recipient_error, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
 use super::{
     Answer, Api, Boxed, Call, ReadRefusal, Reading, Refusal, Sharing, TokenCheck, check_share,
     check_version,
 };
 use flare_contract::{
-    ActivityPage, ApiCode, Cursor, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest,
-    Shared, TokenIssued, VersionRequest, utc,
+    ApiCode, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest, Shared, TokenIssued,
+    VersionRequest, utc,
 };
 use flare_core::{
-    Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position, Principal,
-    Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore, ShareVersion,
-    Standing, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    CommentStore, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare,
+    NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
+    ShareVersion, Standing, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -29,7 +29,7 @@ pub(super) fn json(status: u16, body: &impl Serialize) -> Answer {
 }
 
 /// The share id that `text` names; a malformed id is a missing share.
-fn share_id(text: &str) -> Result<ShareId, Refusal> {
+pub(super) fn share_id(text: &str) -> Result<ShareId, Refusal> {
     ShareId::try_from(text).map_err(|_| ApiCode::ShareNotFound.into())
 }
 
@@ -60,11 +60,13 @@ fn shared(flared: &Flared, role: WireRole) -> Shared {
     }
 }
 
-impl<S, G, R, T, X> Sharing<S, G, R, T, X>
+impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
 {
@@ -153,7 +155,8 @@ where
             _ => return Err(ApiCode::KindNotServed.into()),
         };
         let version = opened.version.number().get();
-        let share = summary(&opened.share, standing(opened.standing));
+        let mut share = summary(&opened.share, standing(opened.standing));
+        share.comments = self.live_comments(who, &id).await.ok();
         json(
             200,
             &OpenedShare {
@@ -237,41 +240,6 @@ where
             WireRole::Admin
         };
         json(200, &shared(&flared, role))
-    }
-
-    async fn activity(
-        &self,
-        who: &Principal,
-        flares: &[String],
-        since: Option<&str>,
-        limit: usize,
-    ) -> Answer {
-        let after = match since {
-            Some(text) => Cursor::try_from(text)
-                .map_err(|_| ApiCode::BadCursor)?
-                .position(),
-            None => 0,
-        };
-        let ids = flares
-            .iter()
-            .map(|text| share_id(text))
-            .collect::<Result<Vec<_>, _>>();
-        if flares.len() > flare_core::MAX_FLARES {
-            return Err(ApiCode::TooManyFlares.into());
-        }
-        let page = self
-            .flares
-            .activity(who, &ids?, Position::new(after), limit)
-            .await
-            .map_err(flare_error)?;
-        json(
-            200,
-            &ActivityPage {
-                items: page.items.iter().map(item).collect(),
-                cursor: Cursor::new(page.last.get()).to_string(),
-                more: page.more,
-            },
-        )
     }
 
     async fn revoke(&self, who: &Principal, id: &str, now: Timestamp) -> Answer {
@@ -362,14 +330,20 @@ where
     }
 }
 
-impl<S, G, R, T, X> Api for Sharing<S, G, R, T, X>
+impl<S, G, R, C, U, T, X> Api for Sharing<S, G, R, C, U, T, X>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
+    C: CommentStore,
+    U: CursorStore,
     T: TokenStore,
     X: Recipients,
 {
+    fn admits(&self, who: &Principal) -> bool {
+        who.email().is_some_and(|email| self.admit.admits(email))
+    }
+
     fn authenticate<'a>(
         &'a self,
         token: &'a SecretString,
@@ -406,8 +380,23 @@ where
                 Call::Activity {
                     flares,
                     since,
+                    since_last,
                     limit,
-                } => self.activity(who, &flares, since.as_deref(), limit).await,
+                } => {
+                    self.activity(
+                        who,
+                        &flares,
+                        (since.as_deref(), since_last.as_deref()),
+                        limit,
+                    )
+                    .await
+                }
+                Call::Comments(flare) => self.thread(who, &flare).await,
+                Call::Post(request) => self.post(who, request, now).await,
+                Call::Edit(id, request) => self.edit(who, &id, request, now).await,
+                Call::Delete(id) => self.delete(who, &id, now).await,
+                Call::Cursor(name) => self.cursor(who, &name).await,
+                Call::SaveCursor(name, request) => self.save_cursor(who, &name, request).await,
                 Call::Revoke(id) => self.revoke(who, &id, now).await,
             }
         })

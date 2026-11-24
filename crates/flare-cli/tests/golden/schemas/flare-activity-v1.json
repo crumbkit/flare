@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/activity/v1",
-  "description": "The responses to the named flares, oldest first, and the cursor of the next call.",
+  "description": "The responses and comment events on the named flares, oldest first, and the cursor of the next call.",
   "type": "object",
   "properties": {
     "cut": {
@@ -116,45 +116,83 @@
       "type": "object",
       "properties": {
         "also": {
-          "description": "The other flares it responds to that the caller can open.",
+          "description": "The other flares a response responds to that the caller can open.",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "at": {
-          "description": "When it named the flare, in RFC 3339 UTC.",
+          "description": "When it happened, in RFC 3339 UTC.",
           "type": "string"
         },
+        "body": {
+          "description": "The comment's or reply's text after the event; absent for a response or a deletion.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "by": {
-          "description": "The responder's identifier.",
+          "description": "The person who responded, wrote, edited or deleted.",
           "type": "string"
+        },
+        "comment": {
+          "description": "The comment or reply the event is about, for a comment event.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "flare": {
           "description": "The flare it responds to.",
           "type": "string"
         },
-        "share": {
-          "description": "The responding share's id.",
+        "kind": {
+          "description": "What happened: `response`, `comment`, `reply`, `edited` or `deleted`.",
           "type": "string"
+        },
+        "parent": {
+          "description": "The comment a reply answers, or an edited or deleted reply is on.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "share": {
+          "description": "The responding share's id, for a response.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "title": {
-          "description": "The responding share's title.",
-          "type": "string"
+          "description": "The responding share's title, for a response.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "version": {
-          "description": "The version of the flare it responds to.",
-          "type": "integer",
+          "description": "The version of the flare it responds to, for a response.",
+          "type": [
+            "integer",
+            "null"
+          ],
           "format": "uint32",
           "minimum": 0
         }
       },
       "required": [
         "flare",
+        "kind",
         "share",
         "title",
+        "comment",
+        "parent",
         "by",
         "version",
+        "body",
         "at",
         "also"
       ]
@@ -170,6 +208,13 @@
         "more": {
           "description": "Whether newer responses wait past this page.",
           "type": "boolean"
+        },
+        "saved_as": {
+          "description": "The name this call saved the cursor under, when it ran with `--since-last`.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

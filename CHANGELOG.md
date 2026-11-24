@@ -6,6 +6,167 @@ This file records the notable changes to flare. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- flare's stylesheet takes the light and dark colours of the signed Flare
+  mockup, so pages at `/pages/<name>`, the edit form and the conflict view
+  change colour.
+- `flare activity` reads a per-reader index that flare writes when a
+  response is linked and when a share is granted, so one call reads only
+  responses the caller can open. A flare's readers can no longer stall its
+  owner's activity by posting thousands of responses the owner cannot open.
+  A response granted to you after your cursor now shows as new activity.
+  `flare grant` indexes every named person again, so repeating a grant
+  repairs entries that a failed write left out. One call examines at most
+  1,000 index entries and comment events together. Responses linked before this change are not listed until
+  their owner repeats `flare grant <response> --re <flare>`.
+  [docs/activity.md](docs/activity.md) describes the index.
+- A hosted site whose config has `hosted.stores` keeps browser sessions and
+  the sign-in sealing keys in DynamoDB, so several processes share them and
+  a deploy signs nobody out. A session now expires 12 hours after its last
+  extending request, at most 7 days after sign-in, and a request extends it
+  at most every 10 minutes. The sealing key rotates every 30 days, and each
+  sealed sign-in uses a random nonce. Without `hosted.stores` the in-memory
+  stores stay.
+- A comment's author and a named cursor belong to the person's address, so
+  one person who signs in to the browser and to the CLI under an `emails`
+  admit rule is one author and has one set of cursors.
+- The comment and activity routes check a session cookie's person against
+  the share API's admit rule, as they do for a token's owner.
+- The per-person sign-in guard in DynamoDB expires with the 7-day session
+  cap, and ending all of a person's sessions deletes it.
+- A request whose session extension loses a race with a removal now
+  answers as signed out.
+- `OidcAuthenticator::start` and `sign_out` are `async`, and
+  `OidcAuthenticator::connect_stored` takes the session and key stores.
+- A flare server's own busy, fault and deadline answers now fail every
+  sharing command with `flare::network::server_error`, in place of
+  `flare::network::bad_answer`, whose repair "check that the server runs
+  flare with the share API" named the wrong cause. The message reads
+  "<server> could not finish the request: <the server's title>", and the
+  fields give `server` and `answer` (`server::busy`, `server::deadline` or
+  `server::fault`). A busy answer recovers with a retry, because the server
+  did no work. A fault or a passed deadline after `flare share` or
+  `flare share --update` may follow a finished write, so it recovers by
+  checking `flare shares` before running again; after any other command it
+  recovers with a retry. Every other code that flare does not know keeps
+  `flare::network::bad_answer`.
+- More failures give their values in fields of the JSON failure document.
+  `flare::login::needed` gives `server`, the saved login's server, which is
+  null when no login is saved, and `flare::login::failed` gives `server`,
+  the server the browser sign-in was for. `flare::keychain::unavailable` gives
+  `action`, the Keychain command that failed: `save`, `read` or `delete`.
+  Every refusal of the share API gives `server`, and
+  `flare::shares::partly_shared` also gives `share`, the share that the
+  server created, when the server names a valid share id.
+- `flare::shares::not_found` now recovers with the hint "check the flare
+  id" and lists "ask the flare's owner to share it with you" as an
+  alternative, in place of one hint that offered both repairs.
+- `flare::state::unusable` now recovers with the hint "fix the state file
+  or directory that the problem names" and lists "remove the state file or
+  directory that the problem names" as an alternative, in place of one
+  hint that offered both repairs.
+- flare's convention tests now run each example that needs no board, flare
+  server, browser or particular date, including the `flare metrics` and
+  `flare share --dry-run` examples on fixture files, and compare its output
+  with a golden file. They also check every path through flare's help
+  against its byte budget.
+- A `flare::state::unusable` failure from the saved login or the login
+  labels file now names the file at the start of its message, so the text
+  form, which prints no fields, says which file to fix. A login.json that
+  flare cannot read or parse reads "the saved login <path> could not be
+  used: <reason>", and a labels.json that flare cannot read, parse or
+  write, or that would pass 64 KiB, reads "the login labels file <path>
+  could not be used: <reason>". A state directory that flare cannot create
+  for either file reads "the state directory <path> could not be created:
+  <reason>". A file past its size limit gives the reason "it is longer than
+  4096 bytes" or "it is longer than 65536 bytes". The `path` field keeps
+  its value. The failure's help line now reads "fix or remove the state
+  file or directory that the problem names".
+- Three failures give the file they name in a field of the JSON failure
+  document, so an agent no longer reads the path out of the message.
+  `flare::board::program_unavailable` gives `program`, the board program
+  flare could not resolve or that did not answer. `flare::state::unusable`
+  gives `path`, the file or directory flare could not use: the saved login
+  or label file, the state directory it could not create, or the loopback
+  state's directory or server file.
+  `flare::opener::failed` gives `program`, the opener that did not start,
+  ran past its deadline or exited with an error. Each field is `null` when
+  flare does not hold the path apart from the message. The messages read
+  as before, except that a board program that does not answer now reads
+  "the board program /path: did not answer".
+- `flare::metrics::unreadable` gives the hint "pass a readable log file"
+  and the alternative "pipe the log to flare metrics on standard input" as
+  two recoveries, in place of one hint that joined them with "or". With
+  standard input on a terminal, its message ends "standard input is a
+  terminal".
+- A failure that needs a new sign-in now gives a `terminal` recovery for
+  `flare login <server>` with the server filled in, because only a person
+  can finish the browser sign-in. This covers `flare::login::needed` with a
+  saved login, `flare::login::failed`, and the server's
+  `flare::tokens::sign_in_needed`, `flare::tokens::code_refused` and
+  `flare::shares::no_email`. With no saved login flare does not know the
+  server, so `flare::login::needed` gives a hint that names `flare login`.
+  These recoveries were `run` recoveries before.
+- `flare::network::bad_answer` recovers with a repair and then a retry:
+  check that the server runs flare with the share API, then run the same
+  command again. In JSON its recovery is of kind `after`. After `flare
+  login`'s token exchange, every step that would run the login again is a
+  `terminal` recovery for `flare login <server>`, because only a person
+  can finish the new sign-in. That covers the step after the check of
+  `flare::network::bad_answer`, and `flare::network::unreachable`,
+  `flare::tokens::unavailable` and `flare::system::unavailable` from the
+  exchange, which recovered with a retry before.
+- A `flare::shares::partly_shared` refusal names `flare grant` as a call
+  with the share the server named, and a `flare::activity::bad_cursor`
+  refusal names `flare activity` with the flare ids the command was given
+  and without a cursor, with an alternative that runs it with `--since`
+  once the right cursor is found.
+- `flare activity` prints its next command as a step: in text, a `Next:`
+  sentence on standard error with `flare activity <id>... --since <cursor>`
+  under it, and in JSON, the same call under `next`. The summary line
+  `Next: --since <cursor>` on standard output is gone, and the JSON
+  `summary.cursor` and `summary.more` stay.
+- The project is renamed from hangar to flare. The crates are `flare-core`,
+  `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
+  `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.
+  Failure codes start with `flare::`. The cookies are `flare_session` and
+  `flare_oidc_state`, with the `__Host-` prefix on the hosted site. The
+  config file is `flare/config.json` under `$XDG_CONFIG_HOME` or
+  `~/.config`, the state directory is `$XDG_STATE_HOME/flare`, the Keychain
+  service is `flare-oidc-google`, and the environment variables start with
+  `FLARE_`. The record types are `flare/page/v1`, `flare/binding/v1` and
+  `flare/edit/v1`, and the home path is `/flare/`. flare reads none of the
+  old names: a browser signs in again, a config file moves from
+  `~/.config/hangar` to `~/.config/flare`, a running `hangar serve` is
+  stopped and `flare serve` started, and each page that hangar published is
+  published again with `flare publish`. The entries above and below this
+  one use the names of the time they were written.
+- `Email` moves from `hangar-auth-oidc` to `hangar-core`, which
+  `hangar-auth-oidc` re-exports. Parsing one answers a `ParseError`, and
+  `ConfigError::Email` is gone.
+- The record suite's concurrent-writes clause races the two fixture bodies
+  that differ from the record's current body, so a store may answer a
+  write of the current body without writing.
+
+- `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
+  an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its
+  behaviour.
+- A pending sign-in in `hangar-auth-oidc` is sealed with AES-256-GCM into
+  the kept-state cookie, and the server keeps no table of them, so any
+  number of sign-ins can be in progress and a restart voids them all. A
+  kept value is refused 10 minutes after its start. A replayed callback is
+  refused by the provider as `CodeRejected`.
+- The local sign-in host reads its kept-state cookie byte by byte, as the
+  hosted site does, so a non-ASCII cookie that another app set on
+  `localhost` no longer fails a sign-in.
+- `OidcAuthenticator::complete` takes the browser's current session
+  credential, if any, and ends that session only when the new one is
+  created. A principal keeps at most 8 sessions; a ninth sign-in ends its
+  session that expires first.
+- `App::new` in `hangar-server` takes a `Site` in place of a `Gate` and a
+  `StateDir`.
+
 ### Added
 
 - A hosted site shows a Markdown share at `/s/<id>` to a signed-in reader
@@ -70,6 +231,23 @@ This file records the notable changes to flare. The format follows
   of a share you own, through `POST /api/shares/<id>/versions`. Readers
   open the new content at once, and `flare share` and `flare grant` print
   the share's version. The option refuses `--title`, `--with` and `--re`.
+- `flare comments`, `flare comment`, `flare reply`, `flare comment-edit` and
+  `flare comment-delete` let a person comment on a flare they can open,
+  reply to a comment, and change or delete their own. A comment is 1 to
+  8,000 characters, a flare holds 2,000, a reply has no replies, and a
+  repeated `--key` writes nothing new. When a comment or a reply sent
+  without `--key` fails in a way that may have saved it, the recovery
+  repeats the command with `--key` and the key flare drew, so running it
+  cannot post the comment twice. The hosted page sends the same
+  requests with the session cookie when the request is same-origin, and its
+  replies carry `connect-src 'self'`. Opening a share returns its
+  count of comments.
+- `flare activity` lists comment, reply, edit and delete events with
+  responses. `--since-last <name>` starts from the larger of this
+  computer's saved cursor and the server's, and saves where the run ends in
+  `<state home>/flare/cursors.json` and in `PUT /api/cursors/<name>`.
+  `docs/comments.md` gives the life of a comment and of a cursor.
+- `SessionStore::remove_all_of` deletes every session of one person.
 - `flare login <server>` signs in to a hosted flare in the browser and
   keeps a token in the macOS Keychain. The server stores only the token's
   SHA-256 hash, and a token expires 90 days after its creation. A new login
@@ -201,149 +379,6 @@ This file records the notable changes to flare. The format follows
 - `Principal` carries the email address that its sign-in verified
   (`Principal::with_email` and `Principal::email`), and `hangar-auth-oidc`
   sets it under both admit rules.
-
-### Changed
-
-- flare's stylesheet takes the light and dark colours of the signed Flare
-  mockup, so pages at `/pages/<name>`, the edit form and the conflict view
-  change colour.
-- `flare activity` reads a per-reader index that flare writes when a
-  response is linked and when a share is granted, so one call reads only
-  responses the caller can open. A flare's readers can no longer stall its
-  owner's activity by posting thousands of responses the owner cannot open.
-  A response granted to you after your cursor now shows as new activity.
-  `flare grant` indexes every named person again, so repeating a grant
-  repairs entries that a failed write left out. One call examines at most
-  1,000 entries. Responses linked before this change are not listed until
-  their owner repeats `flare grant <response> --re <flare>`.
-  [docs/activity.md](docs/activity.md) describes the index.
-- A flare server's own busy, fault and deadline answers now fail every
-  sharing command with `flare::network::server_error`, in place of
-  `flare::network::bad_answer`, whose repair "check that the server runs
-  flare with the share API" named the wrong cause. The message reads
-  "<server> could not finish the request: <the server's title>", and the
-  fields give `server` and `answer` (`server::busy`, `server::deadline` or
-  `server::fault`). A busy answer recovers with a retry, because the server
-  did no work. A fault or a passed deadline after `flare share` or
-  `flare share --update` may follow a finished write, so it recovers by
-  checking `flare shares` before running again; after any other command it
-  recovers with a retry. Every other code that flare does not know keeps
-  `flare::network::bad_answer`.
-- More failures give their values in fields of the JSON failure document.
-  `flare::login::needed` gives `server`, the saved login's server, which is
-  null when no login is saved, and `flare::login::failed` gives `server`,
-  the server the browser sign-in was for. `flare::keychain::unavailable` gives
-  `action`, the Keychain command that failed: `save`, `read` or `delete`.
-  Every refusal of the share API gives `server`, and
-  `flare::shares::partly_shared` also gives `share`, the share that the
-  server created, when the server names a valid share id.
-- `flare::shares::not_found` now recovers with the hint "check the flare
-  id" and lists "ask the flare's owner to share it with you" as an
-  alternative, in place of one hint that offered both repairs.
-- `flare::state::unusable` now recovers with the hint "fix the state file
-  or directory that the problem names" and lists "remove the state file or
-  directory that the problem names" as an alternative, in place of one
-  hint that offered both repairs.
-- flare's convention tests now run each example that needs no board, flare
-  server, browser or particular date, including the `flare metrics` and
-  `flare share --dry-run` examples on fixture files, and compare its output
-  with a golden file. They also check every path through flare's help
-  against its byte budget.
-- A `flare::state::unusable` failure from the saved login or the login
-  labels file now names the file at the start of its message, so the text
-  form, which prints no fields, says which file to fix. A login.json that
-  flare cannot read or parse reads "the saved login <path> could not be
-  used: <reason>", and a labels.json that flare cannot read, parse or
-  write, or that would pass 64 KiB, reads "the login labels file <path>
-  could not be used: <reason>". A state directory that flare cannot create
-  for either file reads "the state directory <path> could not be created:
-  <reason>". A file past its size limit gives the reason "it is longer than
-  4096 bytes" or "it is longer than 65536 bytes". The `path` field keeps
-  its value. The failure's help line now reads "fix or remove the state
-  file or directory that the problem names".
-- Three failures give the file they name in a field of the JSON failure
-  document, so an agent no longer reads the path out of the message.
-  `flare::board::program_unavailable` gives `program`, the board program
-  flare could not resolve or that did not answer. `flare::state::unusable`
-  gives `path`, the file or directory flare could not use: the saved login
-  or label file, the state directory it could not create, or the loopback
-  state's directory or server file.
-  `flare::opener::failed` gives `program`, the opener that did not start,
-  ran past its deadline or exited with an error. Each field is `null` when
-  flare does not hold the path apart from the message. The messages read
-  as before, except that a board program that does not answer now reads
-  "the board program /path: did not answer".
-- `flare::metrics::unreadable` gives the hint "pass a readable log file"
-  and the alternative "pipe the log to flare metrics on standard input" as
-  two recoveries, in place of one hint that joined them with "or". With
-  standard input on a terminal, its message ends "standard input is a
-  terminal".
-- A failure that needs a new sign-in now gives a `terminal` recovery for
-  `flare login <server>` with the server filled in, because only a person
-  can finish the browser sign-in. This covers `flare::login::needed` with a
-  saved login, `flare::login::failed`, and the server's
-  `flare::tokens::sign_in_needed`, `flare::tokens::code_refused` and
-  `flare::shares::no_email`. With no saved login flare does not know the
-  server, so `flare::login::needed` gives a hint that names `flare login`.
-  These recoveries were `run` recoveries before.
-- `flare::network::bad_answer` recovers with a repair and then a retry:
-  check that the server runs flare with the share API, then run the same
-  command again. In JSON its recovery is of kind `after`. After `flare
-  login`'s token exchange, every step that would run the login again is a
-  `terminal` recovery for `flare login <server>`, because only a person
-  can finish the new sign-in. That covers the step after the check of
-  `flare::network::bad_answer`, and `flare::network::unreachable`,
-  `flare::tokens::unavailable` and `flare::system::unavailable` from the
-  exchange, which recovered with a retry before.
-- A `flare::shares::partly_shared` refusal names `flare grant` as a call
-  with the share the server named, and a `flare::activity::bad_cursor`
-  refusal names `flare activity` with the flare ids the command was given
-  and without a cursor, with an alternative that runs it with `--since`
-  once the right cursor is found.
-- `flare activity` prints its next command as a step: in text, a `Next:`
-  sentence on standard error with `flare activity <id>... --since <cursor>`
-  under it, and in JSON, the same call under `next`. The summary line
-  `Next: --since <cursor>` on standard output is gone, and the JSON
-  `summary.cursor` and `summary.more` stay.
-- The project is renamed from hangar to flare. The crates are `flare-core`,
-  `flare-auth-loopback`, `flare-auth-oidc`, `flare-board`, `flare-render`,
-  `flare-server`, `flare-aws` and `flare-cli`, and the command is `flare`.
-  Failure codes start with `flare::`. The cookies are `flare_session` and
-  `flare_oidc_state`, with the `__Host-` prefix on the hosted site. The
-  config file is `flare/config.json` under `$XDG_CONFIG_HOME` or
-  `~/.config`, the state directory is `$XDG_STATE_HOME/flare`, the Keychain
-  service is `flare-oidc-google`, and the environment variables start with
-  `FLARE_`. The record types are `flare/page/v1`, `flare/binding/v1` and
-  `flare/edit/v1`, and the home path is `/flare/`. flare reads none of the
-  old names: a browser signs in again, a config file moves from
-  `~/.config/hangar` to `~/.config/flare`, a running `hangar serve` is
-  stopped and `flare serve` started, and each page that hangar published is
-  published again with `flare publish`. The entries above and below this
-  one use the names of the time they were written.
-- `Email` moves from `hangar-auth-oidc` to `hangar-core`, which
-  `hangar-auth-oidc` re-exports. Parsing one answers a `ParseError`, and
-  `ConfigError::Email` is gone.
-- The record suite's concurrent-writes clause races the two fixture bodies
-  that differ from the record's current body, so a store may answer a
-  write of the current body without writing.
-
-- `OidcConfig::new` in `hangar-auth-oidc` takes an `Admit` rule in place of
-  an `AllowList`. Wrap an existing allow-list in `Admit::Emails` to keep its
-  behaviour.
-- A pending sign-in in `hangar-auth-oidc` is sealed with AES-256-GCM into
-  the kept-state cookie, and the server keeps no table of them, so any
-  number of sign-ins can be in progress and a restart voids them all. A
-  kept value is refused 10 minutes after its start. A replayed callback is
-  refused by the provider as `CodeRejected`.
-- The local sign-in host reads its kept-state cookie byte by byte, as the
-  hosted site does, so a non-ASCII cookie that another app set on
-  `localhost` no longer fails a sign-in.
-- `OidcAuthenticator::complete` takes the browser's current session
-  credential, if any, and ends that session only when the new one is
-  created. A principal keeps at most 8 sessions; a ninth sign-in ends its
-  session that expires first.
-- `App::new` in `hangar-server` takes a `Site` in place of a `Gate` and a
-  `StateDir`.
 
 ### Fixed
 

@@ -1,0 +1,20 @@
+Reply to a comment
+
+Usage: flare reply [OPTIONS] --flare <FLARE> <--body <TEXT>|--body-file <FILE>> <COMMENT>
+
+Arguments:
+  <COMMENT>  The comment to reply to, which is not itself a reply
+
+Options:
+      --flare <FLARE>     The flare the comment is on
+      --body <TEXT>       The text, 1 to 8,000 characters
+      --body-file <FILE>  A file that holds the text, which is how to send more than one line
+      --key <KEY>         The key that makes a repeat of this call write nothing; without it, a new random key
+  -h, --help              Print help (see more with '--help')
+
+Examples:
+  flare reply 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --flare 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --body 'Yes, ship it'
+
+Effects: additive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare reply --help` describes them.
+Next: flare reply --help explains each column.

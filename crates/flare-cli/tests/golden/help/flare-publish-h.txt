@@ -1,4 +1,4 @@
-Publish a new version of a page from an HTML or Markdown file
+Publish a page version from an HTML or Markdown file
 
 Usage: flare publish [OPTIONS] --name <NAME> <FILE>
 

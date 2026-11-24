@@ -28,17 +28,20 @@ with the issuer `https://accounts.google.com`. Under `Admit::Domain`,
 ## Pending sign-ins and sessions
 
 `start` seals the pending sign-in into the value the server keeps in a
-cookie, with AES-256-GCM under a key that exists only in the process's
-memory, so the crate stores nothing for a sign-in that has not finished and
-no number of starts evicts another. A kept value opens for 10 minutes. A
+cookie, with AES-256-GCM under a numbered key from the key store and a
+random 12-byte nonce, so the crate stores nothing for a sign-in that has not
+finished and no number of starts evicts another. Keys rotate after 30 days
+and stay readable for an hour. A kept value opens for 10 minutes. A
 second callback with the same value sends the code to the provider again,
 and the provider refuses the used code as `CodeRejected`.
 
 `complete` takes the session the browser already holds, if any, and ends it
 in the step that creates the new one, after every check has passed. One
-principal holds at most 8 live sessions, and all principals together at
-most 1,024. A restart signs everyone out and voids every pending sign-in,
-so a server that hosts the crate runs as one process.
+principal holds at most 8 live sessions. A session expires 12 hours after the
+last request that extended it and never later than 7 days after sign-in.
+`connect` keeps sessions and keys in memory, where a restart signs everyone
+out. `connect_stored` takes stores that several processes share, such as the
+DynamoDB stores of `flare-aws`.
 
 ## The client secret
 

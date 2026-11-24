@@ -7,8 +7,8 @@ use flare_contract::{
     ShareSummary, utc,
 };
 use flare_core::{
-    ActivityItem, FlareError, ListKey, ParseError, RecipientError, Role, Share, ShareError,
-    ShareId, Standing, Timestamp,
+    ActivityItem, FlareError, ListKey, ParseError, RecipientError, ResponseActivity, Role, Share,
+    ShareError, ShareId, Standing, Timestamp,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -21,6 +21,7 @@ pub(super) fn summary(share: &Share, role: WireRole) -> ShareSummary {
         role,
         version: share.latest().get(),
         created: utc(share.created().as_secs()),
+        comments: None,
     }
 }
 
@@ -42,7 +43,15 @@ pub(super) fn standing(standing: Standing) -> WireRole {
 }
 
 /// The contract's activity item.
-pub(super) fn item(item: &ActivityItem) -> WireItem {
+pub(super) fn item(item: &ActivityItem) -> Option<WireItem> {
+    match item {
+        ActivityItem::Response(response) => Some(response_item(response)),
+        ActivityItem::Comment(comment) => super::comments::activity(comment),
+        _ => None,
+    }
+}
+
+fn response_item(item: &ResponseActivity) -> WireItem {
     WireItem::Response {
         flare: item.flare.as_str().to_owned(),
         share: item.response.id().as_str().to_owned(),
@@ -99,6 +108,13 @@ pub(super) fn flare_error(error: FlareError) -> Refusal {
             share: Some(share.as_str().to_owned()),
         },
         FlareError::Share(error) => share_error(error).into(),
+        FlareError::CommentNotFound => ApiCode::CommentNotFound.into(),
+        FlareError::NotCommentAuthor => ApiCode::NotCommentAuthor.into(),
+        FlareError::ReplyToReply => ApiCode::ReplyDepth.into(),
+        FlareError::TooManyComments => ApiCode::TooManyComments.into(),
+        FlareError::CursorNotFound => ApiCode::CursorNotFound.into(),
+        FlareError::TooManyCursors => ApiCode::TooManyCursors.into(),
+        FlareError::CommentsUnavailable => ApiCode::CommentsUnavailable.into(),
         _ => ApiCode::ActivityUnavailable.into(),
     }
 }

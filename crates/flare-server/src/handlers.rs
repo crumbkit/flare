@@ -231,7 +231,7 @@ where
     S: Schemas,
     K: OidcClock,
 {
-    if matches!(need, Need::Nothing | Need::Token) {
+    if matches!(need, Need::Nothing | Need::Token | Need::TokenOrCookie) {
         return Ok(None);
     }
     let credential = credential.ok_or_else(|| ctx.sign_in_needed())?;
@@ -263,7 +263,7 @@ where
 {
     let access = route.access.unwrap_or(Access::Read);
     match route.handler {
-        Handler::OidcStart => return oidc::hosted_start(ctx),
+        Handler::OidcStart => return oidc::hosted_start(ctx).await,
         Handler::OidcCallback => return oidc::hosted_callback(ctx, credential.as_ref()).await,
         Handler::Api(api_route) => {
             return api::handle(ctx, api_route, name, credential, body).await;
@@ -283,7 +283,7 @@ where
         (Handler::Read, Some((admitted, _))) => read::page(ctx, &admitted, name).await,
         (Handler::Probe, _) => probe(ctx),
         (Handler::Launch, _) => launch::launch(ctx),
-        (Handler::Finish, _) => launch::finish(ctx),
+        (Handler::Finish, _) => launch::finish(ctx).await,
         (Handler::Root, Some(_)) => Ok(Reply::see_other("/flare/".to_owned())),
         (Handler::Index, Some((admitted, _))) => index(ctx, &admitted, access).await,
         (Handler::Page, Some((admitted, _))) => {

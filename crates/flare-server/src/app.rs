@@ -15,7 +15,9 @@ use crate::tasks;
 use bytes_alias::Body;
 use flare_auth_loopback::StateError;
 use flare_auth_oidc::{Clock as OidcClock, SystemClock as OidcSystemClock};
-use flare_core::{GrantStore, Recipients, ResponseStore, ShareStore, TokenStore};
+use flare_core::{
+    CommentStore, CursorStore, GrantStore, Recipients, ResponseStore, ShareStore, TokenStore,
+};
 use flare_core::{PageStore, RecordStore};
 use hyper::body::Incoming;
 use hyper::{Request, Response};
@@ -142,11 +144,16 @@ where
     /// site. Call it before cloning the app; on a cloned app it changes
     /// nothing.
     #[must_use]
-    pub fn with_sharing<SS, G, RS, T, X>(mut self, sharing: Sharing<SS, G, RS, T, X>) -> Self
+    pub fn with_sharing<SS, G, RS, CS, US, T, X>(
+        mut self,
+        sharing: Sharing<SS, G, RS, CS, US, T, X>,
+    ) -> Self
     where
         SS: ShareStore + 'static,
         G: GrantStore + 'static,
         RS: ResponseStore + 'static,
+        CS: CommentStore + 'static,
+        US: CursorStore + 'static,
         T: TokenStore + 'static,
         X: Recipients + 'static,
     {
@@ -209,11 +216,11 @@ where
     pub(crate) async fn sweep_forever(self) {
         loop {
             tasks::tick(self.shared.limits.sweep_every).await;
-            self.sweep();
+            self.sweep().await;
         }
     }
 
-    pub(crate) fn sweep(&self) {
+    pub(crate) async fn sweep(&self) {
         let shared = &self.shared;
         let now = shared.clock.now();
         if let Site::Local { gate, state } = &shared.site {
@@ -224,7 +231,7 @@ where
         shared.forms.expire(now);
         for session in shared.handover.expire(now) {
             if let Some(oidc) = shared.site.oidc() {
-                oidc.sign_out(&session);
+                let _ = oidc.sign_out(&session).await;
             }
         }
     }

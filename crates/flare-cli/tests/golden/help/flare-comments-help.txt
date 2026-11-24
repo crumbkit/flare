@@ -1,0 +1,38 @@
+List a flare's comments and replies
+
+Usage: flare comments [OPTIONS] <FLARE>
+
+Arguments:
+  <FLARE>
+          The flare whose comments to list
+
+Options:
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare comments 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+          List a flare's comments, each followed by its replies
+
+Columns:
+  id       The comment's or reply's id.
+  parent   The comment a reply answers; absent for a comment.
+  author   The author's identifier.
+  at       When it was written, in RFC 3339 UTC.
+  edited   When its text last changed, in RFC 3339 UTC.
+  deleted  Whether its author deleted it.
+  body     Its text; absent once deleted.
+
+Effects: read-only, closed-world.

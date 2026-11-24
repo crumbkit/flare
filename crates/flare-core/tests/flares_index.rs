@@ -6,7 +6,10 @@
 mod instrumented_responses;
 
 use flare_core::contract::block_on;
-use flare_core::memory::{MemoryGrantStore, MemoryShareStore};
+use flare_core::memory::{
+    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
+    MemoryShareStore,
+};
 use flare_core::{
     ActivityPage, Creators, DocumentText, Email, FlareError, Flares, MAX_EXAMINED, NewEntry,
     NewFlare, NewLink, Position, Principal, PrincipalId, Reader, ResponseStore, ShareContent,
@@ -15,7 +18,8 @@ use flare_core::{
 use instrumented_responses::Instrumented;
 use std::sync::atomic::Ordering;
 
-type Service = Flares<MemoryShareStore, MemoryGrantStore, Instrumented>;
+type Service =
+    Flares<MemoryShareStore, MemoryGrantStore, Instrumented, MemoryCommentStore, MemoryCursorStore>;
 
 fn email(name: &str) -> Email {
     Email::try_from(format!("{name}@example.com").as_str()).unwrap()
@@ -53,10 +57,13 @@ fn flare(n: u16, with: &[&str], re: &[u16]) -> NewFlare {
 }
 
 fn service() -> Service {
+    let sequence = MemorySequence::new();
     Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
-        Instrumented::default(),
+        Instrumented::over(MemoryResponseStore::with_sequence(sequence.clone())),
+        MemoryCommentStore::with_sequence(sequence),
+        MemoryCursorStore::new(),
         Creators::Everyone,
     )
 }
@@ -108,6 +115,7 @@ fn activity(flares: &Service, who: &str, flare: u16, after: Position) -> Activit
 fn shown(page: &ActivityPage) -> Vec<ShareId> {
     page.items
         .iter()
+        .filter_map(|item| item.as_response())
         .map(|item| item.response.id().clone())
         .collect()
 }
