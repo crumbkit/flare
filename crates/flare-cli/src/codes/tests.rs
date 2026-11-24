@@ -33,7 +33,7 @@ fn program_unavailable_prints_the_program_it_names_and_gives_it_as_a_field() {
 }
 
 #[test]
-fn state_unusable_prints_the_directory_it_names_and_gives_it_as_a_field() {
+fn state_unusable_prints_its_message_as_given_and_gives_the_path_as_a_field() {
     let named = Failed::StateUnusable {
         path: Some("/state/flare/board/key".to_owned()),
         problem: "/state/flare/board/key: Not a directory (os error 20)".to_owned(),
@@ -47,12 +47,15 @@ fn state_unusable_prints_the_directory_it_names_and_gives_it_as_a_field() {
     );
     let unnamed = Failed::StateUnusable {
         path: None,
-        problem: "the saved login could not be used: it is not JSON".to_owned(),
+        problem:
+            "neither XDG_STATE_HOME nor HOME is an absolute path, so flare has no state directory"
+                .to_owned(),
     };
     assert_eq!(
         shown(&unnamed),
         (
-            "the saved login could not be used: it is not JSON".to_owned(),
+            "neither XDG_STATE_HOME nor HOME is an absolute path, so flare has no state directory"
+                .to_owned(),
             vec![Field::new("path", None::<&str>)]
         )
     );

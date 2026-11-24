@@ -190,6 +190,18 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- A `flare::state::unusable` failure from the saved login or the login
+  labels file now names the file at the start of its message, so the text
+  form, which prints no fields, says which file to fix. A login.json that
+  flare cannot read or parse reads "the saved login <path> could not be
+  used: <reason>", and a labels.json that flare cannot read, parse or
+  write, or that would pass 64 KiB, reads "the login labels file <path>
+  could not be used: <reason>". A state directory that flare cannot create
+  for either file reads "the state directory <path> could not be created:
+  <reason>". A file past its size limit gives the reason "it is longer than
+  4096 bytes" or "it is longer than 65536 bytes". The `path` field keeps
+  its value. The failure's help line now reads "fix or remove the state
+  file or directory that the problem names".
 - Three failures give the file they name in a field of the JSON failure
   document, so an agent no longer reads the path out of the message.
   `flare::board::program_unavailable` gives `program`, the board program
@@ -276,6 +288,13 @@ This file records the notable changes to flare. The format follows
 
 ### Fixed
 
+- A release run whose `release` job cannot read whether the tag already has
+  a release, because of a token, rate-limit, network or GitHub fault, now
+  prints gh's error and `could not read whether <tag> has a release, so the
+  job made no release; re-run the failed jobs once GitHub answers`, and
+  fails before any write. Before this fix the job treated every failed read
+  as "no release" and ran `gh release create`, which hid the cause and could
+  give a tag a second release beside a draft that an earlier run left.
 - `flare share` and `flare share --update` no longer tell the caller to run
   the same command again after the server answers with success and flare
   cannot read the answer, or does not answer a request it was sent,
@@ -315,9 +334,9 @@ This file records the notable changes to flare. The format follows
   `board::put::head_moved` leaves behind. The page's first committed
   version names no previous version. Before, every later publish of that
   page answered `Unavailable` until a person deleted the files.
-- `save_binding`, `move_binding` and a publish made from a page version
-  refuse a version that `HEAD` cannot reach, such as one on another branch
-  or one a reset orphaned, so a binding can no longer pin a version that
-  `versions` does not list. Reading a version with `at` still reads one
-  commit. `docs/board-store.md` holds flare-board's state tables, crash
-  points, invariants and accepted gaps.
+- `save_binding`, `move_binding`, and a publish or a binding whose origin
+  is a page version refuse a version that `HEAD` cannot reach, such as one
+  on another branch or one a reset orphaned, so a binding can no longer pin
+  a version that `versions` does not list. Reading a version with `at`
+  still reads one commit. `docs/board-store.md` holds flare-board's state
+  tables, crash points, invariants and accepted gaps.
