@@ -16,7 +16,7 @@ mod wire;
 pub use cursor::{Cursor, CursorError, ListScope, ShareCursor};
 pub use groups::{
     GrantEntry, GrantList, GrantState, GranteeKind, MembersChanged, MembersRequest, RevokeRequest,
-    Revoked, TeamDeleted, TeamList, TeamRequest, TeamRole, TeamShown, TeamSummary,
+    Revoked, TeamDeleted, TeamList, TeamRequest, TeamRole, TeamShown, TeamSummary, TransferRequest,
 };
 pub use problem::{ApiCode, ProblemDocument, Recovery};
 pub use time::utc;

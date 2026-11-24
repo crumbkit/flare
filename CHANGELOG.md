@@ -8,15 +8,20 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
-- `flare teams create`, `add`, `remove`, `list`, `show` and `delete` manage
-  named teams of people. `flare share` and `flare grant` grant a share to a
-  team with `--with team:<name>`, and the owner grants it to everyone
-  signed in with `--with everyone`. `flare revoke` ends grants and `flare grants`
-  lists them. Deleting a team leaves its grants as dormant grants that open
-  nothing, and a team name is never reused. An everyone grant opens the
-  share only to the people the `admit` rule admits, and an `anyone` admit
-  rule refuses it. A share's Admin sees a grant to a team they are not in
-  as `team:*`. `docs/teams.md` gives the life of teams and group grants.
+- `flare teams create`, `add`, `remove`, `list`, `show`, `transfer` and
+  `delete` manage named teams of people. `flare share` and `flare grant`
+  grant a share to a team with `--with team:<name>`, and the owner grants it
+  to everyone signed in with `--with everyone` or `--everyone`.
+  `flare revoke` ends grants and `flare grants` lists them. Deleting a team
+  removes its grant from every share and then frees its name, and a new
+  team of that name gets none of the old team's access; a delete that
+  stops midway goes on when the owner runs it again. `flare teams transfer`
+  hands a team to one of its members. An everyone grant opens the share
+  only to the people the `admit` rule admits, widens with an `emails` list,
+  and is refused under an `anyone` rule. A share's Admin sees a grant to a
+  team they are not in as `team:*`. Team members see the responses that
+  their team can open in `flare activity`. `docs/teams.md` gives the life
+  of teams and group grants.
 - `GET /api/shares` answers `next`, a cursor, when more shares follow the
   page, and takes `cursor=<cursor>` to read the page after it.
   `flare shares --cursor <CURSOR>` resumes a list, a list cut by `--limit`

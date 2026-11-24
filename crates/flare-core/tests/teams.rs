@@ -126,14 +126,10 @@ fn only_a_creator_may_create_a_team() {
 }
 
 #[test]
-fn a_team_name_is_never_reused_even_after_the_team_is_deleted() {
+fn a_team_name_in_use_is_taken() {
     let flares = with_design();
-    let teams = flares.shares().teams();
     let taken = block_on(flares.create_team(&bob(), team("design"), at(2)));
     assert_eq!(taken, Err(TeamsError::Taken));
-    block_on(teams.delete(&email("alice@example.com"), &team("design"))).unwrap();
-    let still_taken = block_on(flares.create_team(&bob(), team("design"), at(3)));
-    assert_eq!(still_taken, Err(TeamsError::Taken));
 }
 
 #[test]
@@ -143,10 +139,6 @@ fn a_repeated_create_by_the_teams_owner_answers_the_team_whole_and_keeps_its_mem
     assert_eq!(again.owner(), &email("alice@example.com"));
     assert_eq!(again.members(), 2);
     assert_eq!(again.created(), at(1));
-    let teams = flares.shares().teams();
-    block_on(teams.delete(&email("alice@example.com"), &team("design"))).unwrap();
-    let after_delete = block_on(flares.create_team(&alice(), team("design"), at(6)));
-    assert_eq!(after_delete, Err(TeamsError::Taken));
 }
 
 #[test]
@@ -285,22 +277,6 @@ fn a_direct_grant_keeps_access_after_its_holder_leaves_the_team() {
     block_on(teams.remove(&bob_address, &team("design"), &bob_address)).unwrap();
     assert_eq!(opens(&flares, &bob(), 1), Err(ShareError::NotFound));
     assert_eq!(opens(&flares, &bob(), 2), Ok(Standing::Reader));
-}
-
-#[test]
-fn a_deleted_teams_grant_opens_nothing_and_its_owner_still_lists_and_removes_it() {
-    let flares = with_design();
-    block_on(flares.share(&alice(), flare(1, &[], vec![design()]), at(2))).unwrap();
-    let teams = flares.shares().teams();
-    block_on(teams.delete(&email("alice@example.com"), &team("design"))).unwrap();
-    assert_eq!(opens(&flares, &bob(), 1), Err(ShareError::NotFound));
-    let listed = block_on(flares.shares().listed_grants(&alice(), &id(1))).unwrap();
-    assert_eq!(listed.len(), 1);
-    assert!(listed[0].dormant);
-    let revoked = block_on(flares.revoke(&alice(), &id(1), &[], &[design()])).unwrap();
-    assert_eq!(revoked.groups, vec![design()]);
-    let after = block_on(flares.shares().listed_grants(&alice(), &id(1))).unwrap();
-    assert!(after.is_empty());
 }
 
 #[test]

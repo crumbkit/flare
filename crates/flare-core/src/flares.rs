@@ -27,12 +27,14 @@ mod groups;
 mod index;
 mod owners;
 mod people;
+mod team_life;
 
 pub use activity::{ActivityItem, ActivityPage, MAX_EXAMINED};
 pub use groups::Revoked;
 pub use people::{
     AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
 };
+pub use team_life::{MAX_SWEPT, TeamDeletion};
 
 use crate::auth::Principal;
 use crate::email::Email;

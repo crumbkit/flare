@@ -45,7 +45,8 @@ pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
     ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
-    MAX_EXAMINED, MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients, Revoked,
+    MAX_EXAMINED, MAX_FLARES, MAX_SWEPT, NamedRecipients, NewFlare, RecipientError, Recipients,
+    Revoked, TeamDeletion,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};

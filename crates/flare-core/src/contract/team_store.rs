@@ -79,12 +79,12 @@ pub async fn a_created_team_reads_back_with_its_owner_as_its_only_member<S: Team
     })
 }
 
-/// A used name is taken, even after its team is deleted.
+/// A name in use is taken while its team is active or deleting.
 ///
 /// # Errors
 ///
-/// Returns a [`Violation`] of [`Clause::AUsedTeamNameIsTaken`].
-pub async fn a_used_name_is_taken_even_after_its_team_is_deleted<S: TeamStore>(
+/// Returns a [`Violation`] of [`Clause::ATeamNameInUseIsTaken`].
+pub async fn a_name_is_taken_while_its_team_is_active_or_deleting<S: TeamStore>(
     store: &S,
     fixture: &TeamFixture,
 ) -> Result<(), Violation> {
@@ -96,12 +96,12 @@ pub async fn a_used_name_is_taken_even_after_its_team_is_deleted<S: TeamStore>(
         TeamState::Active,
         1,
     );
-    let clause = Clause::AUsedTeamNameIsTaken;
+    let clause = Clause::ATeamNameInUseIsTaken;
     let again = store.create(&other).await;
     ensure(again == Err(TeamStoreError::Taken), clause, || {
         format!("{again:?}")
     })?;
-    unexpected(store.mark_deleted(&fixture.name).await)?;
+    unexpected(store.mark_deleting(&fixture.name).await)?;
     let after = store.create(&other).await;
     ensure(after == Err(TeamStoreError::Taken), clause, || {
         format!("{after:?}")
@@ -230,7 +230,7 @@ pub async fn a_deleted_or_missing_team_refuses_a_member<S: TeamStore>(
         format!("missing {missing:?}")
     })?;
     created(store, fixture).await?;
-    unexpected(store.mark_deleted(&fixture.name).await)?;
+    unexpected(store.mark_deleting(&fixture.name).await)?;
     let deleted = store.add(&fixture.name, &fixture.bob).await;
     ensure(deleted == Err(TeamStoreError::NotFound), clause, || {
         format!("deleted {deleted:?}")
@@ -239,30 +239,115 @@ pub async fn a_deleted_or_missing_team_refuses_a_member<S: TeamStore>(
     ensure(bobs.is_empty(), clause, || format!("{bobs:?}"))
 }
 
-/// A deleted team keeps its owner, and marking it again changes nothing.
+/// A deleting team keeps its owner, and marking it again changes nothing.
 ///
 /// # Errors
 ///
-/// Returns a [`Violation`] of [`Clause::ADeletedTeamKeepsItsOwner`].
-pub async fn a_deleted_team_keeps_its_owner_and_its_state<S: TeamStore>(
+/// Returns a [`Violation`] of [`Clause::ADeletingTeamKeepsItsOwner`].
+pub async fn a_deleting_team_keeps_its_owner_and_its_state<S: TeamStore>(
     store: &S,
     fixture: &TeamFixture,
 ) -> Result<(), Violation> {
     created(store, fixture).await?;
-    unexpected(store.mark_deleted(&fixture.name).await)?;
-    unexpected(store.mark_deleted(&fixture.name).await)?;
+    unexpected(store.mark_deleting(&fixture.name).await)?;
+    unexpected(store.mark_deleting(&fixture.name).await)?;
     let held = unexpected(store.get(&fixture.name).await)?;
-    let clause = Clause::ADeletedTeamKeepsItsOwner;
+    let clause = Clause::ADeletingTeamKeepsItsOwner;
     ensure(
         held.as_ref().is_some_and(|team| {
-            team.state() == TeamState::Deleted && team.owner() == &fixture.owner
+            team.state() == TeamState::Deleting && team.owner() == &fixture.owner
         }),
         clause,
         || format!("{held:?}"),
     )?;
     let missing = parsed(TeamName::try_from("missing"))?;
-    let refused = store.mark_deleted(&missing).await;
+    let refused = store.mark_deleting(&missing).await;
     ensure(refused == Err(TeamStoreError::NotFound), clause, || {
         format!("{refused:?}")
+    })
+}
+
+/// Forgetting a deleting team with no members frees its name, and nothing
+/// else is forgotten.
+///
+/// # Errors
+///
+/// Returns a [`Violation`] of [`Clause::AForgottenTeamFreesItsName`].
+pub async fn forgetting_a_deleting_team_with_no_members_frees_its_name<S: TeamStore>(
+    store: &S,
+    fixture: &TeamFixture,
+) -> Result<(), Violation> {
+    let clause = Clause::AForgottenTeamFreesItsName;
+    let name = &fixture.name;
+    created(store, fixture).await?;
+    let active = store.forget(name).await;
+    ensure(active == Err(TeamStoreError::NotFound), clause, || {
+        format!("active {active:?}")
+    })?;
+    unexpected(store.mark_deleting(name).await)?;
+    let with_members = store.forget(name).await;
+    ensure(
+        with_members == Err(TeamStoreError::NotFound),
+        clause,
+        || format!("with members {with_members:?}"),
+    )?;
+    unexpected(store.remove(name, &fixture.owner).await)?;
+    let forgot = unexpected(store.forget(name).await)?;
+    ensure(forgot, clause, || "the team was not forgotten".to_owned())?;
+    let read = unexpected(store.get(name).await)?;
+    ensure(read.is_none(), clause, || format!("{read:?}"))?;
+    let again = unexpected(store.forget(name).await)?;
+    ensure(!again, clause, || {
+        "a second forget answered true".to_owned()
+    })?;
+    let other = Team::new(
+        name.clone(),
+        fixture.bob.clone(),
+        Timestamp::from_secs(2),
+        TeamState::Active,
+        1,
+    );
+    let reused = store.create(&other).await;
+    ensure(reused == Ok(()), clause, || format!("reuse {reused:?}"))?;
+    let members = unexpected(store.members(name).await)?;
+    ensure(members == vec![fixture.bob.clone()], clause, || {
+        format!("{} members", members.len())
+    })
+}
+
+/// A transfer moves an active team to a member, and refuses anything else.
+///
+/// # Errors
+///
+/// Returns a [`Violation`] of [`Clause::ATransferNeedsTheOwnerAndAMember`].
+pub async fn a_transfer_needs_the_owner_and_a_member<S: TeamStore>(
+    store: &S,
+    fixture: &TeamFixture,
+) -> Result<(), Violation> {
+    let clause = Clause::ATransferNeedsTheOwnerAndAMember;
+    let name = &fixture.name;
+    created(store, fixture).await?;
+    let to_stranger = store.transfer(name, &fixture.owner, &fixture.bob).await;
+    ensure(to_stranger == Err(TeamStoreError::NotFound), clause, || {
+        format!("to a stranger {to_stranger:?}")
+    })?;
+    unexpected(store.add(name, &fixture.bob).await)?;
+    let by_other = store.transfer(name, &fixture.carol, &fixture.bob).await;
+    ensure(by_other == Err(TeamStoreError::NotFound), clause, || {
+        format!("from a non-owner {by_other:?}")
+    })?;
+    unexpected(store.transfer(name, &fixture.owner, &fixture.bob).await)?;
+    let read = unexpected(store.get(name).await)?;
+    ensure(
+        read.as_ref().is_some_and(|team| {
+            team.owner() == &fixture.bob && team.members() == 2 && team.state() == TeamState::Active
+        }),
+        clause,
+        || format!("{read:?}"),
+    )?;
+    unexpected(store.mark_deleting(name).await)?;
+    let deleting = store.transfer(name, &fixture.bob, &fixture.owner).await;
+    ensure(deleting == Err(TeamStoreError::NotFound), clause, || {
+        format!("deleting {deleting:?}")
     })
 }

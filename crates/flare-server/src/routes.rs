@@ -114,7 +114,7 @@ const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
 const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 31] = [
+pub(crate) static ROUTES: [Route; 32] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -273,8 +273,9 @@ pub(crate) static ROUTES: [Route; 31] = [
         Handler::Api(ApiRoute::ListTeams),
         Sites::Hosted,
     ),
-    // The members routes come before the team's own, whose pattern ends in
-    // <name> and would otherwise take `design/members` as the name.
+    // The members and owner routes come before the team's own, whose
+    // pattern ends in <name> and would otherwise take `design/members` as
+    // the name.
     route(
         Method::POST,
         "/api/teams/<name>/members",
@@ -287,6 +288,13 @@ pub(crate) static ROUTES: [Route; 31] = [
         "/api/teams/<name>/members",
         TOKEN,
         Handler::Api(ApiRoute::RemoveMembers),
+        Sites::Hosted,
+    ),
+    route(
+        Method::PUT,
+        "/api/teams/<name>/owner",
+        TOKEN,
+        Handler::Api(ApiRoute::TransferTeam),
         Sites::Hosted,
     ),
     route(

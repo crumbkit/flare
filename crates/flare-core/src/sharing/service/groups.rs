@@ -127,7 +127,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     }
 
     /// The grants of a share, for its owner and its admins, each marked
-    /// dormant when it is a grant to a deleted team. For an admin, a grant
+    /// dormant when it is a grant to a team that is not active. For an admin, a grant
     /// to a team the admin does not belong to is marked hidden, so no one
     /// outside a team learns its name.
     ///

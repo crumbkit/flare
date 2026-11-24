@@ -54,6 +54,8 @@ pub(crate) enum ApiRoute {
     ShowTeam,
     /// `DELETE /api/teams/{name}`.
     DeleteTeam,
+    /// `PUT /api/teams/{name}/owner`.
+    TransferTeam,
     /// `POST /api/teams/{name}/members`.
     AddMembers,
     /// `DELETE /api/teams/{name}/members`.
@@ -296,6 +298,9 @@ where
         ApiRoute::ListTeams => Ok(Call::ListTeams),
         ApiRoute::ShowTeam => Ok(Call::ShowTeam(name.to_owned())),
         ApiRoute::DeleteTeam => Ok(Call::DeleteTeam(name.to_owned())),
+        ApiRoute::TransferTeam => body_of(ctx, body)
+            .await?
+            .map(|request| Call::TransferTeam(name.to_owned(), request)),
         ApiRoute::OpenShare => version(ctx).map(|number| Call::Open(name.to_owned(), number)),
         ApiRoute::RevokeToken => Ok(Call::Revoke(name.to_owned())),
         ApiRoute::ListShares => {

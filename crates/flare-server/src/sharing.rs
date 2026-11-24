@@ -33,7 +33,7 @@ use convert::content_error;
 use flare_auth_oidc::Admit;
 use flare_contract::{
     ApiCode, ExchangeRequest, Format, GrantRequest, MembersRequest, RevokeRequest, ShareRequest,
-    TeamRequest, VersionRequest,
+    TeamRequest, TransferRequest, VersionRequest,
 };
 use flare_core::{
     Admission, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal, ShareTitle,
@@ -126,6 +126,8 @@ pub(crate) enum Call {
     ShowTeam(String),
     /// `DELETE /api/teams/{name}`.
     DeleteTeam(String),
+    /// `PUT /api/teams/{name}/owner`.
+    TransferTeam(String, TransferRequest),
     /// `POST /api/teams/{name}/members`.
     AddMembers(String, MembersRequest),
     /// `DELETE /api/teams/{name}/members`.

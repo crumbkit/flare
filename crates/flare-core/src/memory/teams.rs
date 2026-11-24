@@ -95,14 +95,51 @@ impl TeamStore for MemoryTeamStore {
         Ok(true)
     }
 
-    async fn mark_deleted(&self, name: &TeamName) -> Result<(), TeamStoreError> {
+    async fn mark_deleting(&self, name: &TeamName) -> Result<(), TeamStoreError> {
         let mut state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
         let held = state.get_mut(name).ok_or(TeamStoreError::NotFound)?;
         held.team = Team::new(
             held.team.name().clone(),
             held.team.owner().clone(),
             held.team.created(),
-            TeamState::Deleted,
+            TeamState::Deleting,
+            held.team.members(),
+        );
+        Ok(())
+    }
+
+    async fn forget(&self, name: &TeamName) -> Result<bool, TeamStoreError> {
+        let mut state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
+        match state.get(name) {
+            None => Ok(false),
+            Some(held) if held.team.state() == TeamState::Deleting && held.members.is_empty() => {
+                state.remove(name);
+                Ok(true)
+            }
+            Some(_) => Err(TeamStoreError::NotFound),
+        }
+    }
+
+    async fn transfer(
+        &self,
+        name: &TeamName,
+        from: &Email,
+        to: &Email,
+    ) -> Result<(), TeamStoreError> {
+        let mut state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
+        let held = state
+            .get_mut(name)
+            .filter(|held| {
+                held.team.state() == TeamState::Active
+                    && held.team.owner() == from
+                    && held.members.contains_key(to.as_str())
+            })
+            .ok_or(TeamStoreError::NotFound)?;
+        held.team = Team::new(
+            held.team.name().clone(),
+            to.clone(),
+            held.team.created(),
+            TeamState::Active,
             held.team.members(),
         );
         Ok(())

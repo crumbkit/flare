@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "flare/teams-delete/v1",
-  "description": "The deleted team. Its grants stay dormant and its name is never used again.",
+  "title": "flare/teams-delete/v2",
+  "description": "The deleted team and how many flares' grants to it were removed. Once finished, its name is free for a new team, which gets none of the old team's access.",
   "type": "object",
   "properties": {
     "cut": {
@@ -89,7 +89,7 @@
     },
     "schema": {
       "description": "The id of this document.",
-      "const": "flare/teams-delete/v1"
+      "const": "flare/teams-delete/v2"
     },
     "total": {
       "description": "The number of rows that matched, of which data holds one page. It is absent when the tool did not count the rows.",
@@ -108,26 +108,28 @@
   ],
   "$defs": {
     "TeamDeletedRow": {
-      "description": "A team that `flare teams delete` deleted.",
+      "description": "What `flare teams delete` did to one team.",
       "type": "object",
       "properties": {
-        "grants_dormant": {
-          "description": "Always true: each flare's grant to the team stays and opens nothing until the flare's owner revokes it.",
+        "finished": {
+          "description": "Whether the team is gone: its grant removed from every flare, its members removed and its name free. False only when the command stopped before the server finished; running it again goes on.",
           "type": "boolean"
         },
-        "name_reusable": {
-          "description": "Always false: the name is never used again, so no new team can take over the dormant grants.",
-          "type": "boolean"
+        "grants_removed": {
+          "description": "How many flares' grants to the team this command removed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
         },
         "team": {
-          "description": "The deleted team's name.",
+          "description": "The team's name.",
           "type": "string"
         }
       },
       "required": [
         "team",
-        "grants_dormant",
-        "name_reusable"
+        "finished",
+        "grants_removed"
       ]
     }
   }

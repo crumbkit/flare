@@ -1,6 +1,5 @@
 //! [`Flares::grant_all`], which grants an existing share to more people,
-//! teams and everyone, [`Flares::revoke`], which ends grants, and
-//! [`Flares::create_team`], which applies the creators rule to a new team.
+//! teams and everyone, and [`Flares::revoke`], which ends grants.
 
 use super::{FlareError, Flared, Flares, once_each};
 use crate::auth::Principal;
@@ -9,7 +8,7 @@ use crate::grant::Role;
 use crate::share::ShareId;
 use crate::sharing::{ShareError, Standing};
 use crate::store::{GrantStore, ResponseStore, ShareStore};
-use crate::teams::{Group, Team, TeamName, Teams, TeamsError};
+use crate::teams::{Group, Teams};
 use crate::time::Timestamp;
 
 /// The grants that a [`Flares::revoke`] ended.
@@ -38,27 +37,6 @@ fn failed(id: &ShareId, written: usize, cause: ShareError) -> FlareError {
 }
 
 impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T> {
-    /// Creates a team owned by the caller, who must be a creator.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TeamsError::NotACreator`] and the refusals of
-    /// [`Teams::create`].
-    pub async fn create_team(
-        &self,
-        who: &Principal,
-        name: TeamName,
-        at: Timestamp,
-    ) -> Result<Team, TeamsError> {
-        let Some(owner) = who.email() else {
-            return Err(TeamsError::NotACreator);
-        };
-        if !self.creators.admits(who) {
-            return Err(TeamsError::NotACreator);
-        }
-        self.shares.teams().create(owner, name, at).await
-    }
-
     /// Grants Reader on an existing share to each person in `with` who
     /// holds no grant yet, and, for the share's owner, records each flare
     /// in `re` as one it responds to. A person who already holds a role

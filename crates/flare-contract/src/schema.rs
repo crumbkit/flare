@@ -4,7 +4,7 @@
 use crate::{
     ActivityPage, ExchangeRequest, GrantList, GrantRequest, MembersChanged, MembersRequest,
     OpenedShare, ProblemDocument, RevokeRequest, Revoked, ShareList, ShareRequest, Shared,
-    TeamDeleted, TeamList, TeamRequest, TeamShown, TokenIssued, VersionRequest,
+    TeamDeleted, TeamList, TeamRequest, TeamShown, TokenIssued, TransferRequest, VersionRequest,
 };
 use schemars::generate::SchemaSettings;
 use std::fmt;
@@ -36,6 +36,7 @@ pub fn generate() -> String {
     generator.subschema_for::<TeamShown>();
     generator.subschema_for::<MembersChanged>();
     generator.subschema_for::<TeamDeleted>();
+    generator.subschema_for::<TransferRequest>();
     generator.subschema_for::<ProblemDocument>();
     let defs = generator.take_definitions(true);
     let document = serde_json::json!({

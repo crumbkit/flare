@@ -158,7 +158,7 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
 /// Runs one `flare teams` command.
 fn run_teams(mut run: crumbkit::Run, command: TeamsVerb, env: &Snapshot) -> ExitCode {
     use documents::teams::{
-        TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
+        TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW, TEAMS_TRANSFER,
     };
     match command {
         TeamsVerb::Create(args) => {
@@ -189,9 +189,20 @@ fn run_teams(mut run: crumbkit::Run, command: TeamsVerb, env: &Snapshot) -> Exit
             let result = block_on(false, teams::show(&args.names, env));
             crumbkit::finish(run, TEAMS_SHOW, result)
         }
+        TeamsVerb::Transfer(args) => {
+            let question = format!(
+                "Hand the team {} to {}? They become its owner, and you can no longer manage it.",
+                args.name, args.to
+            );
+            if let Err(refused) = run.confirm(args.yes, &question) {
+                return crumbkit::finish(run, TEAMS_TRANSFER, Err(refused));
+            }
+            let result = block_on(false, teams::transfer(&args.name, &args.to, env));
+            crumbkit::finish(run, TEAMS_TRANSFER, result)
+        }
         TeamsVerb::Delete(args) => {
             let question = format!(
-                "Delete the team {}? Its grants stay and open nothing, and its name is never used again.",
+                "Delete the team {}? Its grant is removed from every flare, its members lose that access, and its name becomes free.",
                 args.name
             );
             if let Err(refused) = run.confirm(args.yes, &question) {

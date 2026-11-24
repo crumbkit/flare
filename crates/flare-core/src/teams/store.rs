@@ -11,9 +11,9 @@ use std::future::Future;
 pub enum TeamState {
     /// The team has members, and its grants open shares to them.
     Active,
-    /// The owner deleted the team. Its grants stay stored and open nothing,
-    /// and its name is never used again.
-    Deleted,
+    /// The owner started deleting the team. It opens nothing, its name
+    /// stays taken, and its grants and member pairs are being removed.
+    Deleting,
 }
 
 /// A team as a store holds it.
@@ -93,7 +93,7 @@ impl fmt::Debug for Team {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum TeamStoreError {
-    /// A team with the name exists or existed. Nothing was written.
+    /// A team with the name exists. Nothing was written.
     #[error("the team name is taken")]
     Taken,
     /// No active team has the name. Nothing was written.
@@ -118,7 +118,7 @@ pub enum TeamStoreError {
 /// [`Teams`](crate::Teams) service decides that.
 pub trait TeamStore: Send + Sync {
     /// Writes an active team with its owner as its one member, when no team
-    /// has ever had the name.
+    /// has the name.
     ///
     /// # Errors
     ///
@@ -126,7 +126,7 @@ pub trait TeamStore: Send + Sync {
     /// [`TeamStoreError::Unavailable`].
     fn create(&self, team: &Team) -> impl Future<Output = Result<(), TeamStoreError>> + Send;
 
-    /// The team with the name, active or deleted, or `None`.
+    /// The team with the name, active or deleting, or `None`.
     ///
     /// # Errors
     ///
@@ -141,7 +141,7 @@ pub trait TeamStore: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`TeamStoreError::NotFound`] for a missing or deleted team,
+    /// Returns [`TeamStoreError::NotFound`] for a missing or deleting team,
     /// [`TeamStoreError::Full`] and [`TeamStoreError::Unavailable`].
     fn add(
         &self,
@@ -149,7 +149,7 @@ pub trait TeamStore: Send + Sync {
         member: &Email,
     ) -> impl Future<Output = Result<bool, TeamStoreError>> + Send;
 
-    /// Removes `member` from the team, active or deleted. Answers `false`
+    /// Removes `member` from the team, active or deleting. Answers `false`
     /// and writes nothing when the person is not a member.
     ///
     /// # Errors
@@ -161,16 +161,40 @@ pub trait TeamStore: Send + Sync {
         member: &Email,
     ) -> impl Future<Output = Result<bool, TeamStoreError>> + Send;
 
-    /// Marks the team deleted. Its member pairs stay until the caller
-    /// removes them. Marking a deleted team again changes nothing.
+    /// Marks the team deleting. Its member pairs stay until the caller
+    /// removes them. Marking a deleting team again changes nothing.
     ///
     /// # Errors
     ///
     /// Returns [`TeamStoreError::NotFound`] when no team has the name, and
     /// [`TeamStoreError::Unavailable`].
-    fn mark_deleted(
+    fn mark_deleting(
         &self,
         name: &TeamName,
+    ) -> impl Future<Output = Result<(), TeamStoreError>> + Send;
+
+    /// Removes a deleting team that has no member left, which frees its
+    /// name. Answers `false` and writes nothing when no team has the name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamStoreError::NotFound`] for an active team or one that
+    /// still has members, and [`TeamStoreError::Unavailable`].
+    fn forget(&self, name: &TeamName) -> impl Future<Output = Result<bool, TeamStoreError>> + Send;
+
+    /// Makes `to` the owner of the active team that `from` owns, while
+    /// `to` is a member.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamStoreError::NotFound`] when no active team of `from`
+    /// has the name or `to` is not its member, and
+    /// [`TeamStoreError::Unavailable`].
+    fn transfer(
+        &self,
+        name: &TeamName,
+        from: &Email,
+        to: &Email,
     ) -> impl Future<Output = Result<(), TeamStoreError>> + Send;
 
     /// The members of the team, in address order. A team has at most
@@ -185,7 +209,7 @@ pub trait TeamStore: Send + Sync {
     ) -> impl Future<Output = Result<Vec<Email>, TeamStoreError>> + Send;
 
     /// The names of the teams that `member` belongs to, in name order,
-    /// including a deleted team whose pairs are not yet removed.
+    /// including a deleting team whose pairs are not yet removed.
     ///
     /// # Errors
     ///

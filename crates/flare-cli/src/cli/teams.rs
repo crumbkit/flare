@@ -1,7 +1,7 @@
 //! The arguments and help of `flare teams`.
 
 use crate::documents::teams::{
-    TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW,
+    TEAMS_ADD, TEAMS_CREATE, TEAMS_DELETE, TEAMS_LIST, TEAMS_REMOVE, TEAMS_SHOW, TEAMS_TRANSFER,
 };
 use clap::{Args, Subcommand};
 use crumbkit::help::{Effects, Example, Leaf};
@@ -23,7 +23,9 @@ pub(crate) enum TeamsVerb {
     List(ListTeamsArgs),
     /// Show the members of teams you belong to
     Show(ShowTeamsArgs),
-    /// Delete a team you own; its grants stay and open nothing, and its name is never used again
+    /// Hand a team you own to one of its members, who becomes its owner
+    Transfer(TransferTeamArgs),
+    /// Delete a team you own, removing its grant from every flare and freeing its name
     Delete(DeleteTeamArgs),
 }
 
@@ -84,10 +86,24 @@ pub(crate) struct DeleteTeamArgs {
     pub(crate) yes: Yes,
 }
 
+/// The arguments of `flare teams transfer`.
+#[derive(Debug, Args)]
+pub(crate) struct TransferTeamArgs {
+    /// The team's name
+    #[arg(value_name = "NAME")]
+    pub(crate) name: String,
+    /// The member who becomes the owner: an address, or a name the server resolves
+    #[arg(long, value_name = "PERSON")]
+    pub(crate) to: String,
+    /// The confirmation that `--yes` gives without a question.
+    #[command(flatten)]
+    pub(crate) yes: Yes,
+}
+
 /// The help of `flare teams create`.
 pub(super) const CREATE_LEAF: Leaf = Leaf::new(&["teams", "create"])
     .examples(&[Example::new(&["design"], "Create the team design").needs(&["server"])])
-    .effects(Effects::additive())
+    .effects(Effects::additive().idempotent())
     .document(TEAMS_CREATE);
 
 /// The help of `flare teams add`.
@@ -124,6 +140,16 @@ pub(super) const SHOW_LEAF: Leaf = Leaf::new(&["teams", "show"])
     .effects(Effects::read_only())
     .document(TEAMS_SHOW);
 
+/// The help of `flare teams transfer`.
+pub(super) const TRANSFER_LEAF: Leaf = Leaf::new(&["teams", "transfer"])
+    .examples(&[Example::new(
+        &["design", "--to", "jo@example.org", "--yes"],
+        "Hand the team design to its member jo@example.org",
+    )
+    .needs(&["server"])])
+    .effects(Effects::destructive().idempotent())
+    .document(TEAMS_TRANSFER);
+
 /// The help of `flare teams delete`.
 pub(super) const DELETE_LEAF: Leaf = Leaf::new(&["teams", "delete"])
     .examples(&[Example::new(
@@ -131,5 +157,5 @@ pub(super) const DELETE_LEAF: Leaf = Leaf::new(&["teams", "delete"])
         "Delete the team design without a question",
     )
     .needs(&["server"])])
-    .effects(Effects::destructive())
+    .effects(Effects::destructive().idempotent())
     .document(TEAMS_DELETE);

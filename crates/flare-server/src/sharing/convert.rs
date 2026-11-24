@@ -141,6 +141,7 @@ pub(super) fn teams_error(error: TeamsError) -> ApiCode {
         TeamsError::NotFound => ApiCode::TeamNotFound,
         TeamsError::Forbidden => ApiCode::TeamForbidden,
         TeamsError::OwnerCannotLeave => ApiCode::TeamOwnerCannotLeave,
+        TeamsError::NotAMember => ApiCode::TeamNotAMember,
         TeamsError::NotACreator => ApiCode::TeamNotACreator,
         TeamsError::Taken => ApiCode::TeamNameTaken,
         TeamsError::TooManyMembers => ApiCode::TooManyMembers,

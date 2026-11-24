@@ -73,6 +73,8 @@ fn the_team_codes_name_the_teams_area_and_the_everyone_refusal_names_grants() {
         "flare::teams::owner_cannot_leave"
     );
     assert_eq!(ApiCode::TeamOwnerCannotLeave.status(), 409);
+    assert_eq!(ApiCode::TeamNotAMember.text(), "flare::teams::not_a_member");
+    assert_eq!(ApiCode::TeamNotAMember.status(), 409);
     assert_eq!(
         ApiCode::TeamsManagedElsewhere.text(),
         "flare::teams::managed_elsewhere"

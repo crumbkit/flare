@@ -279,8 +279,21 @@ impl TeamStore for RemovalFails {
         self.inner.remove(team, member).await
     }
 
-    async fn mark_deleted(&self, team: &TeamName) -> Result<(), TeamStoreError> {
-        self.inner.mark_deleted(team).await
+    async fn mark_deleting(&self, team: &TeamName) -> Result<(), TeamStoreError> {
+        self.inner.mark_deleting(team).await
+    }
+
+    async fn forget(&self, team: &TeamName) -> Result<bool, TeamStoreError> {
+        self.inner.forget(team).await
+    }
+
+    async fn transfer(
+        &self,
+        team: &TeamName,
+        from: &Email,
+        to: &Email,
+    ) -> Result<(), TeamStoreError> {
+        self.inner.transfer(team, from, to).await
     }
 
     async fn members(&self, team: &TeamName) -> Result<Vec<Email>, TeamStoreError> {
@@ -293,7 +306,7 @@ impl TeamStore for RemovalFails {
 }
 
 #[test]
-fn a_delete_that_stops_before_the_member_pairs_leaves_the_grants_dormant_and_a_repeat_removes_the_pairs()
+fn a_delete_that_stops_before_the_member_pairs_leaves_the_team_deleting_and_a_repeat_frees_the_name()
  {
     let fail = Arc::new(AtomicBool::new(false));
     let store = RemovalFails {
@@ -320,17 +333,19 @@ fn a_delete_that_stops_before_the_member_pairs_leaves_the_grants_dormant_and_a_r
     ))
     .unwrap();
     fail.store(true, Ordering::SeqCst);
-    let stopped = block_on(teams.delete(&owner, &team("design"))).unwrap_err();
+    let stopped = block_on(flares.delete_team(&alice(), &team("design"))).unwrap_err();
     assert_eq!(stopped, TeamsError::Unavailable);
     assert_eq!(
         block_on(flares.shares().open(&bob(), &id(1), None)).unwrap_err(),
         ShareError::NotFound
     );
     assert!(!block_on(teams.teams_of(&member)).unwrap().is_empty());
+    let taken = block_on(flares.create_team(&bob(), team("design"), at(3)));
+    assert_eq!(taken.unwrap_err(), TeamsError::Taken);
     fail.store(false, Ordering::SeqCst);
-    block_on(teams.delete(&owner, &team("design"))).unwrap();
+    let finished = block_on(flares.delete_team(&alice(), &team("design"))).unwrap();
+    assert!(finished.finished);
     assert!(block_on(teams.teams_of(&member)).unwrap().is_empty());
     assert!(block_on(teams.teams_of(&owner)).unwrap().is_empty());
-    let found = block_on(flares.shares().teams().exists(&team("design"))).unwrap();
-    assert!(!found);
+    block_on(flares.create_team(&bob(), team("design"), at(3))).unwrap();
 }

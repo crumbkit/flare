@@ -11,16 +11,21 @@
 //!
 //! | State | Event | Next state | Who |
 //! | --- | --- | --- | --- |
-//! | absent | create with a name never used | active, owner as first member | a creator |
-//! | absent or deleted | create with that name | unchanged, `Taken` | anyone |
+//! | absent | create | active, owner as first member | a creator |
+//! | active or deleting | create with that name | unchanged, `Taken` | anyone but an active team's owner |
 //! | active | add a person | active, one more member pair | the owner |
 //! | active | remove a person | active, one less member pair | the owner, or the member who leaves |
-//! | active | delete | deleted, then every member pair removed | the owner |
-//! | deleted | delete again | deleted, leftover pairs removed | the owner |
+//! | active | transfer to a member | active, with that member as owner | the owner |
+//! | active | delete | deleting | the owner |
+//! | deleting | delete again | deleting, more grants removed, or absent when none are left | the owner |
 //!
-//! A deleted team's grants stay on each share, open nothing and can be
-//! listed and removed by the share's owner. Its name is never used again,
-//! so a new team cannot take over those grants.
+//! A deleting team opens nothing. [`Flares::delete_team`](crate::Flares::delete_team)
+//! marks the team deleting, removes its grant from each share through the
+//! team's list of grants (its team-to-shares index), and then
+//! [`Teams::finish_delete`] removes the member pairs and the team, which
+//! frees the name. A delete that stops midway leaves the team deleting,
+//! and the owner's repeat continues it. A new team of a freed name holds
+//! none of the old team's grants.
 
 mod names;
 mod service;
@@ -38,8 +43,8 @@ use std::future::Future;
 /// team answers [`TeamsError::TooManyMembers`] and writes nothing.
 pub const MAX_MEMBERS: usize = 256;
 
-/// The most active teams one person owns. A create beyond it answers
-/// [`TeamsError::TooManyOwned`] and writes nothing.
+/// The most active teams one person owns. A create or a transfer beyond it
+/// answers [`TeamsError::TooManyOwned`] and writes nothing.
 pub const MAX_TEAMS_OWNED: usize = 20;
 
 /// The most teams one person belongs to. A create or an add beyond it
@@ -65,9 +70,12 @@ pub enum TeamsError {
     /// The caller is not one of the deployment's creators.
     #[error("only the deployment's creators may create a team")]
     NotACreator,
-    /// A team has or had the name. A team name is never reused.
-    #[error("a team with this name exists or existed")]
+    /// A team has the name, active or being deleted.
+    #[error("a team with this name exists")]
     Taken,
+    /// The person a transfer names is not a member of the team.
+    #[error("the new owner must be a member of the team")]
+    NotAMember,
     /// The team has [`MAX_MEMBERS`] members.
     #[error("the team has as many members as one team may have")]
     TooManyMembers,
@@ -122,6 +130,32 @@ pub trait Teams: Send + Sync {
     ///
     /// Returns [`TeamsError::Unavailable`].
     fn exists(&self, team: &TeamName) -> impl Future<Output = Result<bool, TeamsError>> + Send;
+
+    /// Whether a team has the name, active or being deleted. The default
+    /// answers [`Teams::exists`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamsError::Unavailable`].
+    fn taken(&self, team: &TeamName) -> impl Future<Output = Result<bool, TeamsError>> + Send {
+        self.exists(team)
+    }
+
+    /// When the active team with the name was created, or `None` when no
+    /// active team has it. A grant reads it before and after its write, so
+    /// a team deleted, or deleted and created again, in between is seen.
+    /// The default answers from [`Teams::exists`] with one fixed time,
+    /// which suits teams that flare never deletes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamsError::Unavailable`].
+    fn active(
+        &self,
+        team: &TeamName,
+    ) -> impl Future<Output = Result<Option<Timestamp>, TeamsError>> + Send {
+        async move { Ok(self.exists(team).await?.then(|| Timestamp::from_secs(0))) }
+    }
 
     /// The members of an active team.
     ///
@@ -186,8 +220,10 @@ pub trait Teams: Send + Sync {
         async { Err(TeamsError::ManagedElsewhere) }
     }
 
-    /// Deletes the team, for its owner. Its grants stay dormant and its
-    /// name is never reused. A repeat finishes a delete that failed midway.
+    /// Starts deleting the team, for its owner: the team is marked
+    /// deleting and opens nothing from then on. A repeat by the owner of a
+    /// deleting team answers `Ok`. The caller then removes the team's
+    /// grants and calls [`Teams::finish_delete`].
     ///
     /// # Errors
     ///
@@ -198,6 +234,41 @@ pub trait Teams: Send + Sync {
         _actor: &Email,
         _team: &TeamName,
     ) -> impl Future<Output = Result<(), TeamsError>> + Send {
+        async { Err(TeamsError::ManagedElsewhere) }
+    }
+
+    /// Finishes deleting a deleting team, for its owner: removes its member
+    /// pairs and then the team, which frees the name. A repeat after the
+    /// team is gone answers `Ok`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamsError::NotFound`] for an active team or one the
+    /// caller does not own, [`TeamsError::ManagedElsewhere`] and
+    /// [`TeamsError::Unavailable`].
+    fn finish_delete(
+        &self,
+        _actor: &Email,
+        _team: &TeamName,
+    ) -> impl Future<Output = Result<(), TeamsError>> + Send {
+        async { Err(TeamsError::ManagedElsewhere) }
+    }
+
+    /// Hands the team to `to`, a member, for its owner. The former owner
+    /// stays a member. A repeat that finds `to` already the owner answers
+    /// the team as it is.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamsError::NotFound`], [`TeamsError::Forbidden`],
+    /// [`TeamsError::NotAMember`], [`TeamsError::TooManyOwned`],
+    /// [`TeamsError::ManagedElsewhere`] and [`TeamsError::Unavailable`].
+    fn transfer(
+        &self,
+        _actor: &Email,
+        _team: &TeamName,
+        _to: &Email,
+    ) -> impl Future<Output = Result<Team, TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
     }
 

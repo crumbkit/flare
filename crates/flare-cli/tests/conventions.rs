@@ -39,13 +39,14 @@ const PATHS: PathBudgets<'_> = PathBudgets::new("tests/golden/examples").nodes(&
 
 /// Everything the checks read, which `conventions!` expands to one test for
 /// each check. `usage`, `install`, `check` and `print` are the verbs that
-/// `self usage` and `skills` add under a resource.
+/// `self usage` and `skills` add under a resource, and `create`, `add`,
+/// `remove`, `transfer` and `delete` are the ones `teams` adds.
 const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
         "activity", "metrics", "usage", "install", "check", "print", "revoke", "grants", "create",
-        "add", "remove", "delete",
+        "add", "remove", "transfer", "delete",
     ])
     .examples(EXAMPLES)
     .path_budgets(PATHS)

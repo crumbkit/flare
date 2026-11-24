@@ -244,7 +244,7 @@
         },
         {
           "const": "dormant",
-          "description": "The grant is to a deleted team and opens nothing. The share's owner\nremoves it with `flare revoke`.",
+          "description": "The grant is to a team that is being deleted, or to a name no team\nhas, and opens nothing. The team's delete removes it, and the\nshare's owner may remove it with `flare revoke`.",
           "type": "string"
         }
       ]
@@ -649,25 +649,27 @@
       "type": "object"
     },
     "TeamDeleted": {
-      "description": "The answer to `DELETE /api/teams/{name}`.",
+      "description": "The answer to `DELETE /api/teams/{name}`. One call removes at most 200\nof the team's grants; a team with more answers `finished` false, and\nthe owner repeats the call to go on.",
       "properties": {
-        "grants_dormant": {
-          "description": "Always true: each share's grant to the team stays stored and opens\nnothing. The share's owner removes it with `flare revoke`.",
+        "finished": {
+          "description": "Whether the team is gone: its grant removed from every share, its\nmembers removed and its name free for a new team. When false the\nteam opens nothing and keeps its name until a repeat finishes.",
           "type": "boolean"
         },
-        "name_reusable": {
-          "description": "Always false: the name is never used again, so no new team can take\nover the dormant grants.",
-          "type": "boolean"
+        "grants_removed": {
+          "description": "How many share grants this call removed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         },
         "team": {
-          "description": "The deleted team's name.",
+          "description": "The team's name.",
           "type": "string"
         }
       },
       "required": [
         "team",
-        "grants_dormant",
-        "name_reusable"
+        "finished",
+        "grants_removed"
       ],
       "type": "object"
     },
@@ -692,7 +694,7 @@
       "description": "`POST /api/teams`: a new team.",
       "properties": {
         "name": {
-          "description": "The name: 1 to 40 lowercase letters, digits and dashes, never used\nbefore in the deployment.",
+          "description": "The name: 1 to 40 lowercase letters, digits and dashes, which no\nteam in the deployment has.",
           "type": "string"
         }
       },
@@ -802,6 +804,20 @@
         "owner",
         "label",
         "expires"
+      ],
+      "type": "object"
+    },
+    "TransferRequest": {
+      "additionalProperties": false,
+      "description": "The body of `PUT /api/teams/{name}/owner`: the member who becomes the\nteam's owner.",
+      "properties": {
+        "to": {
+          "description": "The new owner's identifier, which the deployment resolves to an\naddress. The person must be a member of the team.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to"
       ],
       "type": "object"
     },

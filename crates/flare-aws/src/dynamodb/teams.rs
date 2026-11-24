@@ -4,9 +4,12 @@
 //! time, state and member count. A member is a pair of items written and
 //! deleted in one transaction: `TEAM#<name>` `M#<email>`, which lists a
 //! team's members, and `MEMBER#<email>` `T#<name>`, which lists a person's
-//! teams. A create puts the team's item only if absent, so a name that was
-//! ever used is refused, and a deleted team keeps its item. An add raises
-//! the count only while the team is active and below the member limit.
+//! teams. A create puts the team's item only if absent, so a name in use
+//! is refused. A deleting team keeps its item until its last member pair
+//! is gone, and `forget` then deletes the item, which frees the name. An
+//! add raises the count only while the team is active and below the member
+//! limit. A transfer changes the owner only while the team is active, the
+//! old owner still owns it and the new owner's member pair is present.
 
 mod items;
 
@@ -98,13 +101,15 @@ fn settled<T>(read: Result<bool, TeamStoreError>, done: T) -> Settled<T> {
     }
 }
 
-/// The four writes of a team store.
+/// The six writes of a team store.
 #[derive(Debug)]
 enum Op<'a> {
     Create(&'a Team),
     Add(&'a TeamName, &'a Email),
     Remove(&'a TeamName, &'a Email),
-    MarkDeleted(&'a TeamName),
+    MarkDeleting(&'a TeamName),
+    Forget(&'a TeamName),
+    Transfer(&'a TeamName, &'a Email, &'a Email),
 }
 
 /// One write with the table it goes to.
@@ -144,13 +149,30 @@ impl Attempt for TeamOp<'_> {
                 }
                 items::remove(name, team, member)
             }
-            Op::MarkDeleted(team) => match read_team(table, team).await.map_err(unavailable)? {
+            Op::MarkDeleting(team) => match read_team(table, team).await.map_err(unavailable)? {
                 None => return Err(Sent::Refused(TeamStoreError::NotFound)),
-                Some(found) if found.state() == TeamState::Deleted => {
+                Some(found) if found.state() == TeamState::Deleting => {
                     return Err(Sent::Done(true));
                 }
-                Some(_) => items::mark_deleted(name, team),
+                Some(_) => items::mark_deleting(name, team),
             },
+            Op::Forget(team) => match read_team(table, team).await.map_err(unavailable)? {
+                None => return Err(Sent::Done(false)),
+                Some(found) if found.state() == TeamState::Deleting && found.members() == 0 => {
+                    items::forget(name, team)
+                }
+                Some(_) => return Err(Sent::Refused(TeamStoreError::NotFound)),
+            },
+            Op::Transfer(team, from, to) => {
+                let found = read_team(table, team).await.map_err(unavailable)?;
+                let owned = found.is_some_and(|found| {
+                    found.state() == TeamState::Active && found.owner() == from
+                });
+                if !owned || !has_pair(table, team, to).await.map_err(unavailable)? {
+                    return Err(Sent::Refused(TeamStoreError::NotFound));
+                }
+                items::transfer(name, team, from, to)
+            }
         };
         built.ok_or(Sent::Unavailable)
     }
@@ -178,10 +200,20 @@ impl Attempt for TeamOp<'_> {
                 has_pair(table, team, member).await.map(|present| !present),
                 true,
             ),
-            Op::MarkDeleted(team) => {
+            Op::MarkDeleting(team) => {
                 let read = read_team(table, team)
                     .await
-                    .map(|found| found.is_some_and(|found| found.state() == TeamState::Deleted));
+                    .map(|found| found.is_some_and(|found| found.state() == TeamState::Deleting));
+                settled(read, true)
+            }
+            Op::Forget(team) => settled(
+                read_team(table, team).await.map(|found| found.is_none()),
+                true,
+            ),
+            Op::Transfer(team, _, to) => {
+                let read = read_team(table, team)
+                    .await
+                    .map(|found| found.is_some_and(|found| found.owner() == to));
                 settled(read, true)
             }
         }
@@ -215,8 +247,21 @@ impl TeamStore for DynamoTeamStore {
         self.write(Op::Remove(name, member)).await
     }
 
-    async fn mark_deleted(&self, name: &TeamName) -> Result<(), TeamStoreError> {
-        self.write(Op::MarkDeleted(name)).await.map(|_| ())
+    async fn mark_deleting(&self, name: &TeamName) -> Result<(), TeamStoreError> {
+        self.write(Op::MarkDeleting(name)).await.map(|_| ())
+    }
+
+    async fn forget(&self, name: &TeamName) -> Result<bool, TeamStoreError> {
+        self.write(Op::Forget(name)).await
+    }
+
+    async fn transfer(
+        &self,
+        name: &TeamName,
+        from: &Email,
+        to: &Email,
+    ) -> Result<(), TeamStoreError> {
+        self.write(Op::Transfer(name, from, to)).await.map(|_| ())
     }
 
     async fn members(&self, name: &TeamName) -> Result<Vec<Email>, TeamStoreError> {

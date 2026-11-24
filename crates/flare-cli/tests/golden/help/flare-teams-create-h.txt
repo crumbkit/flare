@@ -11,6 +11,6 @@ Options:
 Examples:
   flare teams create design
 
-Effects: additive, not idempotent, closed-world.
+Effects: additive, idempotent, closed-world.
 Global flags: --json, --fields <FIELD>, --long, --full, --no-input. `flare teams create --help` describes them.
 Next: flare teams create --help explains each column.

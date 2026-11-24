@@ -183,14 +183,14 @@ async fn naming_a_team_the_caller_is_not_in_answers_team_not_found_and_writes_no
 }
 
 #[tokio::test]
-async fn deleting_a_team_leaves_its_grants_dormant_and_the_owner_revokes_them() {
-    let (api, alice, bob, _carol) = with_design().await;
+async fn deleting_a_team_removes_its_grants_and_a_new_team_of_the_name_opens_nothing_old() {
+    let (api, alice, bob, carol) = with_design().await;
     let id = api.share(&alice, "Plan", &["team:design"], &[]).await;
     let (status, deleted) = api.read("DELETE", "/api/teams/design", Some(&alice)).await;
     assert_eq!(status, 200, "{deleted}");
     assert_eq!(
         deleted,
-        json!({"team": "design", "grants_dormant": true, "name_reusable": false})
+        json!({"team": "design", "finished": true, "grants_removed": 1})
     );
     assert_eq!(
         api.read("GET", &format!("/api/shares/{id}"), Some(&bob))
@@ -201,29 +201,63 @@ async fn deleting_a_team_leaves_its_grants_dormant_and_the_owner_revokes_them() 
     let grants = format!("/api/grants/{id}");
     let (status, listed) = api.read("GET", &grants, Some(&alice)).await;
     assert_eq!(status, 200, "{listed}");
-    assert_eq!(listed["items"][0]["grantee"], "team:design");
-    assert_eq!(listed["items"][0]["kind"], "team");
-    assert_eq!(listed["items"][0]["state"], "dormant");
-    let (status, revoked) = api
-        .json(
-            "DELETE",
-            &grants,
-            Some(&alice),
-            json!({"with": ["team:design"]}),
-        )
-        .await;
-    assert_eq!(status, 200, "{revoked}");
-    assert_eq!(revoked, json!({"share": id, "revoked": ["team:design"]}));
+    assert_eq!(listed["items"], json!([]));
     let (status, again) = api
         .json(
             "POST",
             "/api/teams",
-            Some(&alice),
+            Some(&carol),
             json!({"name": "design"}),
         )
         .await;
-    assert_eq!(status, 409);
-    assert_eq!(code(&again), "flare::teams::name_taken");
+    assert_eq!(status, 201, "{again}");
+    assert_eq!(again["owner"], "carol@example.com");
+    assert_eq!(
+        api.read("GET", &format!("/api/shares/{id}"), Some(&carol))
+            .await
+            .0,
+        404
+    );
+}
+
+#[tokio::test]
+async fn the_owner_transfers_a_team_to_a_member_and_a_stranger_is_refused() {
+    let (api, alice, bob, _carol) = with_design().await;
+    let (status, refused) = api
+        .json(
+            "PUT",
+            "/api/teams/design/owner",
+            Some(&alice),
+            json!({"to": "carol@example.com"}),
+        )
+        .await;
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(code(&refused), "flare::teams::not_a_member");
+    let (status, by_member) = api
+        .json(
+            "PUT",
+            "/api/teams/design/owner",
+            Some(&bob),
+            json!({"to": "bob@example.com"}),
+        )
+        .await;
+    assert_eq!(status, 403, "{by_member}");
+    assert_eq!(code(&by_member), "flare::teams::forbidden");
+    let (status, moved) = api
+        .json(
+            "PUT",
+            "/api/teams/design/owner",
+            Some(&alice),
+            json!({"to": "bob@example.com"}),
+        )
+        .await;
+    assert_eq!(status, 200, "{moved}");
+    assert_eq!(moved["owner"], "bob@example.com");
+    assert_eq!(moved["role"], "member");
+    assert_eq!(moved["members"], 2);
+    let (status, shown) = api.read("GET", "/api/teams/design", Some(&bob)).await;
+    assert_eq!(status, 200, "{shown}");
+    assert_eq!(shown["team"]["role"], "owner");
 }
 
 #[tokio::test]

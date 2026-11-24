@@ -9,16 +9,16 @@ use crate::time::Timestamp;
 
 /// Teams kept in a [`TeamStore`].
 ///
-/// The owner alone adds members, removes them and deletes the team. A
-/// member may leave, and the owner may not. A repeated create by the
+/// The owner alone adds members, removes them, hands the team to another
+/// member and deletes the team. A member may leave, and the owner may not. A repeated create by the
 /// team's owner answers the active team as it is. A member and the owner read
 /// the member list; anyone else gets [`TeamsError::NotFound`], the same as
 /// for a missing team.
 ///
 /// Shortcut: the owned and joined limits are checked by reading before the
-/// write, so creates or adds that run together for one person can each
-/// pass the check, and each racing write can take the person one team over
-/// the limit. The member limit is a condition of the store's
+/// write, so creates, adds or transfers that run together for one person
+/// can each pass the check, and each racing write can take the person one
+/// team over the limit. The member limit is a condition of the store's
 /// write and always holds.
 #[derive(Debug)]
 pub struct FlareTeams<S> {
@@ -56,12 +56,18 @@ impl<S: TeamStore> FlareTeams<S> {
         }
     }
 
-    /// Removes every member pair that a deleted team still has.
-    async fn clear(&self, team: &TeamName) -> Result<(), TeamsError> {
-        for member in self.store.members(team).await? {
-            self.store.remove(team, &member).await?;
+    /// How many active teams `person` owns.
+    async fn owned_count(&self, person: &Email) -> Result<usize, TeamsError> {
+        let mut owned = 0;
+        for name in self.store.teams_of(person).await? {
+            let found = self.store.get(&name).await?;
+            if found
+                .is_some_and(|found| found.owner() == person && found.state() == TeamState::Active)
+            {
+                owned += 1;
+            }
         }
-        Ok(())
+        Ok(owned)
     }
 }
 
@@ -71,8 +77,18 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
     }
 
     async fn exists(&self, team: &TeamName) -> Result<bool, TeamsError> {
+        Ok(self.active(team).await?.is_some())
+    }
+
+    async fn taken(&self, team: &TeamName) -> Result<bool, TeamsError> {
+        Ok(self.store.get(team).await?.is_some())
+    }
+
+    async fn active(&self, team: &TeamName) -> Result<Option<Timestamp>, TeamsError> {
         let found = self.store.get(team).await?;
-        Ok(found.is_some_and(|found| found.state() == TeamState::Active))
+        Ok(found
+            .filter(|found| found.state() == TeamState::Active)
+            .map(|found| found.created()))
     }
 
     async fn members(&self, team: &TeamName) -> Result<Vec<Email>, TeamsError> {
@@ -101,16 +117,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         if joined.len() >= MAX_TEAMS_JOINED {
             return Err(TeamsError::TooManyJoined);
         }
-        let mut owned = 0;
-        for name in &joined {
-            let found = self.store.get(name).await?;
-            if found
-                .is_some_and(|found| found.owner() == owner && found.state() == TeamState::Active)
-            {
-                owned += 1;
-            }
-        }
-        if owned >= MAX_TEAMS_OWNED {
+        if self.owned_count(owner).await? >= MAX_TEAMS_OWNED {
             return Err(TeamsError::TooManyOwned);
         }
         let created = Team::new(team, owner.clone(), at, TeamState::Active, 1);
@@ -155,19 +162,58 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
     }
 
     async fn delete(&self, actor: &Email, team: &TeamName) -> Result<(), TeamsError> {
-        let found = self.store.get(team).await?;
-        match found {
-            // A repeat by the owner finishes a delete that failed midway.
-            Some(found) if found.state() == TeamState::Deleted && found.owner() == actor => {
-                self.clear(team).await
-            }
-            Some(found) if found.state() == TeamState::Deleted => Err(TeamsError::NotFound),
+        match self.store.get(team).await? {
+            // A repeat by the owner continues a delete that stopped midway.
+            Some(found) if found.state() == TeamState::Deleting && found.owner() == actor => Ok(()),
+            Some(found) if found.state() == TeamState::Deleting => Err(TeamsError::NotFound),
             _ => {
                 self.owned(actor, team).await?;
-                self.store.mark_deleted(team).await?;
-                self.clear(team).await
+                Ok(self.store.mark_deleting(team).await?)
             }
         }
+    }
+
+    async fn finish_delete(&self, actor: &Email, team: &TeamName) -> Result<(), TeamsError> {
+        match self.store.get(team).await? {
+            None => Ok(()),
+            Some(found) if found.state() == TeamState::Deleting && found.owner() == actor => {
+                for member in self.store.members(team).await? {
+                    self.store.remove(team, &member).await?;
+                }
+                self.store.forget(team).await?;
+                Ok(())
+            }
+            Some(_) => Err(TeamsError::NotFound),
+        }
+    }
+
+    async fn transfer(
+        &self,
+        actor: &Email,
+        team: &TeamName,
+        to: &Email,
+    ) -> Result<Team, TeamsError> {
+        let found = self.visible(actor, team).await?;
+        if found.owner() == to {
+            return Ok(found);
+        }
+        if found.owner() != actor {
+            return Err(TeamsError::Forbidden);
+        }
+        if !self.store.teams_of(to).await?.contains(team) {
+            return Err(TeamsError::NotAMember);
+        }
+        if self.owned_count(to).await? >= MAX_TEAMS_OWNED {
+            return Err(TeamsError::TooManyOwned);
+        }
+        self.store.transfer(team, actor, to).await?;
+        Ok(Team::new(
+            found.name().clone(),
+            to.clone(),
+            found.created(),
+            found.state(),
+            found.members(),
+        ))
     }
 
     async fn show(&self, actor: &Email, team: &TeamName) -> Result<(Team, Vec<Email>), TeamsError> {

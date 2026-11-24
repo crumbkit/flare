@@ -399,10 +399,10 @@ flare grants 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 
 ### Columns
 
-- `grantee`: The person's address, `team:<name>` or `everyone`.
+- `grantee`: The person's address, `team:<name>`, `everyone`, or `team:*` for a team that you, as an Admin of the share, do not belong to.
 - `kind`: Who the grant is to: `person`, `team` or `everyone`.
 - `role`: The grant's role: `admin` or `reader`.
-- `state`: `active`, or `dormant` for a grant to a deleted team, which opens nothing until the share's owner revokes it.
+- `state`: `active`, or `dormant` for a grant to a team that is being deleted, which opens nothing until the delete removes it.
 
 ### Columns that `--long` adds
 
@@ -423,7 +423,8 @@ Manage teams
 - [`flare teams remove`](#flare-teams-remove): Remove people from a team you own, or leave a team you belong to
 - [`flare teams list`](#flare-teams-list): List the teams you belong to
 - [`flare teams show`](#flare-teams-show): Show the members of teams you belong to
-- [`flare teams delete`](#flare-teams-delete): Delete a team you own; its grants stay and open nothing, and its name is never used again
+- [`flare teams transfer`](#flare-teams-transfer): Hand a team you own to one of its members, who becomes its owner
+- [`flare teams delete`](#flare-teams-delete): Delete a team you own, removing its grant from every flare and freeing its name
 
 ## `flare teams create`
 
@@ -452,7 +453,7 @@ flare teams create design
 
 - `created`: When the team was created, in RFC 3339 UTC.
 
-Effects: additive, not idempotent, closed-world.
+Effects: additive, idempotent, closed-world.
 
 ## `flare teams add`
 
@@ -559,9 +560,40 @@ flare teams show design
 
 Effects: read-only, closed-world.
 
+## `flare teams transfer`
+
+Hand a team you own to one of its members, who becomes its owner
+
+### Arguments
+
+- `<NAME>`: The team's name. Required.
+- `--to <PERSON>`: The member who becomes the owner: an address, or a name the server resolves. Required.
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+Hand the team design to its member jo@example.org.
+
+```sh
+flare teams transfer design --to jo@example.org --yes
+```
+
+### Columns
+
+- `name`: The team's name.
+- `owner`: The owner's address.
+- `role`: What you are to the team: `owner` or `member`.
+- `members`: How many members the team has, its owner included.
+
+### Columns that `--long` adds
+
+- `created`: When the team was created, in RFC 3339 UTC.
+
+Effects: destructive, idempotent, closed-world.
+
 ## `flare teams delete`
 
-Delete a team you own; its grants stay and open nothing, and its name is never used again
+Delete a team you own, removing its grant from every flare and freeing its name
 
 ### Arguments
 
@@ -578,11 +610,11 @@ flare teams delete design --yes
 
 ### Columns
 
-- `team`: The deleted team's name.
-- `grants_dormant`: Always true: each flare's grant to the team stays and opens nothing until the flare's owner revokes it.
-- `name_reusable`: Always false: the name is never used again, so no new team can take over the dormant grants.
+- `team`: The team's name.
+- `finished`: Whether the team is gone: its grant removed from every flare, its members removed and its name free. False only when the command stopped before the server finished; running it again goes on.
+- `grants_removed`: How many flares' grants to the team this command removed.
 
-Effects: destructive, not idempotent, closed-world.
+Effects: destructive, idempotent, closed-world.
 
 ## `flare shares`
 

@@ -38,4 +38,4 @@ Columns:
 Columns that --long adds:
   created  When the team was created, in RFC 3339 UTC.
 
-Effects: additive, not idempotent, closed-world.
+Effects: additive, idempotent, closed-world.

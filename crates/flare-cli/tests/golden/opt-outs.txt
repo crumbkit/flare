@@ -17,7 +17,7 @@ path-budget/command: flare skills print
   Reason: It prints the 6,270-byte skill.
   Cost: An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens.
 
-flare has 35 declarations.
+flare has 36 declarations.
 
 root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare metrics
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
@@ -102,6 +102,9 @@ example-precondition: flare teams list
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare teams show design
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams transfer design --to jo@example.org --yes
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare teams delete design --yes

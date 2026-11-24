@@ -119,36 +119,83 @@ fn teams_list_and_show_print_the_teams_and_the_members() {
 }
 
 #[test]
-fn teams_delete_says_the_grants_stay_dormant_and_the_name_is_never_reused() {
+fn teams_delete_repeats_until_the_server_finishes_and_says_the_name_is_free() {
     let api = FakeApi::start();
     let home = logged_in(&api);
-    let deleted = json!({"team": "design", "grants_dormant": true, "name_reusable": false});
-    api.route("DELETE", "/api/teams/design", 200, &deleted);
+    let part = json!({"team": "design", "finished": false, "grants_removed": 200});
+    let last = json!({"team": "design", "finished": true, "grants_removed": 3});
+    api.route("DELETE", "/api/teams/design", 200, &part);
+    api.route("DELETE", "/api/teams/design", 200, &last);
     let ran = home.sharing(&["teams", "delete", "design", "--yes"]);
     ran.assert_ok();
+    assert_eq!(api.requests_to("/api/teams/design").len(), 2);
     let text = ran.all();
-    assert!(
-        text.contains("stay on each flare and open nothing"),
-        "{text}"
-    );
-    assert!(text.contains("never used again"), "{text}");
-    assert!(
-        text.contains("Next:") && text.contains("flare revoke <ID> --with team:design"),
-        "{text}"
-    );
-    api.route("DELETE", "/api/teams/design", 200, &deleted);
+    assert!(text.contains("removed its grant from 203 flares"), "{text}");
+    assert!(text.contains("name design is free"), "{text}");
+    api.route("DELETE", "/api/teams/design", 200, &last);
     let json = home.sharing(&["teams", "delete", "design", "--yes", "--json"]);
     json.assert_ok();
-    assert!(
-        json.stdout.contains("\"grants_dormant\":true"),
+    let printed: Value = serde_json::from_str(&json.stdout).unwrap();
+    assert_eq!(
+        printed["data"],
+        json!([{"team": "design", "finished": true, "grants_removed": 3}]),
         "{}",
         json.all()
     );
-    assert!(
-        json.stdout.contains("\"name_reusable\":false"),
-        "{}",
-        json.all()
+}
+
+#[test]
+fn teams_transfer_puts_the_new_owner_and_prints_the_team() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let moved = json!({
+        "name": "design",
+        "owner": "jo@example.org",
+        "role": "member",
+        "members": 2,
+        "created": "2026-11-24T09:00:00Z"
+    });
+    api.route("PUT", "/api/teams/design/owner", 200, &moved);
+    let ran = home.sharing(&[
+        "teams",
+        "transfer",
+        "design",
+        "--to",
+        "jo@example.org",
+        "--yes",
+        "--json",
+    ]);
+    ran.assert_ok();
+    let sent = api.requests_to("/api/teams/design/owner");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].json(), json!({"to": "jo@example.org"}));
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["data"]["owner"], "jo@example.org", "{}", ran.all());
+    assert_eq!(printed["data"]["role"], "member");
+}
+
+#[test]
+fn teams_transfer_to_someone_outside_the_team_names_teams_add() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "PUT",
+        "/api/teams/design/owner",
+        409,
+        &problem("flare::teams::not_a_member", 409, &api.origin),
     );
+    let ran = home.sharing(&[
+        "teams",
+        "transfer",
+        "design",
+        "--to",
+        "jo@example.org",
+        "--yes",
+    ]);
+    assert_ne!(ran.code, Some(0), "{}", ran.all());
+    let text = ran.all();
+    assert!(text.contains("flare::teams::not_a_member"), "{text}");
+    assert!(text.contains("flare teams add"), "{text}");
 }
 
 #[test]

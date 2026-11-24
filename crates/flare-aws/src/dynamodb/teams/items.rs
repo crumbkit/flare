@@ -8,16 +8,16 @@ use crate::dynamodb::keys::Key;
 use crate::dynamodb::transact::{
     ABSENT, ItemRole, PRESENT, Transaction, delete, key_map, names, put, values,
 };
-use aws_sdk_dynamodb::types::{AttributeValue, Delete, TransactWriteItem, Update};
+use aws_sdk_dynamodb::types::{AttributeValue, ConditionCheck, Delete, TransactWriteItem, Update};
 use flare_core::{Email, MAX_MEMBERS, Team, TeamName, TeamState, Timestamp};
 
 const ACTIVE: &str = "active";
-const DELETED: &str = "deleted";
+const DELETING: &str = "deleting";
 
 fn state_name(state: TeamState) -> &'static str {
     match state {
         TeamState::Active => ACTIVE,
-        TeamState::Deleted => DELETED,
+        TeamState::Deleting => DELETING,
     }
 }
 
@@ -44,7 +44,7 @@ pub(super) fn team_from(item: &Item, name: &TeamName) -> Result<Team, Malformed>
         Email::try_from(read_text(item, attr::OWNER, kind)?).map_err(|_| Malformed(kind))?;
     let state = match read_text(item, attr::STATE, kind)? {
         ACTIVE => TeamState::Active,
-        DELETED => TeamState::Deleted,
+        DELETING => TeamState::Deleting,
         _ => return Err(Malformed(kind)),
     };
     let members =
@@ -163,18 +163,77 @@ pub(super) fn remove(table: &str, team: &TeamName, member: &Email) -> Option<Tra
     Some(transaction)
 }
 
-/// The transaction that marks a team deleted.
-pub(super) fn mark_deleted(table: &str, team: &TeamName) -> Option<Transaction> {
+/// The transaction that marks a team deleting.
+pub(super) fn mark_deleting(table: &str, team: &TeamName) -> Option<Transaction> {
     let mut transaction = Transaction::default();
     transaction.push(
         ItemRole::TeamItem,
         update_team(
             table,
             team,
-            ("SET #s = :deleted", PRESENT),
+            ("SET #s = :deleting", PRESENT),
             &[("#s", attr::STATE)],
-            vec![(":deleted", text(DELETED))],
+            vec![(":deleting", text(DELETING))],
         )?,
+    );
+    Some(transaction)
+}
+
+/// The transaction that removes a deleting team with no members, which
+/// frees its name.
+pub(super) fn forget(table: &str, team: &TeamName) -> Option<Transaction> {
+    let mut transaction = Transaction::default();
+    let removed = Delete::builder()
+        .table_name(table)
+        .set_key(Some(key_map(&Key::team(team))))
+        .condition_expression("#s = :deleting AND #n = :none")
+        .set_expression_attribute_names(Some(names(&[("#s", attr::STATE), ("#n", attr::COUNT)])))
+        .set_expression_attribute_values(Some(values(vec![
+            (":deleting", text(DELETING)),
+            (":none", number(0)),
+        ])))
+        .build()
+        .ok()?;
+    transaction.push(
+        ItemRole::TeamItem,
+        TransactWriteItem::builder().delete(removed).build(),
+    );
+    Some(transaction)
+}
+
+/// The transaction of a transfer: the owner of an active team that `from`
+/// owns becomes `to`, while `to`'s member pair is present.
+pub(super) fn transfer(
+    table: &str,
+    team: &TeamName,
+    from: &Email,
+    to: &Email,
+) -> Option<Transaction> {
+    let mut transaction = Transaction::default();
+    transaction.push(
+        ItemRole::TeamItem,
+        update_team(
+            table,
+            team,
+            ("SET #o = :to", "#s = :active AND #o = :from"),
+            &[("#o", attr::OWNER), ("#s", attr::STATE)],
+            vec![
+                (":to", text(to.as_str())),
+                (":from", text(from.as_str())),
+                (":active", text(ACTIVE)),
+            ],
+        )?,
+    );
+    let (in_team, _) = Key::member_pair(team, to);
+    let check = ConditionCheck::builder()
+        .table_name(table)
+        .set_key(Some(key_map(&in_team)))
+        .condition_expression(PRESENT)
+        .build()
+        .ok()?;
+    transaction.push(
+        ItemRole::MemberItem,
+        TransactWriteItem::builder().condition_check(check).build(),
     );
     Some(transaction)
 }

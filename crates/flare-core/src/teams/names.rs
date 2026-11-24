@@ -19,9 +19,9 @@ const EVERYONE: &str = "everyone";
 /// names a team.
 const TEAM_PREFIX: &str = "team:";
 
-/// A team's name: 1 to 40 lowercase ASCII letters, digits and dashes. A
-/// name is unique in a deployment and never reused, even after its team is
-/// deleted.
+/// A team's name: 1 to 40 lowercase ASCII letters, digits and dashes. One
+/// team at a time has a name in a deployment; once a team's delete
+/// finishes, the name is free for a new team.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TeamName(String);
 

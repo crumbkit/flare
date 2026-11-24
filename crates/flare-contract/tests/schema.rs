@@ -53,6 +53,7 @@ fn the_schema_names_every_request_response_and_problem_type() {
         "TeamShown",
         "MembersChanged",
         "TeamDeleted",
+        "TransferRequest",
     ] {
         assert!(defs.contains_key(name), "{name} is missing");
     }

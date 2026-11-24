@@ -15,7 +15,7 @@ pub(crate) use sharing::{
 pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
 use crate::documents::{
-    ACTIVITY, BIND, GRANT, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
+    ACTIVITY, BIND, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHARES, SHOW,
 };
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
@@ -319,26 +319,7 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::read_only())
         .document(SHOW),
-    Leaf::new(&["grant"])
-        .examples(&[
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
-                "Grant a share to one more person",
-            )
-            .needs(&["server"]),
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "team:design"],
-                "Grant a share to the members of a team you belong to",
-            )
-            .needs(&["server"]),
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
-                "Open a share you own to everyone signed in",
-            )
-            .needs(&["server"]),
-        ])
-        .effects(Effects::additive())
-        .document(GRANT),
+    sharing::GRANT_LEAF,
     sharing::REVOKE_LEAF,
     sharing::GRANTS_LEAF,
     teams::CREATE_LEAF,
@@ -346,6 +327,7 @@ pub const TOOL: Tool = Tool::new()
     teams::REMOVE_LEAF,
     teams::LIST_LEAF,
     teams::SHOW_LEAF,
+    teams::TRANSFER_LEAF,
     teams::DELETE_LEAF,
     Leaf::new(&["shares"])
         .examples(&[

@@ -187,6 +187,11 @@
     },
     {
       "declaration": "example-precondition",
+      "applies_to": "flare teams transfer design --to jo@example.org --yes",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
       "applies_to": "flare teams delete design --yes",
       "declares": "The example runs only in a test run that provides server."
     },

@@ -322,6 +322,7 @@ where
                 Call::ListTeams => self.list_teams(who).await,
                 Call::ShowTeam(name) => self.show_team(who, &name).await,
                 Call::DeleteTeam(name) => self.delete_team(who, &name).await,
+                Call::TransferTeam(name, request) => self.transfer_team(who, &name, &request).await,
                 Call::AddMembers(name, request) => {
                     self.change_members(who, &name, &request, true).await
                 }

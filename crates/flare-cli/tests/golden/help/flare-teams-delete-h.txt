@@ -1,4 +1,4 @@
-Delete a team you own; its grants stay and open nothing, and its name is never used again
+Delete a team you own, removing its grant from every flare and freeing its name
 
 Usage: flare teams delete [OPTIONS] <NAME>
 
@@ -12,6 +12,6 @@ Options:
 Examples:
   flare teams delete design --yes
 
-Effects: destructive, not idempotent, closed-world.
+Effects: destructive, idempotent, closed-world.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare teams delete --help` describes them.
 Next: flare teams delete --help explains each column.

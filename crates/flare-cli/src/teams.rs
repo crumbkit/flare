@@ -1,5 +1,5 @@
-//! `flare teams`: create, list, show and delete teams, and add or remove
-//! their members, through the server's team routes.
+//! `flare teams`: create, list, show, transfer and delete teams, and add or
+//! remove their members, through the server's team routes.
 
 use crate::cli::ListTeamsArgs;
 use crate::codes::{Failed, Refused};
@@ -9,7 +9,7 @@ use crate::sharing::{body, session};
 use crumbkit::{Call, Listing, Step};
 use flare_contract::{
     ApiCode, MembersChanged, MembersRequest, TeamDeleted, TeamList, TeamRequest, TeamRole,
-    TeamShown, TeamSummary,
+    TeamShown, TeamSummary, TransferRequest,
 };
 use flare_core::TeamName;
 use reqwest::Method;
@@ -117,33 +117,66 @@ pub(crate) async fn show(names: &[String], env: &Snapshot) -> Result<Listing<Mem
     Ok(Listing::from_all(rows, None).described("members"))
 }
 
-/// Runs `flare teams delete`. The text output says that the team's grants
-/// stay dormant and that its name is never used again.
+/// The most calls one `flare teams delete` makes. Each call removes at
+/// most 200 grants, so one run removes up to 200,000; a team with more
+/// answers `finished` false, and running the command again goes on.
+const MAX_DELETE_CALLS: usize = 1_000;
+
+/// Runs `flare teams delete`, repeating the server's call until the delete
+/// finishes.
+///
+/// # Errors
+///
+/// Returns the failure that stopped it. The team then opens nothing, and
+/// running the command again goes on.
+pub(crate) async fn delete(name: &str, env: &Snapshot) -> Result<Listing<TeamDeletedRow>, Failed> {
+    let api = session(env)?;
+    let target = team_path(api.origin(), name)?;
+    let mut removed: u32 = 0;
+    let mut team = name.to_owned();
+    let mut finished = false;
+    for _ in 0..MAX_DELETE_CALLS {
+        let answer: Option<TeamDeleted> = api.send(Method::DELETE, &target, None::<&()>).await?;
+        let deleted = body(&api, answer)?;
+        removed = removed.saturating_add(deleted.grants_removed);
+        team = deleted.team;
+        finished = deleted.finished;
+        if finished {
+            break;
+        }
+    }
+    let rows = vec![TeamDeletedRow {
+        team: team.clone(),
+        finished,
+        grants_removed: removed,
+    }];
+    let listing = Listing::from_all(rows, None).described("teams");
+    if finished {
+        let note = format!(
+            "The team {team} is deleted and removed its grant from {removed} flares. The name {team} is free, and a new team of that name gets none of this team's access."
+        );
+        return Ok(listing.note(note));
+    }
+    let note = format!(
+        "The team {team} opens nothing and removed its grant from {removed} flares, and more grants remain."
+    );
+    let step = Step::new("Run the delete again to remove the remaining grants.").call(
+        Call::new(&["teams", "delete"])
+            .value("name", team)
+            .flag("yes"),
+    );
+    Ok(listing.note(note).step(step))
+}
+
+/// Runs `flare teams transfer`.
 ///
 /// # Errors
 ///
 /// Returns the failure that stopped it.
-pub(crate) async fn delete(name: &str, env: &Snapshot) -> Result<Listing<TeamDeletedRow>, Failed> {
+pub(crate) async fn transfer(name: &str, to: &str, env: &Snapshot) -> Result<TeamRow, Failed> {
     let api = session(env)?;
-    let target = team_path(api.origin(), name)?;
-    let answer: Option<TeamDeleted> = api.send(Method::DELETE, &target, None::<&()>).await?;
-    let deleted = body(&api, answer)?;
-    let note = format!(
-        "The team {team} is deleted. Its grants stay on each flare and open nothing. The name {team} is never used again, so no new team can take over those grants.",
-        team = deleted.team
-    );
-    let step = Step::new("Each flare's owner removes the dormant grant from their flare.").call(
-        Call::new(&["revoke"])
-            .arg("id")
-            .value("with", format!("team:{}", deleted.team)),
-    );
-    let rows = vec![TeamDeletedRow {
-        team: deleted.team,
-        grants_dormant: deleted.grants_dormant,
-        name_reusable: deleted.name_reusable,
-    }];
-    Ok(Listing::from_all(rows, None)
-        .described("teams")
-        .note(note)
-        .step(step))
+    let target = format!("{}/owner", team_path(api.origin(), name)?);
+    let request = TransferRequest { to: to.to_owned() };
+    let answer: Option<TeamSummary> = api.send(Method::PUT, &target, Some(&request)).await?;
+    Ok(row(body(&api, answer)?))
 }

@@ -1,11 +1,12 @@
-//! The share API's team calls: create, list, show and delete a team, and
-//! add or remove its members.
+//! The share API's team calls: create, list, show, transfer and delete a
+//! team, and add or remove its members.
 
 use super::convert::{recipient_error, team_summary, teams_error};
 use super::run::json;
 use super::{Answer, Refusal, Sharing};
 use flare_contract::{
     ApiCode, MembersChanged, MembersRequest, TeamDeleted, TeamList, TeamRequest, TeamShown,
+    TransferRequest,
 };
 use flare_core::{
     Email, GrantStore, Principal, Recipients, ResponseStore, ShareStore, Team, TeamName, Teams,
@@ -86,23 +87,49 @@ where
         )
     }
 
+    /// Deletes the team for its owner: removes its grant from every share,
+    /// at most 200 a call, then its members, and frees the name.
     pub(super) async fn delete_team(&self, who: &Principal, name: &str) -> Answer {
-        let person = caller(who)?;
+        caller(who)?;
         let name = team_name(name)?;
-        self.flares
-            .shares()
-            .teams()
-            .delete(person, &name)
+        let deletion = self
+            .flares
+            .delete_team(who, &name)
             .await
             .map_err(teams_error)?;
         json(
             200,
             &TeamDeleted {
                 team: name.as_str().to_owned(),
-                grants_dormant: true,
-                name_reusable: false,
+                finished: deletion.finished,
+                grants_removed: u32::try_from(deletion.removed).unwrap_or(u32::MAX),
             },
         )
+    }
+
+    /// Hands the team to the member the request names, for its owner.
+    pub(super) async fn transfer_team(
+        &self,
+        who: &Principal,
+        name: &str,
+        request: &TransferRequest,
+    ) -> Answer {
+        let person = caller(who)?;
+        let name = team_name(name)?;
+        let teams = self.flares.shares().teams();
+        // The team is read first, so a caller who cannot see it learns
+        // nothing about the person named.
+        teams.show(person, &name).await.map_err(teams_error)?;
+        let to = self
+            .recipients
+            .resolve(&request.to)
+            .await
+            .map_err(|error| recipient_error(error, &request.to))?;
+        let team = teams
+            .transfer(person, &name, &to)
+            .await
+            .map_err(teams_error)?;
+        json(200, &team_summary(&team, person))
     }
 
     /// Adds the people the request names, when `add`, or removes them.

@@ -26,7 +26,7 @@ pub(crate) const REVOKE: Document<RevokedOut> = Document::new(
 /// One grant in `flare grants`.
 #[derive(Debug, Serialize, JsonSchema, Row)]
 pub(crate) struct GrantRow {
-    /// The person's address, `team:<name>` or `everyone`.
+    /// The person's address, `team:<name>`, `everyone`, or `team:*` for a team that you, as an Admin of the share, do not belong to.
     #[row(column)]
     pub(crate) grantee: String,
     /// Who the grant is to: `person`, `team` or `everyone`.
@@ -35,7 +35,7 @@ pub(crate) struct GrantRow {
     /// The grant's role: `admin` or `reader`.
     #[row(column)]
     pub(crate) role: String,
-    /// `active`, or `dormant` for a grant to a deleted team, which opens nothing until the share's owner revokes it.
+    /// `active`, or `dormant` for a grant to a team that is being deleted, which opens nothing until the delete removes it.
     #[row(column, warning_by = |row: &Self| row.state == "dormant")]
     pub(crate) state: String,
     /// Who wrote the grant's current role.
@@ -54,6 +54,6 @@ pub(crate) const GRANTS: Document<Listing<GrantRow>> = Document::new(
     "flare",
     "grants",
     1,
-    "The grants of a share to people, teams and everyone, dormant grants first.",
+    "The grants of a share to people, teams and everyone, dormant grants of teams being deleted first.",
 )
 .when_empty("No grants.");

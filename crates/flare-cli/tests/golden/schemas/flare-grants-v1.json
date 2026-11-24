@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/grants/v1",
-  "description": "The grants of a share to people, teams and everyone, dormant grants first.",
+  "description": "The grants of a share to people, teams and everyone, dormant grants of teams being deleted first.",
   "type": "object",
   "properties": {
     "cut": {
@@ -127,7 +127,7 @@
           "type": "string"
         },
         "grantee": {
-          "description": "The person's address, `team:<name>` or `everyone`.",
+          "description": "The person's address, `team:<name>`, `everyone`, or `team:*` for a team that you, as an Admin of the share, do not belong to.",
           "type": "string"
         },
         "kind": {
@@ -139,7 +139,7 @@
           "type": "string"
         },
         "state": {
-          "description": "`active`, or `dormant` for a grant to a deleted team, which opens nothing until the share's owner revokes it.",
+          "description": "`active`, or `dormant` for a grant to a team that is being deleted, which opens nothing until the delete removes it.",
           "type": "string"
         }
       },

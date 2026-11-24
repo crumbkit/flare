@@ -38,7 +38,8 @@ pub struct Opened {
 pub struct ListedGrant {
     /// The grant, to a person or a group.
     pub grant: crate::grant::Grant,
-    /// Whether the grant is to a deleted team, so it opens nothing.
+    /// Whether the grant is to a team that is not active, such as one
+    /// being deleted, so it opens nothing.
     pub dormant: bool,
     /// Whether the grant is to a team that the caller neither belongs to
     /// nor owns the share of, so a listing shows a placeholder in place of

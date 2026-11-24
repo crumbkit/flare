@@ -93,24 +93,32 @@ pub(crate) const TEAMS_SHOW: Document<Listing<MemberRow>> = Document::new(
     "The members of a team you belong to, in address order.",
 );
 
-/// A team that `flare teams delete` deleted.
+/// What `flare teams delete` did to one team.
 #[derive(Debug, Serialize, JsonSchema, Row)]
 pub(crate) struct TeamDeletedRow {
-    /// The deleted team's name.
+    /// The team's name.
     #[row(column)]
     pub(crate) team: String,
-    /// Always true: each flare's grant to the team stays and opens nothing until the flare's owner revokes it.
+    /// Whether the team is gone: its grant removed from every flare, its members removed and its name free. False only when the command stopped before the server finished; running it again goes on.
     #[row(column)]
-    pub(crate) grants_dormant: bool,
-    /// Always false: the name is never used again, so no new team can take over the dormant grants.
+    pub(crate) finished: bool,
+    /// How many flares' grants to the team this command removed.
     #[row(column)]
-    pub(crate) name_reusable: bool,
+    pub(crate) grants_removed: u32,
 }
 
 /// The document of `flare teams delete`.
 pub(crate) const TEAMS_DELETE: Document<Listing<TeamDeletedRow>> = Document::new(
     "flare",
     "teams-delete",
+    2,
+    "The deleted team and how many flares' grants to it were removed. Once finished, its name is free for a new team, which gets none of the old team's access.",
+);
+
+/// The document of `flare teams transfer`.
+pub(crate) const TEAMS_TRANSFER: Document<TeamRow> = Document::new(
+    "flare",
+    "teams-transfer",
     1,
-    "The deleted team. Its grants stay dormant and its name is never used again.",
+    "The team after the transfer, with its new owner; your role is now member.",
 );

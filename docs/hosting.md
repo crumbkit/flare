@@ -117,7 +117,9 @@ The share API lets people share Markdown files with named people from the
 - A share granted to everyone signed in opens to the people the `admit`
   rule admitted when the grant was made. Under a `domain` rule the grant
   opens to signed-in addresses at that domain. Under an `emails` rule it
-  opens to every signed-in person while the rule stays `emails`. Under an
+  opens to every signed-in person while the rule stays `emails`, so an
+  address added to the list later can open every share granted to everyone
+  under that rule. Under an
   `anyone` rule the grant is refused with 409
   `flare::grants::everyone_unbounded`, because it would open the share to
   any Google account. [teams.md](teams.md) gives the life of teams and
@@ -143,11 +145,14 @@ Routes:
 - `POST /api/grants/<id>` grants a share to more addresses, to teams as
   `team:<name>`, or to everyone signed in with `everyone: true`.
 - `DELETE /api/grants/<id>` ends the grants it names.
-- `GET /api/grants/<id>` lists a share's grants, dormant ones first.
+- `GET /api/grants/<id>` lists a share's grants, with the dormant grants
+  of teams being deleted first.
 - `POST /api/teams`, `GET /api/teams`, `GET /api/teams/<name>`,
-  `DELETE /api/teams/<name>` and `POST` or `DELETE`
-  `/api/teams/<name>/members` create, list, show and delete teams and
-  change their members.
+  `PUT /api/teams/<name>/owner`, `DELETE /api/teams/<name>` and `POST` or
+  `DELETE` `/api/teams/<name>/members` create, list, show, transfer and
+  delete teams and change their members. One `DELETE /api/teams/<name>`
+  removes at most 200 of the team's grants and answers `finished: false`
+  when more remain; the owner repeats it.
 - `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
   responses to flares that the caller may read, oldest first, at most 100
   a page.

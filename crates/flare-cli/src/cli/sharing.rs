@@ -1,7 +1,7 @@
 //! The arguments and help of `flare login`, `logout`, `share`, `show`,
 //! `grant`, `revoke`, `grants`, `shares` and `activity`.
 
-use crate::documents::{GRANTS, REVOKE};
+use crate::documents::{GRANT, GRANTS, REVOKE};
 use clap::Args;
 use crumbkit::help::{Effects, Example, Leaf};
 use crumbkit::{DryRun, Page, Yes};
@@ -141,6 +141,32 @@ pub(crate) struct GrantsArgs {
     #[arg(value_name = "ID")]
     pub(crate) id: String,
 }
+
+/// The help of `flare grant`.
+pub(super) const GRANT_LEAF: Leaf = Leaf::new(&["grant"])
+    .examples(&[
+        Example::new(
+            &[
+                "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+                "--with",
+                "mei@example.org",
+            ],
+            "Grant a share to one more person",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "team:design"],
+            "Grant a share to the members of a team you belong to",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
+            "Open a share you own to everyone signed in",
+        )
+        .needs(&["server"]),
+    ])
+    .effects(Effects::additive())
+    .document(GRANT);
 
 /// The help of `flare revoke`.
 pub(super) const REVOKE_LEAF: Leaf = Leaf::new(&["revoke"])
