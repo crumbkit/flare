@@ -13,7 +13,7 @@ use flare_contract::{
 use flare_core::{
     CommentStore, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare,
     NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
-    ShareVersion, Standing, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    ShareVersion, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -165,53 +165,6 @@ where
                 content,
             },
         )
-    }
-
-    async fn reading(
-        &self,
-        who: &Principal,
-        id: &str,
-        version: Option<&str>,
-    ) -> Result<Reading, ReadRefusal> {
-        let refused = |error: ShareError| match error {
-            ShareError::Unavailable => ReadRefusal::Unavailable,
-            _ => ReadRefusal::NotFound,
-        };
-        let id = ShareId::try_from(id).map_err(|_| ReadRefusal::NotFound)?;
-        let number = version
-            .map(|text| {
-                text.parse::<u32>()
-                    .ok()
-                    .and_then(|number| ShareVersion::try_from(number).ok())
-                    .ok_or(ReadRefusal::NotFound)
-            })
-            .transpose()?;
-        let shares = self.flares.shares();
-        let opened = shares.open(who, &id, number).await.map_err(refused)?;
-        let ShareContent::Document(text) = opened.version.content() else {
-            return Err(ReadRefusal::NotFound);
-        };
-        let with = match opened.standing {
-            Standing::Owner | Standing::Admin => Some(
-                shares
-                    .grants(who, &id)
-                    .await
-                    .map_err(refused)?
-                    .iter()
-                    .map(|grant| grant.grantee().as_str().to_owned())
-                    .collect(),
-            ),
-            Standing::Reader | Standing::Stranger => None,
-        };
-        Ok(Reading {
-            title: opened.share.title().as_str().to_owned(),
-            owner: opened.share.owner().as_str().to_owned(),
-            own: opened.standing == Standing::Owner,
-            with,
-            version: opened.version.number().get(),
-            published: opened.version.created().as_secs(),
-            markdown: text.as_str().to_owned(),
-        })
     }
 
     async fn grant(

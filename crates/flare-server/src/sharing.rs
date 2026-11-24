@@ -4,7 +4,8 @@
 //!
 //! The handlers reach it through [`Api`], a trait with boxed futures, so
 //! the app keeps its four type parameters and no handler names a store
-//! type. `run.rs` holds the generic implementation, `convert.rs` turns
+//! type. `run.rs` holds the generic implementation, `read.rs` the reading
+//! page's read and its get flare address, `convert.rs` turns
 //! flare-core's values and refusals into the contract's, and `tokens.rs`
 //! mints and reads tokens and login codes.
 //!
@@ -22,10 +23,12 @@ mod activity;
 mod comments;
 mod convert;
 mod list;
+mod read;
 mod run;
 mod tokens;
 
 pub(crate) use convert::list_key;
+pub use read::{GetFlare, NotGetFlare};
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 
 use convert::content_error;
@@ -48,18 +51,21 @@ pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// The share API's parts: the [`Flares`] service, the token store, the
 /// directory that resolves `--with` identifiers and the admit rule that
-/// every token's owner must still pass.
+/// every token's owner must still pass, and the get flare address that
+/// [`Sharing::with_get_flare`] sets.
 pub struct Sharing<S, G, R, C, U, T, X> {
     flares: Flares<S, G, R, C, U>,
     tokens: T,
     recipients: X,
     admit: Admit,
+    get_flare: Option<GetFlare>,
 }
 
 impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
     /// The share API over `flares`, keeping tokens in `tokens`, resolving
     /// recipients with `recipients` and accepting a token only while
-    /// `admit`, the site's sign-in rule, admits its owner's address.
+    /// `admit`, the site's sign-in rule, admits its owner's address. Its
+    /// reading pages link to no get flare address.
     #[must_use]
     pub fn new(flares: Flares<S, G, R, C, U>, tokens: T, recipients: X, admit: Admit) -> Self {
         Self {
@@ -67,6 +73,7 @@ impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
             tokens,
             recipients,
             admit,
+            get_flare: None,
         }
     }
 }
@@ -232,6 +239,9 @@ pub(crate) struct Reading {
     pub(crate) published: u64,
     /// The version's Markdown.
     pub(crate) markdown: String,
+    /// The get flare address the page's foot links to, for a reader who
+    /// has never shared a flare on a site that sets one.
+    pub(crate) badge: Option<String>,
 }
 
 /// Why the reading page cannot show a share.

@@ -329,12 +329,11 @@ async fn share_api(
         stores.cursors,
         config.creators,
     );
-    Ok(Sharing::new(
-        flares,
-        stores.tokens,
-        config.recipients,
-        admit,
-    ))
+    let api = Sharing::new(flares, stores.tokens, config.recipients, admit);
+    Ok(match config.get_flare {
+        Some(address) => api.with_get_flare(address),
+        None => api,
+    })
 }
 
 /// Serves `app` until a signal or, on the local site, the idle exit.

@@ -132,3 +132,62 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
     fullPage: true,
   });
 });
+
+/** The computed colour that `value`, such as `var(--accent)`, gives. */
+async function colour(page: Page, value: string): Promise<string> {
+  return page.evaluate((css) => {
+    const probe = document.createElement("span");
+    probe.style.color = css;
+    document.body.append(probe);
+    const computed = getComputedStyle(probe).color;
+    probe.remove();
+    return computed;
+  }, value);
+}
+
+test("a reader who has never shared sees the Get Flare link at the foot, below the article", async ({
+  page,
+}, info) => {
+  await serve(page);
+  await page.goto(PAGE);
+  await expect(page.locator("body")).toHaveAttribute("data-reading", "done", { timeout: 30_000 });
+
+  const foot = page.locator("footer.share-foot");
+  await expect(foot.locator(".note")).toHaveText("Shared with Flare");
+  const link = page.getByRole("link", { name: "Get Flare, opens in a new tab" });
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(link).toContainText("Get Flare");
+
+  const article = await page.locator("article.doc").boundingBox();
+  const box = await foot.boundingBox();
+  expect(article).not.toBeNull();
+  expect(box).not.toBeNull();
+  if (article && box) {
+    expect(box.y).toBeGreaterThanOrEqual(article.y + article.height);
+  }
+
+  const accent = await colour(page, "var(--accent)");
+  await link.hover();
+  await expect(link).toHaveCSS("border-top-color", accent);
+  await expect(link).toHaveCSS("background-color", await colour(page, "var(--accent-tint)"));
+  await page.mouse.move(0, 0);
+  await link.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(link).toBeFocused();
+  await expect(link).toHaveCSS("outline-width", "2px");
+  await expect(link).toHaveCSS("outline-color", accent);
+
+  const note = await foot.locator(".note").boundingBox();
+  const linkBox = await link.boundingBox();
+  expect(note).not.toBeNull();
+  expect(linkBox).not.toBeNull();
+  if (info.project.name === "phone" && note && linkBox) {
+    expect(linkBox.y).toBeGreaterThanOrEqual(note.y + note.height);
+    expect(linkBox.height).toBeGreaterThanOrEqual(44);
+  } else if (note && linkBox) {
+    expect(Math.abs(linkBox.y + linkBox.height / 2 - (note.y + note.height / 2))).toBeLessThan(2);
+  }
+  await foot.screenshot({ path: info.outputPath(`foot-${info.project.name}.png`) });
+});

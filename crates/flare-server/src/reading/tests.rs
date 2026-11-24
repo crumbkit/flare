@@ -1,6 +1,7 @@
 //! The reading page's markup, against artboard 01 of the signed mockup
 //! with the agreed differences: no Inbox, Shared by me or Search link and
-//! no comment or response count.
+//! no comment or response count, and the foot of the get flare badge
+//! mockup.
 
 use super::*;
 
@@ -13,6 +14,7 @@ fn reading() -> Reading {
         version: 3,
         published: 1_795_219_200,
         markdown: String::from("A sailing is held.\n"),
+        badge: None,
     }
 }
 
@@ -122,4 +124,58 @@ fn a_date_shows_its_day_month_and_year() {
         )
     );
     assert_eq!(date(0).0, "1 Jan 1970");
+}
+
+/// The page's foot, from its opening tag to its closing one.
+fn foot(html: &str) -> &str {
+    html.split_once("<footer class=\"share-foot\">")
+        .and_then(|(_, rest)| rest.split_once("</footer>"))
+        .map(|(foot, _)| foot)
+        .unwrap()
+}
+
+#[test]
+fn a_reader_who_has_never_shared_sees_the_note_and_the_get_flare_link_below_the_article() {
+    let mut badged = reading();
+    badged.badge = Some(String::from("https://example.com/flare"));
+    let html = page(&badged, "Text.\n", None);
+    let foot = foot(&html);
+    assert!(
+        foot.contains("<span class=\"note\">Shared with Flare</span>"),
+        "{foot}"
+    );
+    assert!(foot.contains("<a class=\"badge\" href=\"https://example.com/flare\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Get Flare, opens in a new tab\">"), "{foot}");
+    assert!(foot.contains("<svg"), "{foot}");
+    assert!(
+        foot.contains(">Get Flare<span class=\"arr\" aria-hidden=\"true\">\u{2197}</span></a>"),
+        "{foot}"
+    );
+    let article = html.find("</article>").unwrap();
+    let footer = html.find("<footer class=\"share-foot\">").unwrap();
+    assert!(article < footer);
+}
+
+#[test]
+fn a_page_with_no_get_flare_address_shows_the_note_and_no_link() {
+    let html = page(&reading(), "Text.\n", None);
+    let foot = foot(&html);
+    assert!(foot.contains("Shared with Flare"), "{foot}");
+    assert!(!foot.contains("<a "), "{foot}");
+    assert!(!html.contains("Get Flare"), "{html}");
+}
+
+#[test]
+fn the_get_flare_address_is_escaped_in_the_link() {
+    let mut hostile = reading();
+    hostile.badge = Some(String::from(
+        "https://example.com/flare?a=\"><script>x</script>&b=1",
+    ));
+    let html = page(&hostile, "Text.\n", None);
+    assert!(!html.contains("<script>x"), "{html}");
+    assert!(
+        foot(&html).contains(
+            "href=\"https://example.com/flare?a=&quot;&gt;&lt;script&gt;x&lt;/script&gt;&amp;b=1\""
+        ),
+        "{html}"
+    );
 }

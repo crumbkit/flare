@@ -26,6 +26,21 @@ script runs. Raw HTML in the Markdown shows as text.
   diagram, table or code block at the top level of the document, becomes
   that block's caption. Any other paragraph stays a paragraph.
 
+## The foot
+
+Below the article, the page's foot says "Shared with Flare". When the
+config sets `hosted.get_flare` (`docs/hosting.md`) and the reader owns no
+share, the foot also holds a Get Flare link that opens that address in a
+new tab, with `rel="noopener noreferrer"` and the accessible name "Get
+Flare, opens in a new tab". The owner of the share never sees the link,
+and a reader who owns one or more shares does not see it either. The link
+has no dismiss control, and flare stores nothing about it. Whether the
+reader owns a share is read from the share store on each page view, which
+adds one read for a reader who is not the owner when the address is set.
+When that read fails, the page shows the note without the link and the
+server logs a warning. On a screen 640 px wide or narrower, the note and
+the link stack and the link is 44 px tall.
+
 ## What the script does
 
 The page loads its script only when it has code or a diagram, and only then
