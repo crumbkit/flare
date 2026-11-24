@@ -371,14 +371,17 @@ async fn a_cursor_from_another_caller_lists_only_the_callers_own_shares() {
     let alice = api.token_for("alice").await;
     let bob = api.token_for("bob").await;
     let carol = api.token_for("carol").await;
-    for title in ["One", "Two", "Three"] {
-        api.share(&alice, title, &["bob@example.com"], &[]).await;
-    }
-    let own = api
-        .share(&carol, "Carol's", &["bob@example.com"], &[])
-        .await;
+    // Carol's one grant is older than every grant of Bob's, so it sorts
+    // after any key Bob's list gives, and her page after his key holds it.
     let theirs = api
         .share(&alice, "To carol", &["carol@example.com"], &[])
+        .await;
+    for title in ["One", "Two", "Three"] {
+        api.hosted.time.advance(Duration::from_secs(10));
+        api.share(&alice, title, &["bob@example.com"], &[]).await;
+    }
+    api.hosted.time.advance(Duration::from_secs(10));
+    api.share(&carol, "Carol's", &["bob@example.com"], &[])
         .await;
     let (_, bobs) = api
         .read("GET", "/api/shares?scope=with-me&limit=1", Some(&bob))
@@ -392,10 +395,8 @@ async fn a_cursor_from_another_caller_lists_only_the_callers_own_shares() {
         )
         .await;
     assert_eq!(status, 200, "{page}");
-    for id in listed(&page) {
-        assert_eq!(id, theirs, "{page}");
-    }
-    assert!(!listed(&page).contains(&own));
+    assert_eq!(listed(&page), [theirs], "{page}");
+    assert!(page.get("next").is_none(), "{page}");
 }
 
 #[tokio::test]

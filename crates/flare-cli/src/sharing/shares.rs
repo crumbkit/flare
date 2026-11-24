@@ -4,12 +4,13 @@
 use super::{body, role_name, session};
 use crate::cli::SharesArgs;
 use crate::codes::sharing::shares_call;
-use crate::codes::{Failed, Refused};
+use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use crate::documents::{ShareRow, SharesNext};
 use crate::env::Snapshot;
 use crumbkit::{Listing, Step};
 use flare_contract::{ApiCode, ListScope, ShareCursor, ShareList};
 use reqwest::Method;
+use std::cmp::Reverse;
 
 /// The most shares the server lists at once, which each page of `--all`
 /// asks for.
@@ -25,6 +26,38 @@ fn row(share: flare_contract::ShareSummary) -> ShareRow {
         version: share.version,
         created: share.created,
     }
+}
+
+/// The place of `cursor` in its list, which grows down the list: newest
+/// first, then by share id.
+fn place(cursor: ShareCursor) -> (Reverse<u64>, String) {
+    (Reverse(cursor.seconds()), cursor.share_hex())
+}
+
+/// The server's `next` as a share cursor of `scope` that sorts after
+/// `after`, the cursor the request started from. Any other text is an
+/// answer flare cannot use, so `--all` never asks for the same page twice
+/// or walks back up the list.
+fn advanced(
+    origin: &str,
+    scope: ListScope,
+    after: Option<ShareCursor>,
+    next: &str,
+) -> Result<ShareCursor, Failed> {
+    ShareCursor::try_from(next)
+        .ok()
+        .filter(|cursor| cursor.scope() == scope)
+        .filter(|cursor| after.is_none_or(|after| place(after) < place(*cursor)))
+        .ok_or_else(|| {
+            SharingFailed::BadAnswer {
+                server: origin.to_owned(),
+                problem: format!(
+                    "the next cursor {next} is not a cursor of this list that moves past the last one"
+                ),
+                next: NextRun::MaybeDone,
+            }
+            .into()
+        })
 }
 
 /// Runs `flare shares`. A `--cursor` that is not a share cursor of the
@@ -53,8 +86,7 @@ pub(crate) async fn shares(
                 .ok_or_else(|| {
                     Failed::from(Refused::new(ApiCode::SharesBadCursor, None, api.origin()))
                         .for_shares(args.with_me)
-                })?
-                .to_string(),
+                })?,
         ),
         None => None,
     };
@@ -70,16 +102,24 @@ pub(crate) async fn shares(
             .await
             .map_err(|failed| failed.for_shares(args.with_me))?;
         let list = body(&api, answer)?;
+        let next = list
+            .next
+            .map(|next| advanced(api.origin(), scope, cursor, &next))
+            .transpose()?;
         rows.extend(list.items.into_iter().map(row));
-        match list.next {
-            Some(next) if args.page.limit().is_none() => cursor = Some(next),
-            next => {
+        match (next, args.page.limit()) {
+            (Some(next), None) => cursor = Some(next),
+            (next, _) => {
                 let listing = Listing::uncounted(rows, next.is_some()).described("shares");
-                let Some(next) = next else {
+                let Some(next) = next.map(|next| next.to_string()) else {
                     return Ok(listing.summary(SharesNext { cursor: None }));
                 };
-                let step = Step::new("Read the shares that follow this page.")
-                    .call(shares_call(args.with_me).value("cursor", next.clone()));
+                // The next call keeps the page size the caller asked for.
+                let step = Step::new("Read the shares that follow this page.").call(
+                    shares_call(args.with_me)
+                        .value("limit", limit.to_string())
+                        .value("cursor", next.clone()),
+                );
                 return Ok(listing
                     .summary(SharesNext { cursor: Some(next) })
                     .step(step));

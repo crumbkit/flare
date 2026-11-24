@@ -541,6 +541,10 @@ const MINE_CURSOR: &str = "fs1.AAAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg";
 /// A share cursor of `scope=with-me` that flare wrote.
 const WITH_ME_CURSOR: &str = "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg";
 
+/// A share cursor of `scope=with-me` one second older than
+/// [`WITH_ME_CURSOR`], so it sorts after it in the list.
+const LATER_CURSOR: &str = "fs1.AQAAAABpJID_qqqqqqqqqqqqqqqqqqqqqg";
+
 /// Answers the next share list with one share titled `title`, and `next`
 /// when given.
 fn share_page(api: &FakeApi, title: &str, next: Option<&str>) {
@@ -599,7 +603,7 @@ fn shares_cut_by_limit_names_the_next_call_with_the_cursor_and_a_last_page_names
         printed["next"],
         json!([{
             "text": "Read the shares that follow this page.",
-            "commands": [{"call": format!("flare shares --with-me --cursor {WITH_ME_CURSOR}")}],
+            "commands": [{"call": format!("flare shares --with-me --limit 2 --cursor {WITH_ME_CURSOR}")}],
         }]),
         "{}",
         ran.all()
@@ -616,7 +620,7 @@ fn shares_cut_by_limit_names_the_next_call_with_the_cursor_and_a_last_page_names
     ran.assert_ok();
     assert!(
         ran.stderr.contains(&format!(
-            "Next: Read the shares that follow this page.\n  flare shares --cursor {MINE_CURSOR}\n"
+            "Next: Read the shares that follow this page.\n  flare shares --limit 2 --cursor {MINE_CURSOR}\n"
         )),
         "{}",
         ran.all()
@@ -632,6 +636,68 @@ fn shares_cut_by_limit_names_the_next_call_with_the_cursor_and_a_last_page_names
         share_targets(&api).last().unwrap(),
         &format!("/api/shares?scope=mine&limit=50&cursor={MINE_CURSOR}")
     );
+}
+
+#[test]
+fn shares_with_all_follows_a_cursor_that_moves_forward_and_stops_with_bad_answer_on_one_that_does_not()
+ {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    share_page(&api, "First", Some(WITH_ME_CURSOR));
+    share_page(&api, "Second", Some(LATER_CURSOR));
+    share_page(&api, "Third", None);
+    home.sharing(&["shares", "--with-me", "--all", "--json"])
+        .assert_ok();
+    assert_eq!(share_targets(&api).len(), 3);
+
+    // Each answer below sends a `next` that the command must refuse: the
+    // same cursor again, one that moves back, one of the other scope and
+    // text that is no share cursor. Each run stops with a typed failure.
+    for (start, bad) in [
+        (WITH_ME_CURSOR, WITH_ME_CURSOR),
+        (LATER_CURSOR, WITH_ME_CURSOR),
+        (WITH_ME_CURSOR, MINE_CURSOR),
+        (WITH_ME_CURSOR, "nonsense"),
+    ] {
+        let before = share_targets(&api).len();
+        share_page(&api, "Again", Some(bad));
+        let ran = home.sharing(&["shares", "--with-me", "--all", "--cursor", start, "--json"]);
+        let printed = failure(&ran, "flare::network::bad_answer");
+        assert!(
+            printed["message"].as_str().unwrap().contains("cursor"),
+            "{start} then {bad}: {}",
+            ran.all()
+        );
+        assert_eq!(share_targets(&api).len(), before + 1, "{start} then {bad}");
+    }
+}
+
+#[test]
+fn shares_cut_by_limit_refuses_a_next_cursor_that_does_not_move_forward() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    share_page(&api, "First", Some(WITH_ME_CURSOR));
+    let ran = home.sharing(&[
+        "shares",
+        "--with-me",
+        "--limit",
+        "1",
+        "--cursor",
+        LATER_CURSOR,
+        "--json",
+    ]);
+    failure(&ran, "flare::network::bad_answer");
+    share_page(&api, "First", Some(LATER_CURSOR));
+    home.sharing(&[
+        "shares",
+        "--with-me",
+        "--limit",
+        "1",
+        "--cursor",
+        WITH_ME_CURSOR,
+        "--json",
+    ])
+    .assert_ok();
 }
 
 /// Asserts that `ran` failed with `flare::shares::bad_cursor`, whose
