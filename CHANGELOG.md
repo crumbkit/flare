@@ -402,6 +402,16 @@ This file records the notable changes to flare. The format follows
 
 ### Fixed
 
+- `flare teams create` on a server whose teams come from another directory
+  answers `flare::teams::managed_elsewhere` without removing any grant.
+  Before this fix it first removed every grant other owners had made to a
+  team of that name that the directory no longer listed. On a server that
+  manages its own teams, one create removes at most 200 grants left under a
+  free name; when more are left it makes no team, answers
+  `flare::teams::unavailable`, and a repeat removes the next 200.
+- `flare shares --with-me --everyone` no longer skips shares open to
+  everyone when an earlier page read everyone grants that the current admit
+  rule no longer opens to the caller.
 - A release run whose `release` job cannot read whether the tag already has
   a release, because of a token, rate-limit, network or GitHub fault, now
   prints gh's error and `could not read whether <tag> has a release, so the

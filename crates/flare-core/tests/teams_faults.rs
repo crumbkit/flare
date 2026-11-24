@@ -178,6 +178,10 @@ impl SwitchedTeams {
 }
 
 impl Teams for SwitchedTeams {
+    fn manages(&self) -> bool {
+        self.inner.manages()
+    }
+
     async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
         self.check()?;
         self.inner.teams_of(person).await

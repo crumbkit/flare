@@ -72,6 +72,10 @@ impl<S: TeamStore> FlareTeams<S> {
 }
 
 impl<S: TeamStore> Teams for FlareTeams<S> {
+    fn manages(&self) -> bool {
+        true
+    }
+
     async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
         Ok(self.store.teams_of(person).await?)
     }

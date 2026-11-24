@@ -111,8 +111,18 @@ impl From<TeamStoreError> for TeamsError {
 ///
 /// The three reads are what a share's standing needs. The changes have
 /// default bodies that answer [`TeamsError::ManagedElsewhere`], so a
-/// read-only implementation writes only the reads.
+/// read-only implementation writes only the reads. An implementation that
+/// writes the changes also answers `true` from [`Teams::manages`].
 pub trait Teams: Send + Sync {
+    /// Whether flare creates, changes and deletes these teams. The default
+    /// answers `false`, as the default changes answer
+    /// [`TeamsError::ManagedElsewhere`]. [`Flares::create_team`](crate::Flares::create_team)
+    /// answers `ManagedElsewhere` without touching any grant when this is
+    /// `false`.
+    fn manages(&self) -> bool {
+        false
+    }
+
     /// The names of the teams that `person` belongs to. A name may be of a
     /// deleted team; [`Teams::exists`] tells.
     ///
