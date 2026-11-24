@@ -72,6 +72,10 @@ struct Racing {
 }
 
 impl Teams for Racing {
+    fn manages(&self) -> bool {
+        self.inner.manages()
+    }
+
     async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
         self.inner.teams_of(person).await
     }

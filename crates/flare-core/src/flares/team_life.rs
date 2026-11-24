@@ -14,7 +14,12 @@
 //!
 //! A create of a name that no team has first removes any grant
 //! still listed under the name, as one left by a grant that stopped before
-//! it could remove itself, so a new team never inherits a grant.
+//! it could remove itself, so a new team never inherits a grant. One create
+//! call removes at most [`MAX_SWEPT`] such grants. When more are left, the
+//! call creates nothing and answers [`TeamsError::Unavailable`], and a
+//! repeat removes the next ones. A deployment whose teams flare does not
+//! manage ([`Teams::manages`] is false) answers
+//! [`TeamsError::ManagedElsewhere`] before any grant is read or removed.
 
 use super::{Creators, Flares, Unfinished};
 use crate::auth::Principal;
@@ -22,9 +27,12 @@ use crate::store::{CommentStore, CursorStore, GrantStore, ListKey, ResponseStore
 use crate::teams::{Group, Team, TeamName, Teams, TeamsError};
 use crate::time::Timestamp;
 
-/// The most grants one [`Flares::delete_team`] call removes. A team with
-/// more answers [`TeamDeletion::finished`] false, and the next call goes
-/// on; `flare teams delete` repeats the call until it finishes.
+/// The most grants one [`Flares::delete_team`] or [`Flares::create_team`]
+/// call removes. A delete of a team with more answers
+/// [`TeamDeletion::finished`] false, and the next call goes on;
+/// `flare teams delete` repeats the call until it finishes. A create that
+/// finds more left under a free name answers [`TeamsError::Unavailable`],
+/// and a repeat goes on.
 pub const MAX_SWEPT: usize = 200;
 
 /// What one [`Flares::delete_team`] call did.
@@ -50,14 +58,17 @@ impl<
 > Flares<S, G, R, C, U, T, K>
 {
     /// Creates a team owned by the caller, who must be a creator. When no
-    /// team has the name, grants still listed under it are removed first.
+    /// team has the name, grants still listed under it are removed first,
+    /// at most [`MAX_SWEPT`] in one call.
     ///
     /// # Errors
     ///
-    /// Returns [`TeamsError::NotACreator`], [`TeamsError::Unavailable`]
-    /// when the creators rule cannot answer or leftover grants cannot be
-    /// removed, and the refusals of
-    /// [`Teams::create`].
+    /// Returns [`TeamsError::NotACreator`],
+    /// [`TeamsError::ManagedElsewhere`] when flare does not manage the
+    /// deployment's teams, [`TeamsError::Unavailable`] when the creators
+    /// rule cannot answer, when leftover grants cannot be removed or when
+    /// more than [`MAX_SWEPT`] are left (a repeat removes the next ones),
+    /// and the refusals of [`Teams::create`].
     pub async fn create_team(
         &self,
         who: &Principal,
@@ -73,13 +84,13 @@ impl<
             Err(_) => return Err(TeamsError::Unavailable),
         }
         let teams = self.shares.teams();
+        if !teams.manages() {
+            return Err(TeamsError::ManagedElsewhere);
+        }
         if !teams.taken(&name).await? {
-            let group = Group::Team(name.clone());
-            loop {
-                let (_, more) = self.sweep(&group).await?;
-                if !more {
-                    break;
-                }
+            let (_, more) = self.sweep(&Group::Team(name.clone())).await?;
+            if more {
+                return Err(TeamsError::Unavailable);
             }
         }
         teams.create(owner, name, at).await

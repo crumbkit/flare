@@ -92,16 +92,20 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// grants, and the key of the last grant read when more follow.
     ///
     /// The page merges the caller's own grants, the grants of each active
-    /// team the caller belongs to and, with `everyone`, the everyone grants
-    /// whose audience covers the caller. Each list is read after `after`
-    /// and at most `limit` deep, so the first `limit` grants of the merge
-    /// are exact. A share that two of those grants name is listed once on
-    /// a page, with the higher role. When its grants fall on two pages, it
-    /// is listed on each.
+    /// team the caller belongs to and, with `everyone`, the everyone grants.
+    /// Each list is read after `after` and at most `limit` deep, so the
+    /// first `limit` grants of the merge are exact, and the next key is the
+    /// last of those. Everyone grants whose audience does not cover the
+    /// caller are dropped after the merge is cut to `limit`, so the key
+    /// never passes an everyone grant that was not read. A share that two
+    /// of the remaining grants name is listed once on a page, with the
+    /// higher role. When its grants fall on two pages, it is listed on
+    /// each.
     ///
-    /// A grant whose share no longer exists, and a share the caller owns,
-    /// are left out, and the key still passes them, so a page can hold
-    /// fewer than `limit` entries and have a next key. A `limit` above
+    /// A grant whose share no longer exists, a share the caller owns, and
+    /// an everyone grant that does not open to the caller are left out, and
+    /// the key still passes them, so a page can hold fewer than `limit`
+    /// entries and have a next key. A `limit` above
     /// [`MAX_LISTED`] reads [`MAX_LISTED`] grants, and a `limit` of 0 reads
     /// one.
     ///
@@ -138,10 +142,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
                 .await
                 .map_err(|_| ShareError::Unavailable)?;
             more |= read.truncated();
-            grants.extend(read.into_items().into_iter().filter(|grant| {
-                Group::of_grantee(grant.grantee()) != Some(Group::Everyone)
-                    || self.everyone_opens(grant, &person)
-            }));
+            grants.extend(read.into_items());
         }
         grants.sort_by_key(ListKey::of_grant);
         if grants.len() > limit {
@@ -151,7 +152,11 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         let next = more.then(|| grants.last().map(ListKey::of_grant)).flatten();
         let mut order: Vec<ShareId> = Vec::with_capacity(grants.len());
         let mut best: HashMap<ShareId, Grant> = HashMap::new();
-        for grant in grants {
+        let opens = |grant: &Grant| {
+            Group::of_grantee(grant.grantee()) != Some(Group::Everyone)
+                || self.everyone_opens(grant, &person)
+        };
+        for grant in grants.into_iter().filter(opens) {
             match best.get(grant.share()) {
                 None => {
                     order.push(grant.share().clone());

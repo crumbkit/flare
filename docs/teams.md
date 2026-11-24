@@ -58,7 +58,8 @@ gives the life of a team, of a member and of a group grant.
 
 - A team name has 1 to 40 characters from `a` to `z`, `0` to `9` and `-`.
 - A server whose teams come from another directory answers each team
-  change with `flare::teams::managed_elsewhere` (403).
+  change with `flare::teams::managed_elsewhere` (403). A create on such a
+  server changes no grant before it answers.
 - `flare shares --with-me` lists shares granted to the caller directly and
   through their active teams. It adds the shares granted to everyone only
   with `--everyone`.
@@ -187,7 +188,10 @@ gives the life of a team, of a member and of a group grant.
    write. When the team was deleted in between, the grant removes itself
    and answers `flare::teams::not_found`. When that removal fails too, the
    grant stays under a name with no team; the next create of that name
-   removes every grant still listed under it before it creates the team.
+   removes the grants still listed under it before it creates the team.
+   One create removes at most 200 of them. When more are left, the create
+   makes no team and answers `flare::teams::unavailable`, and running
+   `flare teams create` again removes the next 200.
 
 ## Invariants
 
