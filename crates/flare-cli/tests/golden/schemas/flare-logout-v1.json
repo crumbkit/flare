@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/logout/v1",
+  "description": "The server and the label of the token that was revoked and deleted.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/LoggedOut"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/logout/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "LoggedOut": {
+      "description": "What `flare logout` forgot.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "description": "The label of the revoked token.",
+          "type": "string"
+        },
+        "server": {
+          "description": "The server's origin.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "label"
+      ]
+    }
+  }
+}

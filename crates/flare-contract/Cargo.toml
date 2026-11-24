@@ -1,0 +1,18 @@
+[package]
+name = "flare-contract"
+description = "The request, response and problem types of flare's JSON API, and their JSON Schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The cursor's text is base64url of its position.
+base64.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

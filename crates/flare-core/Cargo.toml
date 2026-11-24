@@ -1,0 +1,24 @@
+[package]
+name = "flare-core"
+description = "Types, traits and contract tests that every flare crate shares"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+secrecy.workspace = true
+thiserror.workspace = true
+
+[features]
+# Exposes helpers that only tests need, such as MemoryRecordStore::seed, which
+# replaces a record without checking its blob. The crate's own tests turn it
+# on through the dev-dependency below.
+testing = []
+
+[dev-dependencies]
+flare-core = { path = ".", features = ["testing"] }
+
+[lints]
+workspace = true

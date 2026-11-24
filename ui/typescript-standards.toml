@@ -1,0 +1,24 @@
+# The adoption map of Flare's TypeScript workspace: the headless comment core
+# in headless/ and its React binding in react/. Both packages are private and
+# have no build of their own; the app that imports them bundles their source.
+
+schema = "typescript-standards/adoption/v1"
+standards = { version = "0.1.0", commit = "59d74aa" }
+
+profiles = ["base"]
+
+[[decision]]
+id = "lanes"
+requirement = """
+- Lane: `ui` in .github/workflows/ci.yml, on each pull request and each push to main. It runs the workflows check through the Rust lane's `zizmor .`, then install, lint, typecheck, knip and test from this directory. Its budget is ten minutes, the job's timeout. A merge waits for it once branch protection requires it.
+- The workspace has no `build` step, because neither package is bundled or published: an app in this workspace imports their TypeScript source and its own build bundles it.
+- Lane: `advisories` in .github/workflows/ci.yml runs `pnpm audit` in this directory daily at 06:43 UTC, on each push to main and on workflow_dispatch (BASE-17). Nothing waits for it.
+"""
+reason = "The two packages hold the comment parts' state and their tests. A pull request that breaks either fails before merge, and the lane takes about a minute."
+realizations = ["../.github/workflows/ci.yml", "package.json"]
+
+[[decision]]
+id = "headless-without-dom"
+requirement = "headless/tsconfig.json sets `lib` to es2024 alone and `types` to an empty list, so the core type-checks with no DOM and no runtime's globals."
+reason = "The core must run under any front end. A reference to `document`, `window` or `fetch` in headless/src fails `tsc` instead of waiting for a reviewer."
+realizations = ["headless/tsconfig.json"]

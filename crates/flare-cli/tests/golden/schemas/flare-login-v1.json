@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/login/v1",
+  "description": "The server, the person and the label of the token that the Keychain now holds.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/LoggedIn"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/login/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "LoggedIn": {
+      "description": "What `flare login` saved.",
+      "type": "object",
+      "properties": {
+        "expires": {
+          "description": "When the token expires, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "label": {
+          "description": "The token's label.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The address the token signs in as.",
+          "type": "string"
+        },
+        "server": {
+          "description": "The server's origin.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "owner",
+        "label",
+        "expires"
+      ]
+    }
+  }
+}

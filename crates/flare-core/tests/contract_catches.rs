@@ -1,0 +1,364 @@
+//! Runs each contract suite against a deliberately wrong implementation and
+//! asserts the clause that fails, so a suite that stops checking a clause
+//! fails these tests.
+#![cfg(test)]
+
+#[path = "support/fixed_authenticator.rs"]
+mod fixed_authenticator;
+#[path = "support/flawed_stores.rs"]
+mod flawed_stores;
+
+use fixed_authenticator::FixedAuthenticator;
+use flare_core::contract::authenticator::{self, AuthFixture};
+use flare_core::contract::block_on;
+use flare_core::contract::page_store::{self, PageFixture};
+use flare_core::contract::record_store::{self, RecordFixture};
+use flare_core::contract::{Clause, SeedRecord};
+use flare_core::memory::{MemoryPageStore, MemoryRecordStore};
+use flare_core::{Credential, PageName, Resource};
+use flawed_stores::{
+    AcceptsEveryCredential, AllowsEverything, Flaw, FlawedPageStore, IgnoresExpectedBlob,
+    PrefixedVersions, ReadAllFindsNothing,
+};
+use std::sync::Arc;
+
+fn seeded_records(seeds: &[SeedRecord]) -> MemoryRecordStore {
+    let store = MemoryRecordStore::new();
+    for seed in seeds {
+        store
+            .seed(
+                seed.path().clone(),
+                seed.record_type().clone(),
+                seed.body().clone(),
+            )
+            .unwrap();
+    }
+    store
+}
+
+#[test]
+fn a_record_store_that_ignores_the_expected_blob_fails_the_stale_blob_clause() {
+    let fixture = RecordFixture::standard().unwrap();
+    let store = IgnoresExpectedBlob(seeded_records(fixture.seeds()));
+    let violation = block_on(record_store::a_stale_blob_conflicts_and_changes_nothing(
+        &store, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        violation.clause(),
+        Clause::AStaleBlobConflictsAndChangesNothing
+    );
+}
+
+#[test]
+fn a_record_store_that_ignores_the_expected_blob_fails_the_old_blob_clause() {
+    let fixture = RecordFixture::standard().unwrap();
+    let store = IgnoresExpectedBlob(seeded_records(fixture.seeds()));
+    let violation = block_on(record_store::an_old_blob_conflicts_after_a_write(
+        &store, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AnOldBlobConflictsAfterAWrite);
+}
+
+fn flawed(flaw: Flaw, fixture: &PageFixture) -> (FlawedPageStore, Arc<MemoryRecordStore>) {
+    let records = Arc::new(seeded_records(fixture.seeds()));
+    (FlawedPageStore::new(flaw, Arc::clone(&records)), records)
+}
+
+#[test]
+fn a_page_store_that_drops_provenance_fails_the_provenance_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::DropsProvenance, &fixture);
+    let violation = block_on(page_store::provenance_is_returned_unchanged(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::ProvenanceIsReturnedUnchanged);
+}
+
+#[test]
+fn a_page_store_that_accepts_an_unresolved_origin_fails_the_origin_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::AcceptsUnresolvedOrigin, &fixture);
+    let violation = block_on(page_store::an_unresolved_origin_is_refused(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AnUnresolvedOriginIsRefused);
+}
+
+#[test]
+fn a_page_store_that_moves_pins_on_republish_fails_the_republish_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::MovesPinsOnRepublish, &fixture);
+    let violation = block_on(page_store::a_republish_leaves_a_pin_unchanged(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::ARepublishLeavesAPinUnchanged);
+}
+
+#[test]
+fn a_page_store_that_accepts_an_unresolved_page_origin_on_save_fails_the_origin_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::AcceptsUnresolvedPageOriginOnSave, &fixture);
+    let violation = block_on(page_store::an_unresolved_origin_is_refused(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AnUnresolvedOriginIsRefused);
+    assert!(
+        violation.detail().contains("save from a missing version"),
+        "{}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn a_page_store_that_saves_without_the_type_check_fails_the_save_clause_on_the_wrong_type() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::SkipsTypeCheckOnSave, &fixture);
+    let violation = block_on(page_store::a_misfit_is_refused_on_save(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AMisfitIsRefusedOnSave);
+    assert!(
+        violation.detail().contains("wrong-view"),
+        "{}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn a_page_store_that_moves_without_the_type_check_fails_the_move_clause_on_the_wrong_type() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::SkipsTypeCheckOnMove, &fixture);
+    let violation = block_on(page_store::move_binding_refuses_a_misfit(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::MoveBindingRefusesAMisfit);
+    assert!(
+        violation.detail().contains("another type"),
+        "{}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn a_page_store_that_moves_without_the_existence_check_fails_the_vanished_record_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::SkipsExistenceCheckOnMove, &fixture);
+    let without_records = MemoryRecordStore::new();
+    let violation = block_on(page_store::move_binding_refuses_a_vanished_record(
+        &pages,
+        &*records,
+        &without_records,
+        &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        violation.clause(),
+        Clause::MoveBindingRefusesAVanishedRecord
+    );
+}
+
+#[test]
+fn a_page_store_that_saves_an_undeclared_slot_fails_the_save_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::SkipsUndeclaredSlotCheckOnSave, &fixture);
+    let violation = block_on(page_store::a_misfit_is_refused_on_save(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AMisfitIsRefusedOnSave);
+    assert!(
+        violation.detail().contains("gone-view"),
+        "{}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn a_page_store_that_saves_without_the_existence_check_fails_the_save_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::SkipsExistenceCheckOnSave, &fixture);
+    let violation = block_on(page_store::a_misfit_is_refused_on_save(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AMisfitIsRefusedOnSave);
+    assert!(
+        violation.detail().contains("missing-view"),
+        "{}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn a_page_store_that_moves_to_a_version_without_the_slot_fails_the_move_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::SkipsUndeclaredSlotCheckOnMove, &fixture);
+    let violation = block_on(page_store::move_binding_refuses_a_misfit(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::MoveBindingRefusesAMisfit);
+    assert!(
+        violation.detail().contains("without the slot"),
+        "{}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn a_page_store_that_ignores_the_expected_pin_fails_the_stale_pin_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::IgnoresExpectedPin, &fixture);
+    let violation = block_on(page_store::move_binding_refuses_a_stale_pin(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::MoveBindingRefusesAStalePin);
+}
+
+#[test]
+fn a_page_store_that_records_another_mover_fails_the_mover_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::RecordsAnotherMover, &fixture);
+    let violation = block_on(page_store::a_move_records_its_mover(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AMoveRecordsItsMover);
+}
+
+#[test]
+fn a_page_store_that_reuses_a_version_name_fails_the_version_name_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::ReusesVersionNames, &fixture);
+    let violation = block_on(page_store::version_names_are_never_reused(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::VersionNamesAreNeverReused);
+}
+
+#[test]
+fn a_page_store_whose_bindings_of_lists_nothing_fails_the_round_trip_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::ForgetsBindingsOf, &fixture);
+    let violation = block_on(page_store::a_binding_round_trips(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::ABindingRoundTrips);
+}
+
+#[test]
+fn a_page_store_that_lists_only_the_newest_pins_fails_the_bindings_of_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::ListsOnlyNewestPins, &fixture);
+    let violation = block_on(page_store::bindings_of_lists_a_pages_bindings(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::BindingsOfListsAPagesBindings);
+}
+
+#[test]
+fn a_page_store_whose_check_fit_checks_nothing_fails_the_check_fit_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::ChecksNoFit, &fixture);
+    let without_records = MemoryRecordStore::new();
+    let violation = block_on(page_store::check_fit_sees_a_vanished_record(
+        &pages,
+        &*records,
+        &without_records,
+        &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::CheckFitSeesAVanishedRecord);
+}
+
+#[test]
+fn the_bindings_of_clause_passes_on_a_store_whose_versions_are_not_numbered() {
+    let fixture = PageFixture::standard().unwrap();
+    let records = seeded_records(fixture.seeds());
+    let pages = PrefixedVersions(MemoryPageStore::new());
+    block_on(page_store::bindings_of_lists_a_pages_bindings(
+        &pages, &records, &fixture,
+    ))
+    .unwrap();
+}
+
+#[test]
+fn an_authenticator_that_allows_everything_fails_the_access_clause() {
+    let reachable = Resource::Page(PageName::try_from("home").unwrap());
+    let unreachable = Resource::Page(PageName::try_from("secret").unwrap());
+    let authenticator_under_test = AllowsEverything(FixedAuthenticator::new(
+        "right-secret",
+        "ada",
+        reachable.clone(),
+    ));
+    let fixture = AuthFixture::new(
+        Credential::bearer("right-secret"),
+        Credential::bearer("wrong-secret"),
+        reachable,
+        unreachable,
+    );
+    let violation = block_on(authenticator::access_follows_the_resource(
+        &authenticator_under_test,
+        &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::AccessFollowsTheResource);
+}
+
+#[test]
+fn an_authenticator_that_accepts_every_credential_fails_the_rejection_clause() {
+    let reachable = Resource::Page(PageName::try_from("home").unwrap());
+    let unreachable = Resource::Page(PageName::try_from("secret").unwrap());
+    let accepting = AcceptsEveryCredential {
+        inner: FixedAuthenticator::new("right-secret", "ada", reachable.clone()),
+        secret: "right-secret",
+    };
+    let fixture = AuthFixture::new(
+        Credential::bearer("right-secret"),
+        Credential::bearer("wrong-secret"),
+        reachable,
+        unreachable,
+    );
+    let violation = block_on(authenticator::rejected_credential_is_rejected(
+        &accepting, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::RejectedCredentialIsRejected);
+}
+
+#[test]
+fn a_record_store_whose_read_all_finds_nothing_fails_the_read_all_clause() {
+    let fixture = RecordFixture::standard().unwrap();
+    let store = ReadAllFindsNothing(seeded_records(fixture.seeds()));
+    let violation = block_on(record_store::read_all_answers_each_path_as_read_does(
+        &store, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(violation.clause(), Clause::ReadAllAnswersEachPathAsReadDoes);
+}
+
+#[test]
+fn a_page_store_that_reads_fill_by_fill_fails_the_one_state_clause() {
+    let fixture = PageFixture::standard().unwrap();
+    let (pages, records) = flawed(Flaw::ReadsFillByFill, &fixture);
+    let violation = block_on(page_store::a_two_fill_binding_is_checked_against_one_state(
+        &pages, &*records, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        violation.clause(),
+        Clause::ATwoFillBindingIsCheckedAgainstOneState
+    );
+}

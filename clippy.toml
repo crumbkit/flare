@@ -1,7 +1,14 @@
-# hangar-core reads no environment variable, starts no process and sleeps
-# nowhere, so no module owns any call listed below and each reason says what
-# to do instead. When a later crate needs one of these calls, that crate
-# names its owning module in the reason of the entry (BASE-5).
+# flare reads no environment variable and sleeps nowhere, so no module owns
+# those calls and each reason says what to do instead. Starting a process is
+# owned by crates/flare-auth-oidc/src/keychain.rs and
+# crates/flare-board/src/process.rs (PROC-1). When a later
+# crate needs one of these calls, that crate names its owning module in the
+# reason of the entry (BASE-5). The durable-state entries (DUR-1, DUR-2)
+# come from the durable-state profile. flare-auth-loopback's
+# state/files.rs writes its new private files, and it is the only library module that
+# suppresses them to write. flare-auth-oidc's file_secret.rs suppresses
+# OpenOptions::new to open the client secret file read-only. Tests that
+# write fixture files suppress them too, each with its reason.
 
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
@@ -13,6 +20,19 @@ too-many-lines-threshold = 150 # BASE-10
 max-fn-params-bools = 3 # BASE-16
 
 disallowed-methods = [
+    # DUR-1: the atomic writer is crumbkit-durable; the new private files that
+    # are never replaced are written by crates/flare-auth-loopback/src/state/files.rs.
+    { path = "std::fs::write", reason = "replace durable files with crumbkit-durable, and write new private files in flare-auth-loopback's state/files.rs" },
+    { path = "std::fs::copy", reason = "replace durable files with crumbkit-durable, and write new private files in flare-auth-loopback's state/files.rs" },
+    { path = "std::fs::rename", reason = "replace durable files with crumbkit-durable, and write new private files in flare-auth-loopback's state/files.rs" },
+    { path = "std::fs::File::create", reason = "replace durable files with crumbkit-durable, and write new private files in flare-auth-loopback's state/files.rs" },
+    { path = "std::fs::OpenOptions::new", reason = "replace durable files with crumbkit-durable, and write new private files in flare-auth-loopback's state/files.rs" },
+    # DUR-2: flare takes no file lock. A crate that needs one names its lock
+    # module, which owns the deadline, in these reasons.
+    { path = "std::fs::File::lock", reason = "flare takes no file lock; add a lock module that owns the deadline" },
+    { path = "std::fs::File::try_lock", reason = "flare takes no file lock; add a lock module that owns the deadline" },
+    { path = "std::fs::File::lock_shared", reason = "flare takes no file lock; add a lock module that owns the deadline" },
+    { path = "std::fs::File::try_lock_shared", reason = "flare takes no file lock; add a lock module that owns the deadline" },
     # BASE-6
     { path = "std::env::var", reason = "read the environment snapshot" },
     { path = "std::env::var_os", reason = "read the environment snapshot" },
@@ -26,10 +46,54 @@ disallowed-methods = [
     { path = "std::process::exit", reason = "return the exit code from main so destructors run" },
     # BASE-11
     { path = "std::thread::sleep", reason = "wait for an observable signal, or sleep in the clock owner" },
-    { path = "tokio::time::sleep", reason = "wait for an observable signal, or sleep in the clock owner", allow-invalid = true },
+    { path = "tokio::time::sleep", reason = "wait for an observable signal, or sleep in the clock owner, such as flare-aws's dynamodb/retry.rs", allow-invalid = true },
+    # PROC-1: the process modules are crates/flare-auth-oidc/src/keychain.rs
+    # and crates/flare-board/src/process.rs.
+    { path = "std::process::Command::new", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board" },
+    { path = "std::process::Command::spawn", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board" },
+    { path = "std::process::Command::status", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board" },
+    { path = "std::process::Command::output", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board" },
+    { path = "std::os::unix::process::CommandExt::exec", reason = "replacing this process bypasses the crate's process module: keychain.rs or process.rs" },
+    { path = "tokio::process::Command::new", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board", allow-invalid = true },
+    { path = "tokio::process::Command::spawn", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board", allow-invalid = true },
+    { path = "tokio::process::Command::status", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board", allow-invalid = true },
+    { path = "tokio::process::Command::output", reason = "start processes through the crate's process module: keychain.rs in flare-auth-oidc, process.rs in flare-board", allow-invalid = true },
+    # SVC-1 (the service profile): flare-server's tasks.rs spawns every
+    # task, and a JoinSet there owns each one. Other crates spawn a thread
+    # only with an owner that joins it, and say so in an #[expect].
+    { path = "std::thread::spawn", reason = "spawn through the task owner, flare-server's tasks.rs, which joins or aborts" },
+    { path = "tokio::spawn", reason = "spawn through the task owner, flare-server's tasks.rs, which joins or aborts", allow-invalid = true },
+    { path = "tokio::task::spawn", reason = "spawn through the task owner, flare-server's tasks.rs, which joins or aborts", allow-invalid = true },
+    { path = "tokio::task::spawn_blocking", reason = "spawn through the task owner, flare-server's tasks.rs, which joins or aborts", allow-invalid = true },
+    # CLI-1 (the cli profile): crumbkit's output owns the standard streams
+    # of the flare command, and flare-cli's log.rs owns the server's log
+    # on standard error.
+    { path = "std::io::stdout", reason = "write through crumbkit's output" },
+    { path = "std::io::stderr", reason = "write through crumbkit's output, or log through flare-cli's log.rs" },
+    { path = "std::io::stdin", reason = "read through crumbkit's output, which knows whether input is a terminal" },
+    # SVC-12 (the service profile): flare-aws owns the DynamoDB and S3
+    # clients. Its connect.rs builds them, dynamodb.rs holds the DynamoDB
+    # client and s3.rs the S3 client.
+    { path = "aws_config::defaults", reason = "use flare-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_config::load_defaults", reason = "use flare-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_config::from_env", reason = "use flare-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_config::load_from_env", reason = "use flare-aws's Stores::connect, which loads the AWS config (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_dynamodb::Client::new", reason = "use flare-aws's stores; its connect.rs builds the DynamoDB client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_dynamodb::Client::from_conf", reason = "use flare-aws's stores; its connect.rs builds the DynamoDB client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_s3::Client::new", reason = "use flare-aws's stores; its connect.rs builds the S3 client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_s3::Client::from_conf", reason = "use flare-aws's stores; its connect.rs builds the S3 client (SVC-12)", allow-invalid = true },
 ]
 
-# BASE-7: hangar's only error crate is thiserror, which has no untyped-error
+disallowed-types = [
+    # SVC-12: flare-aws's dynamodb.rs holds the DynamoDB client and its
+    # s3.rs the S3 client.
+    { path = "aws_sdk_dynamodb::Client", reason = "use flare-aws's DynamoShareStore and DynamoGrantStore; dynamodb.rs owns the client (SVC-12)", allow-invalid = true },
+    { path = "aws_sdk_s3::Client", reason = "use flare-aws's S3FileStore; s3.rs owns the client (SVC-12)", allow-invalid = true },
+    # PROC-1
+    { path = "std::process::Child", reason = "let the crate's process module, keychain.rs or flare-board's process.rs, hold the child, which owns its deadline and cleanup" },
+]
+
+# BASE-7: flare's only error crate is thiserror, which has no untyped-error
 # macro, so the list is empty. A crate that adds anyhow or miette lists its
 # untyped-error macros here.
 disallowed-macros = []

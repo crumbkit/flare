@@ -1,0 +1,52 @@
+List the responses to flares since a cursor, oldest first
+
+Usage: flare activity [OPTIONS] <FLARE>...
+
+Arguments:
+  <FLARE>...
+          The flares whose responses to list, at most 16
+
+Options:
+      --since <CURSOR>
+          List only responses after this cursor, which an earlier call printed
+
+      --limit <N>
+          Print at most this many rows, up to 100
+          
+          [default: 50]
+
+      --all
+          Print every row
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+          List the responses to a flare, oldest first
+
+  flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
+          List the responses after the cursor an earlier call printed
+
+Columns:
+  flare    The flare it responds to.
+  share    The responding share's id.
+  title    The responding share's title.
+  by       The responder's identifier.
+  version  The version of the flare it responds to.
+  at       When it named the flare, in RFC 3339 UTC.
+  also     The other flares it responds to that the caller can open.
+
+Effects: read-only, closed-world.

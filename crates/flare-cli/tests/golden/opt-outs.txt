@@ -1,0 +1,37 @@
+flare has 6 opt-outs from the conventions.
+
+listings/show-ids: flare show
+  Reason: flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id
+  Cost: An agent runs the command once for each id.
+
+suite/skip: Check::PathWeights
+  Reason: The path weights read the example golden files, which the Examples skip leaves out.
+  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
+
+suite/skip: Check::Examples
+  Reason: Every example needs a board and the board program, `serve` does not exit, and `open` and the sharing commands need a running server, so no example has fixed output; tests/pages.rs, tests/serve.rs and tests/sharing.rs run each command on a scratch board or a fake server.
+  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
+
+suite/skip: Check::OutputBudget
+  Reason: It runs the examples, which need a scratch board; see the Examples skip.
+  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
+
+suite/skip: Check::Recoveries
+  Reason: The recovery of server::not_running is `flare serve`, which does not exit, the other recoveries need a scratch board, and the sharing commands' recoveries need a flare server; tests/open.rs, tests/serve.rs and tests/sharing.rs assert each failure and the command its recovery names.
+  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
+
+suite/skip: Check::Twins
+  Reason: Each refusal needs a scratch board or a running server, so tests/pages.rs, tests/serve.rs, tests/open.rs and tests/sharing.rs pair each refused command line with its admitted twin.
+  Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
+
+flare has 3 declarations.
+
+root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare shares, flare activity, flare metrics
+  Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
+  Reason: each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes
+
+children: flare share
+  Declares: The text prints lines under each row for its checks, and help describes them as: A dry run lists its checks.
+
+children: flare show
+  Declares: The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file.

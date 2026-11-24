@@ -1,0 +1,14 @@
+Revoke this computer's flare token and delete it
+
+Usage: flare logout [OPTIONS]
+
+Options:
+      --yes   Proceed without asking for confirmation
+  -h, --help  Print help (see more with '--help')
+
+Examples:
+  flare logout
+
+Effects: destructive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare logout --help` describes them.
+Next: flare logout --help explains each column.

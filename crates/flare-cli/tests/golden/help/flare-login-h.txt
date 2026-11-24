@@ -1,0 +1,17 @@
+Sign in to a flare server and keep its token in the Keychain
+
+Usage: flare login [OPTIONS] <SERVER>
+
+Arguments:
+  <SERVER>  The flare server, such as https://flare.example.org
+
+Options:
+      --label <LABEL>  The token's label; without it, the label of this computer's earlier login to the server, else a new flare-cli-<hex>
+  -h, --help           Print help (see more with '--help')
+
+Examples:
+  flare login https://flare.example.org
+
+Effects: additive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare login --help` describes them.
+Next: flare login --help explains each column.

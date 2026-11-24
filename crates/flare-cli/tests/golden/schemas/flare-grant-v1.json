@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/grant/v1",
+  "description": "The share, the people this grant added and the flares it now responds to.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/SharedOut"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/grant/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "SharedOut": {
+      "description": "A share that `flare share` made or updated, or `flare grant` granted.",
+      "type": "object",
+      "properties": {
+        "granted": {
+          "description": "The addresses that now hold a role on it; none after `--update`, which does not report them.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "The share's id.",
+          "type": "string"
+        },
+        "responds_to": {
+          "description": "The flares it responds to; none after `--update`, which does not report them.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "description": "The share's title.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The share's latest version.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "version",
+        "granted",
+        "responds_to"
+      ]
+    }
+  }
+}

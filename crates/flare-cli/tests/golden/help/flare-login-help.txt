@@ -1,0 +1,38 @@
+Sign in to a flare server and keep its token in the Keychain
+
+Usage: flare login [OPTIONS] <SERVER>
+
+Arguments:
+  <SERVER>
+          The flare server, such as https://flare.example.org
+
+Options:
+      --label <LABEL>
+          The token's label; without it, the label of this computer's earlier login to the server, else a new flare-cli-<hex>
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare login https://flare.example.org
+          Sign in to a flare server in the browser and keep its token in the Keychain
+
+Columns:
+  server   The server's origin.
+  owner    The address the token signs in as.
+  label    The token's label.
+  expires  When the token expires, in RFC 3339 UTC.
+
+Effects: additive, not idempotent, closed-world.

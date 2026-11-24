@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/metrics/v1",
+  "description": "The count of each Flare metric on each day in UTC, the total of each metric, and the lines read and skipped.",
+  "type": "object",
+  "properties": {
+    "cut": {
+      "description": "Present when the output budget cut the result short, so data holds only its first rows.",
+      "type": "object",
+      "properties": {
+        "budget": {
+          "description": "The most bytes that the run printed on standard output.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "description": "The over-budget code.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "budget"
+      ]
+    },
+    "data": {
+      "description": "The rows of the page, up to the limit.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MetricRow"
+      }
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "next": {
+      "description": "The next steps, in the order the text prints them. It is absent when there are none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "commands": {
+            "description": "The commands that carry out the step, in order.",
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "call": {
+                      "description": "A command line of this tool.",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "call"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "run": {
+                      "description": "A command line of another program.",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "run"
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "description": "The sentence or phrase that the text prints for the step.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "commands"
+        ]
+      }
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/metrics/v1"
+    },
+    "summary": {
+      "$ref": "#/$defs/MetricTotals"
+    },
+    "total": {
+      "description": "The number of rows that matched, of which data holds one page. It is absent when the tool did not count the rows.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "truncated": {
+      "description": "True when the document leaves out rows that matched, because of the limit or the output budget, and false when data holds every row.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "data",
+    "truncated",
+    "summary"
+  ],
+  "$defs": {
+    "MetricRow": {
+      "description": "The count of one metric on one day in `flare metrics`.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "description": "The number of events the metric counted that day.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "day": {
+          "description": "The day, as `YYYY-MM-DD` in UTC.",
+          "type": "string"
+        },
+        "metric": {
+          "description": "The metric's name, such as `PagesViewed`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "day",
+        "metric",
+        "count"
+      ]
+    },
+    "MetricTotal": {
+      "description": "The count of one metric over every day in `flare metrics`.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "description": "The number of events the metric counted.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "metric": {
+          "description": "The metric's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric",
+        "count"
+      ]
+    },
+    "MetricTotals": {
+      "description": "The totals of `flare metrics` and the lines it read.",
+      "type": "object",
+      "properties": {
+        "lines": {
+          "description": "The number of lines read.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "skipped": {
+          "description": "The number of lines skipped because they are not Flare metric lines.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "totals": {
+          "description": "The count of each metric over every day, ordered by name.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MetricTotal"
+          }
+        }
+      },
+      "required": [
+        "totals",
+        "lines",
+        "skipped"
+      ]
+    }
+  }
+}

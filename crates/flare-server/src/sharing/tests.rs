@@ -1,0 +1,220 @@
+//! Unit tests of the token check against the admit rule.
+
+use super::tokens::{digest, new_secret, token_text};
+use super::{Api, Call, Sharing, TokenCheck};
+use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
+use flare_contract::{ApiCode, Format, VersionRequest};
+use flare_core::memory::{
+    MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTokenStore,
+};
+use flare_core::{
+    AddressesOnly, Creators, DocumentText, Email, Flares, NewFlare, NewToken, Principal,
+    PrincipalId, Role, ShareContent, ShareId, ShareTitle, Timestamp, TokenId, TokenLabel,
+    TokenStore as _,
+};
+use secrecy::SecretString;
+
+const NOW: Timestamp = Timestamp::from_secs(1_800_000_000);
+
+fn email(text: &str) -> Email {
+    Email::try_from(text).unwrap()
+}
+
+/// An admit rule that lists `addresses`.
+fn listing(addresses: &[&str]) -> Admit {
+    let entries = addresses
+        .iter()
+        .map(|address| {
+            AllowEntry::new(
+                email(address),
+                PrincipalId::try_from(*address).unwrap(),
+                Reach::Everything,
+            )
+        })
+        .collect();
+    Admit::Emails(AllowList::new(entries).unwrap())
+}
+
+/// A token of `owner`: its id, its secret and the token's text.
+struct Minted {
+    id: TokenId,
+    secret: SecretString,
+    owner: Email,
+    text: SecretString,
+}
+
+fn mint(id: &str, owner: &str) -> Minted {
+    let id = TokenId::try_from(id).unwrap();
+    let secret = new_secret().unwrap();
+    let text = SecretString::from(token_text(&id, &secret));
+    Minted {
+        id,
+        secret,
+        owner: email(owner),
+        text,
+    }
+}
+
+/// The share API over a token store that holds `tokens`, admitting the
+/// people `admit` names, as a server started with that rule runs it.
+async fn sharing(
+    tokens: &[&Minted],
+    admit: Admit,
+) -> Sharing<MemoryShareStore, MemoryGrantStore, MemoryResponseStore, MemoryTokenStore, AddressesOnly>
+{
+    let store = MemoryTokenStore::default();
+    for minted in tokens {
+        let token = NewToken::new(
+            minted.id.clone(),
+            digest(&minted.secret),
+            minted.owner.clone(),
+            TokenLabel::try_from("test").unwrap(),
+            NOW,
+        );
+        store.create(token).await.unwrap();
+    }
+    let flares = Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        Creators::Everyone,
+    );
+    Sharing::new(flares, store, AddressesOnly, admit)
+}
+
+fn owner_of(check: TokenCheck) -> Option<Email> {
+    match check {
+        TokenCheck::Principal(principal) => principal.email().cloned(),
+        _ => None,
+    }
+}
+
+#[tokio::test]
+async fn a_token_whose_owner_left_the_admit_list_answers_sign_in_needed_and_a_listed_owner_still_signs_in()
+ {
+    let ana = mint("0123456789abcdef0123456789abcdef", "ana@example.org");
+    let bob = mint("fedcba9876543210fedcba9876543210", "bob@example.org");
+    let before = sharing(
+        &[&ana, &bob],
+        listing(&["ana@example.org", "bob@example.org"]),
+    )
+    .await;
+    assert_eq!(
+        owner_of(before.authenticate(&ana.text, NOW).await),
+        Some(ana.owner.clone())
+    );
+
+    // The operator takes ana off the list and restarts the server.
+    let after = sharing(&[&ana, &bob], listing(&["bob@example.org"])).await;
+    assert!(matches!(
+        after.authenticate(&ana.text, NOW).await,
+        TokenCheck::Refused(ApiCode::SignInNeeded)
+    ));
+    // The admitted twin: bob, still on the list, signs in with his token.
+    assert_eq!(
+        owner_of(after.authenticate(&bob.text, NOW).await),
+        Some(bob.owner.clone())
+    );
+}
+
+#[tokio::test]
+async fn an_admin_is_refused_a_new_version_and_the_owner_publishes_it() {
+    let ana = Principal::with_email(
+        email("ana@example.org").principal_id(),
+        email("ana@example.org"),
+    );
+    let bob = Principal::with_email(
+        email("bob@example.org").principal_id(),
+        email("bob@example.org"),
+    );
+    let flares = Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        Creators::Everyone,
+    );
+    let id = ShareId::try_from("0123456789abcdef0123456789abcdef").unwrap();
+    let text = DocumentText::try_from("# Plan\n").unwrap();
+    let new = NewFlare::new(
+        id.clone(),
+        ShareTitle::try_from("Plan").unwrap(),
+        ShareContent::Document(text),
+        Vec::new(),
+        Vec::new(),
+    );
+    flares.share(&ana, new, NOW).await.unwrap();
+    flares
+        .shares()
+        .grant(&ana, &id, &email("bob@example.org"), Role::Admin, NOW)
+        .await
+        .unwrap();
+    let api = Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        AddressesOnly,
+        listing(&["ana@example.org", "bob@example.org"]),
+    );
+    let post = || {
+        Call::Publish(
+            id.as_str().to_owned(),
+            VersionRequest {
+                format: Format::Markdown,
+                content: "# Plan 2\n".to_owned(),
+            },
+        )
+    };
+    let refused = api.run(&bob, post(), NOW).await.unwrap_err();
+    assert_eq!(refused.code, ApiCode::ShareForbidden);
+    let (status, _) = api.run(&ana, post(), NOW).await.unwrap();
+    assert_eq!(status, 201);
+}
+
+fn share_request(title: &str, format: Format, content: &str) -> flare_contract::ShareRequest {
+    flare_contract::ShareRequest {
+        title: title.to_owned(),
+        format,
+        content: content.to_owned(),
+        with: Vec::new(),
+        re: Vec::new(),
+    }
+}
+
+#[test]
+fn the_share_checks_refuse_html_first_then_the_title_then_the_content() {
+    let code = |request| super::check_share(&request).map(|_| ()).map_err(|e| e.code);
+    assert_eq!(
+        code(share_request("", Format::Html, "")),
+        Err(ApiCode::KindNotServed)
+    );
+    assert_eq!(
+        code(share_request("", Format::Markdown, "")),
+        Err(ApiCode::ShareInvalid)
+    );
+    assert_eq!(
+        code(share_request(
+            "Plan",
+            Format::Markdown,
+            &"x".repeat(262_145)
+        )),
+        Err(ApiCode::ShareTooLarge)
+    );
+    assert_eq!(
+        code(share_request("Plan", Format::Markdown, "# Plan\n")),
+        Ok(())
+    );
+}
+
+#[test]
+fn the_version_checks_refuse_html_and_empty_content_and_admit_markdown() {
+    let code = |format, content: &str| {
+        super::check_version(&VersionRequest {
+            format,
+            content: content.to_owned(),
+        })
+        .map(|_| ())
+        .map_err(|e| e.code)
+    };
+    assert_eq!(code(Format::Html, "<p>x</p>"), Err(ApiCode::KindNotServed));
+    assert_eq!(code(Format::Markdown, ""), Err(ApiCode::ShareInvalid));
+    assert_eq!(code(Format::Markdown, "# Plan\n"), Ok(()));
+}

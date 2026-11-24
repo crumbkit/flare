@@ -1,21 +1,137 @@
 [workspace]
 resolver = "3"
-members = ["crates/hangar-core"]
+members = [
+  "crates/flare-aws",
+  "crates/flare-auth-loopback",
+  "crates/flare-auth-oidc",
+  "crates/flare-board",
+  "crates/flare-core",
+  "crates/flare-render",
+  "crates/flare-server",
+  "crates/flare-cli",
+  "crates/flare-contract",
+]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/crumbkit/hangar"
+repository = "https://github.com/crumbkit/flare"
 # LIB-4: the minimum supported Rust version equals the toolchain pin in
 # rust-toolchain.toml.
 rust-version = "1.99.1"
 
 [workspace.dependencies]
+# Random bytes, SHA-256 and constant-time comparison for flare-auth-oidc
+# and flare-auth-loopback; jsonwebtoken's aws_lc_rs backend already brings
+# it in.
+aws-lc-rs = "1.19.0"
+# Runs flare-board's board children, flare-auth-oidc's Keychain reader and
+# the flare command's browser opener in a process group of their own, with a
+# deadline and output byte limits (PROC-2). Evaluated in
+# /evals/flare-board-dependencies.
+# Replaces flare-auth-loopback's server file atomically: a new file beside
+# it, synced, renamed, with the directory synced (DUR-1).
+crumbkit-durable = "=0.6.0"
+crumbkit-process = { version = "=0.6.0", default-features = false }
+# base64url for the state, nonce, PKCE verifier and session secrets.
+base64 = "0.23.1"
+# flare-aws keeps shares and grants in DynamoDB and files in S3 through the
+# official SDK crates. Their default features are off: the defaults add a
+# second, older TLS stack with open advisories and a credential provider that
+# starts child processes. default-https-client uses rustls on aws-lc-rs, the
+# version above. The SDK was compared with object_store and with a
+# hand-written client on aws-sigv4 before it was adopted.
+aws-config = { version = "=1.13.3", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-dynamodb = { version = "=1.140.0", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-s3 = { version = "=1.161.0", default-features = false, features = ["default-https-client", "rt-tokio", "http-1x", "behavior-version-latest"] }
+# The types and traits that flare-auth-oidc and flare-auth-loopback
+# implement and that flare-render builds on.
+flare-core = { path = "crates/flare-core", version = "0.1.0" }
+# The method and header types of a request, which flare-auth-loopback checks
+# before a route runs; reqwest and hyper already bring it in.
+http = "1.5.0"
+# The O_NONBLOCK flag for opening flare-auth-loopback's server file, so a
+# FIFO in its place cannot block the open; tokio and mio already bring it in.
+libc = "0.2.191"
+# Verifies the RS256 signature of an OpenID Connect ID token.
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs"] }
+# Renders the Mustache templates of HTML pages in flare-render. Its optional
+# serde feature stays off, because flare-render builds the template data
+# from serde_json values itself.
+mustache2 = { version = "1.0.7", default-features = false }
+# Parses Markdown pages in flare-render, which writes the HTML itself, so the
+# html and getopts features stay off.
+pulldown-cmark = { version = "0.13.6", default-features = false }
+# The HTTPS client for an OpenID provider's discovery, token and key set
+# requests.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form"] }
 # BASE-24: a credential is held in a type whose Debug prints a placeholder.
 secrecy = "0.10.3"
+# Reads the provider's metadata, token reply, key set and ID token claims,
+# and flare-auth-loopback's server file.
+serde = { version = "1.0.229", features = ["derive"] }
+# Parses the JSON that serde's derived types read. flare-render reads
+# record bodies and schemas with it and writes the new body of an edit.
+serde_json = "1.0.154"
 # Typed error enums with source() and Display derived.
 thiserror = "2.0.21"
+# Builds the authorisation URL and parses the callback query.
+url = "2.5.8"
+
+# The crates that flare-server and the flare binary build on.
+flare-contract = { path = "crates/flare-contract", version = "0.1.0" }
+flare-auth-loopback = { path = "crates/flare-auth-loopback", version = "0.1.0" }
+flare-aws = { path = "crates/flare-aws", version = "0.1.0" }
+flare-auth-oidc = { path = "crates/flare-auth-oidc", version = "0.1.0" }
+flare-board = { path = "crates/flare-board", version = "0.1.0" }
+flare-render = { path = "crates/flare-render", version = "0.1.0" }
+flare-server = { path = "crates/flare-server", version = "0.1.0" }
+
+# The flare binary's command line, failures, documents and usage log
+# (the cli profile). Evaluated in /evals/flare-server-dependencies.
+clap = { version = "=4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
+crumbkit = { version = "=0.6.0", features = ["derive"] }
+crumbkit-usage = "=0.6.0"
+# Installs, checks and prints flare's agent skill (`flare skills`).
+# Evaluated in /evals/hangar-skills-dependencies.
+crumbkit-skills = "=0.6.0"
+# Test-only: the cli profile's convention checks.
+crumbkit-test = "=0.6.0"
+# The JSON Schemas of the binary's documents, which crumbkit's Row and
+# Document need; crumbkit already brings it in.
+schemars = "1.2.3"
+# flare-server's structured request log (SVC-9); reqwest and hyper already
+# bring tracing in. tracing-subscriber, evaluated in
+# /evals/flare-server-dependencies, writes it to standard error.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "std"] }
+# Decodes a form post's body; url and reqwest already bring it in.
+form_urlencoded = "1.2.2"
+
+# flare-auth-oidc serialises its key set refreshes with tokio's async mutex,
+# flare-server runs on Tokio, and the fake OpenID provider in tests is an
+# HTTP server on a Tokio runtime.
+tokio = "1.54.1"
+# flare-server's HTTP/1 server, and the fake provider's in tests.
+hyper = "1.12.0"
+# Connects hyper to Tokio's sockets and shuts connections down gracefully.
+hyper-util = "0.1.21"
+# The request and reply bodies, and the body size limit.
+http-body-util = "0.1.5"
+# Test-only: the HTML tokenizer that flare-render's tests read its output
+# with, as a browser would.
+html5ever = "0.40.1"
+# Test-only: flare-render's property tests.
+proptest = "1.12.0"
+# Test-only: flare-cli's hosted_stores test makes a CA and a leaf certificate
+# for `localhost` on each run and serves its fake OpenID provider over TLS,
+# because the shipped `flare serve` accepts only an https issuer. Neither
+# crate is in the flare command's normal or build tree. Evaluated in
+# /evals/hangar-rcgen-test-certificates and
+# /evals/hangar-tokio-rustls-test-provider.
+rcgen = { version = "=0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["aws_lc_rs"] }
 
 # BASE-27: an integer overflow panics in a release build as it does in a
 # debug build.

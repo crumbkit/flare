@@ -1,0 +1,51 @@
+Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
+
+Usage: flare serve [OPTIONS]
+
+Options:
+      --board <DIR>
+          The board's directory; without it, the nearest directory at or above the current one that holds .board/board.json
+
+      --board-program <PATH>
+          The board program; without it, FLARE_BOARD, then the first board on PATH
+
+      --port <N>
+          The launch host's port on 127.0.0.1; 0 picks a free port. A hosted server listens on hosted.listen instead
+          
+          [default: 0]
+
+      --config <PATH>
+          The config file, whose hosted section serves the pages behind a TLS proxy; without it, $XDG_CONFIG_HOME/flare/config.json or ~/.config/flare/config.json
+
+      --idle-exit <DURATION>
+          Stop after this long without a request, such as 30m or 8h. A hosted server never stops by itself
+          
+          [default: 8h]
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare serve
+          Serve the board in the current directory
+
+  flare serve --board ../notes --idle-exit 1h
+          Serve another board and stop after an hour without a request
+
+Columns:
+  board    The board's directory.
+  stopped  Why the server stopped: `shutdown` after SIGTERM, `interrupted` after Ctrl-C or `idle` after the idle period.
+
+Effects: additive, not idempotent, closed-world.

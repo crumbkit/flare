@@ -22,6 +22,12 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.93
+# reqwest reaches webpki-root-certs, the Mozilla root certificates, through
+# rustls-platform-verifier on targets other than macOS and Linux. Its data
+# licence is admitted for that one crate.
+exceptions = [
+  { crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+]
 # A small dependency tree uses only some of the allowed licences.
 unused-allowed-license = "allow"
 
@@ -36,7 +42,14 @@ allow-wildcard-paths = true
 # crate outside the crate that owns the store, such as
 # { crate = "aws-sdk-dynamodb", wrappers = ["ticket-store"], reason = "SVC-12: only ticket-store uses DynamoDB" }.
 # A third-party crate that depends on the SDK crate is listed in `wrappers` too.
-deny = []
+# flare-cli is a wrapper of the two store SDK crates only as a dev-dependency:
+# its hosted_stores test creates its table and bucket on the stand-ins with
+# them, and no code of the flare command calls either SDK.
+deny = [
+  { crate = "aws-config", wrappers = ["flare-aws"], reason = "SVC-12: only flare-aws loads the AWS config and credentials" },
+  { crate = "aws-sdk-dynamodb", wrappers = ["flare-aws", "flare-cli"], reason = "SVC-12: only flare-aws uses DynamoDB; flare-cli uses it in tests" },
+  { crate = "aws-sdk-s3", wrappers = ["flare-aws", "flare-cli"], reason = "SVC-12: only flare-aws uses S3; flare-cli uses it in tests" },
+]
 
 [sources]
 unknown-registry = "deny"

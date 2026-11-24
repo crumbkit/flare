@@ -1,0 +1,42 @@
+Grant an existing share to more people
+
+Usage: flare grant [OPTIONS] <ID>
+
+Arguments:
+  <ID>
+          The share to grant
+
+Options:
+      --with <ADDRESS>
+          The addresses to grant Reader, repeated or separated by commas
+
+      --re <ID>
+          The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+          Grant a share to one more person
+
+Columns:
+  id           The share's id.
+  title        The share's title.
+  version      The share's latest version.
+  granted      The addresses that now hold a role on it; none after `--update`, which does not report them.
+  responds_to  The flares it responds to; none after `--update`, which does not report them.
+
+Effects: additive, not idempotent, closed-world.

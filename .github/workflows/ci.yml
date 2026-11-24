@@ -1,6 +1,19 @@
-# The pull-request lane and the scheduled advisory check of hangar. The
+# The pull-request lane and the scheduled advisory check of flare. The
 # `lanes` decision in rust-standards.toml records both (BASE-25). The lane has
-# no macOS job, because the workspace has no platform code.
+# no macOS job: the one macOS-only path, flare-auth-oidc's KeychainSecret,
+# runs /usr/bin/security, and its tests run a fake program on Linux.
+# flare-auth-loopback's POSIX file checks behave differently on macOS; the
+# Linux job runs their tests through a testing hook, and the flare-gates
+# suite on a Mac is their macOS check, as the lanes decision says. The
+# board job builds the board program that flare-board's tests run. The
+# hosted job runs flare-aws's tests against a local DynamoDB and a local
+# S3 server, so the lane leaves flare-aws out of its tests. It also runs
+# flare-cli's hosted_stores test, which starts the built `flare serve` on
+# those stand-ins, without --all-features, so the lane skips that test: its
+# --all-features build turns on the `testing` features, and the test must
+# run the flare command as it ships. The ui job
+# installs, checks and tests the TypeScript workspace in ui/. The scheduled
+# advisories job checks the Rust and the npm dependencies.
 name: CI
 
 on:
@@ -26,8 +39,42 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # flare-board's tests run the board program. This job builds board at
+  # the pinned commit once and caches the binary under a key that names the
+  # commit, so later runs restore it in seconds. Its first build takes longer
+  # than the lane's budget, so it is a job of its own (BASE-25).
+  board:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read # actions/checkout reads crumbkit/board.
+    # The pin is crumbkit/board#218's merge commit, which adds get --at and
+    # log. A new pin changes the commit in the cache keys and the checkout.
+    steps:
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: board-bin
+          key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: crumbkit/board
+          ref: e4ee3333b2223f3cdc2e1da23d10f9175870bc08
+          path: board-src
+          persist-credentials: false
+      - if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: board-src
+        run: |
+          rustup toolchain install
+          cargo build --locked --release -p board-cli --bin board
+          mkdir -p ../board-bin
+          cp target/release/board ../board-bin/board
+
   lane:
     if: github.event_name != 'schedule'
+    needs: board
     runs-on: ubuntu-latest
     # The pull-request lane's time budget (BASE-25).
     timeout-minutes: 10
@@ -60,20 +107,176 @@ jobs:
         run: cargo deny --locked check bans licenses sources
       - name: shear
         run: cargo shear
+      # The `testing` features expose switches such as an http issuer and
+      # PublicOrigin::loopback_http. This step fails when the flare
+      # command's own dependency tree turns one on for any flare crate,
+      # and when cargo tree or grep fails. The tree is printed with no
+      # colour and no prefix, so each line starts with the crate's name.
+      - name: no testing features in flare
+        run: |
+          tree="$RUNNER_TEMP/flare-tree.txt"
+          if ! cargo tree --locked --color never --prefix none -p flare-cli \
+            -e normal,build -f '{p} {f}' > "$tree"; then
+            echo "cargo tree failed, so the testing features were not checked" >&2
+            exit 1
+          fi
+          found=0
+          grep -E '^flare-[a-z-]+ v[^ ]+ \(.*\) .*\btesting\b' "$tree" || found=$?
+          case "$found" in
+            0) echo "the flare command enables a testing feature" >&2; exit 1 ;;
+            1) ;;
+            *) echo "grep could not read the dependency tree" >&2; exit 1 ;;
+          esac
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets --all-features
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: board-bin
+          key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
+          fail-on-cache-miss: true
+      # flare-aws's tests need the stand-ins that the hosted job starts, and
+      # flare-cli's hosted_stores test needs them and a build without
+      # --all-features, so the hosted job runs both.
       - name: tests
-        run: cargo nextest run --locked --workspace --all-features
+        run: >-
+          cargo nextest run --locked --workspace --all-features --exclude flare-aws
+          -E 'not binary(hosted_stores)'
+        env:
+          FLARE_TEST_BOARD: ${{ github.workspace }}/board-bin/board
       - name: doctests
         run: cargo test --locked --doc --workspace --all-features
       - name: rustdoc
         run: cargo doc --locked --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
-      # hangar-core is a library, so LIB-5 applies. cargo-hack is in the
-      # install-action tool list above.
+      # flare-core, flare-auth-oidc and flare-auth-loopback are libraries,
+      # so LIB-5 applies.
+      # cargo-hack is in the install-action tool list above.
       - name: features
         run: cargo hack clippy --locked --workspace --each-feature --all-targets
+      # With --all-targets, a crate's dev-dependency on itself can turn a
+      # feature on for the library build too, so the libraries are also
+      # checked alone with each feature.
+      - name: library features
+        run: cargo hack clippy --locked --workspace --each-feature --lib
+
+  # The ui job runs the TypeScript lane of the workspace in ui/: install,
+  # lint, typecheck, knip and test, as ui/typescript-standards.toml's lanes
+  # decision records. The lane job's `zizmor .` already checks this file.
+  ui:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm/action-setup installs the pnpm that ui/package.json's
+      # `packageManager` names, and setup-node the Node that .node-version
+      # names. setup-node caches pnpm's store, keyed by the lockfile.
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - name: install
+        run: pnpm install --frozen-lockfile
+      - name: lint
+        run: pnpm run lint
+      - name: typecheck
+        run: pnpm run typecheck
+      - name: knip
+        run: pnpm run knip
+      - name: test
+        run: pnpm run test
+
+  # flare-aws's tests run against DynamoDB Local and SeaweedFS's S3
+  # server, each pulled by digest. The tests sign with made-up keys that
+  # SeaweedFS is started with; no job uses a real AWS account. cfn-lint,
+  # pinned by hash in infra/cfn-lint-requirements.txt, checks the template.
+  hosted:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    env:
+      FLARE_TEST_DYNAMODB: http://127.0.0.1:8000
+      FLARE_TEST_S3: http://127.0.0.1:8333
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: stand-ins
+        run: |
+          docker run -d --name dynamodb -p 127.0.0.1:8000:8000 \
+            public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86 \
+            -jar DynamoDBLocal.jar -inMemory -sharedDb
+          docker run -d --name s3 -p 127.0.0.1:8333:8333 \
+            -e AWS_ACCESS_KEY_ID=flaretest -e AWS_SECRET_ACCESS_KEY=flaretestsecret \
+            chrislusf/seaweedfs@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-nextest@0.9.140
+          fallback: none
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: template
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cfn"
+          "$RUNNER_TEMP/cfn/bin/pip" install --require-hashes -r infra/cfn-lint-requirements.txt
+          "$RUNNER_TEMP/cfn/bin/cfn-lint" infra/flare-stores.template.json
+      # DynamoDB Local answers an unsigned request with 400 once it listens,
+      # and SeaweedFS's S3 server answers one with 403.
+      - name: wait for the stand-ins
+        run: |
+          ready() {
+            for _ in $(seq 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "$1" || true)
+              if [ "$code" = "$2" ]; then return 0; fi
+              sleep 2
+            done
+            echo "$1 did not answer $2" >&2
+            docker logs dynamodb >&2; docker logs s3 >&2
+            return 1
+          }
+          ready "$FLARE_TEST_DYNAMODB" 400
+          ready "$FLARE_TEST_S3" 403
+      - name: tests
+        run: cargo nextest run --locked -p flare-aws --all-features
+      # The hosted_stores test starts the built `flare serve`, so its build
+      # must hold no `testing` feature of a flare crate. This step fails when
+      # the tree the test builds, dev-dependencies included, turns one on,
+      # and when cargo tree or grep fails.
+      - name: no testing features in the hosted_stores build
+        run: |
+          tree="$RUNNER_TEMP/flare-tree.txt"
+          if ! cargo tree --locked --color never --prefix none -p flare-cli \
+            -e normal,build,dev -f '{p} {f}' > "$tree"; then
+            echo "cargo tree failed, so the testing features were not checked" >&2
+            exit 1
+          fi
+          found=0
+          grep -E '^flare-[a-z-]+ v[^ ]+ \(.*\) .*\btesting\b' "$tree" || found=$?
+          case "$found" in
+            0) echo "the hosted_stores build enables a testing feature" >&2; exit 1 ;;
+            1) ;;
+            *) echo "grep could not read the dependency tree" >&2; exit 1 ;;
+          esac
+      # The test sets the AWS endpoint variables and SSL_CERT_FILE on the
+      # flare children itself.
+      - name: flare serve on the stand-ins
+        run: cargo nextest run --locked -p flare-cli --test hosted_stores
 
   advisories:
     if: github.event_name != 'pull_request'
@@ -90,5 +293,24 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
           fallback: none
-      - name: advisories
+      - name: rust advisories
         run: cargo deny --locked check advisories
+      # The npm steps run even when the rust advisories step fails, so an
+      # advisory against a Rust crate does not hide one against an npm
+      # package. pnpm/action-setup installs the pnpm that ui/package.json's
+      # `packageManager` names, and setup-node the Node that .node-version
+      # names. Neither caches anything, because this job installs nothing.
+      - if: ${{ !cancelled() }}
+        uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        with:
+          package_json_file: ui/package.json
+      - if: ${{ !cancelled() }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      # pnpm audit reads the lockfile and asks the npm registry for advisories
+      # against every package in it (BASE-17).
+      - name: npm advisories
+        if: ${{ !cancelled() }}
+        working-directory: ui
+        run: pnpm audit

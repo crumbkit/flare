@@ -1,0 +1,137 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "The DynamoDB table and the S3 bucket of a hosted flare, and the managed policy that lets flare serve use them.",
+  "Parameters": {
+    "TableName": {
+      "Type": "String",
+      "Description": "The table that holds shares, versions, grants, list entries, login codes, CLI tokens and response links.",
+      "MinLength": 3,
+      "MaxLength": 255,
+      "AllowedPattern": "[A-Za-z0-9_.-]+"
+    },
+    "BucketName": {
+      "Type": "String",
+      "Description": "The bucket that holds the files of shares.",
+      "MinLength": 3,
+      "MaxLength": 63,
+      "AllowedPattern": "[a-z0-9][a-z0-9-]*[a-z0-9]"
+    }
+  },
+  "Resources": {
+    "SharesTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": { "Ref": "TableName" },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          { "AttributeName": "pk", "AttributeType": "S" },
+          { "AttributeName": "sk", "AttributeType": "S" }
+        ],
+        "KeySchema": [
+          { "AttributeName": "pk", "KeyType": "HASH" },
+          { "AttributeName": "sk", "KeyType": "RANGE" }
+        ],
+        "PointInTimeRecoverySpecification": { "PointInTimeRecoveryEnabled": true },
+        "TimeToLiveSpecification": { "AttributeName": "expires_at", "Enabled": true },
+        "DeletionProtectionEnabled": true
+      }
+    },
+    "FilesBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": { "Ref": "BucketName" },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [{ "ObjectOwnership": "BucketOwnerEnforced" }]
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            { "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }
+          ]
+        }
+      }
+    },
+    "FilesBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": { "Ref": "FilesBucket" },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyWithoutTls",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                { "Fn::GetAtt": ["FilesBucket", "Arn"] },
+                { "Fn::Sub": "${FilesBucket.Arn}/*" }
+              ],
+              "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+            },
+            {
+              "Sid": "DenyPutWithoutIfNoneMatch",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": { "Fn::Sub": "${FilesBucket.Arn}/*" },
+              "Condition": { "Null": { "s3:if-none-match": "true" } }
+            }
+          ]
+        }
+      }
+    },
+    "FlareStoresPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Properties": {
+        "Description": "Lets flare serve read and write the shares table and the files bucket.",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "SharesTable",
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:Query",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:DescribeTable"
+              ],
+              "Resource": { "Fn::GetAtt": ["SharesTable", "Arn"] }
+            },
+            {
+              "Sid": "FilesObjects",
+              "Effect": "Allow",
+              "Action": ["s3:GetObject", "s3:PutObject"],
+              "Resource": { "Fn::Sub": "${FilesBucket.Arn}/files/*" }
+            },
+            {
+              "Sid": "FilesBucket",
+              "Effect": "Allow",
+              "Action": ["s3:ListBucket"],
+              "Resource": { "Fn::GetAtt": ["FilesBucket", "Arn"] }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "PolicyArn": {
+      "Description": "The managed policy to attach to the role that runs flare serve.",
+      "Value": { "Ref": "FlareStoresPolicy" }
+    }
+  }
+}

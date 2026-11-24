@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/share/v1",
+  "description": "The share, its latest version, the people it is granted to and the flares it responds to, or what a dry run checked.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/ShareOut"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/share/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "ShareOut": {
+      "description": "A share that `flare share` made or updated, or that a dry run checked.",
+      "type": "object",
+      "properties": {
+        "checks": {
+          "description": "What a dry run checked, wrote and could not check; empty on a real run.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "granted": {
+          "description": "The addresses that now hold a role on it; none after `--update` or a dry run.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "description": "The share's id; none on a dry run of a new share.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "responds_to": {
+          "description": "The flares it responds to; none after `--update` or a dry run.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "title": {
+          "description": "The share's title; none on a dry run of `--update`, which does not read the share.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "description": "The share's latest version; none on a dry run.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "version",
+        "granted",
+        "responds_to",
+        "checks"
+      ]
+    }
+  }
+}

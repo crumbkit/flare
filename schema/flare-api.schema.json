@@ -1,0 +1,515 @@
+{
+  "$defs": {
+    "ActivityItem": {
+      "description": "One item of the activity feed, tagged by `kind`.",
+      "oneOf": [
+        {
+          "description": "A share that responds to a flare with `--re`.",
+          "properties": {
+            "also": {
+              "description": "The other flares it responds to that the caller can open.",
+              "items": {
+                "$ref": "#/$defs/FlareRef"
+              },
+              "type": "array"
+            },
+            "at": {
+              "description": "When it named the flare, in RFC 3339 UTC.",
+              "type": "string"
+            },
+            "by": {
+              "description": "Its owner's identifier.",
+              "type": "string"
+            },
+            "flare": {
+              "description": "The flare it responds to.",
+              "type": "string"
+            },
+            "format": {
+              "$ref": "#/$defs/Format",
+              "description": "Its markup."
+            },
+            "kind": {
+              "const": "response",
+              "type": "string"
+            },
+            "share": {
+              "description": "The responding share's id.",
+              "type": "string"
+            },
+            "title": {
+              "description": "Its title.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The version of the flare it responds to.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "flare",
+            "share",
+            "title",
+            "format",
+            "by",
+            "version",
+            "at",
+            "also"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ActivityPage": {
+      "description": "`GET /api/activity?flare=<id>&since=<cursor>&limit=N`.",
+      "properties": {
+        "cursor": {
+          "description": "The cursor to pass as `since` next time.",
+          "type": "string"
+        },
+        "items": {
+          "description": "The items, oldest first.",
+          "items": {
+            "$ref": "#/$defs/ActivityItem"
+          },
+          "type": "array"
+        },
+        "more": {
+          "description": "Whether more items follow the cursor now.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "cursor",
+        "more"
+      ],
+      "type": "object"
+    },
+    "ExchangeRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/tokens/exchange`: a login code for a token.",
+      "properties": {
+        "code": {
+          "description": "The one-use code the browser handed to the CLI.",
+          "type": "string"
+        },
+        "label": {
+          "description": "The token's label, such as the name of the Mac.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "label"
+      ],
+      "type": "object"
+    },
+    "FlareRef": {
+      "description": "A flare that a response also responds to, which the caller can open.",
+      "properties": {
+        "id": {
+          "description": "The flare's id.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Its title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "Format": {
+      "description": "The markup of a share's content.",
+      "oneOf": [
+        {
+          "const": "markdown",
+          "description": "Markdown, which every deployment serves.",
+          "type": "string"
+        },
+        {
+          "const": "html",
+          "description": "HTML, which the server refuses with `flare::shares::kind_not_served`\nuntil it serves uploaded HTML.",
+          "type": "string"
+        }
+      ]
+    },
+    "GrantRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/shares/{id}/grants`: more people, or more flares the share\nresponds to.",
+      "properties": {
+        "re": {
+          "default": [],
+          "description": "The ids of more flares the share responds to. Only its owner names\nthem.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "with": {
+          "default": [],
+          "description": "Who to share with.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "OpenedShare": {
+      "description": "`GET /api/shares/{id}?version=n`: version `n` of a share the caller can\nopen, or its latest version without `n`.",
+      "properties": {
+        "content": {
+          "description": "That version's content.",
+          "type": "string"
+        },
+        "share": {
+          "$ref": "#/$defs/ShareSummary",
+          "description": "The share, whose `version` is its latest."
+        },
+        "version": {
+          "description": "The number of the version whose content this answer holds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "share",
+        "version",
+        "content"
+      ],
+      "type": "object"
+    },
+    "ProblemDocument": {
+      "description": "An RFC 9457 problem document with flare's code and recovery.",
+      "properties": {
+        "code": {
+          "description": "The stable code, `flare::<area>::<kind>`.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "What exactly is wrong, when the title does not say. It never holds\nan address or a secret.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Recovery"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the caller does next."
+        },
+        "share": {
+          "description": "The share that a partly finished share created.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "The HTTP status.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "title": {
+          "description": "The one-line title.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Always `about:blank`: the code names the problem.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "title",
+        "status",
+        "code"
+      ],
+      "type": "object"
+    },
+    "Recovery": {
+      "description": "What the caller does next, in the shape of crumbkit's JSON failure\ndocument: an object tagged by `kind`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Run this command line.",
+          "properties": {
+            "call": {
+              "description": "The command line, such as `flare login https://flare.example.org`.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "run",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "call"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Run the same command again later.",
+          "properties": {
+            "kind": {
+              "const": "retry",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Follow this advice.",
+          "properties": {
+            "kind": {
+              "const": "hint",
+              "type": "string"
+            },
+            "text": {
+              "description": "The advice.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Role": {
+      "description": "What the caller is to a share.",
+      "oneOf": [
+        {
+          "const": "owner",
+          "description": "The caller owns it.",
+          "type": "string"
+        },
+        {
+          "const": "admin",
+          "description": "The caller holds an Admin grant.",
+          "type": "string"
+        },
+        {
+          "const": "reader",
+          "description": "The caller holds a Reader grant.",
+          "type": "string"
+        }
+      ]
+    },
+    "ShareList": {
+      "description": "`GET /api/shares?scope=mine|with-me&limit=N`.",
+      "properties": {
+        "items": {
+          "description": "The shares, newest first.",
+          "items": {
+            "$ref": "#/$defs/ShareSummary"
+          },
+          "type": "array"
+        },
+        "more": {
+          "description": "Whether more shares exist than `limit` let through.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "more"
+      ],
+      "type": "object"
+    },
+    "ShareRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/shares`: a new share.",
+      "properties": {
+        "content": {
+          "description": "The content, at most 256 KiB.",
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/Format",
+          "description": "The markup of `content`."
+        },
+        "re": {
+          "default": [],
+          "description": "The ids of the flares this share responds to.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "The title, 1 to 200 bytes.",
+          "type": "string"
+        },
+        "with": {
+          "default": [],
+          "description": "Who to share with: each an identifier that the deployment resolves,\nwhich by default is an email address.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "title",
+        "format",
+        "content"
+      ],
+      "type": "object"
+    },
+    "ShareSummary": {
+      "description": "One share as a list or a reply shows it.",
+      "properties": {
+        "created": {
+          "description": "When the share was created, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/Format",
+          "description": "The markup."
+        },
+        "id": {
+          "description": "The share's id.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The owner's identifier.",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/Role",
+          "description": "What the caller is to the share."
+        },
+        "title": {
+          "description": "The title.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The latest version.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "format",
+        "owner",
+        "role",
+        "version",
+        "created"
+      ],
+      "type": "object"
+    },
+    "Shared": {
+      "description": "The answer to `POST /api/shares` and `POST /api/shares/{id}/grants`.",
+      "properties": {
+        "granted": {
+          "description": "The addresses granted Reader by this request.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "responds_to": {
+          "description": "The flares the share responds to that this request named.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "share": {
+          "$ref": "#/$defs/ShareSummary",
+          "description": "The share."
+        }
+      },
+      "required": [
+        "share",
+        "granted",
+        "responds_to"
+      ],
+      "type": "object"
+    },
+    "TokenIssued": {
+      "description": "The answer to an exchange. The token appears here once and nowhere\nelse; the server keeps only its digest.",
+      "properties": {
+        "expires": {
+          "description": "When it stops working, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The token's id, which `flare logout` revokes.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Its label.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The address it authenticates as.",
+          "type": "string"
+        },
+        "token": {
+          "description": "The bearer token.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "token",
+        "owner",
+        "label",
+        "expires"
+      ],
+      "type": "object"
+    },
+    "VersionRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/shares/{id}/versions`: the next version of a share, which\nonly its owner may publish. A new version changes the content and\nnothing else.",
+      "properties": {
+        "content": {
+          "description": "The content, at most 256 KiB.",
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/Format",
+          "description": "The markup of `content`."
+        }
+      },
+      "required": [
+        "format",
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare API"
+}
