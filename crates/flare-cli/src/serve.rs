@@ -314,10 +314,7 @@ async fn serve(
         .serve(app, shutdown)
         .await
         .map_err(|error| match error {
-            ServeError::State(error) => Failed::StateUnusable {
-                path: None,
-                problem: error.to_string(),
-            },
+            ServeError::State(error) => board::state_unusable(&error),
             other => system(other),
         })?;
     let stop = match stopped {

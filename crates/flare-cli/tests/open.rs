@@ -24,6 +24,7 @@ use flare_auth_loopback::{Loopback, Served, StateDir, local_principal};
 use run::Home;
 use std::io::{Read as _, Write as _};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -123,6 +124,40 @@ fn open_fails_with_server_not_running_when_nothing_answers_on_the_port() {
     home.run(&["open", "--board", board.to_str().unwrap()])
         .assert_failed("flare::server::not_running");
     assert!(home.opened().is_empty());
+}
+
+#[test]
+fn open_names_an_untrusted_server_file_in_the_path_field() {
+    let home = Home::new();
+    let board = board_dir(&home);
+    let free = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = free.local_addr().unwrap().port();
+    drop(free);
+    write_server_file(&home, &board, port);
+    let file = StateDir::for_board(&home.state(), &board)
+        .path()
+        .join("server.json");
+    let chmod = |mode| {
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    let args = ["open", "--board", board.to_str().unwrap(), "--json"];
+    chmod(0o644);
+    let ran = home.run(&args);
+    ran.assert_failed("flare::state::unusable");
+    let printed: serde_json::Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    let name = file.to_str().unwrap();
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"path": name}),
+        "{printed}"
+    );
+    assert_eq!(
+        printed["message"],
+        format!("{name} is not safe to use: it has mode 0644; remove it and run flare again"),
+        "{printed}"
+    );
+    chmod(0o600);
+    home.run(&args).assert_failed("flare::server::not_running");
 }
 
 #[test]

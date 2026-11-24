@@ -1497,3 +1497,50 @@ fn activity_in_text_prints_the_next_call_on_standard_error_and_no_summary_line()
     );
     assert!(!ran.stdout.contains("Next: --since"), "{}", ran.all());
 }
+
+#[test]
+fn a_saved_login_that_is_not_json_is_refused_naming_login_json_in_the_path_field() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/shares",
+        200,
+        &json!({"items": [summary(FLARE, "Plans")], "more": false}),
+    );
+    let args = ["shares", "--json"];
+    home.sharing(&args).assert_ok();
+    let login = home.state().join("flare").join("login.json");
+    write(&login, "not json");
+    let printed = failure(&home.sharing(&args), "flare::state::unusable");
+    assert_eq!(
+        printed["fields"],
+        json!({"path": login.to_str().unwrap()}),
+        "{printed}"
+    );
+    assert_eq!(
+        printed["message"], "the saved login could not be used: expected ident at line 1 column 2",
+        "{printed}"
+    );
+}
+
+#[test]
+fn a_labels_file_that_is_not_json_is_refused_naming_labels_json_in_the_path_field() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    let labels = home.state().join("flare").join("labels.json");
+    std::fs::create_dir_all(labels.parent().unwrap()).unwrap();
+    write(&labels, "not json");
+    api.issue();
+    let printed = failure(
+        &home.sharing(&["login", &api.origin, "--json"]),
+        "flare::state::unusable",
+    );
+    assert_eq!(
+        printed["fields"],
+        json!({"path": labels.to_str().unwrap()}),
+        "{printed}"
+    );
+    std::fs::remove_file(&labels).unwrap();
+    home.sharing(&["login", &api.origin, "--json"]).assert_ok();
+}

@@ -328,16 +328,16 @@ pub enum Failed {
         problem: String,
     },
     /// The state directory cannot be used.
-    #[error("{}{problem}", before(.path.as_deref(), ": "))]
+    #[error("{problem}")]
     #[failure(
         code = STATE_UNUSABLE,
         hint = "fix the state directory as the problem says",
         field(path = path.as_deref())
     )]
     StateUnusable {
-        /// The directory, when flare holds it apart from the message.
+        /// The file or directory, when flare holds it.
         path: Option<String>,
-        /// What is wrong, as flare or flare-auth-loopback says it.
+        /// The whole message, which names the path where flare prints it.
         problem: String,
     },
     /// The share API's table or bucket is missing or cannot be read.

@@ -36,7 +36,7 @@ fn program_unavailable_prints_the_program_it_names_and_gives_it_as_a_field() {
 fn state_unusable_prints_the_directory_it_names_and_gives_it_as_a_field() {
     let named = Failed::StateUnusable {
         path: Some("/state/flare/board/key".to_owned()),
-        problem: "Not a directory (os error 20)".to_owned(),
+        problem: "/state/flare/board/key: Not a directory (os error 20)".to_owned(),
     };
     assert_eq!(
         shown(&named),
