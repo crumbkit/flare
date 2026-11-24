@@ -30,6 +30,10 @@ fn home() -> PageName {
 }
 
 fn page(text: &str) -> Page {
+    named_page(home(), text)
+}
+
+fn named_page(name: PageName, text: &str) -> Page {
     let slot = Slot::new(
         SlotName::try_from("tasks").unwrap(),
         RecordType::try_from("tasks/task/v2").unwrap(),
@@ -38,7 +42,7 @@ fn page(text: &str) -> Page {
     )
     .unwrap();
     Page::new(
-        home(),
+        name,
         PageContent::new(ContentFormat::Html, text).unwrap(),
         Slots::new(vec![slot]).unwrap(),
     )
@@ -308,4 +312,103 @@ fn a_pin_is_saved_unchecked_when_the_full_walk_from_head_stops_before_the_versio
     // Accepted gap: the newest row from HEAD is recent, but the walk of
     // every row stops before it would list the version.
     block_on(store.save_binding(binding(&side), &store)).unwrap();
+}
+
+/// A board program whose walks of the home page record's log from HEAD
+/// with arguments that start with `walk` exit with 3, and that runs board
+/// for every other command.
+fn failing_home_walks(board: &ScratchBoard, walk: &str) -> std::path::PathBuf {
+    let real = board.program().display().to_string();
+    board.script(
+        "failing-home-walks",
+        &format!(
+            r#"case "$*" in
+  "{walk}-- /pages/home/page") exit 3;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    )
+}
+
+/// A page named `other` with `text`, so its publish reads no log of the
+/// home page except through its origin.
+fn other_page(text: &str) -> Page {
+    named_page(other(), text)
+}
+
+fn other() -> PageName {
+    PageName::try_from("other").unwrap()
+}
+
+/// Saves a binding at `target`, moves a binding saved at `held` to
+/// `target`, and publishes the page `other` from `target`, each through a
+/// store whose walks from HEAD fail, and checks that each answers
+/// unavailable and that a store on the real board program then reads
+/// nothing new.
+fn writes_after_a_failed_walk_answer_unavailable(
+    board: &ScratchBoard,
+    store: &BoardStore,
+    failing: &std::path::Path,
+    held: &PageVersion,
+    target: &PageVersion,
+) {
+    let held_view = BindingName::try_from("held").unwrap();
+    let held_binding = Binding::new(
+        held_view.clone(),
+        pin(held),
+        Fills::new(vec![(
+            SlotName::try_from("tasks").unwrap(),
+            RecordPath::try_from("/tasks/a").unwrap(),
+        )])
+        .unwrap(),
+        original(),
+    );
+    block_on(store.save_binding(held_binding, store)).unwrap();
+    block_on(store.publish(other_page("first"), original())).unwrap();
+    let writer = board.store_with(failing, Limits::default());
+    let from_target = Provenance::new(ada(), MadeFrom::Page(pin(target)), Vec::new()).unwrap();
+
+    let answers = (
+        block_on(writer.save_binding(binding(target), &writer)),
+        block_on(writer.move_binding(&held_view, held, target, &writer, &mover())),
+        block_on(writer.publish(other_page("copied"), from_target)).map(|_| ()),
+    );
+
+    assert_eq!(
+        answers,
+        (
+            Err(PageStoreError::Unavailable),
+            Err(MoveError::Refused(PageStoreError::Unavailable)),
+            Err(PageStoreError::Unavailable),
+        )
+    );
+
+    assert_eq!(
+        block_on(store.binding(&view())),
+        Err(PageStoreError::NotFound)
+    );
+    assert_eq!(
+        block_on(store.binding(&held_view)).unwrap().pin().version(),
+        held
+    );
+    assert_eq!(block_on(store.versions(&other())).unwrap().len(), 1);
+}
+
+#[test]
+fn writes_answer_unavailable_and_write_nothing_when_the_newest_walk_from_head_fails() {
+    let (board, store, [first, second, _]) = with_a_side_branch();
+    let failing = failing_home_walks(&board, "log --json --limit 1 ");
+
+    writes_after_a_failed_walk_answer_unavailable(&board, &store, &failing, &first, &second);
+}
+
+#[test]
+fn writes_answer_unavailable_and_write_nothing_when_the_full_walk_from_head_fails() {
+    let (board, store, [first, second, _]) = with_a_side_branch();
+    let failing = failing_home_walks(&board, "log --json --all ");
+
+    // The newest row from HEAD is `second`, so each write of a pin at
+    // `first` walks every row, and that walk fails.
+    writes_after_a_failed_walk_answer_unavailable(&board, &store, &failing, &second, &first);
 }

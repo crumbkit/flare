@@ -52,7 +52,7 @@ No event deletes a binding.
 1. Every page version is a commit that changed `/pages/<name>/page.json`. When the walk from HEAD is complete, `versions` lists exactly those commits that HEAD reaches, newest first. Past the 100,000-commit walk bound and on a shallow clone, `versions` answers `Unavailable`.
 2. A version's content never changes, because `at` reads the files at that commit.
 3. Every publish makes a new commit, because `page.json` records `previous`.
-4. A pin names a commit that changed the page's record and that HEAD reaches when it is written. `pinned` checks it on `save_binding`, `move_binding` and a publish whose origin is a page version, and refuses a commit on another branch, a fetched commit no merge took, or one a reset orphaned. `at`, which every read uses, checks only that the commit changed the record. When the walk from HEAD is not complete and does not list the version, `pinned` accepts it unchecked (accepted gap).
+4. A pin names a commit that changed the page's record and that HEAD reaches when it is written. `pinned` checks it on `save_binding`, `move_binding`, and a publish or a binding whose origin is a page version, and refuses a commit on another branch, a fetched commit no merge took, or one a reset orphaned. `at`, which every read uses, checks only that the commit changed the record. When the walk from HEAD is not complete and does not list the version, `pinned` accepts it unchecked (accepted gap).
 5. A binding is saved or moved only after its fills were read at one revision and fit the pinned version's slots.
 6. A record's blob never repeats: it is the commit that last changed the file, or the Git blob id of uncommitted bytes.
 7. A record edit and its `flare/edit/v1` record are in one commit, or neither exists.

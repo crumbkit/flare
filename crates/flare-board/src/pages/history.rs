@@ -114,7 +114,12 @@ async fn reachable(
     let listed = log.data.iter().any(|row| row.commit == version);
     let decided = log.summary.complete && !log.truncated;
     match (listed, decided) {
-        (true, _) | (false, false) => Ok(()),
+        (true, _) => Ok(()),
+        // Accepted gap: the walk stopped, past 100,000 commits or at a
+        // shallow clone's boundary, before it listed the version, so the
+        // version is accepted unchecked. A reachability query in board
+        // would replace this walk and decide the version.
+        (false, false) => Ok(()),
         (false, true) => Err(PageStoreError::NotFound),
     }
 }
@@ -137,7 +142,10 @@ pub(crate) async fn pinned(
     match is_newest(board, pin.name(), version).await? {
         Newest::Is => {}
         Newest::Other => reachable(board, pin.name(), version).await?,
-        // Accepted gap: a walk that stopped early cannot decide reachability.
+        // Accepted gap: the walk stopped, past 100,000 commits or at a
+        // shallow clone's boundary, so the version is accepted unchecked. A
+        // reachability query in board would replace this walk and decide
+        // the version.
         Newest::Unreached => {}
     }
     Ok(page)
