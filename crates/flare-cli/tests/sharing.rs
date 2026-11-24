@@ -1185,11 +1185,66 @@ fn a_listing_whose_token_store_is_unavailable_keeps_retry() {
 }
 
 #[test]
-fn a_share_refused_without_a_problem_document_keeps_the_server_check_and_retry() {
+fn a_share_or_a_new_version_a_gateway_answers_without_a_problem_document_tells_the_caller_to_check_flare_shares_first()
+ {
     let api = FakeApi::start();
     let (home, file) = with_file(&api);
-    api.route("POST", "/api/shares", 502, &json!("lost"));
-    let ran = home.sharing(&["share", &file, "--json"]);
+    for status in [502, 503, 504] {
+        api.route("POST", "/api/shares", status, &json!("lost"));
+        let ran = home.sharing(&["share", &file, "--json"]);
+        let printed = failure(&ran, "flare::network::bad_answer");
+        assert_eq!(
+            printed["recovery"],
+            check_shares(),
+            "{status}: {}",
+            ran.all()
+        );
+    }
+    api.route(
+        "POST",
+        &format!("/api/shares/{PARTLY}/versions"),
+        504,
+        &json!("lost"),
+    );
+    let ran = home.sharing(&["share", &file, "--update", PARTLY, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+}
+
+#[test]
+fn a_share_refused_with_a_client_error_and_no_problem_document_keeps_the_server_check_and_retry() {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    for status in [400, 404, 500] {
+        api.route("POST", "/api/shares", status, &json!("lost"));
+        let ran = home.sharing(&["share", &file, "--json"]);
+        let printed = failure(&ran, "flare::network::bad_answer");
+        assert_eq!(
+            printed["recovery"],
+            server_check(),
+            "{status}: {}",
+            ran.all()
+        );
+    }
+}
+
+#[test]
+fn a_grant_or_a_listing_a_gateway_answers_without_a_problem_document_keeps_the_server_check_and_retry()
+ {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "POST",
+        &format!("/api/grants/{PARTLY}"),
+        504,
+        &json!("lost"),
+    );
+    let ran = home.sharing(&["grant", PARTLY, "--with", "ana@example.org", "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], server_check(), "{}", ran.all());
+
+    api.route("GET", "/api/shares", 503, &json!("lost"));
+    let ran = home.sharing(&["shares", "--json"]);
     let printed = failure(&ran, "flare::network::bad_answer");
     assert_eq!(printed["recovery"], server_check(), "{}", ran.all());
 }

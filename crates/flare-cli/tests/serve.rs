@@ -473,14 +473,27 @@ fn serve_refuses_a_port_that_another_program_holds() {
     let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = held.local_addr().unwrap().port().to_string();
     let (root, program) = paths(&board);
+    let config = home.write_config("{}");
+    let config = config.to_str().unwrap();
     let mut args = serve_args(&board, &root, &program);
-    args.extend(["--port", &port, "--json"]);
+    args.extend([
+        "--port",
+        &port,
+        "--config",
+        config,
+        "--idle-exit",
+        "2h",
+        "--json",
+    ]);
     let ran = home.run(&args);
     ran.assert_failed("flare::server::port_in_use");
     let printed: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    let call = format!(
+        "flare serve --board {root} --board-program {program} --config {config} --idle-exit 2h"
+    );
     assert_eq!(
         printed["recovery"],
-        serde_json::json!({"kind": "run", "call": format!("flare serve --board {root}")}),
+        serde_json::json!({"kind": "run", "call": call}),
         "{}",
         ran.all()
     );

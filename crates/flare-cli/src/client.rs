@@ -50,14 +50,24 @@ impl Api {
         &self.origin
     }
 
-    /// A bad answer with `status`. After a success status the server may
-    /// have done what the request asked, which the command that sent it
-    /// weighs with [`Failed::after_a_write`].
+    /// A bad answer with `status`, which flare could not read as the share
+    /// API's answer. After a success status, or a 502, 503 or 504 that a
+    /// proxy in front of the server may send after the server did the
+    /// work, the server may have done what the request asked, which the
+    /// command that sent it weighs with [`Failed::after_a_write`]. Any other
+    /// status says the request did not succeed.
     fn bad(&self, status: StatusCode, problem: impl Into<String>) -> Failed {
+        let maybe_done = status.is_success()
+            || matches!(
+                status,
+                StatusCode::BAD_GATEWAY
+                    | StatusCode::SERVICE_UNAVAILABLE
+                    | StatusCode::GATEWAY_TIMEOUT
+            );
         SharingFailed::BadAnswer {
             server: self.origin.clone(),
             problem: problem.into(),
-            next: if status.is_success() {
+            next: if maybe_done {
                 NextRun::MaybeDone
             } else {
                 NextRun::Clean
@@ -134,7 +144,7 @@ impl Api {
             Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
                 .naming(problem.share.as_deref())
                 .into()),
-            None => Err(self.bad(status, format!(
+            None => Err(self.bad(StatusCode::BAD_REQUEST, format!(
                 "it answered {status} with the code {}, which this flare does not know; a newer flare may",
                 problem.code
             ))),

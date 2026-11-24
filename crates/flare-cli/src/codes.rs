@@ -2,7 +2,7 @@
 //! step it names (CLI-3). No message holds a token, a login code, a launch
 //! host, a launch URL or a client secret.
 
-use crumbkit::{Code, Failure, Recovery};
+use crumbkit::{Call, Code, Failure, Recovery};
 
 pub mod server;
 pub mod sharing;
@@ -93,7 +93,7 @@ pub enum Failed {
     #[error("port {port} is in use by another program")]
     #[failure(
         code = SERVER_PORT_IN_USE,
-        recovery = server::port_in_use(*port, *held, board.as_deref()),
+        recovery = server::port_in_use(*port, *held, again.clone()),
         field(port = *port)
     )]
     PortInUse {
@@ -101,8 +101,8 @@ pub enum Failed {
         port: u16,
         /// Which port it is.
         held: HeldPort,
-        /// The `--board` that the command was given.
-        board: Option<String>,
+        /// The failed `flare serve` with its arguments and without `--port`.
+        again: Option<Call>,
     },
     /// The board's directory does not exist.
     #[error("{path} does not exist")]

@@ -20,6 +20,7 @@ use crate::config::{
 use crate::documents::Served;
 use crate::env::Snapshot;
 use crate::{log, open};
+use crumbkit::Call;
 use flare_auth_loopback::{Loopback, Served as Reach, local_principal};
 use flare_auth_oidc::{
     Admit, ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator,
@@ -130,9 +131,24 @@ impl Signals {
 ///
 /// Returns the failure that stopped it before or while it served.
 pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
-    serve_board(args, env)
-        .await
-        .map_err(|failed| failed.for_board(args.board.board.as_deref()))
+    serve_board(args, env).await.map_err(|failed| {
+        failed
+            .for_board(args.board.board.as_deref())
+            .serving_again(again(args))
+    })
+}
+
+/// `flare serve` with the arguments of `args` except `--port`, which a
+/// held port's recovery leaves out.
+fn again(args: &ServeArgs) -> Call {
+    let path = |call: Call, name: &'static str, value: Option<&Path>| match value {
+        Some(value) => call.value(name, value.display().to_string()),
+        None => call,
+    };
+    let call = path(Call::new(&["serve"]), "board", args.board.board.as_deref());
+    let call = path(call, "board_program", args.board.board_program.as_deref());
+    let call = path(call, "config", args.config.as_deref());
+    call.value("idle_exit", crate::duration::text(args.idle_exit))
 }
 
 /// Serves the board that `args` names.
@@ -152,7 +168,7 @@ fn bind_failed(error: BindError, held: impl Fn(u16) -> HeldPort) -> Failed {
         BindError::PortInUse { port } => Failed::PortInUse {
             port,
             held: held(port),
-            board: None,
+            again: None,
         },
         other => system(other),
     }
@@ -178,7 +194,7 @@ async fn local(
     let wanted = oidc.as_ref().map(|_| SIGN_IN_PORT);
     let listeners = Listeners::bind(args.port, wanted).map_err(|error| {
         bind_failed(error, |port| {
-            if wanted == Some(port) {
+            if wanted == Some(port) && args.port != port {
                 HeldPort::SignIn
             } else {
                 HeldPort::Launch

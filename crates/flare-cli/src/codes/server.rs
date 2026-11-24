@@ -37,14 +37,15 @@ pub(super) fn open(board: Option<&str>) -> Recovery {
     Recovery::Run(with_board(Call::new(&["open"]), board))
 }
 
-/// The recovery of `server::port_in_use`. A held launch port is left out
-/// of the next `flare serve`; a port that flare cannot change must be
-/// freed first.
-pub(super) fn port_in_use(port: u16, held: HeldPort, board: Option<&str>) -> Recovery {
-    let freed =
-        |what: String| Recovery::after(what, Then::Run(with_board(Call::new(&["serve"]), board)));
+/// The recovery of `server::port_in_use`: `again`, the failed `flare
+/// serve` without `--port`, or a bare `flare serve` when it is not known. A
+/// held launch port is left out of the next run; a port that flare cannot
+/// change must be freed first.
+pub(super) fn port_in_use(port: u16, held: HeldPort, again: Option<Call>) -> Recovery {
+    let again = again.unwrap_or_else(|| Call::new(&["serve"]));
+    let freed = |what: String| Recovery::after(what, Then::Run(again.clone()));
     match held {
-        HeldPort::Launch => serve(board),
+        HeldPort::Launch => Recovery::Run(again.clone()),
         HeldPort::SignIn => freed(format!(
             "stop the program that holds port {port}, the sign-in port that the provider's redirect URI names"
         )),
@@ -61,11 +62,19 @@ impl Failed {
         let Some(board) = board else {
             return self;
         };
-        if let Self::NotRunning { board: slot, .. }
-        | Self::AlreadyRunning { board: slot }
-        | Self::PortInUse { board: slot, .. } = &mut self
+        if let Self::NotRunning { board: slot, .. } | Self::AlreadyRunning { board: slot } =
+            &mut self
         {
             *slot = Some(board.display().to_string());
+        }
+        self
+    }
+
+    /// The same failure naming `again`, the failed `flare serve` with its
+    /// arguments and without `--port`, when a port was held.
+    pub(crate) fn serving_again(mut self, again: Call) -> Self {
+        if let Self::PortInUse { again: slot, .. } = &mut self {
+            *slot = Some(again);
         }
         self
     }

@@ -48,3 +48,21 @@ fn a_hint_stays_a_hint_in_a_sign_in() {
     assert!(matches!(hint, Recovery::Hint { .. }), "{hint:?}");
     assert_eq!(failed.in_a_sign_in(SERVER).recovery(), hint);
 }
+
+#[test]
+fn the_message_and_the_fields_survive_a_sign_in() {
+    let failed = || {
+        Failed::from(SharingFailed::Unreachable {
+            server: SERVER.to_owned(),
+            problem: "the request failed".to_owned(),
+            next: crate::codes::NextRun::MaybeDone,
+        })
+    };
+    let wrapped = failed().in_a_sign_in(SERVER);
+    assert_eq!(wrapped.to_string(), failed().to_string());
+    assert_eq!(
+        format!("{:?}", wrapped.fields()),
+        format!("{:?}", failed().fields())
+    );
+    assert!(!failed().fields().is_empty());
+}

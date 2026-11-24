@@ -260,16 +260,22 @@ This file records the notable changes to flare. The format follows
   a second run would make a second one. The failures keep their codes,
   `flare::network::bad_answer` and `flare::network::unreachable`, and
   their recovery says to check that `flare shares` does not already list
-  the share or the version before running the command again. A connection
-  that was refused sends nothing, so it keeps the retry, and other
-  commands keep their recoveries.
+  the share or the version before running the command again. A 502, 503
+  or 504 answer with no problem document, which a proxy in front of the
+  server may send after the server made the share, gets the same check. A
+  connection that was refused sends nothing, so it keeps the retry, any
+  other answer that is not a success keeps the server check and retry, and
+  other commands keep their recoveries.
 - The recoveries of `flare::server::not_running` and
   `flare::server::already_running` carry the `--board` that the failed
   command was given, so the next `flare serve` or `flare open` names the
   same board. A `flare::server::port_in_use` for the sign-in port or the
   hosted listen address, which `flare serve` cannot move, asks for the
   program that holds the port to stop before `flare serve` runs again; a
-  held `--port` still recovers with `flare serve` without `--port`.
+  held `--port` still recovers with `flare serve` without `--port`. The
+  `flare serve` call of `port_in_use` keeps the failed command's `--board`,
+  `--board-program`, `--config` and `--idle-exit`, so a hosted server is
+  not run again as a local one.
 - Sign-ins that arrive while another sign-in is fetching the provider's key
   set wait for that fetch and take its outcome. When the fetch fails, each
   of them is refused with the same `ProviderUnavailable` or

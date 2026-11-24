@@ -39,13 +39,20 @@ fn already_running_names_flare_open_with_the_board_the_command_was_given() {
 }
 
 #[test]
-fn a_held_launch_port_names_flare_serve_without_the_port() {
+fn a_held_launch_port_names_the_failed_flare_serve_without_the_port() {
+    let again = serve(Some(BOARD)).value("config", "hosted.json");
     let failed = Failed::PortInUse {
         port: 4000,
         held: HeldPort::Launch,
-        board: Some(BOARD.to_owned()),
+        again: Some(again.clone()),
     };
-    assert_eq!(failed.recovery(), Recovery::Run(serve(Some(BOARD))));
+    assert_eq!(failed.recovery(), Recovery::Run(again));
+    let failed = Failed::PortInUse {
+        port: 4000,
+        held: HeldPort::Launch,
+        again: None,
+    };
+    assert_eq!(failed.recovery(), Recovery::Run(serve(None)));
 }
 
 #[test]
@@ -53,7 +60,7 @@ fn a_held_sign_in_port_asks_for_the_holder_to_stop_before_flare_serve_runs_again
     let failed = Failed::PortInUse {
         port: 8740,
         held: HeldPort::SignIn,
-        board: Some(BOARD.to_owned()),
+        again: Some(serve(Some(BOARD))),
     };
     assert_eq!(
         failed.recovery(),
@@ -69,7 +76,7 @@ fn a_held_hosted_port_asks_for_the_holder_to_stop_before_flare_serve_runs_again(
     let failed = Failed::PortInUse {
         port: 443,
         held: HeldPort::Hosted,
-        board: None,
+        again: None,
     };
     assert_eq!(
         failed.recovery(),
