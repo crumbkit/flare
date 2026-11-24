@@ -14,11 +14,6 @@ import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { ApiError, request } from "./client.ts";
 
-// zod compiles a faster parser with `new Function` unless it runs jitless.
-// The reading page's policy has no 'unsafe-eval', so the attempt would be
-// reported as a policy violation; jitless parsing never makes it.
-z.config({ jitless: true });
-
 /** The text a deleted comment shows when replies still hang from it. */
 export const deletedText = "Its author deleted this comment.";
 

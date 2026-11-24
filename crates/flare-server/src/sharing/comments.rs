@@ -3,7 +3,7 @@
 
 use super::convert::flare_error;
 use super::tokens::random_id;
-use super::{Answer, Refusal, Sharing};
+use super::{Answer, Count, Refusal, Sharing};
 use flare_contract::{
     ActivityItem as WireItem, ApiCode, Comment as WireComment, CommentEdit, CommentOrReply,
     CommentThread as WireThread, Cursor, NamedCursor, NewComment, Reply as WireReply, utc,
@@ -281,7 +281,7 @@ where
     M: Teams,
 {
     /// How many comments and replies of `flare` their authors have not
-    /// deleted. The reading page shows it, as the opened share does.
+    /// deleted.
     pub(super) async fn live_comments(
         &self,
         who: &Principal,
@@ -298,5 +298,32 @@ where
             .filter(|comment| !comment.is_deleted())
             .count();
         Ok(u32::try_from(live).unwrap_or(u32::MAX))
+    }
+
+    /// The comments and replies of `flare` as the reading page's comments
+    /// section counts them: every reply that is not deleted, and every
+    /// comment that is not deleted or that still has such a reply, because
+    /// the section keeps that comment's place.
+    pub(super) async fn shown_count(
+        &self,
+        who: &Principal,
+        flare: &ShareId,
+    ) -> Result<Count, Refusal> {
+        let threads = self
+            .flares
+            .comments(who, flare)
+            .await
+            .map_err(flare_error)?;
+        let mut count = Count::default();
+        for one in &threads {
+            let replies = one.replies.iter().filter(|each| !each.is_deleted()).count();
+            if !one.comment.is_deleted() || replies > 0 {
+                count.comments = count.comments.saturating_add(1);
+            }
+            count.replies = count
+                .replies
+                .saturating_add(u32::try_from(replies).unwrap_or(u32::MAX));
+        }
+        Ok(count)
     }
 }

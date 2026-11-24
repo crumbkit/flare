@@ -53,6 +53,21 @@ describe("copy", () => {
     expect(failureAction("refused")).toBe("Copy text");
   });
 
+  it("a full flare, an ended session and invalid text each say why and offer Copy text", () => {
+    expect(failureMessage(page, "full", "Ana Okafor")).toBe(
+      "Your comment was not sent because this page already holds 2,000 comments and replies, the most a page may hold. Copy your text to keep it.",
+    );
+    expect(failureMessage(toTomas, "signed-out", "Ana Okafor")).toBe(
+      "Your reply was not sent because your session ended. Copy your text, then reload the page to sign in again.",
+    );
+    expect(failureMessage(page, "invalid", "Ana Okafor")).toBe(
+      "Your comment was not sent because it holds a control character, which Flare does not store. Remove it and send again.",
+    );
+    for (const failure of ["full", "signed-out", "invalid"] as const) {
+      expect(failureAction(failure)).toBe("Copy text");
+    }
+  });
+
   it("the page field says who can read a comment, naming the owner by first name", () => {
     expect(audienceLine("Ana Okafor")).toBe(
       "Ana and everyone this page is shared with can read it.",

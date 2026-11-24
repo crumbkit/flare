@@ -256,14 +256,23 @@ pub(crate) enum TokenCheck {
     Refused(ApiCode),
 }
 
+/// The comments and replies of a share, as the reading page counts them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Count {
+    /// The top-level comments the section shows.
+    pub(crate) comments: u32,
+    /// The replies that are not deleted.
+    pub(crate) replies: u32,
+}
+
 /// One version of a Markdown share, as the reading page shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Reading {
     /// The share's id, which the comments section reads its thread by.
     pub(crate) id: String,
-    /// How many comments and replies on the share are not deleted, or
-    /// `None` when the comment store did not answer.
-    pub(crate) comments: Option<u32>,
+    /// The share's comments and replies as its comments section counts
+    /// them, or `None` when the comment store did not answer.
+    pub(crate) comments: Option<Count>,
     /// The share's title.
     pub(crate) title: String,
     /// The owner's address.

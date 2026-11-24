@@ -18,7 +18,7 @@
 //! mockup (option a), which opens that address in a new tab.
 
 use crate::docs::escape;
-use crate::sharing::Reading;
+use crate::sharing::{Count, Reading};
 use flare_render::Article;
 
 /// The months, as the date on the page names them.
@@ -65,12 +65,20 @@ pub(crate) fn date(seconds: u64) -> (String, String) {
     (format!("{day} {month} {year}"), stamp)
 }
 
-/// The comment count as the line under the header shows it.
-fn count(comments: u32) -> String {
-    match comments {
-        0 => String::from("No comments"),
-        1 => String::from("1 comment"),
-        many => format!("{many} comments"),
+/// The comment count as the line under the header shows it, in the words
+/// of the comments section's heading, such as "2 comments, 1 reply".
+fn count(count: Count) -> String {
+    let plural = |number: u32, one: &str, many: &str| {
+        format!("{number} {}", if number == 1 { one } else { many })
+    };
+    if count.comments == 0 {
+        return String::from("No comments");
+    }
+    let comments = plural(count.comments, "comment", "comments");
+    if count.replies == 0 {
+        comments
+    } else {
+        format!("{comments}, {}", plural(count.replies, "reply", "replies"))
     }
 }
 

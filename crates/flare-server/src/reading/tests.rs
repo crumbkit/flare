@@ -7,7 +7,10 @@ use super::*;
 fn reading() -> Reading {
     Reading {
         id: String::from("0123456789abcdef0123456789abcdef"),
-        comments: Some(3),
+        comments: Some(Count {
+            comments: 3,
+            replies: 0,
+        }),
         title: String::from("Weather holds for the island ferry"),
         owner: String::from("ana.okafor@example.com"),
         own: false,
@@ -175,27 +178,27 @@ fn the_comments_section_follows_the_article_and_names_the_share_its_version_and_
 }
 
 #[test]
-fn the_line_under_the_title_links_the_comment_count_to_the_section() {
+fn the_line_under_the_title_counts_comments_and_replies_as_the_section_heading_does() {
     let mut counted = reading();
     let chip = |html: &str| {
         html.split_once("<a class=\"chip\" href=\"#comments\">")
             .and_then(|(_, rest)| rest.split_once("</a>"))
             .map(|(text, _)| text.to_owned())
     };
-    assert_eq!(
-        chip(&built(&counted, "Text.\n")).as_deref(),
-        Some("3 comments")
-    );
-    counted.comments = Some(1);
-    assert_eq!(
-        chip(&built(&counted, "Text.\n")).as_deref(),
-        Some("1 comment")
-    );
-    counted.comments = Some(0);
-    assert_eq!(
-        chip(&built(&counted, "Text.\n")).as_deref(),
-        Some("No comments")
-    );
+    for (comments, replies, text) in [
+        (3, 0, "3 comments"),
+        (2, 2, "2 comments, 2 replies"),
+        (1, 1, "1 comment, 1 reply"),
+        (1, 0, "1 comment"),
+        (0, 0, "No comments"),
+    ] {
+        counted.comments = Some(Count { comments, replies });
+        assert_eq!(
+            chip(&built(&counted, "Text.\n")).as_deref(),
+            Some(text),
+            "{comments} and {replies}"
+        );
+    }
     counted.comments = None;
     assert_eq!(chip(&built(&counted, "Text.\n")), None);
     let html = built(&reading(), "Text.\n");

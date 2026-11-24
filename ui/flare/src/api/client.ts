@@ -3,13 +3,27 @@
 // the answer with the caller's schema and throws an ApiError for every
 // failure, because TanStack Query takes a thrown error as a query's or a
 // mutation's failure (BASE-23).
-import type { z } from "zod";
+import { z } from "zod";
+
+// zod compiles a faster parser with `new Function` unless it runs jitless.
+// The reading page's policy has no 'unsafe-eval', so the attempt would be
+// reported as a policy violation; jitless parsing never makes it. The
+// network owner sets it because every answer is parsed here.
+z.config({ jitless: true });
 
 /**
- * Why a request failed. A refusal (403 or 404) and a full flare (409) are
- * answers the server will repeat, so nothing retries them.
+ * Why a request failed. A refusal (403 or 404), a full flare (409), an
+ * ended session (401) and invalid text (400) are answers the server will
+ * repeat, so nothing retries them.
  */
-export type ApiFailure = "no-answer" | "refused" | "full" | "signed-out" | "failed" | "malformed";
+export type ApiFailure =
+  | "no-answer"
+  | "refused"
+  | "full"
+  | "signed-out"
+  | "invalid"
+  | "failed"
+  | "malformed";
 
 export class ApiError extends Error {
   readonly kind: ApiFailure;
@@ -25,6 +39,8 @@ export class ApiError extends Error {
 
 function failureOf(status: number): ApiFailure {
   switch (status) {
+    case 400:
+      return "invalid";
     case 401:
       return "signed-out";
     case 403:

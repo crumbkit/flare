@@ -18,7 +18,7 @@ export interface WireComment extends Omit<WireReply, "parent"> {
 }
 
 /** How the stand-in answers the next request of one kind. */
-export type Answer = "answer" | "drop" | "hold" | 404 | 409 | 503;
+export type Answer = "answer" | "drop" | "hold" | 400 | 401 | 404 | 409 | 503;
 
 export const reader = "priya.nair@example.com";
 export const owner = "ana.okafor@example.com";

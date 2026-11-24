@@ -60,10 +60,9 @@ test("a signed-in reader comments on a shared page and replies, and both stay af
   const section = page.getByRole("region", { name: "Comments" });
   const field = section.getByRole("textbox", { name: "Comment on the whole page" });
   await expect(field).toBeVisible();
-  await expect(page.getByRole("link", { name: /^(No comments|\d+ comments?)$/ })).toHaveAttribute(
-    "href",
-    "#comments",
-  );
+  await expect(
+    page.getByRole("link", { name: /^(No comments|\d+ comments?(, \d+ repl(y|ies))?)$/ }),
+  ).toHaveAttribute("href", "#comments");
   expect(await axe(page)).toEqual([]);
 
   await field.fill(comment);

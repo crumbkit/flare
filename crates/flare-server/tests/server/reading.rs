@@ -93,32 +93,62 @@ async fn a_granted_reader_sees_the_latest_version_of_a_markdown_share() {
     );
 }
 
+/// Posts `body` on `flare` as the holder of `token`, as a reply to
+/// `parent` when it is given, and returns the post's id.
+async fn post(api: &Api, token: &str, flare: &str, parent: Option<&str>, key: &str) -> String {
+    let mut body = serde_json::json!({"flare": flare, "body": "Text.", "key": key});
+    if let Some(parent) = parent {
+        body["parent"] = serde_json::json!(parent);
+    }
+    let (status, posted) = api.json("POST", "/api/comments", Some(token), body).await;
+    assert_eq!(status, 201, "{posted}");
+    posted["id"].as_str().unwrap().to_owned()
+}
+
+/// The text of the comment count under the title.
+fn count(page: &Reply) -> &str {
+    page.body
+        .split_once("<a class=\"chip\" href=\"#comments\">")
+        .and_then(|(_, rest)| rest.split_once("</a>"))
+        .map(|(text, _)| text)
+        .unwrap()
+}
+
 #[tokio::test]
-async fn the_line_under_the_title_counts_the_comments_and_replies_that_are_not_deleted() {
+async fn the_line_under_the_title_counts_comments_and_replies_as_the_section_heading_does() {
     let (api, bob, id) = shared("Text.\n").await;
     let token = api.token_for("bob").await;
-    let (status, comment) = api
-        .json(
-            "POST",
-            "/api/comments",
-            Some(&token),
-            serde_json::json!({"flare": id, "body": "A question.", "key": "one"}),
-        )
-        .await;
-    assert_eq!(status, 201, "{comment}");
-    let page = read(&api, &bob, &format!("/s/{id}")).await;
-    assert!(page.body.contains(">1 comment</a>"), "{}", page.body);
-    let parent = comment["id"].as_str().unwrap();
-    for (key, parent) in [("two", Some(parent)), ("three", None)] {
-        let mut body = serde_json::json!({"flare": id, "body": "More.", "key": key});
-        if let Some(parent) = parent {
-            body["parent"] = serde_json::json!(parent);
-        }
-        let (status, posted) = api.json("POST", "/api/comments", Some(&token), body).await;
-        assert_eq!(status, 201, "{posted}");
+    let first = post(&api, &token, &id, None, "one").await;
+    assert_eq!(
+        count(&read(&api, &bob, &format!("/s/{id}")).await),
+        "1 comment"
+    );
+    let reply = post(&api, &token, &id, Some(&first), "two").await;
+    let second = post(&api, &token, &id, None, "three").await;
+    assert_eq!(
+        count(&read(&api, &bob, &format!("/s/{id}")).await),
+        "2 comments, 1 reply"
+    );
+    // A deleted comment that still has a reply keeps its place in the
+    // section, so it still counts; a deleted comment with none does not.
+    for deleted in [&first, &second] {
+        let (status, body) = api
+            .read("DELETE", &format!("/api/comments/{deleted}"), Some(&token))
+            .await;
+        assert!(status < 300, "{status} {body}");
     }
-    let page = read(&api, &bob, &format!("/s/{id}")).await;
-    assert!(page.body.contains(">3 comments</a>"), "{}", page.body);
+    assert_eq!(
+        count(&read(&api, &bob, &format!("/s/{id}")).await),
+        "1 comment, 1 reply"
+    );
+    let (status, body) = api
+        .read("DELETE", &format!("/api/comments/{reply}"), Some(&token))
+        .await;
+    assert!(status < 300, "{status} {body}");
+    assert_eq!(
+        count(&read(&api, &bob, &format!("/s/{id}")).await),
+        "No comments"
+    );
 }
 
 #[tokio::test]

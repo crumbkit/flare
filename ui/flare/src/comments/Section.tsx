@@ -10,9 +10,20 @@ import { commentsQuery } from "../api/comments.ts";
 import { PageField, ReplyField } from "./fields.tsx";
 import { initials, shownTime } from "./format.ts";
 
-/** The line a reader sees when the server refuses the comments. */
-function refusedMessage(owner: string): string {
-  return `The comments did not load because you no longer have access to this page. Ask ${owner} for access.`;
+/**
+ * The line a reader sees when the server would give the same answer again,
+ * so Retry would not help: a refusal or an ended session.
+ */
+function finalMessage(error: unknown, owner: string): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  switch (error.kind) {
+    case "refused":
+      return `The comments did not load because you no longer have access to this page. Ask ${owner} for access.`;
+    case "signed-out":
+      return "The comments did not load because your session ended. Reload the page to sign in again.";
+    default:
+      return undefined;
+  }
 }
 
 interface Clock {
@@ -69,15 +80,16 @@ export interface SectionProps {
 
 export function CommentsSection({ flare, owner, now = Date.now, timeZone }: SectionProps) {
   const query = useQuery(commentsQuery(flare));
+  // A failed refetch keeps the data it had, so the thread and every draft
+  // in its fields stay; only a first load that fails shows the failure.
   let load: ThreadLoad;
-  if (query.isSuccess) load = { state: "ready", thread: query.data };
+  if (query.data !== undefined) load = { state: "ready", thread: query.data };
   else if (query.isError && !query.isFetching) load = { state: "failed" };
   else load = { state: "loading" };
   const thread = useThread(load, () => {
     void query.refetch();
   });
-  const refused =
-    load.state === "failed" && query.error instanceof ApiError && query.error.kind === "refused";
+  const final = load.state === "failed" ? finalMessage(query.error, owner) : undefined;
   const clock = { now, timeZone };
   const { view } = thread;
   return (
@@ -94,12 +106,12 @@ export function CommentsSection({ flare, owner, now = Date.now, timeZone }: Sect
           <div className="skeleton" style={{ width: "70%" }} />
         </div>
       )}
-      {view.state === "failed" && refused && (
+      {view.state === "failed" && final !== undefined && (
         <div className="alert red" role="alert">
-          <p>{refusedMessage(owner)}</p>
+          <p>{final}</p>
         </div>
       )}
-      {view.state === "failed" && !refused && (
+      {view.state === "failed" && final === undefined && (
         <div className="alert amber" {...view.alertProps}>
           <p>{view.message}</p>
           <button className="ghost" {...view.retryProps} />

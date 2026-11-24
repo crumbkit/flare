@@ -2,7 +2,7 @@
 // parts mockup (LRJsZhYqKPHcug6pQKw8dA, version 1795398322-8ae4) draw, with
 // flare-server's comment routes stood in for by testServer.ts.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CommentsSection } from "./Section.tsx";
@@ -22,7 +22,7 @@ function show(comments: WireComment[] = mockupComments(), reads: Answer[] = []) 
       <CommentsSection flare="f1" owner={owner} now={() => Date.parse(NOW)} timeZone="UTC" />
     </QueryClientProvider>,
   );
-  return server;
+  return Object.assign(server, { client });
 }
 
 const pageField = () => screen.getByRole("textbox", { name: "Comment on the whole page" });
@@ -64,6 +64,68 @@ describe("artboard 01: loading, empty and failed to load", () => {
       "The comments did not load because you no longer have access to this page. Ask ana.okafor@example.com for access.",
     );
     expect(within(alert).queryByRole("button")).not.toBeInTheDocument();
+  });
+});
+
+describe("a refetch that fails", () => {
+  it("keeps the thread and the reader's draft, with no failure shown", async () => {
+    const server = show();
+    await userEvent.type(
+      await screen.findByRole("textbox", { name: "Comment on the whole page" }),
+      text,
+    );
+    server.next.read.push(503);
+    await act(() => server.client.refetchQueries());
+    await waitFor(() => expect(server.fetch).toHaveBeenCalledTimes(2));
+    expect(pageField()).toHaveValue(text);
+    expect(screen.getByText("2 comments, 2 replies")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("a session that ended", () => {
+  it("asks the reader to sign in again, with no Retry, when the comments cannot load", async () => {
+    show(mockupComments(), [401]);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "The comments did not load because your session ended. Reload the page to sign in again.",
+    );
+    expect(within(alert).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("keeps a reply's text and asks the reader to sign in again, with no Retry", async () => {
+    const server = show();
+    server.next.write.push(401);
+    const field = await screen.findByRole("textbox", { name: "Reply to jonas.weber@example.com" });
+    await userEvent.type(field, "Only for a cancelled sailing.{Enter}");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Your reply was not sent because your session ended. Copy your text, then reload the page to sign in again.",
+    );
+    expect(within(alert).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(within(alert).getByRole("button", { name: "Copy text" })).toBeInTheDocument();
+    expect(field).toHaveValue("Only for a cancelled sailing.");
+  });
+});
+
+describe("text the server does not store", () => {
+  it("says the text holds a control character, and editing it lets the reader send again", async () => {
+    const server = show();
+    server.next.write.push(400);
+    await userEvent.type(
+      await screen.findByRole("textbox", { name: "Comment on the whole page" }),
+      text,
+    );
+    await userEvent.click(commentButton());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Your comment was not sent because it holds a control character, which Flare does not store. Remove it and send again.",
+    );
+    expect(within(alert).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    await userEvent.type(pageField(), "!");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.click(commentButton());
+    expect(await screen.findByText(`${text}!`)).toBeInTheDocument();
   });
 });
 
@@ -186,7 +248,7 @@ describe("artboard 05: failed, with retry", () => {
     expect(await navigator.clipboard.readText()).toBe(text);
   });
 
-  it("keeps the text and offers Copy when the flare holds as many comments as it may", async () => {
+  it("keeps the text and names the limit and offers Copy when the flare holds as many comments as it may", async () => {
     const server = show();
     server.next.write.push(409);
     await userEvent.type(
@@ -195,6 +257,10 @@ describe("artboard 05: failed, with retry", () => {
     );
     await userEvent.click(commentButton());
     const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Your comment was not sent because this page already holds 2,000 comments and replies, the most a page may hold. Copy your text to keep it.",
+    );
+    expect(within(alert).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     expect(within(alert).getByRole("button", { name: "Copy text" })).toBeInTheDocument();
     expect(pageField()).toHaveValue(text);
   });

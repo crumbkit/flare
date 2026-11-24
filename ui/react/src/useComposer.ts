@@ -214,9 +214,9 @@ export function useComposer<P>(options: UseComposerOptions<P>): ComposerProps<P>
         type: "button",
         children: failureAction(failure.failure),
         onClick:
-          failure.failure === "refused"
-            ? () => void navigator.clipboard.writeText(failure.draft.text)
-            : submit,
+          failure.failure === "no-answer"
+            ? submit
+            : () => void navigator.clipboard.writeText(failure.draft.text),
       },
     },
     statusProps: {

@@ -1,7 +1,9 @@
 // The words and the keyboard rule of the comment parts, as mockup
-// LRJsZhYqKPHcug6pQKw8dA version 1795398322-8ae4 draws them. Each binding
-// gives these strings to the accessible names, live regions and alerts it
-// renders, so every front end says the same thing.
+// LRJsZhYqKPHcug6pQKw8dA version 1795398322-8ae4 draws them. The messages
+// for a full flare, an ended session and invalid text, which the mockup does
+// not draw, follow the wording of its refusal. Each binding gives these
+// strings to the accessible names, live regions and alerts it renders, so
+// every front end says the same thing.
 import type { Failure } from "./composer.ts";
 import type { Target, Thread } from "./thread.ts";
 
@@ -68,16 +70,17 @@ export function failureMessage(target: Target, failure: Failure, owner: string):
       return `Your ${target.kind} was not sent because Flare did not answer. Your text is still in the field.`;
     case "refused":
       return `You can no longer comment here, because you no longer have access to this page. Copy your text and ask ${owner} for access.`;
+    case "full":
+      return `Your ${target.kind} was not sent because this page already holds 2,000 comments and replies, the most a page may hold. Copy your text to keep it.`;
+    case "signed-out":
+      return `Your ${target.kind} was not sent because your session ended. Copy your text, then reload the page to sign in again.`;
+    case "invalid":
+      return `Your ${target.kind} was not sent because it holds a control character, which Flare does not store. Remove it and send again.`;
   }
 }
 
 export function failureAction(failure: Failure): string {
-  switch (failure) {
-    case "no-answer":
-      return retryText;
-    case "refused":
-      return "Copy text";
-  }
+  return failure === "no-answer" ? retryText : "Copy text";
 }
 
 export function sentAnnouncement(target: Target): string {

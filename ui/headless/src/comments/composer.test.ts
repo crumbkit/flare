@@ -213,6 +213,51 @@ describe("composer", () => {
     expect(draftOf(c.getState())?.text).toBe("Only for");
   });
 
+  it("a full flare, an ended session and invalid text each keep the text and offer no retry", async () => {
+    for (const reason of ["full", "signed-out", "invalid"] as const) {
+      const { send, calls } = pendingSend();
+      const c = composer(send);
+      c.edit("Only");
+      const done = c.submit();
+      calls[0]?.answer({ outcome: "refused", reason });
+      await done;
+      expect(c.getState(), reason).toEqual({
+        status: "failed",
+        draft: { key: "key-1", text: "Only" },
+        failure: reason,
+      });
+      expect(canRetry(c.getState()), reason).toBe(false);
+      expect(sendShown(c.getState()), reason).toBe(false);
+      expect(blocker(c.getState(), 2000), reason).toBe("refused");
+      await c.submit();
+      expect(send, reason).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("editing text the server called invalid lets it be sent again with the same key", async () => {
+    const { send, calls } = pendingSend();
+    const c = composer(send);
+    c.edit("Only\u0007");
+    const done = c.submit();
+    calls[0]?.answer({ outcome: "refused", reason: "invalid" });
+    await done;
+    c.edit("Only");
+    expect(c.getState()).toEqual({ status: "composing", draft: { key: "key-1", text: "Only" } });
+  });
+
+  it("editing after a full flare or an ended session keeps the failure shown", async () => {
+    for (const reason of ["full", "signed-out"] as const) {
+      const { send, calls } = pendingSend();
+      const c = composer(send);
+      c.edit("Only");
+      const done = c.submit();
+      calls[0]?.answer({ outcome: "refused", reason });
+      await done;
+      c.edit("Only for");
+      expect(c.getState(), reason).toMatchObject({ status: "failed", failure: reason });
+    }
+  });
+
   it("typing after a sent post starts a new draft with a new key", async () => {
     const { send, calls } = pendingSend();
     const c = composer(send);

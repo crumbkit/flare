@@ -157,6 +157,7 @@ describe("the comments query", () => {
       [async () => json(403, { code: "flare::comments::not_author" }), "refused"],
       [async () => json(503, { code: "flare::comments::unavailable" }), "failed"],
       [async () => json(401, { code: "flare::auth::sign_in_needed" }), "signed-out"],
+      [async () => json(400, { code: "flare::comments::invalid" }), "invalid"],
       [
         async () => {
           throw new TypeError("Failed to fetch");

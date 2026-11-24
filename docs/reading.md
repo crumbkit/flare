@@ -43,10 +43,12 @@ the link stack and the link is 44 px tall.
 
 ## The comment count and the comments section
 
-The line under the header ends with the number of comments and replies on
-the share that are not deleted, such as "3 comments", "1 comment" or "No
-comments", as a link to the comments section. When the comment store does
-not answer, the page leaves the count out.
+The line under the header ends with the comment count, as a link to the
+comments section. It counts as the section's heading does, such as "2
+comments, 1 reply", "1 comment" or "No comments": every reply that is not
+deleted, and every top-level comment that is not deleted or that still has
+such a reply. When the comment store does not answer, the page leaves the
+count out.
 
 Below the article, the comments section follows artboards 01 to 07 of the
 comment parts mockup. It lists every comment on the share with its replies,
@@ -61,11 +63,17 @@ page with unsent text asks first.
 - While the comments load, the section says "Loading comments".
 - When the comment routes give no answer or a server error, the section says
   so and offers Retry. When they refuse the reader (403 or 404), it says the
-  reader no longer has access and names the owner, with no Retry.
+  reader no longer has access and names the owner, and when the session has
+  ended (401) it asks the reader to reload the page to sign in again. Neither
+  offers Retry. Once the thread has loaded, a later refetch that fails, such
+  as the one after each send, keeps the thread and every draft as they are.
 - A send with no answer keeps the text and offers Retry, which sends the
-  draft again with the same key, so the server stores it once. A refused
-  send, and a send to a flare that already holds 2,000 comments and
-  replies, keeps the text and offers Copy text with no Retry.
+  draft again with the same key, so the server stores it once. Every other
+  failure keeps the text, says why and offers Copy text with no Retry: the
+  reader lost access (403 or 404), the flare already holds 2,000 comments
+  and replies (409), the session ended (401), or the text holds a control
+  character the server does not store (400). After the last one, editing the
+  text lets the reader send it again.
 - After a send, the post joins its thread, the field empties and keeps
   focus, and a screen reader hears "Comment sent" or "Reply sent".
 - An edited comment shows its current text with no edited mark, a deleted
