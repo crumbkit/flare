@@ -26,6 +26,7 @@ up around it.
 ```json
 {
   "hosted": { "origin": "https://flare.example.com", "listen": "127.0.0.1:8080" },
+  "log": { "metrics": true },
   "oidc": {
     "issuer": "https://accounts.google.com",
     "client_id": "<from the Google console>",
@@ -64,6 +65,12 @@ up around it.
   restart the server.
 - Register `<origin>/auth/oidc/callback` as the redirect URI of the Google
   client, such as `https://flare.example.com/auth/oidc/callback`.
+- `log.metrics` set to `true` writes a CloudWatch metric line on standard
+  error for each request, share, page view, sign-in and refusal. A hosted
+  site sets it, so its operator can count use in CloudWatch; it is off
+  when the config leaves it out. The counts hold no person, token or
+  share, and no route of the site serves them.
+  [metrics.md](metrics.md) lists the metrics.
 - A config error exits with `flare::config::invalid` and names the key.
 
 ## The share API
@@ -77,7 +84,8 @@ The share API lets people share Markdown files with named people from the
   "origin": "https://flare.example.com",
   "listen": "127.0.0.1:8080",
   "stores": { "region": "eu-west-1", "table": "flare-shares", "bucket": "flare-files" },
-  "creators": ["ana@example.com", "sam@example.com"]
+  "creators": ["ana@example.com", "@example.com"],
+  "names": { "ana": "ana@example.com" }
 }
 ```
 
@@ -90,9 +98,26 @@ The share API lets people share Markdown files with named people from the
   config.
 - `flare serve` checks the table and the bucket at start and exits with
   `flare::stores::unavailable` when it cannot read them.
-- `creators` lists the addresses that may share and respond. Without it,
-  everyone the `admit` rule admits may. `creators` without `stores` is
-  refused, and an `anyone` admit rule without `creators` is refused.
+- `creators` says who may share and respond. It is a list of addresses
+  and `@domain` entries, such as `"ana@example.com"` and `"@example.com"`,
+  where a domain entry admits every verified address at exactly that
+  domain and not its subdomains. It can instead be the value
+  `"anyone admitted"`, which lets everyone the `admit` rule admits share.
+  Under an `anyone` admit rule, `"anyone admitted"` means open sharing:
+  any account the issuer verifies, which with Google is any Google
+  account, can sign in and create shares. `flare serve` logs a warning at
+  start when the config has this combination. A domain entry such as
+  `@gmail.com` likewise admits every address at that public domain.
+  Without `creators`, everyone a `domain` or `emails` rule admits may.
+  `creators` without `stores` is refused, and an `anyone` admit rule needs
+  `creators` written out, so that letting every signed-in person share is a
+  choice. Anything else in `creators` is refused naming `hosted.creators`.
+- `names` maps usernames, written in lower-case letters, digits, dots,
+  hyphens and underscores, to addresses, such as
+  `{ "ana": "ana@example.com" }`, so that `flare share --with ana` resolves
+  to `ana@example.com`. A full address still resolves as itself, and a name
+  that is not listed is refused as not an email address. `names` without
+  `stores` is refused, and a bad entry is refused naming `hosted.names`.
 - A person who is not a creator gets 403 `flare::shares::not_a_creator`.
 
 Routes:
@@ -104,8 +129,13 @@ Routes:
 - `DELETE /api/tokens/<id>` revokes the caller's token.
 - `POST /api/shares` creates a share, with its grants and the flares it
   responds to.
-- `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
+- `GET /api/shares?scope=mine|with-me&limit=<n>&cursor=<cursor>` lists
+  shares, at most 500 in one answer, newest first. When more follow, the
+  answer's `next` holds the cursor to pass as `cursor` for the next page.
 - `GET /api/shares/<id>` reads a share.
+- `POST /api/shares/<id>/versions` publishes the next version of a share,
+  from a `format` and `content`. Only the owner may, and the answer is the
+  share summary with the new `version`.
 - `POST /api/grants/<id>` grants a share to more addresses.
 - `GET /api/activity?flare=<id>&since=<cursor>&limit=<n>` lists the
   responses to flares that the caller may read, oldest first, at most 100
@@ -124,6 +154,10 @@ Routes:
   the others.
 - The activity cursor is `fc1.` and a base64url position. A cursor flare did
   not write answers 400 `flare::activity::bad_cursor`.
+- The share list cursor is `fs1.` and base64url of the list's scope, the
+  last entry's time and its share id. A cursor flare did not write, or one
+  of the other scope, answers 400 `flare::shares::bad_cursor`, and two
+  `cursor` values answer 400 `flare::requests::bad_query`.
 
 ## The client secret file
 

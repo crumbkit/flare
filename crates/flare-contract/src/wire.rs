@@ -45,6 +45,18 @@ pub struct ShareRequest {
     pub re: Vec<String>,
 }
 
+/// `POST /api/shares/{id}/versions`: the next version of a share, which
+/// only its owner may publish. A new version changes the content and
+/// nothing else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VersionRequest {
+    /// The markup of `content`.
+    pub format: Format,
+    /// The content, at most 256 KiB.
+    pub content: String,
+}
+
 /// `POST /api/shares/{id}/grants`: more people, or more flares the share
 /// responds to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -78,13 +90,15 @@ pub struct ShareSummary {
     pub created: String,
 }
 
-/// `GET /api/shares/{id}`: the latest version of a share the caller can
-/// open.
+/// `GET /api/shares/{id}?version=n`: version `n` of a share the caller can
+/// open, or its latest version without `n`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct OpenedShare {
-    /// The share.
+    /// The share, whose `version` is its latest.
     pub share: ShareSummary,
-    /// The latest version's content.
+    /// The number of the version whose content this answer holds.
+    pub version: u32,
+    /// That version's content.
     pub content: String,
 }
 
@@ -99,13 +113,20 @@ pub struct Shared {
     pub responds_to: Vec<String>,
 }
 
-/// `GET /api/shares?scope=mine|with-me&limit=N`.
+/// `GET /api/shares?scope=mine|with-me&limit=N&cursor=<cursor>`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ShareList {
     /// The shares, newest first.
     pub items: Vec<ShareSummary>,
-    /// Whether more shares exist than `limit` let through.
+    /// Whether more shares follow this page; true exactly when `next` is
+    /// present.
     pub more: bool,
+    /// The cursor to pass as `cursor` for the page that follows, present
+    /// only when more shares follow. A page can hold fewer than `limit`
+    /// shares and still name one, when a share granted to the caller no
+    /// longer exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<String>,
 }
 
 /// A flare that a response also responds to, which the caller can open.

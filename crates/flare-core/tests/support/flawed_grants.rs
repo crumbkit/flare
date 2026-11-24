@@ -5,8 +5,8 @@
 //! every other rule.
 
 use flare_core::{
-    Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Listing, MAX_GRANTS, MAX_LISTED,
-    PrincipalId, Role, ShareId,
+    Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, ListKey, Listing, MAX_GRANTS,
+    MAX_LISTED, PrincipalId, Role, ShareId,
 };
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -46,10 +46,12 @@ pub(crate) enum GrantFlaw {
     /// A grant on a share with no grants answers `Unavailable`, as a store
     /// that looked for the share would.
     RefusesAnUnseenShare,
-    /// `granted_to` cuts the list before it learns whether more exist.
+    /// `granted_page` cuts the list before it learns whether more exist.
     WrongTruncation,
-    /// `granted_to` lists the oldest first.
+    /// `granted_page` lists the oldest first.
     WrongOrder,
+    /// `granted_page` reads from the first grant whatever key it is given.
+    IgnoresTheKey,
     /// The admin check remembers an admin it once saw and never reads again.
     CachesAdminAuthority,
 }
@@ -238,21 +240,33 @@ impl GrantStore for FlawedGrants {
         Ok(grants)
     }
 
-    async fn granted_to(&self, grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
+    async fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
         let state = self.state.lock().unwrap();
+        let after = if self.is(GrantFlaw::IgnoresTheKey) {
+            None
+        } else {
+            after
+        };
         let mut grants: Vec<Grant> = state
             .people
             .get(grantee)
             .map(|shares| shares.values().cloned().collect())
             .unwrap_or_default();
+        grants.retain(|grant| after.is_none_or(|key| key.precedes(&ListKey::of_grant(grant))));
         if self.is(GrantFlaw::WrongOrder) {
             grants.sort_by_key(|grant| (grant.created(), grant.share().clone()));
         } else {
             grants.sort_by_key(|grant| (Reverse(grant.created()), grant.share().clone()));
         }
+        let limit = limit.clamp(1, MAX_LISTED);
         if self.is(GrantFlaw::WrongTruncation) {
-            grants.truncate(MAX_LISTED);
+            grants.truncate(limit);
         }
-        Ok(Listing::new(grants))
+        Ok(Listing::bounded(grants, limit))
     }
 }

@@ -41,8 +41,8 @@ pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
-    ActivityItem, ActivityPage, AddressesOnly, Creators, FlareError, Flared, Flares, MAX_FLARES,
-    NewFlare, RecipientError, Recipients,
+    ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
+    MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
@@ -53,14 +53,15 @@ pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
 pub use response::{MAX_PAGE, NewLink, Position, ResponseLink};
 pub use share::{
-    DocumentText, Listing, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewShare, NewVersion,
-    Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion, SharedVersion,
+    DocumentText, Listing, MAX_DOCUMENT, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_TITLE, MAX_VERSIONS,
+    NewShare, NewVersion, Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion,
+    SharedVersion,
 };
 pub use sharing::{Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
-    FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, MoveError, PageStore,
-    PageStoreError, ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError,
-    ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
+    FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, ListKey, ListPage,
+    MoveError, PageStore, PageStoreError, ReadError, RecordStore, Rejection, ResponseStore,
+    ResponseStoreError, ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
 };
 pub use time::Timestamp;
 pub use token::{

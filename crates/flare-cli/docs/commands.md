@@ -12,13 +12,17 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare open`](#flare-open): Open the running server's index, a page or a binding in a browser
 - [`flare publish`](#flare-publish): Publish a new version of a page from an HTML or Markdown file
 - [`flare bind`](#flare-bind): Save a binding that fills a page's slots with records
-- [`flare login`](#flare-login): Sign in to a flare server in the browser and keep its token in the Keychain
-- [`flare logout`](#flare-logout): Revoke this computer's token for the flare server and delete it
+- [`flare login`](#flare-login): Sign in to a flare server and keep its token in the Keychain
+- [`flare logout`](#flare-logout): Revoke this computer's flare token and delete it
 - [`flare share`](#flare-share): Share a Markdown file with named people, or as a response to flares
+- [`flare show`](#flare-show): Show one version of a share you can open, or its latest
 - [`flare grant`](#flare-grant): Grant an existing share to more people
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
 - [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
+- [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
+- [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
+- [`flare skills`](#flare-skills): Manage flare's agent skill
 - [`flare self`](#flare-self): Review flare's own use
 
 ### Arguments
@@ -164,7 +168,7 @@ Writes: applies all items or none.
 
 ## `flare login`
 
-Sign in to a flare server in the browser and keep its token in the Keychain
+Sign in to a flare server and keep its token in the Keychain
 
 ### Arguments
 
@@ -190,7 +194,7 @@ Effects: additive, not idempotent, closed-world.
 
 ## `flare logout`
 
-Revoke this computer's token for the flare server and delete it
+Revoke this computer's flare token and delete it
 
 ### Arguments
 
@@ -218,9 +222,14 @@ Share a Markdown file with named people, or as a response to flares
 ### Arguments
 
 - `<FILE>`: The file to share: .md for Markdown. Required.
-- `--title <TITLE>`: The share's title; without it, the file's name without its ending
-- `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
-- `--re <ID>`: The flares this share responds to, repeated or separated by commas. Takes more than one value.
+- `--title <TITLE>`: The title; without it, the file name without its ending
+- `--with <ADDRESS>`: The addresses to grant Reader, repeated or comma-separated. Takes more than one value.
+- `--re <ID>`: The flares it responds to, whose owners become Readers; repeated or comma-separated. Takes more than one value.
+- `--update <ID>`: Publish the file as your share's next version
+
+  It changes only the content; grants stay with flare grant.
+- `--dry-run`: Report what the command would change, and change nothing
+- `--out <PATH>`: With --dry-run, write the HTML here
 
 ### Examples
 
@@ -236,14 +245,65 @@ Share answer.md as a response to a flare.
 flare share answer.md --re 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 ```
 
+Publish review.md as the next version of a share you own.
+
+```sh
+flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+Check review.md as the server would and write its HTML to review.html, sharing nothing.
+
+```sh
+flare share review.md --dry-run --out review.html
+```
+
+### Columns
+
+- `id`: The share's id; none on a dry run of a new share.
+- `title`: The share's title; none on a dry run of `--update`, which does not read the share.
+- `version`: The share's latest version; none on a dry run.
+- `granted`: The addresses that now hold a role on it; none after `--update` or a dry run.
+- `responds_to`: The flares it responds to; none after `--update` or a dry run.
+
+Effects: additive, not idempotent, closed-world.
+
+Children: A dry run lists its checks.
+
+## `flare show`
+
+Show one version of a share you can open, or its latest
+
+### Arguments
+
+- `<ID>`: The share to show. Required.
+- `--version <N>`: The version to show, a number from 1; without it, the latest
+
+### Examples
+
+Show the latest version of a share.
+
+```sh
+flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+```
+
+Show the first version of a share.
+
+```sh
+flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
+```
+
 ### Columns
 
 - `id`: The share's id.
 - `title`: The share's title.
-- `granted`: The addresses that now hold a role on it.
-- `responds_to`: The flares it responds to.
+- `owner`: The owner's identifier.
+- `role`: The caller's role: `owner`, `admin` or `reader`.
+- `version`: The version whose content this holds.
+- `latest`: The share's latest version.
 
-Effects: additive, not idempotent, closed-world.
+Effects: read-only, closed-world.
+
+Children: The version's Markdown follows the share, one line of text for each line of the file.
 
 ## `flare grant`
 
@@ -253,7 +313,7 @@ Grant an existing share to more people
 
 - `<ID>`: The share to grant. Required.
 - `--with <ADDRESS>`: The addresses to grant Reader, repeated or separated by commas. Takes more than one value.
-- `--re <ID>`: The flares the share responds to, repeated or separated by commas; only its owner may add them. Takes more than one value.
+- `--re <ID>`: The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it. Takes more than one value.
 
 ### Examples
 
@@ -267,8 +327,9 @@ flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
 
 - `id`: The share's id.
 - `title`: The share's title.
-- `granted`: The addresses that now hold a role on it.
-- `responds_to`: The flares it responds to.
+- `version`: The share's latest version.
+- `granted`: The addresses that now hold a role on it; none after `--update`, which does not report them.
+- `responds_to`: The flares it responds to; none after `--update`, which does not report them.
 
 Effects: additive, not idempotent, closed-world.
 
@@ -276,11 +337,12 @@ Effects: additive, not idempotent, closed-world.
 
 List your shares or the shares granted to you
 
-The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+The server lists at most 500 shares in one answer. A list cut short names the next call with --cursor, which resumes the list after the last share printed, and --all follows the cursor until the list ends.
 
 ### Arguments
 
 - `--with-me`: List the shares granted to you in place of your own
+- `--cursor <CURSOR>`: List the shares after this cursor, which an earlier flare shares printed
 - `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
 - `--all`: Print every row
 
@@ -296,6 +358,12 @@ List the 20 newest shares granted to you.
 
 ```sh
 flare shares --with-me --limit 20
+```
+
+List the shares granted to you after the cursor an earlier call printed.
+
+```sh
+flare shares --with-me --cursor fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg
 ```
 
 ### Columns
@@ -346,6 +414,38 @@ flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
 
 Effects: read-only, closed-world.
 
+## `flare metrics`
+
+Count the metric lines in a flare server's log, by day
+
+The counts come from the metric lines that flare serve writes on standard error when its config sets log.metrics to true. A page view is one page response, so one person who reloads a page counts twice. Lines that are not metric lines are skipped and counted.
+
+### Arguments
+
+- `<FILE>`: The log files to read, oldest first; without them, standard input. Takes more than one value.
+
+### Examples
+
+Count the metric lines in flare.log by day.
+
+```sh
+flare metrics flare.log
+```
+
+Count the metric lines of a rotated log and its newer file as JSON.
+
+```sh
+flare metrics flare.log.1 flare.log --json
+```
+
+### Columns
+
+- `day`: The day, as `YYYY-MM-DD` in UTC.
+- `metric`: The metric's name, such as `PagesViewed`.
+- `count`: The number of events the metric counted that day.
+
+Effects: read-only, closed-world.
+
 ## `flare commands`
 
 Explore flare's commands
@@ -382,6 +482,157 @@ flare commands list serve
 
 - `path`: The command line that runs the command, such as `shelf books list`.
 - `about`: The command's one-line description, or its full description when it has no one-line description.
+
+Effects: read-only, closed-world.
+
+## `flare schemas`
+
+Explore the JSON documents that flare prints
+
+### Commands
+
+- [`flare schemas list`](#flare-schemas-list): List the JSON documents that flare prints, with a description of each
+- [`flare schemas show`](#flare-schemas-show): Print the JSON Schema of each document
+
+## `flare schemas list`
+
+List the JSON documents that flare prints, with a description of each
+
+### Arguments
+
+- `--limit <N>`: Print at most this many rows. Default: `25`.
+- `--all`: Print every row
+
+### Examples
+
+List every document that flare prints.
+
+```sh
+flare schemas list
+```
+
+### Columns
+
+- `id`: The document's id, such as `shelf/books-list/v1`, which `schemas show` takes.
+- `kind`: output when a command prints the document with its schema id, unwrapped when a command prints it without the envelope that holds its schema id, and file when it is a file format that users write and no command prints.
+- `form`: stream when a command prints the document as a stream, one document on each line as each row arrives, and document when a command prints it once or it is a file format.
+- `description`: What the document holds, in one line.
+
+### Columns that `--long` adds
+
+- `commands`: The command lines that print the document. It is empty for the failure document, which every command prints when it fails with --json, and for a file format.
+
+Effects: read-only, closed-world.
+
+## `flare schemas show`
+
+Print the JSON Schema of each document
+
+### Arguments
+
+- `<ID>`: The ids of the documents that `schemas list` lists, separated by spaces. Required. Takes more than one value.
+
+### Examples
+
+Print the JSON Schema of the document that flare shares prints.
+
+```sh
+flare schemas show flare/shares/v1
+```
+
+### Columns
+
+- `id`: The document's id, such as `shelf/books-list/v1`.
+- `schema`: The document's 2020-12 JSON Schema.
+
+Effects: read-only, closed-world.
+
+## `flare skills`
+
+Manage flare's agent skill
+
+### Commands
+
+- [`flare skills install`](#flare-skills-install): Install flare's skills into each agent skills directory that exists
+- [`flare skills check`](#flare-skills-check): Check that each installed copy of flare's skills matches this flare
+- [`flare skills print`](#flare-skills-print): Print flare's skill
+
+## `flare skills install`
+
+Install flare's skills into each agent skills directory that exists
+
+### Arguments
+
+- `--dir <DIR>`: Install into this skills directory in place of the agent skills directories
+- `--force`: Replace a file or a link that install did not write with the skill's own folder
+
+### Examples
+
+Install flare's skills into each agent skills directory that exists.
+
+```sh
+flare skills install
+```
+
+Install flare's skills, replacing a file or a link that install did not write.
+
+```sh
+flare skills install --force
+```
+
+### Columns
+
+- `state`: What install did: failed, skipped, written or unchanged.
+- `skill`: The skill's name, which names its folder in each skills directory, such as `shelf`.
+- `dirs`: The skills directories that share this copy, as named. Directories that resolve to one place through a symbolic link share one copy.
+- `reason`: Why install skipped or failed, or what it replaced under --force, such as `linked to /src/shelf/skill`, or null.
+
+### Columns that `--long` adds
+
+- `path`: The SKILL.md file that install wrote or left, or the skill's other file whose write failed, at its real path.
+
+Effects: additive, idempotent, closed-world.
+
+## `flare skills check`
+
+Check that each installed copy of flare's skills matches this flare
+
+### Arguments
+
+- `--dir <DIR>`: Check this skills directory in place of the agent skills directories
+
+### Examples
+
+Report each agent skills directory where flare's skills are missing or differ.
+
+```sh
+flare skills check
+```
+
+### Columns
+
+- `state`: Whether the copy is the binary's: missing, differs, unreadable, linked or current.
+- `skill`: The skill's name, which names its folder in each skills directory, such as `shelf`.
+- `dirs`: The skills directories that share this copy, as named. Directories that resolve to one place through a symbolic link share one copy.
+- `reason`: Why the copy is missing a file, differs, cannot be read or is linked, such as `written by shelf 0.2.0`, `REFERENCE.md is missing` or `linked to /src/shelf/skill`, or null.
+
+### Columns that `--long` adds
+
+- `path`: The SKILL.md file that was checked, at its real path.
+
+Effects: read-only, closed-world.
+
+## `flare skills print`
+
+Print flare's skill
+
+### Examples
+
+Print flare's skill.
+
+```sh
+flare skills print
+```
 
 Effects: read-only, closed-world.
 

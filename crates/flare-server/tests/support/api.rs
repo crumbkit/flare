@@ -5,7 +5,7 @@
 
 use crate::faulty::{Faults, FaultyRecipients, FaultyResponses, FaultyShares, FaultyTokens};
 use crate::harness::{Call, Reply, cookie_pair};
-use crate::hosted::{Admits, Hosted, SESSION};
+use crate::hosted::{Admits, Hosted, HostedApp, SESSION};
 use flare_auth_oidc::{Admit, Reach};
 use flare_core::memory::MemoryGrantStore;
 use flare_core::{
@@ -35,6 +35,12 @@ pub struct Api {
 impl Api {
     /// A server whose creators are alice, bob and carol at example.com.
     pub async fn start() -> Self {
+        Self::start_with(|app| app).await
+    }
+
+    /// The server of [`Api::start`], whose app `extra` finishes after the
+    /// share API is added, such as by turning metrics on.
+    pub async fn start_with(extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
         let shares = FaultyShares {
@@ -66,7 +72,7 @@ impl Api {
                 fail: switches.recipients.clone(),
             };
             let admit = Admit::Anyone(Reach::Everything);
-            app.with_sharing(Sharing::new(flares, tokens, recipients, admit))
+            extra(app.with_sharing(Sharing::new(flares, tokens, recipients, admit)))
         })
         .await;
         Self {

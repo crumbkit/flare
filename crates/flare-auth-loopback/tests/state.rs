@@ -76,6 +76,22 @@ fn the_state_home_is_refused_when_neither_variable_is_usable() {
 }
 
 #[test]
+fn a_state_error_gives_the_path_it_names_and_none_when_it_names_no_path() {
+    let scratch = Scratch::new();
+    let state = prepared(&scratch);
+    state.write_server(&loopback().server_record()).unwrap();
+    let file = state.path().join("server.json");
+    chmod(&file, 0o644);
+    assert_eq!(
+        state.read_server().unwrap_err().path(),
+        Some(file.as_path())
+    );
+    assert_eq!(state_home(None, None).unwrap_err().path(), None);
+    chmod(&file, 0o600);
+    assert!(state.read_server().unwrap().is_some());
+}
+
+#[test]
 fn prepare_makes_a_directory_of_mode_0700_under_flare_loopback() {
     let scratch = Scratch::new();
     let state = prepared(&scratch);

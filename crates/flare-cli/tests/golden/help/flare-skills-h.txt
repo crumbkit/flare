@@ -1,0 +1,14 @@
+Manage flare's agent skill
+
+Usage: flare skills [OPTIONS] <COMMAND>
+
+Commands:
+  install  Install flare's skills into each agent skills directory that exists
+  check    Check that each installed copy of flare's skills matches this flare
+  print    Print flare's skill
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Global flags: --json, --fields <FIELD>, --long, --full, --no-input. `flare skills --help` describes them.
+Next: flare skills <COMMAND> -h

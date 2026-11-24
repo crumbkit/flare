@@ -353,9 +353,17 @@ impl<T> Listing<T> {
     /// says it is truncated, so a store that reads one entry more than the
     /// limit learns whether more exist.
     #[must_use]
-    pub fn new(mut items: Vec<T>) -> Self {
-        let truncated = items.len() > super::MAX_LISTED;
-        items.truncate(super::MAX_LISTED);
+    pub fn new(items: Vec<T>) -> Self {
+        Self::bounded(items, super::MAX_LISTED)
+    }
+
+    /// Builds a listing as [`Listing::new`] does, bounded by `limit` as
+    /// well as by [`MAX_LISTED`](super::MAX_LISTED).
+    #[must_use]
+    pub fn bounded(mut items: Vec<T>, limit: usize) -> Self {
+        let bound = limit.min(super::MAX_LISTED);
+        let truncated = items.len() > bound;
+        items.truncate(bound);
         Self { items, truncated }
     }
 

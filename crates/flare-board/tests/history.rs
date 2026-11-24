@@ -15,8 +15,8 @@ pub mod scratch;
 use flare_board::{BoardStore, Limits};
 use flare_core::contract::block_on;
 use flare_core::{
-    Binding, BindingName, Blob, ContentFormat, Fills, MadeFrom, Page, PageContent, PageName,
-    PagePin, PageStore, PageStoreError, PageVersion, Principal, PrincipalId, Provenance,
+    Binding, BindingName, Blob, ContentFormat, Fills, MadeFrom, MoveError, Page, PageContent,
+    PageName, PagePin, PageStore, PageStoreError, PageVersion, Principal, PrincipalId, Provenance,
     RecordPath, RecordType, Slot, SlotName, Slots, WriteProvenance,
 };
 use scratch::ScratchBoard;
@@ -30,6 +30,10 @@ fn home() -> PageName {
 }
 
 fn page(text: &str) -> Page {
+    named_page(home(), text)
+}
+
+fn named_page(name: PageName, text: &str) -> Page {
     let slot = Slot::new(
         SlotName::try_from("tasks").unwrap(),
         RecordType::try_from("tasks/task/v2").unwrap(),
@@ -38,7 +42,7 @@ fn page(text: &str) -> Page {
     )
     .unwrap();
     Page::new(
-        home(),
+        name,
         PageContent::new(ContentFormat::Html, text).unwrap(),
         Slots::new(vec![slot]).unwrap(),
     )
@@ -97,32 +101,36 @@ fn slow_limits() -> Limits {
     limits
 }
 
+/// A binding of `/tasks/a` to the home page at `version`, made from
+/// nothing, so saving it checks one pin.
+fn original_binding(version: &PageVersion) -> Binding {
+    let fills = Fills::new(vec![(
+        SlotName::try_from("tasks").unwrap(),
+        RecordPath::try_from("/tasks/a").unwrap(),
+    )])
+    .unwrap();
+    Binding::new(view(), pin(version), fills, original())
+}
+
+// The one test that runs past board's real walk bound. Each walk of
+// 100,000 commits takes several seconds on CI and a test is stopped after
+// 60 seconds, so it runs one, in the save. The tests below that use a board
+// program answering an incomplete walk cover moves and the other cases.
 #[test]
-fn pins_saves_moves_and_fit_checks_keep_working_past_the_logs_walk() {
+fn pins_saves_and_fit_checks_keep_working_past_the_logs_walk() {
     let board = ScratchBoard::new();
     board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
     let store = board.store_with(board.program(), slow_limits());
     let first = publish(&store, "one");
-    let second = publish(&store, "two");
+    publish(&store, "two");
     board.filler(PAST_THE_WALK);
 
     assert_eq!(text_at(&store, &first), "one");
-    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    block_on(store.save_binding(original_binding(&first), &store)).unwrap();
     block_on(store.check_fit(&view(), &store)).unwrap();
-    block_on(store.move_binding(&view(), &first, &second, &store, &mover())).unwrap();
-    let moved = block_on(store.binding(&view())).unwrap();
-    assert_eq!(moved.pin().version(), &second);
-    assert_eq!(block_on(store.bindings_of(&home())).unwrap(), [moved]);
-
-    // Accepted gap: the list of every version and the newest version both
-    // need the walk from HEAD to reach the page's last change.
     assert_eq!(
-        block_on(store.versions(&home())),
-        Err(PageStoreError::Unavailable)
-    );
-    assert_eq!(
-        block_on(store.latest(&home())),
-        Err(PageStoreError::Unavailable)
+        block_on(store.binding(&view())).unwrap().pin().version(),
+        &first
     );
 }
 
@@ -183,4 +191,224 @@ fn a_page_whose_newest_version_is_the_shallow_boundary_answers_unavailable() {
         block_on(store.publish(page("three"), original())),
         Err(PageStoreError::Unavailable)
     );
+}
+
+/// A board with versions "one" and "two" on main and one on a branch
+/// `side`, checked out at main. Answers the board, its store and the
+/// versions: first, second and the side one.
+fn with_a_side_branch() -> (ScratchBoard, BoardStore, [PageVersion; 3]) {
+    let board = ScratchBoard::new();
+    board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
+    let store = board.store();
+    let first = publish(&store, "one");
+    let second = publish(&store, "two");
+    board.git(&["checkout", "-q", "-b", "side"]);
+    let side = publish(&store, "on a side branch");
+    board.git(&["checkout", "-q", "main"]);
+    (board, store, [first, second, side])
+}
+
+/// A board program that answers each walk of a log from HEAD whose
+/// arguments start with `walk` with `answer`, and runs board for the rest.
+fn answering_walks(board: &ScratchBoard, walk: &str, answer: &str) -> std::path::PathBuf {
+    let real = board.program().display().to_string();
+    board.script(
+        "walk-board",
+        &format!(
+            r#"case "$*" in
+  "{walk}"*)
+    printf '%s\n' '{answer}'
+    exit 0;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    )
+}
+
+/// The answer of a walk that stopped before its end, with no row.
+const STOPPED: &str =
+    r#"{"schema":"board/log-report/v2","data":[],"truncated":true,"summary":{"complete":false}}"#;
+
+#[test]
+fn writes_refuse_a_pin_on_a_branch_that_head_cannot_reach() {
+    let (_board, store, [first, _, side]) = with_a_side_branch();
+
+    assert_eq!(
+        block_on(store.save_binding(binding(&side), &store)),
+        Err(PageStoreError::UnknownVersion)
+    );
+    assert_eq!(
+        block_on(store.binding(&view())),
+        Err(PageStoreError::NotFound)
+    );
+    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    assert_eq!(
+        block_on(store.move_binding(&view(), &first, &side, &store, &mover())),
+        Err(MoveError::Refused(PageStoreError::UnknownVersion))
+    );
+    let from_side = Provenance::new(ada(), MadeFrom::Page(pin(&side)), Vec::new()).unwrap();
+    assert_eq!(
+        block_on(store.publish(page("copied"), from_side)),
+        Err(PageStoreError::UnresolvedOrigin)
+    );
+}
+
+#[test]
+fn writes_accept_a_pin_older_than_the_newest_on_heads_history() {
+    let (_board, store, [first, second, _]) = with_a_side_branch();
+
+    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    block_on(store.move_binding(&view(), &first, &second, &store, &mover())).unwrap();
+    let from_first = Provenance::new(ada(), MadeFrom::Page(pin(&first)), Vec::new()).unwrap();
+    block_on(store.publish(page("copied"), from_first)).unwrap();
+}
+
+#[test]
+fn reading_a_version_checks_its_one_commit_and_walks_nothing_from_head() {
+    let (board, store, [first, _, side]) = with_a_side_branch();
+    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    let failing = board.script(
+        "failing-walks",
+        &format!(
+            r#"case "$*" in
+  "log --json --limit 1 "*|"log --json --all "*) exit 3;;
+esac
+exec "{}" "$@"
+"#,
+            board.program().display()
+        ),
+    );
+    let reader = board.store_with(&failing, Limits::default());
+
+    assert_eq!(text_at(&reader, &first), "one");
+    block_on(reader.check_fit(&view(), &reader)).unwrap();
+    // A read does not check that HEAD reaches the version; a pin is
+    // checked when it is written.
+    assert_eq!(text_at(&reader, &side), "on a side branch");
+}
+
+#[test]
+fn a_pin_is_saved_and_moved_unchecked_when_the_newest_walk_from_head_stops_early() {
+    let (board, _, [first, _, side]) = with_a_side_branch();
+    let stopping = answering_walks(&board, "log --json --limit 1 ", STOPPED);
+    let store = board.store_with(&stopping, Limits::default());
+
+    // Accepted gap: a walk that stops before its end cannot decide.
+    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    block_on(store.move_binding(&view(), &first, &side, &store, &mover())).unwrap();
+    assert_eq!(
+        block_on(store.binding(&view())).unwrap().pin().version(),
+        &side
+    );
+}
+
+#[test]
+fn a_pin_is_saved_unchecked_when_the_full_walk_from_head_stops_before_the_version() {
+    let (board, _, [_, _, side]) = with_a_side_branch();
+    let stopping = answering_walks(&board, "log --json --all ", STOPPED);
+    let store = board.store_with(&stopping, Limits::default());
+
+    // Accepted gap: the newest row from HEAD is recent, but the walk of
+    // every row stops before it would list the version.
+    block_on(store.save_binding(binding(&side), &store)).unwrap();
+}
+
+/// A board program whose walks of the home page record's log from HEAD
+/// with arguments that start with `walk` exit with 3, and that runs board
+/// for every other command.
+fn failing_home_walks(board: &ScratchBoard, walk: &str) -> std::path::PathBuf {
+    let real = board.program().display().to_string();
+    board.script(
+        "failing-home-walks",
+        &format!(
+            r#"case "$*" in
+  "{walk}-- /pages/home/page") exit 3;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    )
+}
+
+/// A page named `other` with `text`, so its publish reads no log of the
+/// home page except through its origin.
+fn other_page(text: &str) -> Page {
+    named_page(other(), text)
+}
+
+fn other() -> PageName {
+    PageName::try_from("other").unwrap()
+}
+
+/// Saves a binding at `target`, moves a binding saved at `held` to
+/// `target`, and publishes the page `other` from `target`, each through a
+/// store whose walks from HEAD fail, and checks that each answers
+/// unavailable and that a store on the real board program then reads
+/// nothing new.
+fn writes_after_a_failed_walk_answer_unavailable(
+    board: &ScratchBoard,
+    store: &BoardStore,
+    failing: &std::path::Path,
+    held: &PageVersion,
+    target: &PageVersion,
+) {
+    let held_view = BindingName::try_from("held").unwrap();
+    let held_binding = Binding::new(
+        held_view.clone(),
+        pin(held),
+        Fills::new(vec![(
+            SlotName::try_from("tasks").unwrap(),
+            RecordPath::try_from("/tasks/a").unwrap(),
+        )])
+        .unwrap(),
+        original(),
+    );
+    block_on(store.save_binding(held_binding, store)).unwrap();
+    block_on(store.publish(other_page("first"), original())).unwrap();
+    let writer = board.store_with(failing, Limits::default());
+    let from_target = Provenance::new(ada(), MadeFrom::Page(pin(target)), Vec::new()).unwrap();
+
+    let answers = (
+        block_on(writer.save_binding(binding(target), &writer)),
+        block_on(writer.move_binding(&held_view, held, target, &writer, &mover())),
+        block_on(writer.publish(other_page("copied"), from_target)).map(|_| ()),
+    );
+
+    assert_eq!(
+        answers,
+        (
+            Err(PageStoreError::Unavailable),
+            Err(MoveError::Refused(PageStoreError::Unavailable)),
+            Err(PageStoreError::Unavailable),
+        )
+    );
+
+    assert_eq!(
+        block_on(store.binding(&view())),
+        Err(PageStoreError::NotFound)
+    );
+    assert_eq!(
+        block_on(store.binding(&held_view)).unwrap().pin().version(),
+        held
+    );
+    assert_eq!(block_on(store.versions(&other())).unwrap().len(), 1);
+}
+
+#[test]
+fn writes_answer_unavailable_and_write_nothing_when_the_newest_walk_from_head_fails() {
+    let (board, store, [first, second, _]) = with_a_side_branch();
+    let failing = failing_home_walks(&board, "log --json --limit 1 ");
+
+    writes_after_a_failed_walk_answer_unavailable(&board, &store, &failing, &first, &second);
+}
+
+#[test]
+fn writes_answer_unavailable_and_write_nothing_when_the_full_walk_from_head_fails() {
+    let (board, store, [first, second, _]) = with_a_side_branch();
+    let failing = failing_home_walks(&board, "log --json --all ");
+
+    // The newest row from HEAD is `second`, so each write of a pin at
+    // `first` walks every row, and that walk fails.
+    writes_after_a_failed_walk_answer_unavailable(&board, &store, &failing, &second, &first);
 }

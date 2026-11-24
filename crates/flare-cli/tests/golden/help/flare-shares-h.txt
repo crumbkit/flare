@@ -3,14 +3,16 @@ List your shares or the shares granted to you
 Usage: flare shares [OPTIONS]
 
 Options:
-      --with-me    List the shares granted to you in place of your own
-      --limit <N>  Print at most this many rows, up to 500 [default: 50]
-      --all        Print every row
-  -h, --help       Print help (see more with '--help')
+      --with-me          List the shares granted to you in place of your own
+      --cursor <CURSOR>  List the shares after this cursor, which an earlier flare shares printed
+      --limit <N>        Print at most this many rows, up to 500 [default: 50]
+      --all              Print every row
+  -h, --help             Print help (see more with '--help')
 
 Examples:
   flare shares
   flare shares --with-me --limit 20
+  flare shares --with-me --cursor fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg
 
 Effects: read-only, closed-world.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare shares --help` describes them.

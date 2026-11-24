@@ -53,8 +53,11 @@ fn program(env: &Snapshot) -> Option<PathBuf> {
 /// start, it exits with a status other than 0 or it runs past its
 /// deadline.
 pub(crate) fn open(target: impl AsRef<OsStr>, env: &Snapshot) -> Result<(), Failed> {
-    let failed = |problem: String| Failed::OpenerFailed { problem };
-    let program = program(env).ok_or_else(|| failed("no xdg-open on PATH".to_owned()))?;
+    let failed = |program: Option<&PathBuf>, problem: String| Failed::OpenerFailed {
+        program: program.map(|program| program.display().to_string()),
+        problem,
+    };
+    let program = program(env).ok_or_else(|| failed(None, "no xdg-open on PATH".to_owned()))?;
     #[expect(
         clippy::disallowed_methods,
         reason = "opener.rs is one of the flare command's two process modules (PROC-1)"
@@ -63,7 +66,7 @@ pub(crate) fn open(target: impl AsRef<OsStr>, env: &Snapshot) -> Result<(), Fail
     command.arg(target);
     let deadline = Instant::now()
         .checked_add(DEADLINE)
-        .ok_or_else(|| failed("the deadline is too far away".to_owned()))?;
+        .ok_or_else(|| failed(None, "the deadline is too far away".to_owned()))?;
     let options = RunOptions::new()
         .stdin(Input::Null)
         .stdout(Capture::discard())
@@ -71,17 +74,13 @@ pub(crate) fn open(target: impl AsRef<OsStr>, env: &Snapshot) -> Result<(), Fail
         .deadline(deadline)
         .escalation(Escalation::default().step(Signal::Terminate, Duration::from_secs(1)));
     let finished = crumbkit_process::run(command, &options)
-        .map_err(|error| failed(format!("{} did not start: {error}", program.display())))?;
+        .map_err(|error| failed(Some(&program), format!("did not start: {error}")))?;
     match finished.outcome() {
         Outcome::Ended(Status::Code(0)) => Ok(()),
-        Outcome::TimedOut => Err(failed(format!(
-            "{} ran past its deadline of {} seconds",
-            program.display(),
-            DEADLINE.as_secs()
-        ))),
-        other => Err(failed(format!(
-            "{} ended with {other:?}",
-            program.display()
-        ))),
+        Outcome::TimedOut => Err(failed(
+            Some(&program),
+            format!("ran past its deadline of {} seconds", DEADLINE.as_secs()),
+        )),
+        other => Err(failed(Some(&program), format!("ended with {other:?}"))),
     }
 }

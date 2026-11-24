@@ -41,6 +41,16 @@
 //! [`Sharing`] these routes answer 404. The lifecycle of login codes and
 //! tokens is in `docs/tokens.md`.
 //!
+//! # Metrics
+//!
+//! [`App::with_metrics`] with [`Metrics::new`]`(true)` writes one
+//! CloudWatch Embedded Metric Format line for each request, created share,
+//! page view, sign-in, refused sign-in, token exchange and refused token,
+//! through `tracing` with the target [`METRICS_TARGET`]. Metrics are off by
+//! default. No route serves the counts, and no line names a person, a
+//! token, a session or a share. [`Totals`] counts such lines in a log.
+//! `docs/metrics.md` lists every metric and dimension.
+//!
 //! Every reply, refusals included, carries the threat model's
 //! Content-Security-Policy and six other headers (`reply.rs`), and every
 //! hosted reply also `Strict-Transport-Security`.
@@ -237,6 +247,7 @@ mod hosted;
 mod launch;
 mod limits;
 mod listen;
+mod metrics;
 pub mod ops;
 mod problem;
 mod reading;
@@ -259,6 +270,8 @@ pub use auth::{Admitted, Gate, Side};
 pub use clock::{Clock, SystemClock};
 pub use limits::Limits;
 pub use listen::{BindError, Listeners, ServeError, Stopped};
+pub use metrics::{METRICS_TARGET, Metrics, Totals};
+pub use problem::{SERVER_BUSY, SERVER_DEADLINE, SERVER_FAULT};
 pub use schemas::Schemas;
-pub use sharing::Sharing;
+pub use sharing::{BodyRefused, Sharing, check_share, check_version};
 pub use site::{OriginError, PublicOrigin, Site};

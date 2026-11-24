@@ -1,0 +1,279 @@
+# The binary release of the `flare` command. It runs the advisory check,
+# builds `flare` for macOS on Apple silicon and for Linux on aarch64 and
+# x86_64, checks that each binary prints the release's version, checks that
+# the tap's own formula script accepts the archives, and attaches the
+# archives to a GitHub release with SHA256SUMS. The `release` lane of the
+# `lanes` decision in rust-standards.toml records this workflow (BASE-25).
+#
+# A push of the tag `v<version>` releases that tag, where <version> is the
+# workspace version in Cargo.toml. A manual run with a tag releases that
+# existing tag. A manual run with the tag of a published release fails in
+# the `release` job and changes nothing. A manual run without a tag, and a
+# pull request that changes this file, build the archives, run the tap check
+# and release nothing.
+# docs/releasing.md says how the owner cuts a release.
+#
+# The workflow runs no tests, because ci.yml's `lane` and `hosted` jobs ran
+# them on the commit that main holds, which is the commit the owner tags.
+#
+# No job restores a cache, because a poisoned cache would reach the released
+# binaries, and zizmor fails a release workflow that restores a cache.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [.github/workflows/release.yml]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing tag to release, such as v0.1.0. Leave it empty to build without releasing.
+        type: string
+        default: ""
+
+# Each job grants only the permissions it needs.
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The tag to release, if any, and the version that Cargo.toml holds at it.
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    outputs:
+      ref: ${{ steps.tag.outputs.ref }}
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag=$GITHUB_REF_NAME
+          else
+            tag=$INPUT_TAG
+          fi
+          case "$tag" in
+            "") ref= ;;
+            v[0-9]*) ref=refs/tags/$tag ;;
+            *) echo "the tag is $tag, and a release tag starts with v and a digit" >&2; exit 1 ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      # fetch-depth 0 fetches main as well as the tag, so the next step can
+      # check that main holds the tagged commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      # The ancestry check refuses a tag whose commit is not on main, because
+      # this workflow runs no tests and relies on ci.yml having tested main.
+      # It catches a tag placed on the wrong commit. It runs from the
+      # release.yml that the tag holds, so a person with write access who tags
+      # a commit whose release.yml drops the check bypasses it, and only a tag
+      # ruleset that limits who creates `v*` tags stops that.
+      #
+      # A version with a `-`, such as 0.2.0-rc.1, is refused, because gh marks
+      # every release it creates as the latest, and the tap would make a
+      # pre-release the formula that every colleague upgrades to.
+      - id: version
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          version=$(cargo pkgid --package flare-cli | sed 's/.*[#@]//')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ -z "$TAG" ]; then
+            exit 0
+          fi
+          if [ "$TAG" != "v$version" ]; then
+            echo "the tag is $TAG and Cargo.toml says $version" >&2
+            exit 1
+          fi
+          case "$version" in
+            *-*) echo "the version is $version, and a release has no pre-release part after a -" >&2; exit 1 ;;
+          esac
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "the tag $TAG points at $(git rev-parse HEAD), which is not on main" >&2
+            exit 1
+          fi
+
+  # BASE-29: a release waits for the advisory check, so it ships no
+  # dependency with a known security advisory.
+  advisories:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-deny@0.20.2
+          fallback: none
+      - name: advisories
+        run: cargo deny --locked check advisories
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      # rustup installs the toolchain that rust-toolchain.toml pins.
+      - run: rustup target add "$TARGET"
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-auditable@0.7.7
+          fallback: none
+      # BASE-30: the binary records the dependency versions it contains.
+      - run: cargo auditable build --release --locked --package flare-cli --target "$TARGET"
+      - name: version
+        run: |
+          printed=$("target/$TARGET/release/flare" --version)
+          if [ "$printed" != "flare $VERSION" ]; then
+            echo "the binary printed '$printed', and the release is $VERSION" >&2
+            exit 1
+          fi
+      # The tap installs `flare` from the archive's root.
+      - run: |
+          mkdir dist
+          tar -C "target/$TARGET/release" -czf "dist/flare-$VERSION-$TARGET.tar.gz" flare
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: flare-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # The tap's scripts/generate writes Formula/flare.rb from the latest
+  # release through scripts/formula. This job runs that script, from the tap
+  # at a pinned commit, on the archives this run built, so every run proves
+  # that the tap accepts the release's file names. It fails when the script
+  # refuses the archives or when the formula lacks the macOS arm, Linux arm
+  # or Linux x86_64 archive.
+  formula:
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # actions/checkout reads crumbkit/homebrew-tap.
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DESCRIPTION: ${{ github.event.repository.description }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: flare-*
+          path: dist
+          merge-multiple: true
+      # The pin is crumbkit/homebrew-tap's main at fefcb6a. A new pin is
+      # needed only when the tap changes the archive names it reads.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: crumbkit/homebrew-tap
+          ref: fefcb6a4e3437ea237355dde1f4b0521ab5246d9
+          path: tap
+          persist-credentials: false
+      - name: formula
+        run: |
+          (cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          tap/scripts/formula flare crumbkit/flare "$VERSION" "$DESCRIPTION" dist/SHA256SUMS > flare.rb
+          cat flare.rb
+          base="https://github.com/crumbkit/flare/releases/download/v$VERSION"
+          for target in aarch64-apple-darwin aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu; do
+            if ! grep -qF "url \"$base/flare-$VERSION-$target.tar.gz\"" flare.rb; then
+              echo "the formula has no $target archive" >&2
+              exit 1
+            fi
+          done
+
+  # The release gets the archives and SHA256SUMS. gh release create makes a
+  # draft, uploads the files and then publishes it, and deletes the draft
+  # when an upload fails. A job stopped during its upload, by its timeout or
+  # a cancel, leaves the draft behind. A run again finds that draft, replaces
+  # its files and publishes it, because the tap reads only published
+  # releases. The job replaces files only on a draft. When the tag's release
+  # is already published, the job fails before any upload and leaves the
+  # release unchanged, because the tap and anyone who installed the version
+  # rely on its archives and SHA256SUMS staying the same. Only a read that
+  # gh answers with `release not found` leads to gh release create. When the
+  # read fails for any other reason, such as a token, rate limit or network
+  # fault, the job prints gh's error and fails before any write, because a
+  # create beside an unseen draft would give the tag a second release.
+  release:
+    if: needs.version.outputs.tag != ''
+    needs: [version, advisories, build, formula]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh creates the release and uploads its files.
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: flare-*
+          path: dist
+          merge-multiple: true
+      - run: |
+          cd dist
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - run: |
+          err="$RUNNER_TEMP/release-view.err"
+          if draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>"$err"); then
+            :
+          elif [ "$(< "$err")" = "release not found" ]; then
+            draft=absent
+          else
+            cat "$err" >&2
+            echo "could not read whether $TAG has a release, so the job made no release; re-run the failed jobs once GitHub answers" >&2
+            exit 1
+          fi
+          case "$draft" in
+            true)
+              gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/*
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+              ;;
+            false)
+              echo "the release $TAG is already published, and a published release keeps its archives; raise the version in Cargo.toml and tag the new version" >&2
+              exit 1
+              ;;
+            absent)
+              gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes dist/*
+              ;;
+            *)
+              echo "gh release view answered '$draft' for $TAG" >&2
+              exit 1
+              ;;
+          esac

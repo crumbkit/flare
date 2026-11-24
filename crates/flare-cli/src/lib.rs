@@ -8,9 +8,10 @@
 //! The command is thin. [`run`] parses with crumbkit, reads the environment
 //! once into a snapshot, and each command builds flare-board's store,
 //! flare-auth-loopback's state and flare-auth-oidc's authenticator and
-//! calls flare-server. `login`, `logout`, `share`, `grant`, `shares` and
-//! `activity` call a flare server's share API with the token that `login`
-//! keeps in the Keychain. `serve` is the only long-running command; the
+//! calls flare-server. `login`, `logout`, `share`, `show`, `grant`,
+//! `shares` and `activity` call a flare server's share API with the token
+//! that `login` keeps in the Keychain; `share --dry-run` calls no server.
+//! `metrics` totals the metric lines of a server's log. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
 
 mod bind;
@@ -25,6 +26,7 @@ mod env;
 mod keychain;
 mod log;
 mod login;
+mod metrics;
 mod open;
 mod opener;
 mod pages;
@@ -35,7 +37,7 @@ mod sharing;
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
 
-use cli::{CommandsVerb, SelfVerb, Verb};
+use cli::{CommandsVerb, SKILL, SchemasCommand, SelfVerb, Verb};
 use codes::Failed;
 use env::Snapshot;
 use std::process::ExitCode;
@@ -45,7 +47,6 @@ const INTERRUPTED: u8 = 130;
 
 /// Parses the command line, runs the command and returns the exit code.
 /// `interrupted` marks the usage log's line as a run that Ctrl-C ended.
-#[must_use]
 pub fn run(interrupted: impl Fn()) -> ExitCode {
     let (cli, mut run) = match crumbkit::parse::<Cli>(&TOOL) {
         Ok(parsed) => parsed,
@@ -88,8 +89,13 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             crumbkit::finish(run, documents::LOGOUT, result)
         }
         Verb::Share(args) => {
-            let result = block_on(false, sharing::share(&args, &env));
+            let dry_run = run.is_dry_run();
+            let result = block_on(false, sharing::share(&args, dry_run, &env));
             crumbkit::finish(run, documents::SHARE, result)
+        }
+        Verb::Show(args) => {
+            let result = block_on(false, sharing::show(&args, &env));
+            crumbkit::finish(run, documents::SHOW, result)
         }
         Verb::Grant(args) => {
             let result = block_on(false, sharing::grant(&args, &env));
@@ -103,11 +109,27 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             let result = block_on(false, sharing::activity(&args, &env));
             crumbkit::finish(run, documents::ACTIVITY, result)
         }
+        Verb::Metrics(args) => {
+            let result = metrics::run(&args);
+            crumbkit::finish(run, documents::METRICS, result)
+        }
         Verb::Commands {
             command: CommandsVerb::List(args),
         } => {
             let result = crumbkit::commands::list(&mut run, &TOOL, &args);
             crumbkit::finish(run, crumbkit::commands::COMMANDS_LIST, result)
+        }
+        Verb::Schemas {
+            command: SchemasCommand::List(args),
+        } => {
+            let result = crumbkit::schemas::list(&mut run, &TOOL, &args);
+            crumbkit::finish(run, crumbkit::schemas::SCHEMAS_LIST, result)
+        }
+        Verb::Schemas {
+            command: SchemasCommand::Show(args),
+        } => {
+            let result = crumbkit::schemas::show(&mut run, &TOOL, &args);
+            crumbkit::finish(run, crumbkit::schemas::SCHEMAS_SHOW, result)
         }
         Verb::SelfCommand {
             command: SelfVerb::Usage(args),
@@ -115,6 +137,7 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             let result = Ok::<_, crumbkit::Error>(crumbkit_usage::findings(&mut run, &TOOL, &args));
             crumbkit::finish(run, crumbkit_usage::SELF_USAGE, result)
         }
+        Verb::Skills { command } => crumbkit_skills::run(run, &[SKILL], command),
     }
 }
 

@@ -39,6 +39,12 @@ macro_rules! codes {
 
             /// What the caller does next. `server` is the deployment's
             /// origin, which `flare login` names.
+            ///
+            /// The hints of `PartlyShared`, `BadCursor` and
+            /// `SharesBadCursor` stay as wire text for API callers. The
+            /// `flare` command prints typed calls of `flare grant`, `flare
+            /// activity` and `flare shares` in their place, so it never
+            /// prints those three hints.
             #[must_use]
             pub fn recovery(self, server: &str) -> Recovery {
                 let make: fn(&str) -> Recovery = match self { $(Self::$variant => $recovery,)* };
@@ -71,16 +77,20 @@ codes! {
         |_| hint("fix the title or the file as the detail says")),
     ShareTooLarge => ("flare::shares::too_large", 413, "A Markdown share holds at most 256 KiB.",
         |_| hint("split the file into shares of at most 256 KiB")),
-    ShareForbidden => ("flare::shares::forbidden", 403, "You may read this flare and may not change it.",
+    ShareForbidden => ("flare::shares::forbidden", 403, "Your role on this flare does not let you make this change.",
         |_| hint("ask the flare's owner to make the change")),
     TooManyShares => ("flare::shares::too_many", 409, "You own as many shares as one person may.",
         |_| hint("ask the operator to raise the limit")),
+    TooManyVersions => ("flare::versions::too_many", 409, "A share holds at most 100 versions.",
+        |_| hint("share the file again as a new share")),
     TooManyFlares => ("flare::shares::too_many_flares", 400, "A request names at most 16 flares.",
         |_| hint("name at most 16 flares with --re or in one activity call")),
     PartlyShared => ("flare::shares::partly_shared", 409, "The share was created, and some of its grants or responses were not written.",
         |_| hint("run flare grant with the share id, --with and --re to finish")),
     NoVerifiedEmail => ("flare::shares::no_email", 403, "Your sign-in has no verified email address.",
         |server| Recovery::Run { call: format!("flare login {server}") }),
+    SharesBadCursor => ("flare::shares::bad_cursor", 400, "The cursor is not one this flare wrote for this list of shares.",
+        |_| hint("pass the cursor that the last flare shares printed, or none to start over")),
     SharesUnavailable => ("flare::shares::unavailable", 503, "The share stores did not answer.",
         |_| Recovery::Retry),
     TooManyGrants => ("flare::grants::too_many", 409, "A flare is shared with at most 256 people.",

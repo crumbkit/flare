@@ -13,13 +13,14 @@
 
 use crate::board;
 use crate::cli::ServeArgs;
-use crate::codes::Failed;
+use crate::codes::{Failed, HeldPort};
 use crate::config::{
     self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig, Site as Configured,
 };
 use crate::documents::Served;
 use crate::env::Snapshot;
 use crate::{log, open};
+use crumbkit::Call;
 use flare_auth_loopback::{Loopback, Served as Reach, local_principal};
 use flare_auth_oidc::{
     Admit, ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator,
@@ -29,8 +30,10 @@ use flare_aws::{
     DynamoGrantStore, DynamoResponseStore, DynamoShareStore, DynamoTokenStore, Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{AddressesOnly, Flares};
-use flare_server::{App, BindError, Gate, Limits, Listeners, ServeError, Sharing, Site, Stopped};
+use flare_core::{Flares, NamedRecipients};
+use flare_server::{
+    App, BindError, Gate, Limits, Listeners, Metrics, ServeError, Sharing, Site, Stopped,
+};
 use std::path::Path;
 use std::sync::OnceLock;
 use tokio::signal::unix::{SignalKind, signal};
@@ -128,17 +131,45 @@ impl Signals {
 ///
 /// Returns the failure that stopped it before or while it served.
 pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
+    serve_board(args, env).await.map_err(|failed| {
+        failed
+            .for_board(args.board.board.as_deref())
+            .serving_again(again(args))
+    })
+}
+
+/// `flare serve` with the arguments of `args` except `--port`, which a
+/// held port's recovery leaves out.
+fn again(args: &ServeArgs) -> Call {
+    let path = |call: Call, name: &'static str, value: Option<&Path>| match value {
+        Some(value) => call.value(name, value.display().to_string()),
+        None => call,
+    };
+    let call = path(Call::new(&["serve"]), "board", args.board.board.as_deref());
+    let call = path(call, "board_program", args.board.board_program.as_deref());
+    let call = path(call, "config", args.config.as_deref());
+    call.value("idle_exit", crate::duration::text(args.idle_exit))
+}
+
+/// Serves the board that `args` names.
+async fn serve_board(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
     let (root, store) = board::checked_store(&args.board, env).await?;
     let config = config::load(args.config.as_deref(), env)?;
+    let metrics = Metrics::new(config.metrics);
     match config.site {
-        Configured::Local { oidc } => local(args, env, (&root, store), oidc).await,
-        Configured::Hosted(hosted) => self::hosted(&root, store, hosted).await,
+        Configured::Local { oidc } => local(args, env, (&root, store), oidc, metrics).await,
+        Configured::Hosted(hosted) => self::hosted(&root, store, hosted, metrics).await,
     }
 }
 
-fn bind_failed(error: BindError) -> Failed {
+/// The failure of a bind, where `held` says which port a held `port` is.
+fn bind_failed(error: BindError, held: impl Fn(u16) -> HeldPort) -> Failed {
     match error {
-        BindError::PortInUse { port } => Failed::PortInUse { port },
+        BindError::PortInUse { port } => Failed::PortInUse {
+            port,
+            held: held(port),
+            again: None,
+        },
         other => system(other),
     }
 }
@@ -149,19 +180,29 @@ async fn local(
     env: &Snapshot,
     (root, store): (&Path, BoardStore),
     oidc: Option<LocalOidc>,
+    metrics: Metrics,
 ) -> Result<(Served, Stop), Failed> {
     let oidc = match oidc {
         Some(LocalOidc { config, secret }) => Some(connect(config, &secret).await?),
         None => None,
     };
     if open::answers(root, env).await {
-        return Err(Failed::AlreadyRunning);
+        return Err(Failed::AlreadyRunning { board: None });
     }
     let state = board::loopback_state(root, env)?;
     let mut signals = Signals::install()?;
     let wanted = oidc.as_ref().map(|_| SIGN_IN_PORT);
-    let listeners = Listeners::bind(args.port, wanted).map_err(bind_failed)?;
+    let listeners = Listeners::bind(args.port, wanted).map_err(|error| {
+        bind_failed(error, |port| {
+            if wanted == Some(port) && args.port != port {
+                HeldPort::SignIn
+            } else {
+                HeldPort::Launch
+            }
+        })
+    })?;
     let principal = local_principal(&env.user()).map_err(|error| Failed::StateUnusable {
+        path: None,
         problem: format!("the account name is not a principal: {error}"),
     })?;
     let loopback = Loopback::new(listeners.port(), principal, Reach::Everything).map_err(system)?;
@@ -171,7 +212,7 @@ async fn local(
         gate: Gate::new(loopback, oidc),
         state,
     };
-    let app = App::new(store.clone(), store.clone(), store, site, limits);
+    let app = App::new(store.clone(), store.clone(), store, site, limits).with_metrics(metrics);
     log::start();
     tracing::info!(
         board = %root.display(),
@@ -182,7 +223,12 @@ async fn local(
 
 /// Serves the hosted site: reads the secret file, draws the sealing key
 /// and discovers the provider before it binds.
-async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Served, Stop), Failed> {
+async fn hosted(
+    root: &Path,
+    store: BoardStore,
+    hosted: Hosted,
+    metrics: Metrics,
+) -> Result<(Served, Stop), Failed> {
     let Hosted {
         origin,
         listen,
@@ -192,12 +238,18 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
     } = hosted;
     let admit = oidc.admit().clone();
     let oidc = connect(oidc, &Secret::File(secret_file)).await?;
+    if sharing.as_ref().is_some_and(|config| config.open_to_anyone) {
+        tracing::warn!(
+            "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
+        );
+    }
     let sharing = match sharing {
-        Some(config) => Some(share_api(config, admit).await?),
+        Some(config) => Some(share_api(*config, admit).await?),
         None => None,
     };
     let mut signals = Signals::install()?;
-    let listeners = Listeners::bind_hosted(listen).map_err(bind_failed)?;
+    let listeners =
+        Listeners::bind_hosted(listen).map_err(|error| bind_failed(error, |_| HeldPort::Hosted))?;
     log::start();
     tracing::info!(
         board = %root.display(),
@@ -205,7 +257,8 @@ async fn hosted(root: &Path, store: BoardStore, hosted: Hosted) -> Result<(Serve
         "flare serves this board as a hosted site behind a TLS proxy"
     );
     let site = Site::Hosted { origin, oidc };
-    let app = App::new(store.clone(), store.clone(), store, site, Limits::default());
+    let app = App::new(store.clone(), store.clone(), store, site, Limits::default())
+        .with_metrics(metrics);
     let app = match sharing {
         Some(sharing) => app.with_sharing(sharing),
         None => app,
@@ -219,7 +272,7 @@ type HostedSharing = Sharing<
     DynamoGrantStore,
     DynamoResponseStore,
     DynamoTokenStore,
-    AddressesOnly,
+    NamedRecipients,
 >;
 
 /// The share API on the configured table and bucket, which it checks
@@ -238,7 +291,12 @@ async fn share_api(config: SharingConfig, admit: Admit) -> Result<HostedSharing,
         stores.responses,
         config.creators,
     );
-    Ok(Sharing::new(flares, stores.tokens, AddressesOnly, admit))
+    Ok(Sharing::new(
+        flares,
+        stores.tokens,
+        config.recipients,
+        admit,
+    ))
 }
 
 /// Serves `app` until a signal or, on the local site, the idle exit.
@@ -256,9 +314,7 @@ async fn serve(
         .serve(app, shutdown)
         .await
         .map_err(|error| match error {
-            ServeError::State(error) => Failed::StateUnusable {
-                problem: error.to_string(),
-            },
+            ServeError::State(error) => board::state_unusable(&error),
             other => system(other),
         })?;
     let stop = match stopped {

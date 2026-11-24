@@ -3,7 +3,7 @@
 
 use crate::{
     ActivityPage, ExchangeRequest, GrantRequest, OpenedShare, ProblemDocument, ShareList,
-    ShareRequest, Shared, TokenIssued,
+    ShareRequest, Shared, TokenIssued, VersionRequest,
 };
 use schemars::generate::SchemaSettings;
 use std::fmt;
@@ -18,6 +18,7 @@ const REGENERATE: &str =
 pub fn generate() -> String {
     let mut generator = SchemaSettings::draft2020_12().into_generator();
     generator.subschema_for::<ShareRequest>();
+    generator.subschema_for::<VersionRequest>();
     generator.subschema_for::<GrantRequest>();
     generator.subschema_for::<Shared>();
     generator.subschema_for::<ShareList>();

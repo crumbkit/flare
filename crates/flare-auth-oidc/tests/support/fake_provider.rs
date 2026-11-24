@@ -76,6 +76,9 @@ pub enum KeysReply {
     Json(Value),
     /// A 500 reply.
     Down,
+    /// No reply until a test sets another key set reply; each held request
+    /// then answers as that reply says.
+    Hold,
 }
 
 /// How the fake signs the next ID tokens.
@@ -274,9 +277,14 @@ impl Fake {
         released.notify_waiters();
     }
 
-    /// Sets what the key set endpoint replies.
+    /// Sets what the key set endpoint replies. Requests held by
+    /// [`KeysReply::Hold`] then answer with `reply`.
     pub fn keys_reply(&self, reply: KeysReply) {
-        self.with(|state| state.keys_reply = reply);
+        let released = self.with(|state| {
+            state.keys_reply = reply;
+            Arc::clone(&state.released)
+        });
+        released.notify_waiters();
     }
 
     /// Publishes a new key and signs later tokens with it.
@@ -387,6 +395,7 @@ async fn handle(
         body: String::from_utf8_lossy(&body).into_owned(),
     };
     let to_token = seen.path == "/token";
+    let to_keys = seen.path == "/keys";
     let (stall, released) = {
         let mut state = shared.lock().expect("the fake's lock");
         state.seen.push(seen.clone());
@@ -398,12 +407,17 @@ async fn handle(
     if stall {
         std::future::pending::<()>().await;
     }
-    if to_token {
+    if to_token || to_keys {
         loop {
             // The waiter is made before the reply is read, so a release
             // between the two still wakes it.
             let release = released.notified();
-            if shared.lock().expect("the fake's lock").token_reply != TokenReply::Hold {
+            let held = {
+                let state = shared.lock().expect("the fake's lock");
+                (to_token && state.token_reply == TokenReply::Hold)
+                    || (to_keys && state.keys_reply == KeysReply::Hold)
+            };
+            if !held {
                 break;
             }
             release.await;
@@ -442,7 +456,7 @@ fn jwk(kid: &str, key: &KeyPair) -> Value {
 
 fn keys(state: &State) -> Response<Full<Bytes>> {
     match &state.keys_reply {
-        KeysReply::Normal => {
+        KeysReply::Normal | KeysReply::Hold => {
             let keys: Vec<Value> = state.keys.iter().map(|(kid, key)| jwk(kid, key)).collect();
             reply(StatusCode::OK, json!({ "keys": keys }))
         }

@@ -22,23 +22,13 @@ through which `flare share` shares files with named people.
 
 ## The flare command
 
-| Command | What it does |
-| --- | --- |
-| `flare serve` | Serves the board until Ctrl-C, SIGTERM or 8 idle hours. |
-| `flare open [<name>]` | Opens the running server's index, a page or a binding. |
-| `flare publish <file> --name <name>` | Publishes a page from a `.html` or `.md` file. |
-| `flare bind <page> --name <name> <slot>=<path>...` | Saves a binding that fills a page's slots with records. |
-| `flare login <server>` | Signs in to a hosted flare and keeps its token in the Keychain. |
-| `flare share <file> --with <addresses> --re <flare>` | Shares a Markdown file with named people, as a response to flares. |
-| `flare grant <id> --with <addresses>` | Grants a share to more people. |
-| `flare shares [--with-me]` | Lists your shares, or those granted to you. |
-| `flare activity <flare>... [--since <cursor>]` | Lists the responses to flares, oldest first. |
-| `flare logout --yes` | Revokes the token and deletes it. |
-
+`flare serve` serves a board's pages, and `flare share` shares a Markdown
+file with named people.
 [crates/flare-cli/docs/commands.md](crates/flare-cli/docs/commands.md) lists
-every argument. Every failure prints a code, such as
-`flare::shares::not_a_creator`, and the next step. The board program comes
-from `--board-program`, else `FLARE_BOARD`, else the first `board` on `PATH`.
+every command with its arguments and examples, as `flare <command> --help`
+does. Every failure prints a code, such as `flare::shares::not_a_creator`, and
+the next step. The board program comes from `--board-program`, else
+`FLARE_BOARD`, else the first `board` on `PATH`.
 
 ### The config file
 
@@ -65,6 +55,11 @@ or `{ "anyone": true, "reach": ... }`. `reach` is `"everything"` or a list of
 entries. Register `http://localhost:8740/auth/oidc/callback` as the redirect
 URI. [docs/hosting.md](docs/hosting.md) gives the hosted config, and
 [docs/tokens.md](docs/tokens.md) the life of a CLI token.
+
+`"log": { "metrics": true }` makes `flare serve` write a metric line on
+standard error for each request, share, page view, sign-in and refusal.
+It is off without the key. [docs/metrics.md](docs/metrics.md) lists the
+metrics and how to read them.
 
 ### The slots file
 

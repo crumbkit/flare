@@ -1,8 +1,8 @@
 //! The grant store clauses about the share list and the person list.
 
-use super::{GrantFixture, grant_new, person, share};
+use super::{GrantFixture, grant_new, person, revoke, share};
 use crate::contract::{Clause, Violation, ensure, unexpected};
-use crate::{GrantStore, MAX_LISTED, PrincipalId, Role, ShareId};
+use crate::{GrantStore, ListKey, MAX_LISTED, PrincipalId, Revoker, Role, ShareId};
 
 /// A share's list holds only that share's grants, and a grant on one share
 /// is not visible on another, through `get` or the list.
@@ -128,4 +128,118 @@ pub async fn a_list_shows_its_truncation_and_order<G: GrantStore>(
     ensure(order == [p1, p2, p3, p0], clause, || {
         format!("the share list is {of_share:?}")
     })
+}
+
+/// The most pages the paging clause reads before it says the walk does not
+/// end, which a store that ignores the key would never reach the end of.
+const MOST_PAGES: usize = 10;
+
+/// The grants of 1,200 shares to one person, read in pages of
+/// [`MAX_LISTED`] with `granted_page`, come back once each and in the
+/// order of `granted_to`, and only the last page is not truncated. A grant
+/// added ahead of the key during the walk is not read and one added behind
+/// it is read once, and a key whose grant was revoked starts at the grant
+/// after it. A limit above [`MAX_LISTED`] reads [`MAX_LISTED`] grants.
+///
+/// # Errors
+///
+/// Returns [`Clause::APersonsGrantsPageInOrderPastTheListingLimit`]
+/// otherwise.
+pub async fn a_persons_grants_page_in_order_past_the_listing_limit<G: GrantStore>(
+    store: &G,
+    contract_fixture: &GrantFixture,
+) -> Result<(), Violation> {
+    let clause = Clause::APersonsGrantsPageInOrderPastTheListingLimit;
+    let grantee = person(1_200)?;
+    let count: u32 = 1_200;
+    for number in 0..count {
+        // Three shares share each time, so ties are ordered by share. The
+        // times start at 100, so a grant at 1 sorts behind every one.
+        let at = 100 + u64::from(number / 3);
+        grant_new(
+            store,
+            contract_fixture,
+            &share(44, number),
+            &grantee,
+            Role::Reader,
+            at,
+        )
+        .await?;
+    }
+    let capped = unexpected(store.granted_page(&grantee, None, MAX_LISTED * 4).await)?;
+    ensure(
+        capped.items().len() == MAX_LISTED && capped.truncated(),
+        clause,
+        || {
+            format!(
+                "a limit of {} read {} grants",
+                MAX_LISTED * 4,
+                capped.items().len()
+            )
+        },
+    )?;
+    // The order every page must follow: newest first, then by share.
+    let mut numbered: Vec<(u32, ShareId)> = (0..count)
+        .map(|number| (number, share(44, number)))
+        .collect();
+    numbered.sort_by_key(|(number, id)| (std::cmp::Reverse(number / 3), id.clone()));
+    let mut expected: Vec<ShareId> = numbered.into_iter().map(|(_, id)| id).collect();
+    let (ahead, behind) = (share(45, 0), share(45, 1));
+    let mut walked: Vec<ShareId> = Vec::new();
+    let mut sizes = Vec::new();
+    let mut after: Option<ListKey> = None;
+    for page_number in 0..MOST_PAGES {
+        let page = unexpected(
+            store
+                .granted_page(&grantee, after.as_ref(), MAX_LISTED)
+                .await,
+        )?;
+        sizes.push((page.items().len(), page.truncated()));
+        walked.extend(page.items().iter().map(|grant| grant.share().clone()));
+        let Some(last) = page.items().last() else {
+            break;
+        };
+        if !page.truncated() {
+            break;
+        }
+        let key = ListKey::of_grant(last);
+        if page_number == 0 {
+            grant_new(
+                store,
+                contract_fixture,
+                &ahead,
+                &grantee,
+                Role::Reader,
+                9_000,
+            )
+            .await?;
+            grant_new(store, contract_fixture, &behind, &grantee, Role::Reader, 1).await?;
+        }
+        if page_number == 1 {
+            let owner = Revoker::Owner(contract_fixture.owner.clone());
+            unexpected(
+                store
+                    .revoke(revoke(last.share(), &grantee, Role::Reader, owner))
+                    .await,
+            )?;
+        }
+        after = Some(key);
+    }
+    expected.push(behind);
+    ensure(
+        walked == expected && sizes == [(500, true), (500, true), (201, false)],
+        clause,
+        || {
+            let repeated = walked.len()
+                - walked
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len();
+            format!(
+                "pages of {sizes:?} read {} grants, {repeated} of them twice; the grant ahead of the key was read: {}",
+                walked.len(),
+                walked.contains(&ahead)
+            )
+        },
+    )
 }

@@ -100,3 +100,10 @@ macOS Keychain.
    Sign in with an account of the organisation. The page names the
    account's email as the principal. Then sign in with a personal Google
    account. The page says `NoHostedDomain`.
+
+## Google's second issuer form
+
+An ID token's `iss` must equal the configured issuer exactly, with one
+exception. When the configured issuer is `https://accounts.google.com`, a
+token whose `iss` is `accounts.google.com` is accepted too, because Google
+documents both forms. No other issuer has a second form.

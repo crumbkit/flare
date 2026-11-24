@@ -1,14 +1,15 @@
 //! Unit tests of the token check against the admit rule.
 
 use super::tokens::{digest, new_secret, token_text};
-use super::{Api, Sharing, TokenCheck};
+use super::{Api, Call, Sharing, TokenCheck};
 use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
-use flare_contract::ApiCode;
+use flare_contract::{ApiCode, Format, VersionRequest};
 use flare_core::memory::{
     MemoryGrantStore, MemoryResponseStore, MemoryShareStore, MemoryTokenStore,
 };
 use flare_core::{
-    AddressesOnly, Creators, Email, Flares, NewToken, PrincipalId, Timestamp, TokenId, TokenLabel,
+    AddressesOnly, Creators, DocumentText, Email, Flares, NewFlare, NewToken, Principal,
+    PrincipalId, Role, ShareContent, ShareId, ShareTitle, Timestamp, TokenId, TokenLabel,
     TokenStore as _,
 };
 use secrecy::SecretString;
@@ -114,4 +115,106 @@ async fn a_token_whose_owner_left_the_admit_list_answers_sign_in_needed_and_a_li
         owner_of(after.authenticate(&bob.text, NOW).await),
         Some(bob.owner.clone())
     );
+}
+
+#[tokio::test]
+async fn an_admin_is_refused_a_new_version_and_the_owner_publishes_it() {
+    let ana = Principal::with_email(
+        email("ana@example.org").principal_id(),
+        email("ana@example.org"),
+    );
+    let bob = Principal::with_email(
+        email("bob@example.org").principal_id(),
+        email("bob@example.org"),
+    );
+    let flares = Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        Creators::Everyone,
+    );
+    let id = ShareId::try_from("0123456789abcdef0123456789abcdef").unwrap();
+    let text = DocumentText::try_from("# Plan\n").unwrap();
+    let new = NewFlare::new(
+        id.clone(),
+        ShareTitle::try_from("Plan").unwrap(),
+        ShareContent::Document(text),
+        Vec::new(),
+        Vec::new(),
+    );
+    flares.share(&ana, new, NOW).await.unwrap();
+    flares
+        .shares()
+        .grant(&ana, &id, &email("bob@example.org"), Role::Admin, NOW)
+        .await
+        .unwrap();
+    let api = Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        AddressesOnly,
+        listing(&["ana@example.org", "bob@example.org"]),
+    );
+    let post = || {
+        Call::Publish(
+            id.as_str().to_owned(),
+            VersionRequest {
+                format: Format::Markdown,
+                content: "# Plan 2\n".to_owned(),
+            },
+        )
+    };
+    let refused = api.run(&bob, post(), NOW).await.unwrap_err();
+    assert_eq!(refused.code, ApiCode::ShareForbidden);
+    let (status, _) = api.run(&ana, post(), NOW).await.unwrap();
+    assert_eq!(status, 201);
+}
+
+fn share_request(title: &str, format: Format, content: &str) -> flare_contract::ShareRequest {
+    flare_contract::ShareRequest {
+        title: title.to_owned(),
+        format,
+        content: content.to_owned(),
+        with: Vec::new(),
+        re: Vec::new(),
+    }
+}
+
+#[test]
+fn the_share_checks_refuse_html_first_then_the_title_then_the_content() {
+    let code = |request| super::check_share(&request).map(|_| ()).map_err(|e| e.code);
+    assert_eq!(
+        code(share_request("", Format::Html, "")),
+        Err(ApiCode::KindNotServed)
+    );
+    assert_eq!(
+        code(share_request("", Format::Markdown, "")),
+        Err(ApiCode::ShareInvalid)
+    );
+    assert_eq!(
+        code(share_request(
+            "Plan",
+            Format::Markdown,
+            &"x".repeat(262_145)
+        )),
+        Err(ApiCode::ShareTooLarge)
+    );
+    assert_eq!(
+        code(share_request("Plan", Format::Markdown, "# Plan\n")),
+        Ok(())
+    );
+}
+
+#[test]
+fn the_version_checks_refuse_html_and_empty_content_and_admit_markdown() {
+    let code = |format, content: &str| {
+        super::check_version(&VersionRequest {
+            format,
+            content: content.to_owned(),
+        })
+        .map(|_| ())
+        .map_err(|e| e.code)
+    };
+    assert_eq!(code(Format::Html, "<p>x</p>"), Err(ApiCode::KindNotServed));
+    assert_eq!(code(Format::Markdown, ""), Err(ApiCode::ShareInvalid));
+    assert_eq!(code(Format::Markdown, "# Plan\n"), Ok(()));
 }

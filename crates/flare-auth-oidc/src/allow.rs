@@ -227,8 +227,10 @@ pub enum Admit {
     /// Every account whose email the provider verified, each signing in
     /// as its own address and reaching the resources given. It lets people
     /// outside the operator's organisation sign in and read the shares
-    /// granted to them; who may create a share is the server's creators
-    /// rule, which this rule does not widen.
+    /// granted to them. This rule does not widen who may create a share,
+    /// which is the server's creators setting, except that a creators
+    /// setting of `"anyone admitted"` under this rule lets every such
+    /// account create shares: with the Google issuer, any Google account.
     Anyone(Reach),
 }
 

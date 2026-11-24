@@ -170,6 +170,10 @@ grant_catches! {
         WrongTruncation => AListShowsItsTruncationAndOrder by a_list_shows_its_truncation_and_order;
     a_grant_store_that_lists_the_oldest_first_fails_the_truncation_and_order_clause:
         WrongOrder => AListShowsItsTruncationAndOrder by a_list_shows_its_truncation_and_order;
+    a_grant_store_that_ignores_the_list_key_fails_the_paging_clause:
+        IgnoresTheKey => APersonsGrantsPageInOrderPastTheListingLimit by a_persons_grants_page_in_order_past_the_listing_limit;
+    a_grant_store_that_cuts_a_page_before_counting_fails_the_paging_clause:
+        WrongTruncation => APersonsGrantsPageInOrderPastTheListingLimit by a_persons_grants_page_in_order_past_the_listing_limit;
     a_grant_store_that_caches_an_admin_fails_the_grant_after_an_admin_revoke_clause:
         CachesAdminAuthority => AnAdminsGrantNeverLandsAfterTheirRevoke by an_admins_grant_never_lands_after_their_revoke (&Threads);
 }

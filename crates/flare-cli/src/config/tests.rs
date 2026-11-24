@@ -254,3 +254,145 @@ fn a_credential_in_the_stores_section_is_refused() {
     );
     assert!(matches!(parse(&text), Err(Problem::Invalid(_))));
 }
+
+fn creators_of(extra: &str) -> flare_core::Creators {
+    let hosted = match parse(&hosted_with(&format!("{STORES},{extra}")))
+        .unwrap()
+        .site
+    {
+        Site::Hosted(hosted) => hosted,
+        Site::Local { .. } => panic!("not hosted"),
+    };
+    hosted.sharing.expect("the share API").creators
+}
+
+fn person(address: &str) -> flare_core::Principal {
+    flare_core::Principal::with_email(
+        flare_core::PrincipalId::try_from(address).unwrap(),
+        flare_core::Email::try_from(address).unwrap(),
+    )
+}
+
+#[test]
+fn a_creators_domain_entry_admits_that_domain_and_an_address_entry_still_works() {
+    let creators = creators_of(r#""creators":["@example.com","jo@other.example"]"#);
+    assert!(creators.admits(&person("ana@example.com")));
+    assert!(creators.admits(&person("jo@other.example")));
+    assert!(!creators.admits(&person("ana@other.example")));
+}
+
+#[test]
+fn the_creators_value_anyone_admitted_lets_every_admitted_person_share() {
+    let creators = creators_of(r#""creators":"anyone admitted""#);
+    assert_eq!(creators, flare_core::Creators::Everyone);
+}
+
+#[test]
+fn anyone_admitted_is_accepted_under_an_anyone_admit_rule() {
+    let text = anyone_with(&format!(r#"{STORES},"creators":"anyone admitted""#));
+    assert!(parse(&text).is_ok());
+}
+
+#[test]
+fn a_creators_value_that_is_not_a_list_or_anyone_admitted_is_refused_naming_the_key() {
+    for extra in [
+        r#""creators":"everyone""#,
+        r#""creators":["anyone admitted"]"#,
+    ] {
+        let message = invalid(&hosted_with(&format!("{STORES},{extra}")));
+        assert!(message.contains("hosted.creators"), "{message}");
+        assert!(message.contains("anyone admitted"), "{message}");
+    }
+}
+
+#[test]
+fn a_bad_creators_domain_entry_is_refused_naming_the_key() {
+    for entry in ["@", "@*.example.com", "example.com"] {
+        let message = invalid(&hosted_with(&format!(r#"{STORES},"creators":["{entry}"]"#)));
+        assert!(message.contains("hosted.creators"), "{message}");
+    }
+}
+
+#[test]
+fn names_map_usernames_to_addresses_for_the_share_api() {
+    use flare_core::Recipients as _;
+    let text = hosted_with(&format!(r#"{STORES},"names":{{"ana":"ana@example.com"}}"#));
+    let Site::Hosted(hosted) = parse(&text).unwrap().site else {
+        panic!("not hosted");
+    };
+    let recipients = hosted.sharing.expect("the share API").recipients;
+    let ana = flare_core::contract::block_on(recipients.resolve("ana")).unwrap();
+    assert_eq!(ana.as_str(), "ana@example.com");
+}
+
+#[test]
+fn a_bad_names_entry_is_refused_naming_the_key() {
+    for names in [
+        r#"{"ana":"not an address"}"#,
+        r#"{"":"ana@example.com"}"#,
+        r#"{"a@b":"ana@example.com"}"#,
+        r#"{"Ana":"ana@example.com"}"#,
+        r#"{"team:x":"ana@example.com"}"#,
+    ] {
+        let message = invalid(&hosted_with(&format!(r#"{STORES},"names":{names}"#)));
+        assert!(message.contains("hosted.names"), "{message}");
+    }
+}
+
+#[test]
+fn names_without_stores_are_refused_naming_hosted_stores() {
+    let message = invalid(&hosted_with(r#""names":{"ana":"ana@example.com"}"#));
+    assert!(message.contains("hosted.stores"), "{message}");
+}
+
+fn open_to_anyone(text: &str) -> bool {
+    let Site::Hosted(hosted) = parse(text).unwrap().site else {
+        panic!("not hosted");
+    };
+    hosted.sharing.expect("the share API").open_to_anyone
+}
+
+#[test]
+fn anyone_admitted_under_an_anyone_admit_rule_is_marked_open_to_anyone() {
+    let text = anyone_with(&format!(r#"{STORES},"creators":"anyone admitted""#));
+    assert!(open_to_anyone(&text));
+}
+
+#[test]
+fn other_creators_settings_are_not_marked_open_to_anyone() {
+    let listed = anyone_with(&format!(r#"{STORES},"creators":["ana@example.org"]"#));
+    assert!(!open_to_anyone(&listed));
+    let domain_rule = hosted_with(&format!(r#"{STORES},"creators":"anyone admitted""#));
+    assert!(!open_to_anyone(&domain_rule));
+}
+
+#[test]
+fn log_metrics_is_off_when_the_config_does_not_set_it() {
+    assert!(!parse("{}").unwrap().metrics);
+    assert!(!parse(DOMAIN).unwrap().metrics);
+    assert!(!parse(r#"{"log":{}}"#).unwrap().metrics);
+}
+
+#[test]
+fn log_metrics_true_turns_the_metric_lines_on_for_the_local_and_the_hosted_site() {
+    assert!(parse(r#"{"log":{"metrics":true}}"#).unwrap().metrics);
+    assert!(!parse(r#"{"log":{"metrics":false}}"#).unwrap().metrics);
+    let hosted = r#"{"log":{"metrics":true},"hosted":{"origin":"https://flare.example.com","listen":"127.0.0.1:8080"},"oidc":{"issuer":"https://accounts.google.com","client_id":"x","client_secret_file":"/run/secret","admit":{"domain":"example.com","reach":"everything"}}}"#;
+    let config = parse(hosted).unwrap();
+    assert!(config.metrics);
+    assert!(matches!(config.site, Site::Hosted(_)));
+}
+
+#[test]
+fn a_misspelt_log_key_or_a_metrics_value_that_is_not_a_boolean_is_refused_naming_it() {
+    for (text, named) in [
+        (r#"{"log":{"metric":true}}"#, "metric"),
+        (r#"{"logs":{"metrics":true}}"#, "logs"),
+        (r#"{"log":{"metrics":"yes"}}"#, "boolean"),
+    ] {
+        let Err(Problem::Invalid(message)) = parse(text) else {
+            panic!("{text} was accepted");
+        };
+        assert!(message.contains(named), "{message}");
+    }
+}

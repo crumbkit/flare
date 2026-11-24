@@ -17,6 +17,7 @@ use crate::checks;
 use crate::docs::{self, Entry};
 use crate::hosted;
 use crate::launch;
+use crate::metrics::Event;
 use crate::problem::{Code, Help, Problem};
 use crate::reply::Reply;
 use crate::routes::{self, Found, Handler, Need, Route};
@@ -285,7 +286,13 @@ where
         (Handler::Finish, _) => launch::finish(ctx),
         (Handler::Root, Some(_)) => Ok(Reply::see_other("/flare/".to_owned())),
         (Handler::Index, Some((admitted, _))) => index(ctx, &admitted, access).await,
-        (Handler::Page, Some((admitted, _))) => view::page(ctx, &admitted, access, name).await,
+        (Handler::Page, Some((admitted, _))) => {
+            let answer = view::page(ctx, &admitted, access, name).await;
+            if answer.is_ok() {
+                ctx.shared.count(Event::PageViewed);
+            }
+            answer
+        }
         (Handler::Binding, Some((admitted, credential))) => {
             view::binding(ctx, (&admitted, access), credential.as_ref(), name).await
         }

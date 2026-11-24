@@ -24,6 +24,8 @@ crumbkit.workspace = true
 # crumbkit-durable replaces the saved login file whole (DUR-1).
 crumbkit-durable.workspace = true
 crumbkit-process.workspace = true
+# `flare skills` writes the embedded skill into agent skills directories.
+crumbkit-skills.workspace = true
 crumbkit-usage.workspace = true
 flare-auth-loopback.workspace = true
 flare-auth-oidc.workspace = true
@@ -46,8 +48,30 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+# The hosted_stores test runs the built `flare serve` against stand-in
+# DynamoDB and S3 servers and a fake OpenID provider over TLS. No dev-dependency
+# here turns on a `testing` feature of a flare crate: the flare command's own
+# tree must stay as it ships, and CI checks that.
 [dev-dependencies]
+aws-lc-rs.workspace = true
+aws-sdk-dynamodb.workspace = true
+aws-sdk-s3.workspace = true
+base64.workspace = true
 crumbkit-test.workspace = true
+http-body-util.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+rcgen.workspace = true
+tokio = { workspace = true, features = ["net"] }
+tokio-rustls.workspace = true
+url.workspace = true
+
+# cargo-shear reads only the files under this crate, and the two SDK crates
+# are used by flare-aws's tests/support/stand_in_raw.rs, which
+# tests/hosted_stores.rs includes with #[path] to create its table and
+# bucket.
+[package.metadata.cargo-shear]
+ignored = ["aws-sdk-dynamodb", "aws-sdk-s3"]
 
 [lints]
 workspace = true
