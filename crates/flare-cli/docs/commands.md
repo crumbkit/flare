@@ -19,6 +19,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare grant`](#flare-grant): Grant an existing share to more people
 - [`flare shares`](#flare-shares): List your shares or the shares granted to you
 - [`flare activity`](#flare-activity): List the responses to flares since a cursor, oldest first
+- [`flare search`](#flare-search): Search the shares you can open, newest first
 - [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
@@ -413,6 +414,47 @@ flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8
 - `also`: The other flares it responds to that the caller can open.
 
 Effects: read-only, closed-world.
+
+## `flare search`
+
+Search the shares you can open, newest first
+
+A word or a "quoted phrase" matches inside a title, in any case. type:markdown or type:html filters by kind, and from:me, from: an address or from: a name this server knows filters by who shared it. A comma means any of, as in from:ana,me, a leading minus leaves a part out, and a space means every part must match. docs/search.md in the flare repository has more examples.
+
+### Arguments
+
+- `<QUERY>`: The search, such as 'budget -type:html' or 'from:me "review notes"'. Required.
+- `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
+- `--all`: Print every row
+
+### Examples
+
+List the shares you can open whose title holds budget, leaving out HTML shares.
+
+```sh
+flare search 'budget -type:html'
+```
+
+List the 20 newest shares from ana or you whose title holds review notes.
+
+```sh
+flare search 'from:ana@example.org,me "review notes"' --limit 20
+```
+
+### Columns
+
+- `id`: The share's id.
+- `title`: The share's title.
+- `owner`: The owner's identifier.
+- `role`: The caller's role: `owner`, `admin` or `reader`.
+- `version`: The latest version.
+- `created`: When it was created, in RFC 3339 UTC.
+
+Effects: read-only, closed-world.
+
+### Exit codes
+
+- `2`: The search has an error, so it did not run.
 
 ## `flare metrics`
 

@@ -44,6 +44,7 @@ pub use flares::{
     ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
     MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients,
 };
+pub use flares::{Found, MAX_HITS, SearchError, SearchHit};
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
 pub use page::{

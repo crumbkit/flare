@@ -155,6 +155,7 @@ impl Api {
         match ApiCode::from_text(&problem.code) {
             Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
                 .naming(problem.share.as_deref())
+                .with_errors(problem.errors)
                 .into()),
             None => Err(self.bad(StatusCode::BAD_REQUEST, format!(
                 "it answered {status} with the code {}, which this flare does not know; a newer flare may",

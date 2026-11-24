@@ -108,6 +108,21 @@
       ],
       "type": "object"
     },
+    "FieldKind": {
+      "description": "What a field's values are.",
+      "oneOf": [
+        {
+          "const": "keyword",
+          "description": "One of the listed values.",
+          "type": "string"
+        },
+        {
+          "const": "person",
+          "description": "A person: `me`, an email address or a name the server knows.",
+          "type": "string"
+        }
+      ]
+    },
     "FlareRef": {
       "description": "A flare that a response also responds to, which the caller can open.",
       "properties": {
@@ -202,6 +217,13 @@
             "string",
             "null"
           ]
+        },
+        "errors": {
+          "description": "Each error of a search that did not run, in the order of its text.",
+          "items": {
+            "$ref": "#/$defs/SearchError"
+          },
+          "type": "array"
         },
         "recovery": {
           "anyOf": [
@@ -321,6 +343,254 @@
           "type": "string"
         }
       ]
+    },
+    "SearchAnswer": {
+      "description": "`GET /api/search?q=<text>&limit=N`: the shares the caller can open that\nmatch the query.",
+      "properties": {
+        "next": {
+          "description": "The cursor of the next page. A search answers one page, so it is\nalways null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parsed": {
+          "description": "The query's parts, in the order they were typed.",
+          "items": {
+            "$ref": "#/$defs/SearchPart"
+          },
+          "type": "array"
+        },
+        "partial": {
+          "description": "Whether the caller's own shares or the shares granted to the caller\npassed the 500 that one search reads, so a match may be missing.",
+          "type": "boolean"
+        },
+        "query": {
+          "description": "The query's canonical text.",
+          "type": "string"
+        },
+        "results": {
+          "description": "The matching shares, newest first.",
+          "items": {
+            "$ref": "#/$defs/ShareSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "query",
+        "parsed",
+        "results",
+        "partial"
+      ],
+      "type": "object"
+    },
+    "SearchError": {
+      "description": "One error in a search's text, which a problem document lists.",
+      "properties": {
+        "code": {
+          "description": "The stable code, such as `flare::search::unknown_filter`.",
+          "type": "string"
+        },
+        "message": {
+          "description": "How to fix it, in one sentence.",
+          "type": "string"
+        },
+        "span": {
+          "$ref": "#/$defs/SearchSpan",
+          "description": "The characters it covers."
+        }
+      },
+      "required": [
+        "code",
+        "span",
+        "message"
+      ],
+      "type": "object"
+    },
+    "SearchField": {
+      "description": "One field a search can filter on.",
+      "properties": {
+        "about": {
+          "description": "What it matches, in one sentence.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FieldKind",
+          "description": "What its values are."
+        },
+        "name": {
+          "description": "The field's name, such as `type`.",
+          "type": "string"
+        },
+        "values": {
+          "description": "The values a builder offers.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "values",
+        "about"
+      ],
+      "type": "object"
+    },
+    "SearchFields": {
+      "description": "`GET /api/search/fields`: every field a search can filter on.",
+      "properties": {
+        "fields": {
+          "description": "The fields, in the order a builder offers them.",
+          "items": {
+            "$ref": "#/$defs/SearchField"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "SearchPart": {
+      "description": "One parsed part of a search, tagged by `kind`.",
+      "oneOf": [
+        {
+          "description": "A word, which matches inside a title in any case.",
+          "properties": {
+            "kind": {
+              "const": "word",
+              "type": "string"
+            },
+            "negated": {
+              "description": "Whether a leading minus excludes what it matches.",
+              "type": "boolean"
+            },
+            "span": {
+              "$ref": "#/$defs/SearchSpan",
+              "description": "Where it was typed, minus included."
+            },
+            "text": {
+              "description": "The word.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "negated",
+            "span"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A quoted phrase, which matches as one string.",
+          "properties": {
+            "kind": {
+              "const": "phrase",
+              "type": "string"
+            },
+            "negated": {
+              "description": "Whether a leading minus excludes what it matches.",
+              "type": "boolean"
+            },
+            "span": {
+              "$ref": "#/$defs/SearchSpan",
+              "description": "Where it was typed, minus and quotes included."
+            },
+            "text": {
+              "description": "The phrase, without quotes.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "negated",
+            "span"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A filter, which matches when any of its values does.",
+          "properties": {
+            "field": {
+              "description": "The field, such as `from`.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "filter",
+              "type": "string"
+            },
+            "negated": {
+              "description": "Whether a leading minus excludes what it matches.",
+              "type": "boolean"
+            },
+            "span": {
+              "$ref": "#/$defs/SearchSpan",
+              "description": "Where it was typed, minus included."
+            },
+            "values": {
+              "description": "The values, at least one.",
+              "items": {
+                "$ref": "#/$defs/SearchValue"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "field",
+            "values",
+            "negated",
+            "span"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SearchSpan": {
+      "description": "The characters a part or an error covers in the query, counted in\nUnicode scalar values from 0. `end` is exclusive.",
+      "properties": {
+        "end": {
+          "description": "The character after the last one.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "start": {
+          "description": "The first character.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "SearchValue": {
+      "description": "One value of a filter, with its span. A quoted value's span includes\nits quotes.",
+      "properties": {
+        "span": {
+          "$ref": "#/$defs/SearchSpan",
+          "description": "Where it was typed."
+        },
+        "text": {
+          "description": "The value, without quotes.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "span"
+      ],
+      "type": "object"
     },
     "ShareList": {
       "description": "`GET /api/shares?scope=mine|with-me&limit=N&cursor=<cursor>`.",

@@ -8,6 +8,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# Flares::search runs a parsed search over the caller's shares.
+flare-query.workspace = true
 secrecy.workspace = true
 thiserror.workspace = true
 
@@ -19,6 +21,7 @@ testing = []
 
 [dev-dependencies]
 flare-core = { path = ".", features = ["testing"] }
+proptest.workspace = true
 
 [lints]
 workspace = true

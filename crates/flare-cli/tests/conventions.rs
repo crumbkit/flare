@@ -7,19 +7,26 @@
 #![cfg(test)]
 
 use clap::CommandFactory as _;
-use crumbkit_test::{Allow, Budget, Check, Examples, PathBudgets, Rule, Suite};
+use crumbkit_test::{Allow, Budget, Budgets, Check, Examples, PathBudgets, Rule, Suite};
 use flare_cli::{Cli, TOOL};
 
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
 /// The tool record declares the root verbs `serve`, `open`, `publish`,
-/// `bind`, `login`, `logout`, `share`, `grant`, `shares`, `activity` and
-/// `metrics` with their reason, so they need no opt-out here. `show` is crumbkit's
+/// `bind`, `login`, `logout`, `share`, `grant`, `shares`, `activity`,
+/// `search` and `metrics` with their reason, so they need no opt-out here. `show` is crumbkit's
 /// built-in verb.
-const ALLOW: &[Allow] = &[Allow::new(
-    Rule::ShowIds,
-    "show",
-    "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
-)];
+const ALLOW: &[Allow] = &[
+    Allow::new(
+        Rule::ShowIds,
+        "show",
+        "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
+    ),
+    Allow::new(
+        Rule::SharedExit,
+        "search",
+        "the query is the command line's one argument, so a query with an error is a refused command line, and exit code 2 keeps that meaning",
+    ),
+];
 
 /// flare's built binary and the directory of its golden files. Each
 /// example runs in a fresh copy of tests/fixtures/examples, which holds the
@@ -44,9 +51,13 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
-        "activity", "metrics", "usage", "install", "check", "print",
+        "activity", "search", "metrics", "usage", "install", "check", "print",
     ])
     .examples(EXAMPLES)
+    .budgets(Budgets::new().root(
+        1_600,
+        "The root page lists thirteen verbs, one line each, so a person sees every command flare has on one page.",
+    ))
     .path_budgets(PATHS)
     .skip(
         Check::Recoveries,

@@ -11,6 +11,7 @@ flare show            Show one version of a share you can open, or its latest
 flare grant           Grant an existing share to more people
 flare shares          List your shares or the shares granted to you
 flare activity        List the responses to flares since a cursor, oldest first
+flare search          Search the shares you can open, newest first
 flare metrics         Count the metric lines in a flare server's log, by day
 flare commands        Explore flare's commands
 flare commands list   List a branch of flare's commands with their arguments and examples

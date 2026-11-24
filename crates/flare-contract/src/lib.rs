@@ -9,11 +9,16 @@
 mod cursor;
 mod problem;
 pub mod schema;
+mod search;
 mod time;
 mod wire;
 
 pub use cursor::{Cursor, CursorError, ListScope, ShareCursor};
 pub use problem::{ApiCode, ProblemDocument, Recovery};
+pub use search::{
+    FieldKind, SearchAnswer, SearchError, SearchField, SearchFields, SearchPart, SearchSpan,
+    SearchValue,
+};
 pub use time::utc;
 pub use wire::{
     ActivityItem, ActivityPage, ExchangeRequest, FlareRef, Format, GrantRequest, OpenedShare, Role,

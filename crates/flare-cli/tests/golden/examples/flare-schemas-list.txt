@@ -11,6 +11,7 @@ flare/show/v1            output  document  One version of a share the caller can
 flare/grant/v1           output  document  The share, the people this grant added and the flares it now responds to.
 flare/shares/v1          output  document  The caller's shares, or the shares granted to the caller, newest first, and the cursor of the shares that follow.
 flare/activity/v1        output  document  The responses to the named flares, oldest first, and the cursor of the next call.
+flare/search/v1          output  document  The shares the caller can open that match a search, newest first, and the search's canonical text.
 flare/metrics/v1         output  document  The count of each Flare metric on each day in UTC, the total of each metric, and the lines read and skipped.
 flare/commands-list/v1   output  document  One branch of the tool's commands with their arguments, examples and columns.
 flare/schemas-list/v1    output  document  The JSON documents that the tool prints, with a description of each.

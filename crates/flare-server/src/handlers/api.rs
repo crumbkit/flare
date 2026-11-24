@@ -15,10 +15,12 @@ use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
-use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of, list_key};
+use crate::sharing::{
+    Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of, list_after, search_call,
+};
 use flare_auth_oidc::Clock as OidcClock;
-use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument, ShareCursor};
-use flare_core::{Credential, ListKey, PageStore, Principal, RecordStore, ShareVersion, Timestamp};
+use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument};
+use flare_core::{Credential, PageStore, Principal, RecordStore, ShareVersion, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
@@ -46,6 +48,10 @@ pub(crate) enum ApiRoute {
     RevokeToken,
     /// `GET /cli/login`.
     CliLogin,
+    /// `GET /api/search`.
+    Search,
+    /// `GET /api/search/fields`.
+    SearchFields,
 }
 
 /// The most entries a share list holds, and its default.
@@ -64,6 +70,7 @@ fn refused(refusal: Refusal, origin: &str) -> Reply {
     if let Some(share) = refusal.share {
         document = document.with_share(share);
     }
+    document = document.with_errors(refusal.errors);
     let status = StatusCode::from_u16(refusal.code.status()).unwrap_or(StatusCode::BAD_REQUEST);
     let body = serde_json::to_string(&document).unwrap_or_default();
     Reply::with_body(status, "application/problem+json", body)
@@ -131,27 +138,6 @@ fn every(ctx_uri: &http::Uri, name: &str) -> Vec<String> {
         .collect()
 }
 
-/// The key after which a share list of `scope` starts, from the query's
-/// one `cursor` value, or `None` when it has none. Two values are a bad
-/// query. A value that is not a share cursor, or one of the other scope,
-/// is a bad cursor. The cursor names no person: the list is the caller's,
-/// whatever key it holds.
-fn list_after(uri: &http::Uri, scope: Scope) -> Result<Option<ListKey>, Refusal> {
-    let cursors = every(uri, "cursor");
-    let [text] = cursors.as_slice() else {
-        return if cursors.is_empty() {
-            Ok(None)
-        } else {
-            Err(ApiCode::BadQuery.into())
-        };
-    };
-    let cursor = ShareCursor::try_from(text.as_str())
-        .ok()
-        .filter(|cursor| cursor.scope() == scope)
-        .ok_or(ApiCode::SharesBadCursor)?;
-    list_key(cursor).map(Some)
-}
-
 /// Reads and parses a JSON body.
 async fn body_of<T, P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
@@ -166,6 +152,7 @@ where
         code: ApiCode::BadBody,
         detail: Some(format!("line {}, column {}", error.line(), error.column())),
         share: None,
+        errors: Vec::new(),
     }))
 }
 
@@ -322,7 +309,7 @@ where
                 _ => Err(ApiCode::BadQuery.into()),
             };
             scope.and_then(|scope| {
-                let after = list_after(ctx.uri, scope)?;
+                let after = list_after(every(ctx.uri, "cursor"), scope)?;
                 number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List {
                     scope,
                     after,
@@ -343,6 +330,9 @@ where
                 })
             }
         }
+        ApiRoute::Search => number(ctx, MAX_LIST, DEFAULT_LIST)
+            .and_then(|limit| search_call(every(ctx.uri, "q"), limit)),
+        ApiRoute::SearchFields => Ok(Call::SearchFields),
         ApiRoute::Exchange | ApiRoute::CliLogin => Err(ApiCode::BadQuery.into()),
     })
 }

@@ -1,1 +1,1 @@
-Exit codes: 0, 1 and 2 apply to every command, and flare adds 130. `flare help exit-codes` describes them.
+Exit codes: 0, 1 and 2 apply to every command, and flare adds 130 and 2. `flare help exit-codes` describes them.

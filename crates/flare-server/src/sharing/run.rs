@@ -275,6 +275,7 @@ where
             code: ApiCode::BadBody,
             detail: Some(error.to_string()),
             share: None,
+            errors: Vec::new(),
         })?;
         let code = code_digest(&request.code).ok_or(ApiCode::CodeRefused)?;
         let used = self
@@ -359,6 +360,8 @@ where
                     limit,
                 } => self.activity(who, &flares, since.as_deref(), limit).await,
                 Call::Revoke(id) => self.revoke(who, &id, now).await,
+                Call::Search { text, limit } => self.search(who, &text, limit).await,
+                Call::SearchFields => super::search::fields(),
             }
         })
     }

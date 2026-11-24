@@ -114,7 +114,7 @@ const READ: (Need, Option<Access>) = (Need::Credential, Some(Access::Read));
 const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 23] = [
+pub(crate) static ROUTES: [Route; 25] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -250,6 +250,20 @@ pub(crate) static ROUTES: [Route; 23] = [
         "/api/activity",
         TOKEN,
         Handler::Api(ApiRoute::Activity),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/search",
+        TOKEN,
+        Handler::Api(ApiRoute::Search),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/search/fields",
+        TOKEN,
+        Handler::Api(ApiRoute::SearchFields),
         Sites::Hosted,
     ),
 ];

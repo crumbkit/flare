@@ -2,6 +2,7 @@
 //! problem document with a `flare::<area>::<kind>` code and the recovery
 //! that the `flare` command prints, in crumbkit's JSON shape.
 
+use crate::search::SearchError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -117,6 +118,10 @@ codes! {
         |_| hint("send the body that schema/flare-api.schema.json describes")),
     BadQuery => ("flare::requests::bad_query", 400, "The request's query is missing a value or holds a malformed one.",
         |_| hint("send the query that docs/hosting.md describes")),
+    SearchInvalid => ("flare::search::invalid", 422, "The search has an error, so it did not run.",
+        |_| hint("fix each part that an error names, as its message says; docs/search.md shows the syntax")),
+    UnknownPerson => ("flare::search::unknown_person", 422, "The search names a person this server does not know.",
+        |_| hint("name the person with from:me, an email address or a name this server knows")),
 }
 
 /// What the caller does next, in the shape of crumbkit's JSON failure
@@ -161,6 +166,9 @@ pub struct ProblemDocument {
     /// The share that a partly finished share created.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub share: Option<String>,
+    /// Each error of a search that did not run, in the order of its text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<SearchError>,
 }
 
 impl ProblemDocument {
@@ -175,6 +183,7 @@ impl ProblemDocument {
             recovery: Some(code.recovery(server)),
             detail: None,
             share: None,
+            errors: Vec::new(),
         }
     }
 
@@ -182,6 +191,13 @@ impl ProblemDocument {
     #[must_use]
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
+        self
+    }
+
+    /// The same document listing the errors of a search.
+    #[must_use]
+    pub fn with_errors(mut self, errors: Vec<SearchError>) -> Self {
+        self.errors = errors;
         self
     }
 

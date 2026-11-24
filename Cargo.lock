@@ -1098,8 +1098,10 @@ dependencies = [
  "flare-board",
  "flare-contract",
  "flare-core",
+ "flare-query",
  "flare-render",
  "flare-server",
+ "form_urlencoded",
  "http-body-util",
  "hyper",
  "hyper-util",
@@ -1122,6 +1124,7 @@ name = "flare-contract"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "flare-query",
  "schemars",
  "serde",
  "serde_json",
@@ -1132,7 +1135,19 @@ name = "flare-core"
 version = "0.1.0"
 dependencies = [
  "flare-core",
+ "flare-query",
+ "proptest",
  "secrecy",
+ "thiserror",
+]
+
+[[package]]
+name = "flare-query"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
@@ -1161,6 +1176,7 @@ dependencies = [
  "flare-board",
  "flare-contract",
  "flare-core",
+ "flare-query",
  "flare-render",
  "flare-server",
  "form_urlencoded",

@@ -1,13 +1,33 @@
 //! `GET /api/shares`: one page of the caller's shares or of the shares
 //! granted to the caller, after a key, with the cursor of the next page.
 
-use super::convert::{role, share_cursor, share_error, summary};
+use super::convert::{list_key, role, share_cursor, share_error, summary};
 use super::run::json;
-use super::{Answer, Scope, Sharing};
-use flare_contract::{Role as WireRole, ShareList};
+use super::{Answer, Refusal, Scope, Sharing};
+use flare_contract::{ApiCode, Role as WireRole, ShareCursor, ShareList};
 use flare_core::{
     GrantStore, ListKey, Principal, Recipients, ResponseStore, ShareStore, TokenStore,
 };
+
+/// The key after which a share list of `scope` starts, from the query's
+/// `cursor` values, or `None` when it has none. Two values are a bad
+/// query. A value that is not a share cursor, or one of the other scope,
+/// is a bad cursor. The cursor names no person: the list is the caller's,
+/// whatever key it holds.
+pub(crate) fn list_after(cursors: Vec<String>, scope: Scope) -> Result<Option<ListKey>, Refusal> {
+    let [text] = cursors.as_slice() else {
+        return if cursors.is_empty() {
+            Ok(None)
+        } else {
+            Err(ApiCode::BadQuery.into())
+        };
+    };
+    let cursor = ShareCursor::try_from(text.as_str())
+        .ok()
+        .filter(|cursor| cursor.scope() == scope)
+        .ok_or(ApiCode::SharesBadCursor)?;
+    list_key(cursor).map(Some)
+}
 
 impl<S, G, R, T, X> Sharing<S, G, R, T, X>
 where

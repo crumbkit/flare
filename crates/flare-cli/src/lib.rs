@@ -9,7 +9,7 @@
 //! once into a snapshot, and each command builds flare-board's store,
 //! flare-auth-loopback's state and flare-auth-oidc's authenticator and
 //! calls flare-server. `login`, `logout`, `share`, `show`, `grant`,
-//! `shares` and `activity` call a flare server's share API with the token
+//! `shares`, `activity` and `search` call a flare server's share API with the token
 //! that `login` keeps in the Keychain; `share --dry-run` calls no server.
 //! `metrics` totals the metric lines of a server's log. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
@@ -31,6 +31,7 @@ mod open;
 mod opener;
 mod pages;
 mod publish;
+mod search;
 mod serve;
 mod sharing;
 
@@ -108,6 +109,10 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
         Verb::Activity(args) => {
             let result = block_on(false, sharing::activity(&args, &env));
             crumbkit::finish(run, documents::ACTIVITY, result)
+        }
+        Verb::Search(args) => {
+            let result = block_on(false, search::search(&args, &env));
+            crumbkit::finish(run, search::SEARCH, result)
         }
         Verb::Metrics(args) => {
             let result = metrics::run(&args);

@@ -14,6 +14,7 @@ Verbs
   grant     Grant an existing share to more people
   shares    List your shares or the shares granted to you
   activity  List the responses to flares since a cursor, oldest first
+  search    Search the shares you can open, newest first
   metrics   Count the metric lines in a flare server's log, by day
 
 Commands

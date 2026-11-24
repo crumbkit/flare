@@ -6,7 +6,7 @@
 mod dry_run;
 mod shares;
 
-pub(crate) use shares::shares;
+pub(crate) use shares::{row, shares};
 
 use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, ShowArgs};
 use crate::client::Api;

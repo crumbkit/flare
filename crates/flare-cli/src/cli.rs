@@ -1,10 +1,12 @@
 //! `flare`'s command-line grammar and tool record.
 
 mod schemas;
+mod search;
 mod sharing;
 mod skills;
 
 pub(crate) use schemas::SchemasCommand;
+pub(crate) use search::SearchArgs;
 pub(crate) use skills::{FlareSkills, SKILL};
 
 pub(crate) use sharing::{
@@ -68,6 +70,15 @@ pub(crate) enum Verb {
     Shares(SharesArgs),
     /// List the responses to flares since a cursor, oldest first
     Activity(ActivityArgs),
+    /// Search the shares you can open, newest first
+    ///
+    /// A word or a "quoted phrase" matches inside a title, in any case.
+    /// type:markdown or type:html filters by kind, and from:me, from: an
+    /// address or from: a name this server knows filters by who shared it.
+    /// A comma means any of, as in from:ana,me, a leading minus leaves a
+    /// part out, and a space means every part must match. docs/search.md
+    /// in the flare repository has more examples.
+    Search(SearchArgs),
     /// Count the metric lines in a flare server's log, by day
     ///
     /// The counts come from the metric lines that flare serve writes on
@@ -213,7 +224,7 @@ pub const TOOL: Tool = Tool::new()
             .root_verbs(
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "show",
-                    "grant", "shares", "activity", "metrics",
+                    "grant", "shares", "activity", "search", "metrics",
                 ],
                 ROOT,
             )
@@ -340,6 +351,7 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::read_only())
         .document(ACTIVITY),
+    search::LEAF,
     Leaf::new(&["metrics"])
         .examples(&[
             Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),
@@ -374,5 +386,10 @@ pub const TOOL: Tool = Tool::new()
     )
     .failures(
         Failures::new()
-            .exits(&[Exit::new(130, "Ctrl-C stopped the server.").commands(&[&["serve"]])]),
+            .exits(&[
+                Exit::new(130, "Ctrl-C stopped the server.").commands(&[&["serve"]]),
+                Exit::new(2, "The search has an error, so it did not run.")
+                    .commands(&[&["search"]])
+                    .failures(&[crate::codes::search::SEARCH_INVALID]),
+            ]),
     );

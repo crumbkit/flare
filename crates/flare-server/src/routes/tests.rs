@@ -62,6 +62,8 @@ fn the_share_api_is_served_only_on_the_hosted_site() {
         (Method::POST, "/api/shares"),
         (Method::GET, "/api/shares"),
         (Method::GET, "/api/activity"),
+        (Method::GET, "/api/search"),
+        (Method::GET, "/api/search/fields"),
         (Method::POST, "/api/tokens/exchange"),
         (Method::GET, "/cli/login"),
     ] {

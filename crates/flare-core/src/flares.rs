@@ -24,11 +24,13 @@
 mod activity;
 mod owners;
 mod people;
+mod search;
 
 pub use activity::{ActivityItem, ActivityPage};
 pub use people::{
     AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
 };
+pub use search::{Found, MAX_HITS, SearchError, SearchHit};
 
 use crate::auth::Principal;
 use crate::email::Email;

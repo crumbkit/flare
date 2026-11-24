@@ -11,6 +11,7 @@ pub(crate) use calls::{activity_call, shares_call};
 pub use next_run::NextRun;
 
 use super::Failed;
+use super::search::Searched;
 use super::sign_in::sign_in;
 use crumbkit::{Call, Code, Failure, Field, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
@@ -222,6 +223,8 @@ pub struct Refused {
     /// whose outcome the server does not know, which `shares::unavailable`
     /// says after a write, so the recovery checks `flare shares` first.
     maybe_written: bool,
+    /// The query and errors of a search that did not run.
+    pub(super) searched: Box<Searched>,
 }
 
 impl Refused {
@@ -235,6 +238,7 @@ impl Refused {
             flares: Vec::new(),
             with_me: false,
             maybe_written: false,
+            searched: Box::default(),
         }
     }
 
@@ -304,6 +308,10 @@ impl std::error::Error for Refused {}
 impl Failure for Refused {
     fn code(&self) -> Code<'_> {
         Code::from_spelling(self.code.text())
+    }
+
+    fn causes(&self) -> Vec<String> {
+        self.searched.causes()
     }
 
     /// The recovery for the code. A `shares::unavailable` refusal of a
