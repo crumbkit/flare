@@ -207,6 +207,16 @@ This file records the notable changes to flare. The format follows
 - flare's stylesheet takes the light and dark colours of the signed Flare
   mockup, so pages at `/pages/<name>`, the edit form and the conflict view
   change colour.
+- `flare activity` reads a per-reader index that flare writes when a
+  response is linked and when a share is granted, so one call reads only
+  responses the caller can open. A flare's readers can no longer stall its
+  owner's activity by posting thousands of responses the owner cannot open.
+  A response granted to you after your cursor now shows as new activity.
+  `flare grant` indexes every named person again, so repeating a grant
+  repairs entries that a failed write left out. One call examines at most
+  1,000 entries. Responses linked before this change are not listed until
+  their owner repeats `flare grant <response> --re <flare>`.
+  [docs/activity.md](docs/activity.md) describes the index.
 - A flare server's own busy, fault and deadline answers now fail every
   sharing command with `flare::network::server_error`, in place of
   `flare::network::bad_answer`, whose repair "check that the server runs

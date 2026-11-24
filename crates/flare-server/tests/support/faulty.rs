@@ -3,10 +3,10 @@
 
 use flare_core::memory::{MemoryResponseStore, MemoryShareStore, MemoryTokenStore};
 use flare_core::{
-    AddressesOnly, Digest, Email, Listing, LoginCode, NewLink, NewShare, NewToken, NewVersion,
-    Position, PrincipalId, RecipientError, Recipients, ResponseLink, ResponseStore,
-    ResponseStoreError, Share, ShareId, ShareStore, ShareStoreError, ShareVersion, SharedVersion,
-    StoredToken, Timestamp, TokenId, TokenStore, TokenStoreError, UsedCode,
+    AddressesOnly, Digest, Email, IndexEntry, Listing, LoginCode, NewEntry, NewLink, NewShare,
+    NewToken, NewVersion, Position, PrincipalId, Reader, RecipientError, Recipients, ResponseLink,
+    ResponseStore, ResponseStoreError, Share, ShareId, ShareStore, ShareStoreError, ShareVersion,
+    SharedVersion, StoredToken, Timestamp, TokenId, TokenStore, TokenStoreError, UsedCode,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,6 +20,8 @@ pub struct Faults {
     pub tokens: Arc<AtomicBool>,
     /// Fails the response store.
     pub responses: Arc<AtomicBool>,
+    /// Fails only the response store's index writes.
+    pub index: Arc<AtomicBool>,
     /// Fails the recipients directory.
     pub recipients: Arc<AtomicBool>,
 }
@@ -126,13 +128,16 @@ impl TokenStore for FaultyTokens {
     }
 }
 
-/// A response store that fails while its switch is on.
+/// A response store that fails while its switch is on, and fails its
+/// index writes alone while `fail_index` is on.
 #[derive(Debug, Default)]
 pub struct FaultyResponses {
     /// The store that answers while the switch is off.
     pub inner: MemoryResponseStore,
     /// The switch.
     pub fail: Arc<AtomicBool>,
+    /// The switch of the index writes.
+    pub fail_index: Arc<AtomicBool>,
 }
 
 impl FaultyResponses {
@@ -170,6 +175,39 @@ impl ResponseStore for FaultyResponses {
     ) -> Result<Vec<ResponseLink>, ResponseStoreError> {
         self.check()?;
         self.inner.of_response(response).await
+    }
+    async fn pairs(
+        &self,
+        responses: &[ShareId],
+        flare: &ShareId,
+    ) -> Result<Vec<ResponseLink>, ResponseStoreError> {
+        self.check()?;
+        self.inner.pairs(responses, flare).await
+    }
+    async fn index(&self, entries: Vec<NewEntry>) -> Result<(), ResponseStoreError> {
+        self.check()?;
+        if on(&self.fail_index) {
+            return Err(ResponseStoreError::Unavailable);
+        }
+        self.inner.index(entries).await
+    }
+    async fn unindex(&self, reader: &Reader, response: &ShareId) -> Result<(), ResponseStoreError> {
+        self.check()?;
+        if on(&self.fail_index) {
+            return Err(ResponseStoreError::Unavailable);
+        }
+        self.inner.unindex(reader, response).await
+    }
+    async fn visible(
+        &self,
+        reader: &Reader,
+        flare: &ShareId,
+        after: Position,
+        upto: Position,
+        limit: usize,
+    ) -> Result<Vec<IndexEntry>, ResponseStoreError> {
+        self.check()?;
+        self.inner.visible(reader, flare, after, upto, limit).await
     }
 }
 

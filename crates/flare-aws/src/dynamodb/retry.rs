@@ -159,6 +159,12 @@ fn backoff(policy: &Policy, number: u32) -> Duration {
     full / 2 + (full / 2) * u32::from(jitter) / 255
 }
 
+/// Waits the backoff before attempt `number` of a read that asks again,
+/// such as a batch read whose keys DynamoDB left unprocessed.
+pub(crate) async fn back_off(policy: &Policy, number: u32) {
+    pause(Instant::now() + backoff(policy, number)).await;
+}
+
 /// What a series of sends with one token ended in.
 enum Answer<T, R> {
     /// The call is answered.

@@ -1,6 +1,7 @@
 //! Every read is consistent, so it sees every write that finished before
 //! it started, and a failed read is unavailable and never empty.
 
+use super::{Batch, Unavailable, batch_keys, get_many_with};
 use crate::dynamodb::Table;
 use crate::dynamodb::items::ItemKind;
 use crate::dynamodb::keys::{ENTRY_PREFIX, Key};
@@ -44,6 +45,96 @@ async fn a_read_that_cannot_reach_the_table_is_unavailable_and_never_empty() {
         .query(&partition, ENTRY_PREFIX, 501, None, ItemKind::OwnerEntry)
         .await;
     assert!(listed.is_err());
+}
+
+/// `count` pair keys of different responses to one flare.
+fn pair_keys(count: u8) -> Vec<Key> {
+    (0..count)
+        .map(|tag| {
+            Key::pair(
+                &ShareId::from_random([tag; 16]),
+                &ShareId::from_random([255; 16]),
+            )
+        })
+        .collect()
+}
+
+/// A policy whose waits are a millisecond, so a test does not sleep long.
+fn quick() -> crate::dynamodb::retry::Policy {
+    crate::dynamodb::retry::Policy {
+        backoff: std::time::Duration::from_millis(1),
+        ..crate::dynamodb::retry::Policy::STORE
+    }
+}
+
+#[test]
+fn a_batch_asks_for_a_consistent_read_of_its_keys() {
+    let keys = pair_keys(3);
+    let wanted = batch_keys(&keys).unwrap();
+    assert_eq!(wanted.consistent_read(), Some(true));
+    assert_eq!(wanted.keys().len(), 3);
+    let table = Table::unreachable();
+    let request = table.batch_request(wanted);
+    let items = request.get_request_items().as_ref().unwrap();
+    assert_eq!(items.len(), 1);
+    assert!(items.contains_key(table.name()));
+}
+
+#[tokio::test]
+async fn a_read_of_many_keys_asks_in_batches_of_at_most_100() {
+    let keys = pair_keys(250);
+    let sizes = std::sync::Mutex::new(Vec::new());
+    let read = get_many_with(&quick(), &keys, ItemKind::Link, |wanted| {
+        sizes.lock().unwrap().push(wanted.keys().len());
+        let consistent = wanted.consistent_read() == Some(true);
+        async move {
+            assert!(consistent);
+            Ok(Batch {
+                items: Vec::new(),
+                left: None,
+            })
+        }
+    })
+    .await;
+    assert_eq!(read, Ok(Vec::new()));
+    assert_eq!(*sizes.lock().unwrap(), vec![100, 100, 50]);
+}
+
+#[tokio::test]
+async fn a_batch_asks_again_for_its_unprocessed_keys_and_fails_after_five_rounds() {
+    let keys = pair_keys(4);
+    // The first two answers leave the last key unprocessed; the third reads it.
+    let asked = std::sync::Mutex::new(Vec::new());
+    let read = get_many_with(&quick(), &keys, ItemKind::Link, |wanted| {
+        let mut asked = asked.lock().unwrap();
+        asked.push(wanted.keys().len());
+        let round = asked.len();
+        let left = (round < 3).then(|| batch_keys(&keys[3..]).unwrap());
+        async move {
+            Ok(Batch {
+                items: Vec::new(),
+                left,
+            })
+        }
+    })
+    .await;
+    assert_eq!(read, Ok(Vec::new()));
+    assert_eq!(*asked.lock().unwrap(), vec![4, 1, 1]);
+    // A batch that always leaves keys unprocessed fails after five asks.
+    let rounds = std::sync::atomic::AtomicUsize::new(0);
+    let read = get_many_with(&quick(), &keys, ItemKind::Link, |_| {
+        rounds.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let left = Some(batch_keys(&keys[3..]).unwrap());
+        async move {
+            Ok(Batch {
+                items: Vec::new(),
+                left,
+            })
+        }
+    })
+    .await;
+    assert_eq!(read, Err(Unavailable));
+    assert_eq!(rounds.load(std::sync::atomic::Ordering::SeqCst), 5);
 }
 
 #[test]

@@ -1,6 +1,8 @@
 //! The [`ResponseStore`] contract suite. Every function writes the links it
 //! needs, so the caller passes a new, empty store.
 
+pub mod index;
+
 use super::{Clause, RunTogether, Violation, ensure, unexpected};
 use crate::{NewLink, Position, ResponseStore, ShareId, ShareVersion, Timestamp};
 

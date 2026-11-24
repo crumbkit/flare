@@ -42,7 +42,7 @@ pub use error::{ParseError, Subject};
 pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
 pub use flares::{
     ActivityItem, ActivityPage, AddressesOnly, CreatorDomain, Creators, FlareError, Flared, Flares,
-    MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients,
+    MAX_EXAMINED, MAX_FLARES, NamedRecipients, NewFlare, RecipientError, Recipients,
 };
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
@@ -51,7 +51,7 @@ pub use page::{
 };
 pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
-pub use response::{MAX_PAGE, NewLink, Position, ResponseLink};
+pub use response::{IndexEntry, MAX_PAGE, NewEntry, NewLink, Position, Reader, ResponseLink};
 pub use share::{
     DocumentText, Listing, MAX_DOCUMENT, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_TITLE, MAX_VERSIONS,
     NewShare, NewVersion, Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion,
