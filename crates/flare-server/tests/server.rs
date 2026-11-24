@@ -66,6 +66,8 @@ mod headers;
 mod hosted_sign_in;
 #[path = "server/hosted.rs"]
 mod hosted_site;
+#[path = "server/images.rs"]
+mod images;
 #[path = "server/limits.rs"]
 mod limits;
 #[path = "server/loopback.rs"]

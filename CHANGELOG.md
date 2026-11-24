@@ -6,6 +6,33 @@ This file records the notable changes to flare. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A share or a new version can carry its document's images. The share API
+  takes `POST /api/shares` and `POST /api/shares/<id>/versions` as a
+  `multipart/form-data` body with one `share` part and one `image` part per
+  image, named by its path in the Markdown. The server refuses an upload
+  over 4 MiB, an image over 5 MiB, more than 10 images, an unsafe,
+  repeated or unused path, and anything whose first bytes are not PNG,
+  JPEG, GIF or WebP, SVG included, with the new `flare::images::*` codes.
+  It strips each image of its metadata, keeping only the pixels, the ICC
+  profile, animation and the EXIF orientation, decodes it under limits of
+  16,384 pixels a side and 256 MiB, and stores it before it writes the
+  version. Each version keeps a table of its images, and
+  `GET /api/shares/<id>/versions/<n>/files/<file>` serves a file only when
+  that table lists it, in a sandbox. The reading page shows each listed
+  image and shows any other relative image as its alternative text.
+- `FileStore` gains `delete`, which succeeds for a missing file, and
+  `list`, which pages through every stored file with its store time. The
+  S3 store deletes with `DeleteObject`, and the stores template grants
+  `s3:DeleteObject` on `files/*`.
+- flare-core's `sweep_files` deletes the stored files that no version lists
+  and that are at least 30 minutes old, at most 10,000 in one run.
+- The metric `FilesCleanupFailed` counts each refused upload that could not
+  delete a file it had stored.
+- flare-server's `Sharing::with_files` sets the store that images are kept
+  in. Without it, `Sharing` uses `NoFiles`, which refuses every image.
+
 ### Changed
 
 - Who may share, respond and create a team is now a rule each app that

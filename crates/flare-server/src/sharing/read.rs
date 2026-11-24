@@ -5,8 +5,9 @@ use super::convert::grant_entry;
 use super::{ReadRefusal, Reading, Sharing};
 use flare_core::{
     CommentStore, Creators, CursorStore, GrantStore, Principal, ResponseStore, ShareContent,
-    ShareError, ShareId, ShareStore, ShareVersion, Standing, Teams,
+    ShareError, ShareId, ShareStore, ShareVersion, SharedVersion, Standing, Teams,
 };
+use flare_render::ImageSources;
 use std::fmt;
 use url::Url;
 
@@ -59,7 +60,7 @@ impl GetFlare {
     }
 }
 
-impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K> {
+impl<S, G, R, C, U, T, X, M, K, F> Sharing<S, G, R, C, U, T, X, M, K, F> {
     /// The share API of `self`, whose reading pages link a reader who has
     /// never shared a flare to `address`.
     #[must_use]
@@ -69,7 +70,7 @@ impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K> {
     }
 }
 
-impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
+impl<S, G, R, C, U, T, X, M, K, F> Sharing<S, G, R, C, U, T, X, M, K, F>
 where
     S: ShareStore,
     G: GrantStore,
@@ -147,7 +148,24 @@ where
             version: opened.version.number().get(),
             published: opened.version.created().as_secs(),
             markdown: text.as_str().to_owned(),
+            images: image_sources(&id, &opened.version),
             badge: self.badge(who, opened.standing).await,
         })
     }
+}
+
+/// The file route of each image that `version` of share `id` lists, by
+/// the path its Markdown wrote.
+fn image_sources(id: &ShareId, version: &SharedVersion) -> ImageSources {
+    let number = version.number().get();
+    ImageSources::new(version.images().rows().iter().map(|row| {
+        (
+            row.path().as_str().to_owned(),
+            format!(
+                "/api/shares/{}/versions/{number}/files/{}",
+                id.as_str(),
+                row.file().as_str()
+            ),
+        )
+    }))
 }

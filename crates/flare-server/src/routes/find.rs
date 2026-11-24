@@ -20,6 +20,9 @@ pub(crate) enum Found<'p> {
 /// name, so `/api/shares/<name>/versions` never matches a path with more
 /// segments.
 fn matches<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
+    if pattern.matches('<').count() > 1 {
+        return segments(pattern, path);
+    }
     match pattern.split_once("<name>") {
         Some((prefix, "")) => path.strip_prefix(prefix),
         Some((prefix, suffix)) => path
@@ -28,6 +31,28 @@ fn matches<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
             .filter(|name| !name.is_empty() && !name.contains('/')),
         None => (pattern == path).then_some(""),
     }
+}
+
+/// The text from a pattern's first variable segment on, when `path` has
+/// one non-empty segment for each variable segment of `pattern` and the
+/// pattern's other segments exactly.
+fn segments<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
+    let (prefix, variable) = pattern.split_once('<')?;
+    let rest = path.strip_prefix(prefix)?;
+    let wanted = format!("<{variable}");
+    let mut given = rest.split('/');
+    for segment in wanted.split('/') {
+        let actual = given.next()?;
+        let fits = if segment.starts_with('<') {
+            !actual.is_empty()
+        } else {
+            actual == segment
+        };
+        if !fits {
+            return None;
+        }
+    }
+    given.next().is_none().then_some(rest)
 }
 
 /// The route for `method` and `path` among the routes `site` serves.

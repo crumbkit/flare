@@ -18,6 +18,7 @@ fn reading() -> Reading {
         version: 3,
         published: 1_795_219_200,
         markdown: String::from("A sailing is held.\n"),
+        images: flare_render::ImageSources::none(),
         badge: None,
     }
 }
@@ -29,7 +30,7 @@ const BUILT: Entries<'static> = Entries {
 };
 
 fn page(reading: &Reading, markdown: &str, script: Option<&str>) -> String {
-    let article = flare_render::article(markdown).unwrap();
+    let article = flare_render::article(markdown, &flare_render::ImageSources::none()).unwrap();
     let entries = Entries {
         reading: script,
         comments: None,
@@ -38,7 +39,7 @@ fn page(reading: &Reading, markdown: &str, script: Option<&str>) -> String {
 }
 
 fn built(reading: &Reading, markdown: &str) -> String {
-    let article = flare_render::article(markdown).unwrap();
+    let article = flare_render::article(markdown, &flare_render::ImageSources::none()).unwrap();
     document(reading, "priya.nair@example.com", &article, BUILT)
 }
 
@@ -127,8 +128,12 @@ fn every_page_loads_the_comments_entry_and_only_a_page_with_code_or_a_diagram_lo
 
 #[test]
 fn a_page_lets_scripts_run_only_when_it_loads_one() {
-    let code = flare_render::article("```rust\nfn x() {}\n```\n").unwrap();
-    let plain = flare_render::article("Text.\n").unwrap();
+    let code = flare_render::article(
+        "```rust\nfn x() {}\n```\n",
+        &flare_render::ImageSources::none(),
+    )
+    .unwrap();
+    let plain = flare_render::article("Text.\n", &flare_render::ImageSources::none()).unwrap();
     assert!(loads_script(&plain, BUILT));
     assert!(loads_script(&code, BUILT));
     let unbuilt = Entries {

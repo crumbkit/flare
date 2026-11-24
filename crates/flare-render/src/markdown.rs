@@ -11,6 +11,13 @@
 //! stop, written directly after a top-level diagram, table or code block,
 //! becomes that block's `<figcaption>`.
 
+mod blocks;
+mod images;
+
+pub use images::{ImageSources, image_paths};
+
+use blocks::{captionable, diagram_type, is_caption, top_level_blocks};
+
 use crate::html::escape_into;
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 
@@ -54,11 +61,24 @@ pub(crate) fn to_html(markdown: &str) -> String {
 /// Renders Markdown as [`to_html`] does, and says whether the HTML holds
 /// code or a diagram.
 pub(crate) fn render(markdown: &str) -> Rendered {
-    let options =
-        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-    let events: Vec<Event<'_>> = Parser::new_ext(markdown, options).collect();
+    render_with(markdown, None)
+}
+
+/// The parser options every rendering uses.
+const OPTIONS: Options = Options::ENABLE_TABLES
+    .union(Options::ENABLE_STRIKETHROUGH)
+    .union(Options::ENABLE_TASKLISTS);
+
+/// Renders as [`render`] does. With `sources`, a relative image shows from
+/// the URL `sources` gives for its path, and as its alternative text when
+/// `sources` has none.
+pub(crate) fn render_with(markdown: &str, sources: Option<&ImageSources>) -> Rendered {
+    let events: Vec<Event<'_>> = Parser::new_ext(markdown, OPTIONS).collect();
     let blocks = top_level_blocks(&events);
-    let mut writer = Writer::default();
+    let mut writer = Writer {
+        sources: sources.cloned(),
+        ..Writer::default()
+    };
     let mut index = 0;
     while let Some(&(start, end)) = blocks.get(index) {
         let block = events.get(start..end).unwrap_or_default();
@@ -88,74 +108,6 @@ pub(crate) fn render(markdown: &str) -> Rendered {
         code: writer.code,
         diagrams: writer.diagrams,
     }
-}
-
-/// The ranges of the top-level blocks in `events`.
-fn top_level_blocks(events: &[Event<'_>]) -> Vec<(usize, usize)> {
-    let mut blocks = Vec::new();
-    let mut depth = 0_usize;
-    let mut start = 0;
-    for (index, event) in events.iter().enumerate() {
-        match event {
-            Event::Start(_) => {
-                if depth == 0 {
-                    start = index;
-                }
-                depth += 1;
-            }
-            Event::End(_) => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    blocks.push((start, index + 1));
-                }
-            }
-            _ if depth == 0 => blocks.push((index, index + 1)),
-            _ => {}
-        }
-    }
-    blocks
-}
-
-/// Whether `block` is one a caption may follow: a diagram, a table or a
-/// code block.
-fn captionable(block: &[Event<'_>]) -> bool {
-    matches!(
-        block.first(),
-        Some(Event::Start(Tag::CodeBlock(_) | Tag::Table(_)))
-    )
-}
-
-/// Whether `block` is a paragraph whose text starts with "Figure", a
-/// number and a full stop, followed by a space or nothing.
-fn is_caption(block: &[Event<'_>]) -> bool {
-    if !matches!(block.first(), Some(Event::Start(Tag::Paragraph))) {
-        return false;
-    }
-    let mut text = String::new();
-    for event in block {
-        if let Event::Text(part) | Event::Code(part) = event {
-            text.push_str(part);
-        }
-    }
-    let Some(rest) = text.strip_prefix("Figure ") else {
-        return false;
-    };
-    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
-    let after = rest.get(digits..).unwrap_or_default();
-    digits > 0
-        && after
-            .strip_prefix('.')
-            .is_some_and(|tail| tail.is_empty() || tail.starts_with(char::is_whitespace))
-}
-
-/// The diagram type of a fenced block with `language` and `source`, when
-/// it is a Mermaid diagram a page may draw.
-fn diagram_type(language: &str, source: &str) -> Option<&'static str> {
-    if language != "mermaid" {
-        return None;
-    }
-    let first = source.split_whitespace().next()?;
-    DIAGRAM_TYPES.iter().copied().find(|kind| *kind == first)
 }
 
 /// Whether a link may keep `target`: `http`, `https` and `mailto` targets,
@@ -208,6 +160,8 @@ struct Writer<'a> {
     /// The image being read: its source when it keeps one, and its
     /// alternative text so far.
     image: Option<(Option<String>, String)>,
+    /// Where a share's listed images load from, when rendering a share.
+    sources: Option<ImageSources>,
     /// The alignment of each column of the table being read.
     alignments: Vec<Alignment>,
     cell: usize,
@@ -343,6 +297,10 @@ impl<'a> Writer<'a> {
             }
             Tag::Image { dest_url, .. } => {
                 let source = relative(&dest_url).then(|| dest_url.to_string());
+                let source = match &self.sources {
+                    Some(sources) => source.and_then(|path| sources.get(&path).map(str::to_owned)),
+                    None => source,
+                };
                 self.image = Some((source, String::new()));
             }
         }

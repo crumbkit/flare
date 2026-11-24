@@ -72,6 +72,7 @@ and has the value 1 on each line.
 | `SignInsRefused` | `Reason` | Each OpenID Connect callback that refused a sign-in. |
 | `TokensExchanged` | none | Each login code that `POST /api/tokens/exchange` traded for a token. |
 | `TokensRefused` | none | Each exchange that answered 4xx, and each other `/api/` request answered 401, whether or not it carried a bearer token. |
+| `FilesCleanupFailed` | none | Each refused upload that could not delete an image file it had sent. The warning in the log names the share id and the file ids, and `flare files sweep` deletes the files after 30 minutes. |
 
 ### Dimensions
 

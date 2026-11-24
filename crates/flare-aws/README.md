@@ -65,7 +65,10 @@ revoked, so a check of one answers that it no longer signs in. The table
 never holds a raw code or token.
 
 Each file is the object `files/<share>/<file>` in the bucket, with its media
-type as the object's content type.
+type as the object's content type. A delete is one `DeleteObject`, and a list
+is `ListObjectsV2` under `files/`, which gives each object's store time as
+its `LastModified`. The bucket has no versioning, so a delete removes the
+bytes.
 
 Every write is one `TransactWriteItems` call, which DynamoDB applies whole
 or not at all. A grant or a revoke by an admin carries a condition on the
@@ -143,7 +146,23 @@ A lost answer is settled by reading the session or the key the write made.
 | an object | `put` with the same key | the first object is unchanged, `IdTaken` | the caller |
 | no object | `put` that meets another put of the same key in flight (409) | retried, and the retry meets the other put's object | the store |
 | no object | `put` whose answer is lost, or that the SDK resends after a 5xx or a timed-out attempt | resent; every 412 is settled by reading the object: success when its bytes and media type equal the file's, `IdTaken` when they differ, `Unavailable` when the read fails | the store |
-| an object | any other write | none: no replace and no delete is permitted | nobody |
+| an object | `delete` | no object | the caller |
+| no object | `delete` | no object; the delete succeeds | the caller |
+| an object | any other write | none: no replace is permitted | nobody |
+
+An image file of a share moves through these states as flare-server's
+upload and flare-core's sweep use the store:
+
+| State | Event | Next state | Owner of the event |
+| --- | --- | --- | --- |
+| no object | `put` during a create or publish, after every check passed | stored, unlisted | the request |
+| stored, unlisted | the create or publish commits with the file in its image table | listed | the request |
+| stored, unlisted | the put, the create or the publish is refused, `IdTaken` included, or 5 minutes pass before the commit starts | no object, after the request's delete | the request |
+| stored, unlisted | the request's delete fails | stored, unlisted; a warning with ids and the metric `FilesCleanupFailed` | the request |
+| stored, unlisted | the commit's outcome is unknown | stored, unlisted or listed; the request deletes nothing | nobody until the sweep |
+| stored, unlisted, at least 30 minutes old | the sweep finds no version naming it, or no share | no object | the sweep |
+| stored, unlisted, under 30 minutes old | the sweep | unchanged | nobody |
+| listed | any event | unchanged: no route, request or sweep deletes a listed file | nobody |
 
 ### Crash points
 
@@ -165,9 +184,14 @@ A lost answer is settled by reading the session or the key the write made.
 - A link commits after the response share exists. A crash between the two
   leaves a response that answers no flare, which its owner can link with
   `flare grant <id> --re <flare>`.
-- Files go to S3 before the share is created. A crash between the two
-  leaves files under an id with no share. No request can reach them,
-  because every read of a file starts from a share. Nothing removes them.
+- Files go to S3 before the share or the version is written. A crash
+  between the two, or during the request's delete of them, leaves files
+  that no version lists. No request can reach them, because every read of
+  a file starts from a version's image table. The sweep deletes them once
+  they are 30 minutes old.
+- A commit whose answer is lost leaves files that a version may list. The
+  request deletes nothing, and the sweep keeps every file that a version
+  lists.
 
 ### Invariants
 
@@ -177,7 +201,10 @@ A lost answer is settled by reading the session or the key the write made.
   the count changes in the transaction that changes the grants.
 - Every grant item has one grantee entry with the same role, and every
   owner entry matches its share's title, creation time and `latest`.
-- flare never replaces or deletes a stored object.
+- flare never replaces a stored object, and never deletes a file that a
+  version's image table lists. A request deletes only the files it put
+  itself, after a definite refusal; the sweep deletes only files stored at
+  least 30 minutes ago that no version of their share lists.
 - The counter equals the highest link position, and every position up to
   it belongs to exactly one link, because the counter moves in the
   transaction that writes the link.

@@ -10,8 +10,8 @@ use crate::harness::{Call, Reply, cookie_pair};
 use crate::hosted::{Admits, Hosted, HostedApp, SESSION};
 use flare_auth_oidc::{Admit, DomainRule, Reach, WorkspaceDomain};
 use flare_core::memory::{
-    MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemorySequence,
-    MemoryTeamStore,
+    MemoryCommentStore, MemoryCursorStore, MemoryFileStore, MemoryGrantStore, MemoryResponseStore,
+    MemorySequence, MemoryTeamStore,
 };
 use flare_core::{
     CreatorList, DocumentText, Email, FlareTeams, Flares, Principal, ShareContent, ShareId, Shares,
@@ -121,7 +121,8 @@ impl Api {
             let recipients = FaultyRecipients {
                 fail: switches.recipients.clone(),
             };
-            let sharing = Sharing::new(flares, tokens, recipients, admit);
+            let sharing =
+                Sharing::new(flares, tokens, recipients, admit).with_files(MemoryFileStore::new());
             let sharing = match get_flare {
                 Some(address) => sharing.with_get_flare(address),
                 None => sharing,

@@ -82,6 +82,8 @@ pub(crate) enum Event {
     TokenExchanged,
     /// The exchange answered 4xx, or another `/api/` request answered 401.
     TokenRefused,
+    /// An upload that was refused could not delete a file it had sent.
+    FileCleanupFailed,
 }
 
 impl Event {
@@ -95,6 +97,7 @@ impl Event {
             Self::SignInRefused { .. } => Metric::SignInsRefused,
             Self::TokenExchanged => Metric::TokensExchanged,
             Self::TokenRefused => Metric::TokensRefused,
+            Self::FileCleanupFailed => Metric::FilesCleanupFailed,
         }
     }
 
@@ -119,12 +122,13 @@ pub(crate) enum Metric {
     SignInsRefused,
     TokensExchanged,
     TokensRefused,
+    FilesCleanupFailed,
 }
 
 impl Metric {
     /// Every metric, in the order docs/metrics.md lists them.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 7] = [
+    pub(crate) const ALL: [Self; 8] = [
         Self::Requests,
         Self::SharesCreated,
         Self::PagesViewed,
@@ -132,6 +136,7 @@ impl Metric {
         Self::SignInsRefused,
         Self::TokensExchanged,
         Self::TokensRefused,
+        Self::FilesCleanupFailed,
     ];
 
     /// The metric's name in CloudWatch.
@@ -144,6 +149,7 @@ impl Metric {
             Self::SignInsRefused => "SignInsRefused",
             Self::TokensExchanged => "TokensExchanged",
             Self::TokensRefused => "TokensRefused",
+            Self::FilesCleanupFailed => "FilesCleanupFailed",
         }
     }
 

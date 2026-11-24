@@ -23,7 +23,7 @@ fn team_name(text: &str) -> Result<TeamName, Refusal> {
     TeamName::try_from(text).map_err(|_| ApiCode::TeamNotFound.into())
 }
 
-impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
+impl<S, G, R, C, U, T, X, M, K, F> Sharing<S, G, R, C, U, T, X, M, K, F>
 where
     S: ShareStore,
     G: GrantStore,

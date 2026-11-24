@@ -1,0 +1,61 @@
+//! `GET /cli/login`, which hands a signed-in browser's login code to the
+//! `flare` command.
+
+use super::super::Ctx;
+use crate::reply::Reply;
+use crate::schemas::Schemas;
+use crate::sharing::{Api, LoginRedirect, Refusal};
+use flare_auth_oidc::Clock as OidcClock;
+use flare_contract::ApiCode;
+use flare_core::{Credential, PageStore, RecordStore, Timestamp};
+
+/// The shortest and longest state that `flare login` sends.
+const STATE_CHARS: std::ops::RangeInclusive<usize> = 16..=128;
+
+/// `GET /cli/login?port=<n>&state=<s>`: a signed-in browser gets a 303 to
+/// the CLI's loopback listener with a login code; a browser with no
+/// session is sent to sign in and comes back here.
+pub(super) async fn cli_login<P, R, S, K>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    api: &dyn Api,
+    credential: Option<&Credential>,
+    now: Timestamp,
+) -> Result<Reply, Refusal>
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
+    let port = ctx
+        .query("port")
+        .and_then(|text| text.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .ok_or(ApiCode::BadQuery)?;
+    let state = ctx
+        .query("state")
+        .filter(|state| {
+            STATE_CHARS.contains(&state.len())
+                && state
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        })
+        .ok_or(ApiCode::BadQuery)?;
+    let signed_in = match credential {
+        Some(credential @ Credential::Session(_)) => {
+            ctx.shared.site.authenticate(credential).await.ok()
+        }
+        _ => None,
+    };
+    let Some(email) = signed_in.and_then(|admitted| admitted.principal.email().cloned()) else {
+        let back = format!("/cli/login?port={port}&state={state}");
+        let encoded: String = form_urlencoded::byte_serialize(back.as_bytes()).collect();
+        return Ok(Reply::see_other(format!(
+            "/auth/oidc/start?return_to={encoded}"
+        )));
+    };
+    let code = api.issue_code(&email, port, now).await?;
+    Ok(Reply::see_other(
+        LoginRedirect::new(port, state, code).location(),
+    ))
+}

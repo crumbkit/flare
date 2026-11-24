@@ -2,18 +2,21 @@
 
 use super::convert::{flare_error, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
+use super::upload::{Upload, Uploaded};
 use super::{
     Answer, Api, Boxed, Call, ReadRefusal, Reading, Refusal, Sharing, TokenCheck, check_share,
     check_version,
 };
+use crate::clock::Clock;
 use flare_contract::{
     ApiCode, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest, Shared, TokenIssued,
     VersionRequest, utc,
 };
 use flare_core::{
-    CommentStore, Creators, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode,
-    NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId,
-    ShareStore, ShareVersion, Teams, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    CommentStore, Creators, CursorStore, Email, FileStore, FlareError, Flared, GrantStore,
+    LoginCode, NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError,
+    ShareId, ShareStore, ShareVersion, StoredFile, Teams, Timestamp, TokenId, TokenLabel,
+    TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -61,7 +64,7 @@ pub(super) fn shared(flared: &Flared, role: WireRole) -> Shared {
     }
 }
 
-impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
+impl<S, G, R, C, U, T, X, M, K, F> Sharing<S, G, R, C, U, T, X, M, K, F>
 where
     S: ShareStore,
     G: GrantStore,
@@ -115,13 +118,27 @@ where
         // so a client that repeats a post whose answer was lost writes a
         // second version with the same content. The owner finds the number
         // with `flare shares`. A key would need a column in every store.
-        let shares = self.flares.shares();
-        let number = shares
+        let number = self
+            .flares
+            .shares()
             .publish(who, &id, ShareContent::Document(text), now)
             .await
             .map_err(share_error)?;
-        let opened = shares
-            .open(who, &id, Some(number))
+        self.published(who, &id, number).await
+    }
+
+    /// The answer to a publish that wrote version `number`: the share as
+    /// the owner sees it, with that number.
+    pub(super) async fn published(
+        &self,
+        who: &Principal,
+        id: &ShareId,
+        number: ShareVersion,
+    ) -> Answer {
+        let opened = self
+            .flares
+            .shares()
+            .open(who, id, Some(number))
             .await
             .map_err(share_error)?;
         let mut share = summary(&opened.share, standing(opened.standing));
@@ -245,7 +262,7 @@ where
     }
 }
 
-impl<S, G, R, C, U, T, X, M, K> Api for Sharing<S, G, R, C, U, T, X, M, K>
+impl<S, G, R, C, U, T, X, M, K, F> Api for Sharing<S, G, R, C, U, T, X, M, K, F>
 where
     S: ShareStore,
     G: GrantStore,
@@ -256,6 +273,7 @@ where
     X: Recipients,
     M: Teams,
     K: Creators,
+    F: FileStore,
 {
     fn admits(&self, who: &Principal) -> bool {
         who.email().is_some_and(|email| self.admit.admits(email))
@@ -340,5 +358,25 @@ where
         version: Option<&'a str>,
     ) -> Boxed<'a, Result<Reading, ReadRefusal>> {
         Box::pin(self.reading(who, id, version))
+    }
+
+    fn upload<'a>(
+        &'a self,
+        who: &'a Principal,
+        upload: Upload,
+        now: Timestamp,
+        clock: &'a dyn Clock,
+    ) -> Boxed<'a, Uploaded> {
+        Box::pin(self.uploaded(who, upload, now, clock))
+    }
+
+    fn file<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: &'a str,
+        file: &'a str,
+    ) -> Boxed<'a, Result<StoredFile, ReadRefusal>> {
+        Box::pin(self.image_file(who, id, version, file))
     }
 }

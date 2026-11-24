@@ -244,6 +244,7 @@ mod frame;
 mod handlers;
 mod handover;
 mod hosted;
+mod images;
 mod launch;
 mod limits;
 mod listen;
@@ -273,5 +274,7 @@ pub use listen::{BindError, Listeners, ServeError, Stopped};
 pub use metrics::{METRICS_TARGET, Metrics, Totals};
 pub use problem::{SERVER_BUSY, SERVER_DEADLINE, SERVER_FAULT};
 pub use schemas::Schemas;
-pub use sharing::{BodyRefused, GetFlare, NotGetFlare, Sharing, check_share, check_version};
+pub use sharing::{
+    BodyRefused, GetFlare, NoFiles, NotGetFlare, Sharing, check_share, check_version,
+};
 pub use site::{OriginError, PublicOrigin, Site};

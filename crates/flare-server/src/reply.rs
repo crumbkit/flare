@@ -4,14 +4,16 @@
 //! `connect-src 'self'`. A reading page that loads a script carries the
 //! script policy, which also adds `script-src 'self'`, so its comments
 //! section can call the comment routes. An embedded asset, whose name holds
-//! its content's hash, is cached for a year.
+//! its content's hash, is cached for a year. A share's image file carries
+//! [`FILE_POLICY`], which runs nothing and sandboxes the file when it is
+//! opened as a page, is shown inline, and is kept by no shared cache.
 
 use crate::app::bytes_alias::Body;
 use crate::site::SiteKind;
 use http::header::{
-    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HeaderName, HeaderValue, LOCATION,
-    REFERRER_POLICY, SET_COOKIE, STRICT_TRANSPORT_SECURITY, X_CONTENT_TYPE_OPTIONS,
-    X_FRAME_OPTIONS,
+    CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HeaderName,
+    HeaderValue, LOCATION, REFERRER_POLICY, SET_COOKIE, STRICT_TRANSPORT_SECURITY,
+    X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS,
 };
 use http::{Response, StatusCode};
 use hyper::body::Bytes;
@@ -29,6 +31,14 @@ pub(crate) const HOSTED_POLICY: &str = "default-src 'none'; style-src 'self' 'un
 /// `'unsafe-eval'`, worker or `blob:` source. Its `connect-src 'self'` lets
 /// the comments section read and write comments on the page's own origin.
 pub(crate) const SCRIPT_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; script-src 'self'";
+
+/// The policy of a share's image file: it loads nothing and runs nothing,
+/// and a browser that opens it as a page sandboxes it.
+pub(crate) const FILE_POLICY: &str = "default-src 'none'; sandbox";
+
+/// The cache rule of a share's image file: only the reader's browser keeps
+/// it, and only while the page shows it.
+const PRIVATE: &str = "private, no-store";
 
 /// How long a browser keeps an embedded asset: a year, without asking
 /// again, because a new build gives a changed file a new name.
@@ -63,6 +73,7 @@ pub(crate) struct Reply {
     cookies: Vec<String>,
     scripts: bool,
     immutable: bool,
+    file: bool,
 }
 
 impl Reply {
@@ -76,6 +87,7 @@ impl Reply {
             cookies: Vec::new(),
             scripts: false,
             immutable: false,
+            file: false,
         }
     }
 
@@ -95,6 +107,15 @@ impl Reply {
     /// A flare document.
     pub(crate) fn html(status: StatusCode, document: String) -> Self {
         Self::with_body(status, HTML, document)
+    }
+
+    /// A share's image file of `content_type`, shown inline under
+    /// [`FILE_POLICY`] and kept by no shared cache.
+    pub(crate) fn file(status: StatusCode, content_type: &'static str, body: Bytes) -> Self {
+        Self {
+            file: true,
+            ..Self::with_body(status, content_type, body)
+        }
     }
 
     /// A 303 to `location`, a path on this host or an absolute URL that the
@@ -156,14 +177,18 @@ impl Reply {
         let mut response = Response::new(Body::new(self.body));
         *response.status_mut() = self.status;
         let headers = response.headers_mut();
-        let policy = if self.scripts {
+        let policy = if self.file {
+            FILE_POLICY
+        } else if self.scripts {
             SCRIPT_POLICY
         } else if site == SiteKind::Hosted {
             HOSTED_POLICY
         } else {
             POLICY
         };
-        let cache = if self.immutable {
+        let cache = if self.file {
+            PRIVATE
+        } else if self.immutable {
             IMMUTABLE
         } else {
             "no-store"
@@ -172,6 +197,9 @@ impl Reply {
         headers.insert(CACHE_CONTROL, HeaderValue::from_static(cache));
         for (name, value) in FIXED {
             headers.insert(name, HeaderValue::from_static(value));
+        }
+        if self.file {
+            headers.insert(CONTENT_DISPOSITION, HeaderValue::from_static("inline"));
         }
         if site == SiteKind::Hosted {
             headers.insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
