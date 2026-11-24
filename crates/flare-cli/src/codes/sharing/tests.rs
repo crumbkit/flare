@@ -1,4 +1,4 @@
-use super::Refused;
+use super::{NextRun, Refused, SharingFailed};
 use crate::cli::Cli;
 use clap::CommandFactory as _;
 use crumbkit::{Failure as _, Recovery};
@@ -63,4 +63,17 @@ fn a_hint_that_names_flare_without_a_command_is_not_a_command() {
         &commands
     ));
     assert!(!names_a_command("check the flare id", &commands));
+}
+
+#[test]
+fn the_repair_after_an_unreadable_write_names_a_flare_command() {
+    let failed = SharingFailed::BadAnswer {
+        server: SERVER.to_owned(),
+        problem: "the answer was cut short".to_owned(),
+        next: NextRun::CheckShares,
+    };
+    let Recovery::After { repair, .. } = failed.recovery() else {
+        panic!("the recovery is {:?}", failed.recovery());
+    };
+    assert!(names_a_command(&repair, &commands()), "{repair}");
 }

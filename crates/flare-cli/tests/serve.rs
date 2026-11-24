@@ -418,8 +418,17 @@ fn a_second_serve_for_the_same_board_is_refused_while_the_first_answers() {
     let board = ScratchBoard::new();
     let running = Running::start(&home, &board, &[]);
     let (root, program) = paths(&board);
-    home.run(&serve_args(&board, &root, &program))
-        .assert_failed("flare::server::already_running");
+    let mut args = serve_args(&board, &root, &program);
+    args.push("--json");
+    let ran = home.run(&args);
+    ran.assert_failed("flare::server::already_running");
+    let printed: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        serde_json::json!({"kind": "run", "call": format!("flare open --board {root}")}),
+        "{}",
+        ran.all()
+    );
     running.stop("-TERM");
 }
 
@@ -464,8 +473,29 @@ fn serve_refuses_a_port_that_another_program_holds() {
     let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = held.local_addr().unwrap().port().to_string();
     let (root, program) = paths(&board);
+    let config = home.write_config("{}");
+    let config = config.to_str().unwrap();
     let mut args = serve_args(&board, &root, &program);
-    args.extend(["--port", &port]);
-    home.run(&args).assert_failed("flare::server::port_in_use");
+    args.extend([
+        "--port",
+        &port,
+        "--config",
+        config,
+        "--idle-exit",
+        "2h",
+        "--json",
+    ]);
+    let ran = home.run(&args);
+    ran.assert_failed("flare::server::port_in_use");
+    let printed: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    let call = format!(
+        "flare serve --board {root} --board-program {program} --config {config} --idle-exit 2h"
+    );
+    assert_eq!(
+        printed["recovery"],
+        serde_json::json!({"kind": "run", "call": call}),
+        "{}",
+        ran.all()
+    );
     drop(held);
 }

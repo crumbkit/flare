@@ -100,9 +100,16 @@ fn a_closed_standard_output_stops_the_command_without_a_panic() {
 fn open_fails_with_server_not_running_when_there_is_no_server_file() {
     let home = Home::new();
     let board = board_dir(&home);
-    let ran = home.run(&["open", "--board", board.to_str().unwrap()]);
+    let board = board.to_str().unwrap();
+    let ran = home.run(&["open", "--board", board, "--json"]);
     ran.assert_failed("flare::server::not_running");
-    assert!(ran.all().contains("flare serve"), "{}", ran.all());
+    let printed: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        serde_json::json!({"kind": "run", "call": format!("flare serve --board {board}")}),
+        "{}",
+        ran.all()
+    );
 }
 
 #[test]

@@ -7,12 +7,13 @@ mod dry_run;
 
 use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, SharesArgs, ShowArgs};
 use crate::client::Api;
-use crate::codes::{Failed, Refused, SharingFailed};
+use crate::codes::sharing::activity_call;
+use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use crate::documents::{ActivityRow, Next, ShareOut, ShareRow, SharedOut, Shown};
 use crate::env::Snapshot;
 use crate::keychain;
 use crate::login::saved;
-use crumbkit::{Call, Listing, Step};
+use crumbkit::{Listing, Step};
 use flare_contract::{
     ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, OpenedShare, Role,
     ShareList, ShareRequest, ShareSummary, Shared, VersionRequest,
@@ -47,12 +48,14 @@ fn session(env: &Snapshot) -> Result<Api, Failed> {
     Api::new(&saved.server, Some(token))
 }
 
-/// The answer, or a bad-answer failure when the server sent no body.
+/// The answer, or a bad-answer failure when the server sent a success
+/// status with no body.
 fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
     answer.ok_or_else(|| {
         SharingFailed::BadAnswer {
             server: api.origin().to_owned(),
             problem: "the answer has no body".to_owned(),
+            next: NextRun::MaybeDone,
         }
         .into()
     })
@@ -157,10 +160,11 @@ pub(crate) async fn share(
     match outgoing {
         Outgoing::Update(id, request) => update(&api, &id, request).await,
         Outgoing::Create(request) => {
-            let answer = api
+            let shared: Shared = api
                 .send(Method::POST, "/api/shares", Some(&request))
-                .await?;
-            let shared: Shared = body(&api, answer)?;
+                .await
+                .and_then(|answer| body(&api, answer))
+                .map_err(Failed::after_a_write)?;
             Ok(ShareOut {
                 id: Some(shared.share.id),
                 title: Some(shared.share.title),
@@ -178,8 +182,11 @@ pub(crate) async fn share(
 async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<ShareOut, Failed> {
     let id = share_id(api, id)?;
     let target = format!("/api/shares/{}/versions", id.as_str());
-    let answer: Option<ShareSummary> = api.send(Method::POST, &target, Some(&request)).await?;
-    let share = body(api, answer)?;
+    let share: ShareSummary = api
+        .send(Method::POST, &target, Some(&request))
+        .await
+        .and_then(|answer| body(api, answer))
+        .map_err(Failed::after_a_write)?;
     Ok(ShareOut {
         id: Some(share.id),
         title: Some(share.title),
@@ -301,13 +308,7 @@ fn next_step(flares: &[ShareId], next: &Next) -> Step {
     } else {
         "Read the responses that arrive after these."
     };
-    let call = flares
-        .iter()
-        .fold(Call::new(&["activity"]), |call, flare| {
-            call.value("flares", flare.as_str())
-        })
-        .value("since", next.cursor.clone());
-    Step::new(sentence).call(call)
+    Step::new(sentence).call(activity_call(flares).value("since", next.cursor.clone()))
 }
 
 /// Runs `flare activity`. With `--all` it follows the cursor until the
@@ -333,7 +334,9 @@ pub(crate) async fn activity(
     let mut since = match &args.since {
         Some(text) => Some(
             Cursor::try_from(text.as_str())
-                .map_err(|_| Refused::new(ApiCode::BadCursor, None, api.origin()))?
+                .map_err(|_| {
+                    Refused::new(ApiCode::BadCursor, None, api.origin()).for_flares(&flares)
+                })?
                 .to_string(),
         ),
         None => None,
@@ -345,7 +348,10 @@ pub(crate) async fn activity(
             .as_ref()
             .map_or_else(String::new, |cursor| format!("since={cursor}&"));
         let target = format!("/api/activity?{query}{after}limit={limit}");
-        let answer: Option<ActivityPage> = api.send(Method::GET, &target, None::<&()>).await?;
+        let answer: Option<ActivityPage> = api
+            .send(Method::GET, &target, None::<&()>)
+            .await
+            .map_err(|failed| failed.for_flares(&flares))?;
         let page = body(&api, answer)?;
         rows.extend(page.items.into_iter().filter_map(activity_row));
         let next = Next {

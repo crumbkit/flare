@@ -253,3 +253,51 @@ fn each_document_id_the_skill_names_is_a_document_the_binary_lists() {
         }
     }
 }
+
+/// The skill with each run of whitespace as one space, so a test can find a
+/// sentence that wraps across lines.
+fn skill_text() -> String {
+    SKILL.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn the_skill_runs_the_original_command_again_after_a_run_recovery_only_when_the_call_prepared_for_it()
+ {
+    let text = skill_text();
+    assert!(
+        !text.contains("run the command in `call`, then run the original command again"),
+        "{SKILL}"
+    );
+    assert!(
+        text.contains(
+            "When the call does the original command's work in its place, stop after it."
+        ),
+        "{SKILL}"
+    );
+    assert!(
+        text.contains("When the call prepares something the original command needs, run the original command again after it."),
+        "{SKILL}"
+    );
+}
+
+#[test]
+fn the_skill_says_the_step_after_a_repair_can_be_for_a_person() {
+    assert!(
+        skill_text().contains("which is a `run`, `terminal` or `retry` step as above"),
+        "{SKILL}"
+    );
+}
+
+#[test]
+fn the_skill_names_the_port_in_use_call_as_one_that_replaces_the_original_and_starts_flare_serve_in_the_background()
+ {
+    let text = skill_text();
+    assert!(
+        text.contains("`flare serve` without `--port` after `flare::server::port_in_use`"),
+        "{SKILL}"
+    );
+    assert!(
+        text.contains("Start `flare serve` in the background, because it runs until it is stopped, then run `flare open`."),
+        "{SKILL}"
+    );
+}
