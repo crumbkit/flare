@@ -33,23 +33,48 @@ export interface Reply {
   readonly at: string;
 }
 
-export interface Comment {
+interface CommentPlace {
   readonly kind: "comment";
   readonly id: CommentId;
+  readonly replies: readonly Reply[];
+}
+
+/** A top-level comment its author has not deleted. */
+export interface LiveComment extends CommentPlace {
+  readonly deleted: false;
   readonly author: Author;
   readonly body: string;
   /** The instant the server stored the comment, as an RFC 3339 string. */
   readonly at: string;
-  readonly replies: readonly Reply[];
 }
+
+/**
+ * A top-level comment its author deleted. A thread holds one only while
+ * replies still hang from it, and it keeps no author, time or text to show.
+ */
+export interface DeletedComment extends CommentPlace {
+  readonly deleted: true;
+}
+
+export type Comment = LiveComment | DeletedComment;
 
 export type Thread = readonly Comment[];
 
 /** What a composer posts: a comment on the whole page, or a reply to one. */
 export type Posted = Comment | Reply;
 
-/** What a composer writes, and for a reply, whom it answers. */
-export type Target = { readonly kind: "comment" } | { readonly kind: "reply"; readonly to: Author };
+/**
+ * What a composer writes, and for a reply, whom it answers. A reply to a
+ * deleted comment answers no one, so its field names no author.
+ */
+export type Target =
+  | { readonly kind: "comment" }
+  | { readonly kind: "reply"; readonly to: Author | undefined };
+
+/** The target of the reply field under `parent`. */
+export function replyTarget(parent: Comment): Target {
+  return { kind: "reply", to: parent.deleted ? undefined : parent.author };
+}
 
 /** The thread as a page shows it while it loads. */
 export type ThreadLoad =

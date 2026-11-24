@@ -3,7 +3,7 @@
   "ignoreExportsUsedInFile": true,
   "workspaces": {
     "flare": {
-      "project": ["src/**/*.ts", "tests/**/*.ts", "*.ts"]
+      "project": ["src/**/*.{ts,tsx}", "tests/**/*.ts", "*.ts"]
     },
     "headless": {
       "entry": ["src/**/*.test-d.ts"],

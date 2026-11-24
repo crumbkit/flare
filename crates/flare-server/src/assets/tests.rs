@@ -38,11 +38,14 @@ fn every_embedded_file_name_holds_a_content_hash() {
 }
 
 #[test]
-fn the_entry_is_one_of_the_embedded_files() {
-    match entry() {
-        Some(entry) => assert!(files().iter().any(|(name, _)| *name == entry)),
-        None => assert!(files().is_empty()),
+fn each_entry_is_one_of_the_embedded_files() {
+    for entry in [entry(), comments_entry()] {
+        match entry {
+            Some(entry) => assert!(files().iter().any(|(name, _)| *name == entry)),
+            None => assert!(files().is_empty()),
+        }
     }
+    assert_eq!(entry().is_some(), comments_entry().is_some());
 }
 
 #[test]

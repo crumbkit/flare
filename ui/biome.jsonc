@@ -100,7 +100,8 @@
       "assist": { "enabled": false }
     },
     {
-      "includes": ["src/api/client.ts"],
+      // flare/src/api/client.ts is the network owner of the comments section.
+      "includes": ["**/src/api/client.ts"],
       "linter": { "rules": { "style": { "noRestrictedGlobals": "off" } } }
     }
   ]

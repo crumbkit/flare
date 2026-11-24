@@ -15,6 +15,12 @@ describe("thread types", () => {
     expectTypeOf(nested.parent).toEqualTypeOf<CommentId>();
   });
 
+  it("a deleted comment holds no author, time or text to show", () => {
+    expectTypeOf<Extract<Comment, { deleted: true }>>().not.toHaveProperty("author");
+    expectTypeOf<Extract<Comment, { deleted: true }>>().not.toHaveProperty("at");
+    expectTypeOf<Extract<Comment, { deleted: true }>>().not.toHaveProperty("body");
+  });
+
   it("a reply cannot be placed where a comment belongs", () => {
     expectTypeOf<Reply>().not.toExtend<Comment>();
   });

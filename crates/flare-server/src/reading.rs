@@ -1,9 +1,16 @@
 //! The reading page of a Markdown share at `/s/<id>`, in the signed Flare
 //! mockup's layout (artboard 01): a header with the flare name and the
 //! reader's initials, then the article with a line naming who shared it,
-//! with whom, the version and the date, the title, and the rendered
-//! Markdown. The page has no Inbox, Shared by me or Search link and no
-//! comment or response count; the changes that build those add them.
+//! with whom, the version and the date, the comment count linked to the
+//! comments, the title, and the rendered Markdown. The page has no Inbox,
+//! Shared by me or Search link and no response count; the changes that
+//! build those add them.
+//!
+//! Below the article, the comments section of artboard 03 holds only its
+//! heading and "Loading comments". The comments entry script, which every
+//! page loads, reads the thread and draws the section in its place. When
+//! that script never runs, a line saying the comments did not load shows
+//! after ten seconds (the `.late` rule in docs.rs).
 //!
 //! Below the article, the foot says the page was shared with Flare. For a
 //! reader who has never shared a flare on a site that sets a get flare
@@ -11,7 +18,7 @@
 //! mockup (option a), which opens that address in a new tab.
 
 use crate::docs::escape;
-use crate::sharing::Reading;
+use crate::sharing::{Count, Reading};
 use flare_render::Article;
 
 /// The months, as the date on the page names them.
@@ -58,8 +65,25 @@ pub(crate) fn date(seconds: u64) -> (String, String) {
     (format!("{day} {month} {year}"), stamp)
 }
 
+/// The comment count as the line under the header shows it, in the words
+/// of the comments section's heading, such as "2 comments, 1 reply".
+fn count(count: Count) -> String {
+    let plural = |number: u32, one: &str, many: &str| {
+        format!("{number} {}", if number == 1 { one } else { many })
+    };
+    if count.comments == 0 {
+        return String::from("No comments");
+    }
+    let comments = plural(count.comments, "comment", "comments");
+    if count.replies == 0 {
+        comments
+    } else {
+        format!("{comments}, {}", plural(count.replies, "reply", "replies"))
+    }
+}
+
 /// The line under the header: who shared the share, with whom, the version
-/// and the date.
+/// and the date, then the comment count linked to the comments section.
 fn meta_line(reading: &Reading) -> String {
     let owner = if reading.own {
         String::from("you")
@@ -76,8 +100,14 @@ fn meta_line(reading: &Reading) -> String {
             .join(", "),
     };
     let (shown, stamp) = date(reading.published);
+    let chips = reading.comments.map_or_else(String::new, |comments| {
+        format!(
+            "<div class=\"row\"><a class=\"chip\" href=\"#comments\">{}</a></div>",
+            count(comments)
+        )
+    });
     format!(
-        "<div class=\"share-meta\"><div class=\"line\"><span class=\"who\" aria-hidden=\"true\">{initials}</span><span>Shared by {owner} with {with}</span><span>\u{b7} version {version} \u{b7} <time datetime=\"{stamp}\">{shown}</time></span></div></div>\n",
+        "<div class=\"share-meta\"><div class=\"line\"><span class=\"who\" aria-hidden=\"true\">{initials}</span><span>Shared by {owner} with {with}</span><span>\u{b7} version {version} \u{b7} <time datetime=\"{stamp}\">{shown}</time></span></div>{chips}</div>\n",
         initials = escape(&initials(&reading.owner)),
         version = reading.version,
         stamp = escape(&stamp),
@@ -102,28 +132,65 @@ fn foot(reading: &Reading) -> String {
     )
 }
 
-/// The whole reading page for `reader`. `script` is the entry script's file
-/// name; the page loads it only when the article has code or a diagram.
+/// The comments section below the article. The comments entry script
+/// reads the share, the version and the owner from its data attributes.
+fn comments(reading: &Reading) -> String {
+    format!(
+        "<section id=\"comments\" class=\"comments\" aria-labelledby=\"comments-heading\" data-flare=\"{id}\" data-version=\"{version}\" data-owner=\"{owner}\"><div class=\"thread\"><div class=\"section-head\"><h2 id=\"comments-heading\">Comments</h2><span class=\"status\">Loading comments</span></div><p class=\"late\">The comments did not load. Reload the page to try again.</p></div></section>\n",
+        id = escape(&reading.id),
+        version = reading.version,
+        owner = escape(&reading.owner),
+    )
+}
+
+/// The file names of the embedded entry scripts, each absent when the
+/// build embedded no bundle.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Entries<'a> {
+    /// The script that colours code and draws diagrams.
+    pub(crate) reading: Option<&'a str>,
+    /// The script that draws the comments section.
+    pub(crate) comments: Option<&'a str>,
+}
+
+/// The entry scripts the page loads: the comments entry always, and the
+/// reading entry only when the article has code or a diagram, so a page
+/// without either never fetches Shiki or Mermaid.
+fn scripts<'a>(article: &Article, entries: Entries<'a>) -> Vec<&'a str> {
+    let reading = entries.reading.filter(|_| article.needs_script());
+    reading.into_iter().chain(entries.comments).collect()
+}
+
+/// Whether the page loads any script, so its reply needs the script policy.
+pub(crate) fn loads_script(article: &Article, entries: Entries<'_>) -> bool {
+    !scripts(article, entries).is_empty()
+}
+
+/// The whole reading page for `reader`, loading the scripts of `entries`
+/// that it needs.
 pub(crate) fn document(
     reading: &Reading,
     reader: &str,
     article: &Article,
-    script: Option<&str>,
+    entries: Entries<'_>,
 ) -> String {
-    let script = match script {
-        Some(file) if article.needs_script() => format!(
-            "<script type=\"module\" src=\"/flare/assets/{}\"></script>\n",
-            escape(file)
-        ),
-        _ => String::new(),
-    };
+    let script: String = scripts(article, entries)
+        .into_iter()
+        .map(|file| {
+            format!(
+                "<script type=\"module\" src=\"/flare/assets/{}\"></script>\n",
+                escape(file)
+            )
+        })
+        .collect();
     format!(
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{title} - flare</title>\n<link rel=\"stylesheet\" href=\"/flare/style.css\">\n{script}</head>\n<body class=\"flare reading\">\n<header class=\"bar\"><span class=\"brand\">flare</span><span class=\"who\" title=\"{reader}\"><span class=\"visually-hidden\">Signed in as {reader}: </span>{reader_initials}</span></header>\n<main class=\"screen\">\n<article class=\"doc\">\n{meta}<h1>{title}</h1>\n{body}</article>\n</main>\n{foot}</body>\n</html>\n",
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{title} - flare</title>\n<link rel=\"stylesheet\" href=\"/flare/style.css\">\n{script}</head>\n<body class=\"flare reading\">\n<header class=\"bar\"><span class=\"brand\">flare</span><span class=\"who\" title=\"{reader}\"><span class=\"visually-hidden\">Signed in as {reader}: </span>{reader_initials}</span></header>\n<main class=\"screen\">\n<article class=\"doc\">\n{meta}<h1>{title}</h1>\n{body}</article>\n{comments}</main>\n{foot}</body>\n</html>\n",
         title = escape(&reading.title),
         reader = escape(reader),
         reader_initials = escape(&initials(reader)),
         meta = meta_line(reading),
         body = article.html().as_str(),
+        comments = comments(reading),
         foot = foot(reading),
     )
 }

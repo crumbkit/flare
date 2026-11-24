@@ -41,12 +41,66 @@ When that read fails, the page shows the note without the link and the
 server logs a warning. On a screen 640 px wide or narrower, the note and
 the link stack and the link is 44 px tall.
 
-## What the script does
+## The comment count and the comments section
 
-The page loads its script only when it has code or a diagram, and only then
-does its Content-Security-Policy add `script-src 'self'`. The script comes
-from `ui/flare`, which Vite builds; flare-server embeds the built files and
-serves them at `/flare/assets/<file>` with a cache of one year.
+The line under the header ends with the comment count, as a link to the
+comments section. It counts as the section's heading does, such as "2
+comments, 1 reply", "1 comment" or "No comments": every reply that is not
+deleted, and every top-level comment that is not deleted or that still has
+such a reply. When the comment store does not answer, the page leaves the
+count out.
+
+Below the article, the comments section follows artboards 01 to 07 of the
+comment parts mockup. It lists every comment on the share with its replies,
+oldest first, each author as their identifier with its initials, and each
+time in the reader's own time zone, such as "21 Nov, 16:02", or "just now"
+for a post from the last minute. Under each top-level comment is a one-line
+reply field, and under the thread is the field for a comment on the whole
+page. A reply has no reply field. In the page field Enter adds a line and
+Ctrl or Command with Enter sends; in a reply field Enter sends. Leaving the
+page with unsent text asks first.
+
+- While the comments load, the section says "Loading comments".
+- When the comment routes give no answer or a server error, the section says
+  so and offers Retry. When they refuse the reader (403 or 404), it says the
+  reader no longer has access and names the owner, and when the session has
+  ended (401) it asks the reader to reload the page to sign in again. Neither
+  offers Retry. Once the thread has loaded, a later refetch that fails, such
+  as the one after each send, keeps the thread and every draft as they are.
+- A send with no answer keeps the text and offers Retry, which sends the
+  draft again with the same key, so the server stores it once. Every other
+  failure keeps the text, says why and offers Copy text with no Retry: the
+  reader lost access (403 or 404), the flare already holds 2,000 comments
+  and replies (409), the session ended (401), or the text holds a control
+  character the server does not store (400). The last one names the first
+  such character by its code point and its position in characters, such as
+  "the control character U+0007 at character 5", and editing the text lets
+  the reader send it again.
+- After a send, the post joins its thread, the field empties and keeps
+  focus, and a screen reader hears "Comment sent" or "Reply sent".
+- An edited comment shows its current text with no edited mark, a deleted
+  reply is left out, and a deleted comment stays only while it still has
+  replies. Its card keeps its place above them and shows "Its author deleted
+  this comment." in muted italic type, with no author or time, and its reply
+  field is labelled "Reply" with the placeholder "Write a reply.". Editing and
+  deleting from the page are not built yet.
+- New comments from other readers show only after a reload.
+
+The server writes only the section's heading and "Loading comments". When
+the comments script never runs, a line saying the comments did not load
+shows after ten seconds.
+
+## What the scripts do
+
+Every page loads the comments script, and a page with code or a diagram
+also loads the reading script, so a page without either never fetches Shiki
+or Mermaid. A page that loads a script has a Content-Security-Policy that
+adds `script-src 'self'` to the hosted policy, whose `connect-src 'self'`
+lets the comments section call `/api/comments` with the session cookie.
+The scripts come from `ui/flare`, which Vite builds; flare-server embeds the
+built files and serves them at `/flare/assets/<file>` with a cache of one
+year. The comments script parses every answer with zod in its jitless mode,
+because the policy has no `'unsafe-eval'`.
 
 - Shiki colours code with GitHub Light and GitHub Dark. Five theme colours
   that fall below a 4.5:1 contrast on the code background are replaced with
@@ -96,7 +150,8 @@ from its own origin, so a font host is never asked.
 ## Building without Node
 
 Cargo builds flare without Node. When `ui/flare/dist` holds no bundle, the
-build script warns, and pages show plain code and diagram source. To build
+build script warns, pages show plain code and diagram source, and the
+comments section never loads. To build
 the bundle, run `pnpm install` and `pnpm run build` in `ui/`. With
 `FLARE_REQUIRE_UI=1`, a missing bundle fails the build. CI's reading job
 sets it. The repository has no release workflow yet, so a build that will
@@ -115,3 +170,14 @@ artboard 01's sample share as a reader sees it into the directory that
 `ui/flare/tests/acceptance` in light, in dark and at 390 px wide. The
 journey fails on any policy violation, console error or axe violation, and
 saves a screenshot of each run.
+
+The comments journey, `ui/flare/tests/acceptance/comments.spec.ts`, needs a
+running server. The flare-server test
+`a_reader_comments_and_replies_in_a_browser_and_sees_both_after_a_reload`
+starts the hosted server with memory stores, shares artboard 01's sample
+with a reader who signed in through the test provider, and, when
+`FLARE_COMMENTS_JOURNEY` names `ui/flare`, runs the journey against it with
+the reader's session cookie. In light, in dark and at 390 px wide, the
+reader posts a comment and a reply, reloads and sees both, and the journey
+checks the Tab order, axe and the policy. CI's `reading` job runs it after
+installing Chromium.

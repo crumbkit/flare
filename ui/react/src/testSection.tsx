@@ -9,6 +9,7 @@ import {
   isCommentId,
   isReplyId,
   type Reply,
+  replyTarget,
   type ThreadLoad,
 } from "@flare/headless/comments/thread";
 import { useComposer } from "./useComposer.ts";
@@ -47,6 +48,7 @@ export function mockupThread(): readonly Comment[] {
       author: tomas,
       body: "Can the table also show which vessels carry vehicles?",
       at: "2026-11-21T16:02:00Z",
+      deleted: false,
       replies: [postedReply(c1, { name: "Ana Okafor" }, "Yes. All three do.")],
     },
     {
@@ -55,6 +57,7 @@ export function mockupThread(): readonly Comment[] {
       author: jonas,
       body: "Do we pay for a night's stay?",
       at: "2026-11-22T11:27:00Z",
+      deleted: false,
       replies: [],
     },
   ];
@@ -71,7 +74,7 @@ interface ReplyFieldProps {
 
 export function ReplyField({ parent, send, onSent }: ReplyFieldProps) {
   const composer = useComposer({
-    target: { kind: "reply", to: parent.author },
+    target: replyTarget(parent),
     send,
     maxLength: 2000,
     owner: "Ana Okafor",
@@ -164,8 +167,8 @@ export function Section({ load, onRetry, sendReply, sendComment }: SectionProps)
         <>
           {view.thread.map((comment) => (
             <article key={comment.id}>
-              <b>{comment.author.name}</b>
-              <p>{comment.body}</p>
+              {!comment.deleted && <b>{comment.author.name}</b>}
+              {!comment.deleted && <p>{comment.body}</p>}
               {comment.replies.map((reply) => (
                 <div key={reply.id}>
                   <b>{reply.author.name}</b>

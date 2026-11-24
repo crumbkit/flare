@@ -1,12 +1,16 @@
-//! The reading page's markup, against artboard 01 of the signed mockup
-//! with the agreed differences: no Inbox, Shared by me or Search link and
-//! no comment or response count, and the foot of the get flare badge
-//! mockup.
+//! The reading page's markup, against artboards 01 and 03 of the signed
+//! mockup with the agreed differences: no Inbox, Shared by me or Search
+//! link and no response count, and the foot of the get flare badge mockup.
 
 use super::*;
 
 fn reading() -> Reading {
     Reading {
+        id: String::from("0123456789abcdef0123456789abcdef"),
+        comments: Some(Count {
+            comments: 3,
+            replies: 0,
+        }),
         title: String::from("Weather holds for the island ferry"),
         owner: String::from("ana.okafor@example.com"),
         own: false,
@@ -18,9 +22,24 @@ fn reading() -> Reading {
     }
 }
 
+/// The entry files of a build that embedded the bundle.
+const BUILT: Entries<'static> = Entries {
+    reading: Some("reading-AbCd1234.js"),
+    comments: Some("comments-EfGh5678.js"),
+};
+
 fn page(reading: &Reading, markdown: &str, script: Option<&str>) -> String {
     let article = flare_render::article(markdown).unwrap();
-    document(reading, "priya.nair@example.com", &article, script)
+    let entries = Entries {
+        reading: script,
+        comments: None,
+    };
+    document(reading, "priya.nair@example.com", &article, entries)
+}
+
+fn built(reading: &Reading, markdown: &str) -> String {
+    let article = flare_render::article(markdown).unwrap();
+    document(reading, "priya.nair@example.com", &article, BUILT)
 }
 
 #[test]
@@ -53,7 +72,6 @@ fn the_line_under_the_header_names_who_shared_it_with_whom_the_version_and_the_d
     assert!(html.contains("version 3"), "{html}");
     assert!(html.contains(">21 Nov 2026</time>"), "{html}");
     assert!(html.contains(">AO</span>"), "{html}");
-    assert!(!html.contains("comment"), "{html}");
     assert!(!html.contains("response"), "{html}");
     let line = html.find("class=\"share-meta\"").unwrap();
     let title = html
@@ -89,20 +107,115 @@ fn the_title_owner_and_grantees_are_escaped() {
 }
 
 #[test]
-fn a_page_with_code_or_a_diagram_loads_the_entry_script_and_a_page_with_neither_does_not() {
-    let entry = Some("reading-AbCd1234.js");
-    let tag = "<script type=\"module\" src=\"/flare/assets/reading-AbCd1234.js\"></script>";
-    assert!(page(&reading(), "```rust\nfn x() {}\n```\n", entry).contains(tag));
-    assert!(page(&reading(), "```mermaid\npie\n```\n", entry).contains(tag));
+fn every_page_loads_the_comments_entry_and_only_a_page_with_code_or_a_diagram_loads_the_reading_entry()
+ {
+    let reading_tag = "<script type=\"module\" src=\"/flare/assets/reading-AbCd1234.js\"></script>";
+    let comments_tag =
+        "<script type=\"module\" src=\"/flare/assets/comments-EfGh5678.js\"></script>";
+    for markdown in ["```rust\nfn x() {}\n```\n", "```mermaid\npie\n```\n"] {
+        let html = built(&reading(), markdown);
+        assert!(html.contains(reading_tag), "{html}");
+        assert!(html.contains(comments_tag), "{html}");
+    }
+    let plain = built(&reading(), "Text and a table.\n\n| a |\n|---|\n| 1 |\n");
+    assert!(plain.contains(comments_tag), "{plain}");
+    assert!(!plain.contains("reading-AbCd1234.js"), "{plain}");
+    assert_eq!(plain.matches("<script").count(), 1, "{plain}");
+    let unbuilt = page(&reading(), "```rust\nfn x() {}\n```\n", None);
+    assert!(!unbuilt.contains("<script"), "{unbuilt}");
+}
+
+#[test]
+fn a_page_lets_scripts_run_only_when_it_loads_one() {
+    let code = flare_render::article("```rust\nfn x() {}\n```\n").unwrap();
+    let plain = flare_render::article("Text.\n").unwrap();
+    assert!(loads_script(&plain, BUILT));
+    assert!(loads_script(&code, BUILT));
+    let unbuilt = Entries {
+        reading: None,
+        comments: None,
+    };
+    assert!(!loads_script(&code, unbuilt));
+    let reading_only = Entries {
+        reading: Some("reading-AbCd1234.js"),
+        comments: None,
+    };
+    assert!(!loads_script(&plain, reading_only));
+    assert!(loads_script(&code, reading_only));
+}
+
+/// The comments section, from its opening tag to its closing one.
+fn section(html: &str) -> &str {
+    html.split_once("<section id=\"comments\"")
+        .and_then(|(_, rest)| rest.split_once("</section>"))
+        .map(|(section, _)| section)
+        .unwrap()
+}
+
+#[test]
+fn the_comments_section_follows_the_article_and_names_the_share_its_version_and_its_owner() {
+    let html = built(&reading(), "Text.\n");
+    let section = section(&html);
     assert!(
-        !page(
-            &reading(),
-            "Text and a table.\n\n| a |\n|---|\n| 1 |\n",
-            entry
-        )
-        .contains("<script")
+        section.starts_with(" class=\"comments\" aria-labelledby=\"comments-heading\" data-flare=\"0123456789abcdef0123456789abcdef\" data-version=\"3\" data-owner=\"ana.okafor@example.com\">"),
+        "{section}"
     );
-    assert!(!page(&reading(), "```rust\nfn x() {}\n```\n", None).contains("<script"));
+    assert!(
+        section.contains("<h2 id=\"comments-heading\">Comments</h2>"),
+        "{section}"
+    );
+    assert!(section.contains(">Loading comments</span>"), "{section}");
+    assert!(
+        section.contains(
+            "<p class=\"late\">The comments did not load. Reload the page to try again.</p>"
+        ),
+        "{section}"
+    );
+    let article = html.find("</article>").unwrap();
+    let comments = html.find("<section id=\"comments\"").unwrap();
+    let foot = html.find("<footer class=\"share-foot\">").unwrap();
+    assert!(article < comments && comments < foot, "{html}");
+}
+
+#[test]
+fn the_line_under_the_title_counts_comments_and_replies_as_the_section_heading_does() {
+    let mut counted = reading();
+    let chip = |html: &str| {
+        html.split_once("<a class=\"chip\" href=\"#comments\">")
+            .and_then(|(_, rest)| rest.split_once("</a>"))
+            .map(|(text, _)| text.to_owned())
+    };
+    for (comments, replies, text) in [
+        (3, 0, "3 comments"),
+        (2, 2, "2 comments, 2 replies"),
+        (1, 1, "1 comment, 1 reply"),
+        (1, 0, "1 comment"),
+        (0, 0, "No comments"),
+    ] {
+        counted.comments = Some(Count { comments, replies });
+        assert_eq!(
+            chip(&built(&counted, "Text.\n")).as_deref(),
+            Some(text),
+            "{comments} and {replies}"
+        );
+    }
+    counted.comments = None;
+    assert_eq!(chip(&built(&counted, "Text.\n")), None);
+    let html = built(&reading(), "Text.\n");
+    let meta = html.find("class=\"share-meta\"").unwrap();
+    let count = html.find("class=\"chip\"").unwrap();
+    let title = html.find("<h1>").unwrap();
+    assert!(meta < count && count < title, "{html}");
+}
+
+#[test]
+fn the_section_escapes_the_share_and_the_owner() {
+    let mut hostile = reading();
+    hostile.id = String::from("\"><script>x</script>");
+    hostile.owner = String::from("\"><img src=x>@example.com");
+    let html = built(&hostile, "Text.\n");
+    assert!(!html.contains("<script>x"), "{html}");
+    assert!(!html.contains("<img"), "{html}");
 }
 
 #[test]

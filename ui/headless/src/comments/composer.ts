@@ -22,10 +22,18 @@ export interface Draft {
   readonly text: string;
 }
 
-/** The outcomes of a send that the server answered. */
+/**
+ * Why the server refused a send. `refused` means the writer has lost access,
+ * `full` that the page holds as many posts as it may, `signed-out` that the
+ * writer's session ended, and `invalid` that the text holds something the
+ * server does not store, such as a control character.
+ */
+export type Refusal = "refused" | "full" | "signed-out" | "invalid";
+
+/** The outcomes of a send that the server answered. A refusal with no reason means lost access. */
 export type SendResult<P> =
   | { readonly outcome: "sent"; readonly posted: P }
-  | { readonly outcome: "refused" };
+  | { readonly outcome: "refused"; readonly reason?: Refusal };
 
 /**
  * Posts a draft. It resolves with the server's answer and rejects when the
@@ -35,7 +43,7 @@ export type SendResult<P> =
 export type Send<P> = (draft: Draft) => Promise<SendResult<P>>;
 
 /** Why a send failed. Only a send with no answer may be retried. */
-export type Failure = "no-answer" | "refused";
+export type Failure = "no-answer" | Refusal;
 
 export type ComposerState<P> =
   | { readonly status: "idle" }
@@ -67,7 +75,7 @@ export function blocker<P>(state: ComposerState<P>, maxLength: number): Blocker 
     case "composing":
       return textBlocker(state.draft.text, maxLength);
     case "failed":
-      return state.failure === "refused" ? "refused" : textBlocker(state.draft.text, maxLength);
+      return state.failure === "no-answer" ? textBlocker(state.draft.text, maxLength) : "refused";
   }
 }
 
@@ -88,7 +96,7 @@ export function sendInactive<P>(
 
 /** Whether the field shows a send button. A refusal leaves nothing to send. */
 export function sendShown<P>(state: ComposerState<P>): boolean {
-  return !(state.status === "failed" && state.failure === "refused");
+  return !(state.status === "failed" && state.failure !== "no-answer");
 }
 
 /** Whether the field holds text the server has not stored, so leaving the page asks first. */
@@ -149,8 +157,12 @@ function edited<P>(
     case "failed": {
       if (text === "") return { status: "idle" };
       const draft = { ...state.draft, text };
-      // An edit after a refusal cannot be sent, so the failure stays shown.
-      return state.failure === "refused" ? { ...state, draft } : { status: "composing", draft };
+      // An edit after a send with no answer, or after the server refused the
+      // text itself, can be sent. An edit after any other refusal cannot, so
+      // the failure stays shown.
+      return state.failure === "no-answer" || state.failure === "invalid"
+        ? { status: "composing", draft }
+        : { ...state, draft };
     }
   }
 }
@@ -190,7 +202,7 @@ export function createComposer<P>(options: ComposerOptions<P>): Composer<P> {
         next =
           result.outcome === "sent"
             ? { status: "sent", posted: result.posted }
-            : { status: "failed", draft: sending.draft, failure: "refused" };
+            : { status: "failed", draft: sending.draft, failure: result.reason ?? "refused" };
       } catch {
         // A send with no answer is the failure the composer exists to show,
         // so the composer reports it as state and does not rethrow it.

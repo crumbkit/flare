@@ -183,6 +183,12 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A signed-in reader of a shared Markdown page sees its comments and
+  replies under the article, writes a comment on the whole page and replies
+  to any comment. The line under the title shows the comment count as a
+  link to the comments. Every reading page now loads the comments script,
+  and its policy allows requests to its own origin.
+  [docs/reading.md](docs/reading.md) describes the section.
 - The reading page's foot says "Shared with Flare", and shows a Get Flare
   link to a reader who has never shared a flare when the config sets
   `hosted.get_flare`, an https address that the link opens in a new tab.
