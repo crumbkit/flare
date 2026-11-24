@@ -3,7 +3,7 @@ Search the shares you can open, newest first
 Usage: flare search [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  The search, such as 'budget -type:html' or 'from:me "review notes"'
+  <QUERY>  The search, such as 'budget -type:html' or 'from:me "review notes"'. It may start with a minus, as in '-from:me'
 
 Options:
       --limit <N>  Print at most this many rows, up to 500 [default: 50]

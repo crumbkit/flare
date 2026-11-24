@@ -71,7 +71,14 @@ pub(crate) async fn search(
         return Err(Refused::invalid_search(text, &unknown).into());
     }
     let api = session(env)?;
-    let limit = args.page.limit().unwrap_or(MAX_RESULTS).to_string();
+    // One share past the limit tells the page that the limit cut the
+    // results, so its footer says how to see more.
+    let limit = args
+        .page
+        .limit()
+        .map_or(MAX_RESULTS, |limit| limit.saturating_add(1))
+        .min(MAX_RESULTS)
+        .to_string();
     let pairs = form_urlencoded::Serializer::new(String::new())
         .append_pair("q", text)
         .append_pair("limit", &limit)
@@ -82,8 +89,10 @@ pub(crate) async fn search(
         .await
         .map_err(|failed| failed.for_search(text))?;
     let answer = body(&api, answer)?;
-    let rows = answer.results.into_iter().map(row).collect();
-    Ok(Listing::uncounted(rows, false)
+    let rows: Vec<ShareRow> = answer.results.into_iter().map(row).collect();
+    Ok(args
+        .page
+        .uncounted(rows)
         .described("shares")
         .summary(SearchSummary {
             query: answer.query,

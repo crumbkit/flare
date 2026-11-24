@@ -80,7 +80,7 @@ fn a_bad_share_cursor_has_its_own_code_whose_hint_names_flare_shares() {
 #[test]
 fn an_invalid_search_answers_422_and_lists_each_error_with_its_code_span_and_fix() {
     let error = SearchError {
-        code: "flare::search::unknown_filter".to_owned(),
+        code: "flare::search::unknown_field".to_owned(),
         span: SearchSpan { start: 0, end: 4 },
         message: "There is no filter called form; did you mean from?".to_owned(),
     };
@@ -89,7 +89,7 @@ fn an_invalid_search_answers_422_and_lists_each_error_with_its_code_span_and_fix
     let value = serde_json::to_value(&problem).unwrap();
     assert_eq!(value["status"], 422);
     assert_eq!(value["code"], "flare::search::invalid");
-    assert_eq!(value["errors"][0]["code"], "flare::search::unknown_filter");
+    assert_eq!(value["errors"][0]["code"], "flare::search::unknown_field");
     assert_eq!(value["errors"][0]["span"]["end"], 4);
     let back: ProblemDocument = serde_json::from_value(value).unwrap();
     assert_eq!(back.errors, vec![error]);

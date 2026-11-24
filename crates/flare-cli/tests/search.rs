@@ -96,7 +96,7 @@ fn search_sends_the_query_and_prints_each_share_as_flare_shares_prints_it() {
     assert!(ran.stdout.contains("reader"), "{}", ran.all());
     assert_eq!(
         api.requests_to("/api/search")[0].target,
-        "/api/search?q=budget++from%3Ame%2Cana%40example.org&limit=50"
+        "/api/search?q=budget++from%3Ame%2Cana%40example.org&limit=51"
     );
 }
 
@@ -162,7 +162,57 @@ fn search_all_and_limit_ask_the_server_for_that_many_results() {
         .collect();
     assert_eq!(
         targets,
-        ["/api/search?q=x&limit=500", "/api/search?q=x&limit=7"]
+        ["/api/search?q=x&limit=500", "/api/search?q=x&limit=8"]
+    );
+}
+
+/// A search answer with `count` shares.
+fn answer_of(count: usize) -> Value {
+    let results: Vec<Value> = (0..count)
+        .map(|index| summary(&format!("{FLARE}{index}"), &format!("Share {index}")))
+        .collect();
+    json!({"query": "x", "parsed": [], "results": results, "next": null, "partial": false})
+}
+
+#[test]
+fn a_limit_that_cuts_the_results_prints_a_footer_and_one_that_does_not_prints_none() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route("GET", "/api/search", 200, &answer_of(3));
+    api.route("GET", "/api/search", 200, &answer_of(2));
+    let cut = home.sharing(&["search", "x", "--limit", "2"]);
+    cut.assert_ok();
+    assert!(cut.all().contains("--limit"), "{}", cut.all());
+    assert!(!cut.stdout.contains("Share 2"), "{}", cut.all());
+    let whole = home.sharing(&["search", "x", "--limit", "2"]);
+    whole.assert_ok();
+    assert!(!whole.all().contains("--limit"), "{}", whole.all());
+}
+
+#[test]
+fn a_query_that_starts_with_a_minus_is_a_query_and_not_a_flag() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route("GET", "/api/search", 200, &answer("-draft", "Plan", false));
+    api.route(
+        "GET",
+        "/api/search",
+        200,
+        &answer("-from:me", "Plan", false),
+    );
+    home.sharing(&["search", "-draft"]).assert_ok();
+    home.sharing(&["search", "-from:me"]).assert_ok();
+    let targets: Vec<String> = api
+        .requests_to("/api/search")
+        .into_iter()
+        .map(|request| request.target)
+        .collect();
+    assert_eq!(
+        targets,
+        [
+            "/api/search?q=-draft&limit=51",
+            "/api/search?q=-from%3Ame&limit=51"
+        ]
     );
 }
 

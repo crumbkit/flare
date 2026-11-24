@@ -8,8 +8,9 @@ use crumbkit::help::{Effects, Example, Leaf};
 /// The arguments of `flare search`.
 #[derive(Debug, Args)]
 pub(crate) struct SearchArgs {
-    /// The search, such as 'budget -type:html' or 'from:me "review notes"'
-    #[arg(value_name = "QUERY")]
+    /// The search, such as 'budget -type:html' or 'from:me "review notes"'.
+    /// It may start with a minus, as in '-from:me'.
+    #[arg(value_name = "QUERY", allow_hyphen_values = true)]
     pub(crate) query: String,
     /// How many shares to list; --all lists up to 500.
     #[command(flatten)]

@@ -164,7 +164,7 @@ impl Scanner {
         self.at = end;
         let Some(field) = Field::named(&name) else {
             let span = Span::new(at, colon);
-            return Err(message(ErrorCode::UnknownFilter, span, None, &name));
+            return Err(message(ErrorCode::UnknownField, span, None, &name));
         };
         if let Some((code, span)) = error {
             return Err(message(code, span, Some(field), &name));

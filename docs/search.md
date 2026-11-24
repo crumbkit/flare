@@ -60,7 +60,7 @@ the query with a line of carets under each error and exits with 2.
 
 | Code | Typed | What to do |
 | --- | --- | --- |
-| `flare::search::unknown_filter` | `form:erin`, `updated:7d` | use `type:` or `from:`, or quote the text to search for it |
+| `flare::search::unknown_field` | `form:erin`, `updated:7d` | use `type:` or `from:`, or quote the text to search for it |
 | `flare::search::unclosed_quote` | `"budget review` | add the closing quote |
 | `flare::search::empty_value` | `from:`, `from:ana,` | give the filter a value |
 | `flare::search::empty_phrase` | `""` | put words between the quotes, or remove them |
@@ -90,4 +90,6 @@ takes and the values a search builder offers.
 `crates/flare-query/cases/search-cases.json` lists inputs with their parsed
 parts and canonical text, or their error codes and spans. Every parser of
 this syntax, in flare, in Board and in the later browser builder, must pass
-each case. Later versions of the syntax add their cases to the same file.
+each case. The file spells each error code without a tool's prefix, such
+as `unknown_field`, and flare reports it after `flare::search::`. Later
+versions of the syntax add their cases to the same file.

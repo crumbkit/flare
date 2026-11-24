@@ -607,7 +607,7 @@
       "input": "form:erin",
       "errors": [
         {
-          "code": "flare::search::unknown_filter",
+          "code": "unknown_field",
           "span": {
             "start": 0,
             "end": 4
@@ -620,7 +620,7 @@
       "input": "updated:7d",
       "errors": [
         {
-          "code": "flare::search::unknown_filter",
+          "code": "unknown_field",
           "span": {
             "start": 0,
             "end": 7
@@ -633,7 +633,7 @@
       "input": "with:me",
       "errors": [
         {
-          "code": "flare::search::unknown_filter",
+          "code": "unknown_field",
           "span": {
             "start": 0,
             "end": 4
@@ -646,7 +646,7 @@
       "input": "sort:new",
       "errors": [
         {
-          "code": "flare::search::unknown_filter",
+          "code": "unknown_field",
           "span": {
             "start": 0,
             "end": 4
@@ -659,7 +659,7 @@
       "input": "budget -sort:new",
       "errors": [
         {
-          "code": "flare::search::unknown_filter",
+          "code": "unknown_field",
           "span": {
             "start": 8,
             "end": 12
@@ -672,7 +672,7 @@
       "input": "budget \"review",
       "errors": [
         {
-          "code": "flare::search::unclosed_quote",
+          "code": "unclosed_quote",
           "span": {
             "start": 7,
             "end": 14
@@ -685,7 +685,7 @@
       "input": "from:\"ana",
       "errors": [
         {
-          "code": "flare::search::unclosed_quote",
+          "code": "unclosed_quote",
           "span": {
             "start": 5,
             "end": 9
@@ -698,7 +698,7 @@
       "input": "from:",
       "errors": [
         {
-          "code": "flare::search::empty_value",
+          "code": "empty_value",
           "span": {
             "start": 0,
             "end": 5
@@ -711,7 +711,7 @@
       "input": "from:,erin",
       "errors": [
         {
-          "code": "flare::search::empty_value",
+          "code": "empty_value",
           "span": {
             "start": 0,
             "end": 5
@@ -724,7 +724,7 @@
       "input": "from:erin,",
       "errors": [
         {
-          "code": "flare::search::empty_value",
+          "code": "empty_value",
           "span": {
             "start": 9,
             "end": 10
@@ -737,7 +737,7 @@
       "input": "type:\"\"",
       "errors": [
         {
-          "code": "flare::search::empty_value",
+          "code": "empty_value",
           "span": {
             "start": 5,
             "end": 7
@@ -750,7 +750,7 @@
       "input": "\"\"",
       "errors": [
         {
-          "code": "flare::search::empty_phrase",
+          "code": "empty_phrase",
           "span": {
             "start": 0,
             "end": 2
@@ -763,7 +763,7 @@
       "input": "\" \"",
       "errors": [
         {
-          "code": "flare::search::empty_phrase",
+          "code": "empty_phrase",
           "span": {
             "start": 0,
             "end": 3
@@ -776,7 +776,7 @@
       "input": "-",
       "errors": [
         {
-          "code": "flare::search::nothing_to_exclude",
+          "code": "nothing_to_exclude",
           "span": {
             "start": 0,
             "end": 1
@@ -789,7 +789,7 @@
       "input": "budget - review",
       "errors": [
         {
-          "code": "flare::search::nothing_to_exclude",
+          "code": "nothing_to_exclude",
           "span": {
             "start": 7,
             "end": 8
@@ -802,14 +802,14 @@
       "input": "form:erin \"open",
       "errors": [
         {
-          "code": "flare::search::unknown_filter",
+          "code": "unknown_field",
           "span": {
             "start": 0,
             "end": 4
           }
         },
         {
-          "code": "flare::search::unclosed_quote",
+          "code": "unclosed_quote",
           "span": {
             "start": 10,
             "end": 15
@@ -822,7 +822,7 @@
       "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "errors": [
         {
-          "code": "flare::search::too_long",
+          "code": "too_long",
           "span": {
             "start": 1000,
             "end": 1001

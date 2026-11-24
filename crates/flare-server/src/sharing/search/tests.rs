@@ -106,7 +106,7 @@ async fn an_invalid_query_reads_no_store_and_lists_every_error() {
     assert_eq!(
         codes,
         [
-            "flare::search::unknown_filter",
+            "flare::search::unknown_field",
             "flare::search::nothing_to_exclude"
         ]
     );

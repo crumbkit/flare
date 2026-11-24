@@ -389,7 +389,7 @@
       "description": "One error in a search's text, which a problem document lists.",
       "properties": {
         "code": {
-          "description": "The stable code, such as `flare::search::unknown_filter`.",
+          "description": "The stable code, such as `flare::search::unknown_field`: flare's\nprefix before the code the case file spells.",
           "type": "string"
         },
         "message": {

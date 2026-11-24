@@ -58,10 +58,10 @@ fn a_query_of_the_most_characters_parses_and_one_more_is_too_long() {
 }
 
 #[test]
-fn an_unknown_filter_with_a_quoted_value_gives_one_error_and_no_stray_quote() {
+fn an_unknown_field_with_a_quoted_value_gives_one_error_and_no_stray_quote() {
     let errors = parse("foo:\"a b\" budget").unwrap_err();
     assert_eq!(errors.len(), 1, "{errors:?}");
-    assert_eq!(errors[0].code, ErrorCode::UnknownFilter);
+    assert_eq!(errors[0].code, ErrorCode::UnknownField);
     assert_eq!(errors[0].span, Span::new(0, 3));
 }
 
@@ -74,4 +74,10 @@ fn a_tab_or_a_newline_separates_parts_as_a_space_does() {
         panic!("{query:?}");
     };
     assert_eq!(*field, Field::From);
+}
+
+#[test]
+fn an_error_code_is_spelled_without_any_tool_s_prefix() {
+    assert_eq!(ErrorCode::UnknownField.text(), "unknown_field");
+    assert_eq!(ErrorCode::UnknownPerson.text(), "unknown_person");
 }
