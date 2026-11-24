@@ -43,6 +43,8 @@ pub(crate) mod attr {
     pub(crate) const AUDIENCE: &str = "audience";
     /// A team's state, `active` or `deleting`.
     pub(crate) const STATE: &str = "state";
+    /// A version's image table: a list of maps.
+    pub(crate) const IMAGES: &str = "images";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.

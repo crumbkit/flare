@@ -5,10 +5,12 @@
 //! Every function creates the shares it needs through the store, so the
 //! caller passes a new, empty store.
 
+mod images;
 mod limits;
 mod lists;
 mod races;
 
+pub use images::each_version_keeps_its_image_table;
 pub use limits::{the_share_limit_per_owner_holds, the_version_limit_holds};
 pub use lists::{
     a_share_is_listed_once_created, the_owners_list_holds_only_their_shares_newest_first,

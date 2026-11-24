@@ -8,9 +8,10 @@ mod sharing_stores;
 use flare_core::contract::block_on;
 use flare_core::memory::{MemoryFileStore, MemoryGrantStore, MemoryShareStore};
 use flare_core::{
-    DocumentText, Email, FileBytes, FileId, FileStore, ListKey, MAX_GRANTS, MAX_SHARES_PER_OWNER,
-    MAX_VERSIONS, MediaType, NewFile, Principal, PrincipalId, Role, ShareContent, ShareError,
-    ShareId, ShareTitle, ShareVersion, Shares, Standing, Timestamp,
+    DocumentText, Email, FileBytes, FileId, FileStore, ImagePath, ListKey, MAX_GRANTS,
+    MAX_SHARES_PER_OWNER, MAX_VERSIONS, MediaType, NewFile, Principal, PrincipalId, Role,
+    ShareContent, ShareError, ShareId, ShareTitle, ShareVersion, Shares, Standing, Timestamp,
+    VersionImage, VersionImages,
 };
 use sharing_stores::{
     BrokenFiles, BrokenGrants, BrokenShares, InterleavingGrants, Shared, VersionlessShares,
@@ -46,6 +47,18 @@ fn title() -> ShareTitle {
 
 fn at(seconds: u64) -> Timestamp {
     Timestamp::from_secs(seconds)
+}
+
+/// A table with one row, naming `file` for `img/<file's first byte>.png`.
+fn images(file: &FileId) -> VersionImages {
+    let path = format!("img/{}.png", file.as_str().get(..2).unwrap());
+    VersionImages::try_from(vec![VersionImage::new(
+        ImagePath::try_from(path.as_str()).unwrap(),
+        file.clone(),
+        MediaType::try_from("image/png").unwrap(),
+        3,
+    )])
+    .unwrap()
 }
 
 fn memory() -> Memory {
@@ -94,7 +107,11 @@ fn every_request(shares: &Memory, who: &Principal, share: &ShareId) -> Vec<Optio
             shares.revoke(who, share, &other).await.err(),
             shares.revoke(who, share, &owner).await.err(),
             shares.revoke(who, share, &own).await.err(),
-            shares.file(who, &files, share, &file).await.err(),
+            shares
+                .file(who, &files, share, ShareVersion::first(), &file)
+                .await
+                .err(),
+            shares.may_publish(who, share).await.err(),
         ]
     })
 }
@@ -559,10 +576,14 @@ fn a_principal_with_no_verified_email_gets_no_verified_email_on_every_method() {
             shares.grants(&nameless, &id(1)).await.err(),
             shares.mine(&nameless).await.err(),
             shares.shared_with_me(&nameless, false).await.err(),
-            shares.file(&nameless, &files, &id(1), &file).await.err(),
+            shares
+                .file(&nameless, &files, &id(1), ShareVersion::first(), &file)
+                .await
+                .err(),
+            shares.may_publish(&nameless, &id(1)).await.err(),
         ]
     });
-    assert_eq!(answers, [Some(ShareError::NoVerifiedEmail); 9]);
+    assert_eq!(answers, [Some(ShareError::NoVerifiedEmail); 10]);
     assert!(block_on(shares.open(&alice(), &id(1), None)).is_ok());
 }
 
@@ -604,26 +625,91 @@ fn a_grant_to_a_dotted_address_does_not_open_the_share_for_the_undotted_one() {
 }
 
 #[test]
-fn a_reader_reads_a_file_of_the_share_and_gets_not_found_for_another_shares_file_and_a_stranger_gets_not_found()
- {
-    let shares = with_share();
-    block_on(shares.create(&alice(), id(2), title(), doc("# Two\n"), at(1))).unwrap();
+fn a_reader_reads_a_file_only_at_a_version_whose_table_lists_it_and_every_other_read_is_not_found()
+{
+    let shares = memory();
+    let (own, unlisted, others) = (
+        FileId::from_random([1; 16]),
+        FileId::from_random([3; 16]),
+        FileId::from_random([2; 16]),
+    );
+    block_on(shares.create_with_images(
+        &alice(),
+        id(1),
+        title(),
+        doc("# One\n"),
+        images(&own),
+        at(1),
+    ))
+    .unwrap();
+    block_on(shares.publish(&alice(), &id(1), doc("# Two\n"), at(2))).unwrap();
+    block_on(shares.create_with_images(
+        &alice(),
+        id(2),
+        title(),
+        doc("# Other\n"),
+        images(&others),
+        at(1),
+    ))
+    .unwrap();
     grant(&shares, &alice(), "bob@example.com", Role::Reader);
     let files = MemoryFileStore::new();
     let png = MediaType::try_from("image/png").unwrap();
     let bytes = FileBytes::try_from(b"png".to_vec()).unwrap();
-    let (own, others) = (FileId::from_random([1; 16]), FileId::from_random([2; 16]));
-    block_on(files.put(NewFile::new(id(1), own.clone(), png.clone(), bytes.clone()))).unwrap();
-    block_on(files.put(NewFile::new(id(2), others.clone(), png, bytes))).unwrap();
+    for (share, file) in [(1, &own), (1, &unlisted), (2, &others)] {
+        let new = NewFile::new(id(share), file.clone(), png.clone(), bytes.clone());
+        block_on(files.put(new)).unwrap();
+    }
     let bob = person("bob@example.com");
-    let read = block_on(shares.file(&bob, &files, &id(1), &own)).unwrap();
+    let one = ShareVersion::first();
+    let two = ShareVersion::try_from(2).unwrap();
+    let three = ShareVersion::try_from(3).unwrap();
+    let read = block_on(shares.file(&bob, &files, &id(1), one, &own)).unwrap();
     assert_eq!(read.bytes().as_bytes(), b"png");
-    let across = block_on(shares.file(&bob, &files, &id(1), &others));
-    assert_eq!(across.unwrap_err(), ShareError::NotFound);
-    let other_share = block_on(shares.file(&bob, &files, &id(2), &others));
-    assert_eq!(other_share.unwrap_err(), ShareError::NotFound);
-    let stranger = block_on(shares.file(&person("eve@example.com"), &files, &id(1), &own));
-    assert_eq!(stranger.unwrap_err(), ShareError::NotFound);
+    let refused = [
+        block_on(shares.file(&bob, &files, &id(1), one, &unlisted)),
+        block_on(shares.file(&bob, &files, &id(1), two, &own)),
+        block_on(shares.file(&bob, &files, &id(1), three, &own)),
+        block_on(shares.file(&bob, &files, &id(1), one, &others)),
+        block_on(shares.file(&person("eve@example.com"), &files, &id(1), one, &own)),
+        block_on(shares.file(&bob, &MemoryFileStore::new(), &id(1), one, &own)),
+    ];
+    for answer in refused {
+        assert_eq!(answer.unwrap_err(), ShareError::NotFound);
+    }
+}
+
+#[test]
+fn only_the_owner_may_publish_and_a_published_version_keeps_its_images() {
+    let shares = with_share();
+    grant(&shares, &alice(), "bob@example.com", Role::Admin);
+    grant(&shares, &alice(), "carol@example.com", Role::Reader);
+    assert_eq!(block_on(shares.may_publish(&alice(), &id(1))), Ok(()));
+    assert_eq!(
+        block_on(shares.may_publish(&person("bob@example.com"), &id(1))),
+        Err(ShareError::Forbidden)
+    );
+    assert_eq!(
+        block_on(shares.may_publish(&person("carol@example.com"), &id(1))),
+        Err(ShareError::Forbidden)
+    );
+    assert_eq!(
+        block_on(shares.may_publish(&person("eve@example.com"), &id(1))),
+        Err(ShareError::NotFound)
+    );
+    let table = images(&FileId::from_random([5; 16]));
+    let number = block_on(shares.publish_with_images(
+        &alice(),
+        &id(1),
+        doc("# Two\n"),
+        table.clone(),
+        at(2),
+    ))
+    .unwrap();
+    let opened = block_on(shares.open(&alice(), &id(1), Some(number))).unwrap();
+    assert_eq!(opened.version.images(), &table);
+    let first = block_on(shares.open(&alice(), &id(1), Some(ShareVersion::first()))).unwrap();
+    assert!(first.version.images().is_empty());
 }
 
 #[test]
@@ -666,7 +752,10 @@ fn every_failing_store_gives_unavailable_and_never_gives_access() {
                 broken.grants(&who, &id(1)).await.err(),
                 broken.mine(&who).await.err(),
                 broken.shared_with_me(&bob, false).await.err(),
-                broken.file(&who, &files, &id(1), &file).await.err(),
+                broken
+                    .file(&who, &files, &id(1), ShareVersion::first(), &file)
+                    .await
+                    .err(),
             ]
         });
         assert_eq!(answers, [Some(ShareError::Unavailable); 9]);
@@ -690,15 +779,27 @@ fn every_failing_store_gives_unavailable_and_never_gives_access() {
             broken.revoke(&alice(), &id(1), &other).await.err(),
             broken.grants(&alice(), &id(1)).await.err(),
             broken.shared_with_me(&bob, false).await.err(),
-            broken.file(&bob, &files, &id(1), &file).await.err(),
+            broken
+                .file(&bob, &files, &id(1), ShareVersion::first(), &file)
+                .await
+                .err(),
         ]
     });
     assert_eq!(answers, [Some(ShareError::Unavailable); 7]);
 
-    // The file store fails.
-    let shares = with_share();
+    // The file store fails, for a file the version lists.
+    let shares = memory();
+    block_on(shares.create_with_images(
+        &alice(),
+        id(1),
+        title(),
+        doc("# One\n"),
+        images(&file),
+        at(1),
+    ))
+    .unwrap();
     grant(&shares, &alice(), "bob@example.com", Role::Reader);
-    let failed = block_on(shares.file(&bob, &BrokenFiles, &id(1), &file));
+    let failed = block_on(shares.file(&bob, &BrokenFiles, &id(1), ShareVersion::first(), &file));
     assert_eq!(failed.unwrap_err(), ShareError::Unavailable);
 }
 

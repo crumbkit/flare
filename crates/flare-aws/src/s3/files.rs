@@ -21,11 +21,12 @@ use crate::s3::fault;
 use crate::s3::keys::object_key;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::RequestId;
+use aws_sdk_s3::operation::delete_object::builders::DeleteObjectFluentBuilder;
 use aws_sdk_s3::operation::put_object::builders::PutObjectFluentBuilder;
 use aws_sdk_s3::primitives::ByteStream;
 use flare_core::{
-    FileBytes, FileId, FileStore, FileStoreError, MAX_FILE_BYTES, MediaType, NewFile, ShareId,
-    StoredFile,
+    FileBytes, FileCursor, FileId, FilePage, FileStore, FileStoreError, MAX_FILE_BYTES, MediaType,
+    NewFile, ShareId, StoredFile,
 };
 
 /// Keeps the files of shares in the bucket, each under
@@ -55,6 +56,16 @@ pub(crate) fn put_failure(status: Option<u16>) -> Sent<(), FileStoreError> {
     }
 }
 
+/// What a failed delete means, from the HTTP status of its answer, or
+/// `None` when no answer came.
+pub(crate) fn delete_failure(status: Option<u16>) -> Sent<(), FileStoreError> {
+    match status {
+        None => Sent::Unknown,
+        Some(status) if status >= 500 => Sent::Unknown,
+        Some(_) => Sent::Unavailable,
+    }
+}
+
 /// What a failed read means: not found only for a missing key.
 pub(crate) fn get_failure(status: Option<u16>, no_such_key: bool) -> FileStoreError {
     if no_such_key && status == Some(404) {
@@ -75,6 +86,14 @@ fn log_failure(call: &'static str, code: &str, request_id: Option<&str>) {
 }
 
 impl Bucket {
+    /// The `DeleteObject` of file `id` of `share`.
+    pub(crate) fn delete_request(&self, share: &ShareId, id: &FileId) -> DeleteObjectFluentBuilder {
+        self.client()
+            .delete_object()
+            .bucket(self.name())
+            .key(object_key(share, id))
+    }
+
     /// The create-only `PutObject` of `file`.
     pub(crate) fn put_request(&self, file: &NewFile) -> PutObjectFluentBuilder {
         self.client()
@@ -221,6 +240,71 @@ impl FileStore for S3FileStore {
 
     async fn get(&self, share: &ShareId, id: &FileId) -> Result<StoredFile, FileStoreError> {
         self.bucket.read(share, id).await
+    }
+
+    async fn delete(&self, share: &ShareId, id: &FileId) -> Result<(), FileStoreError> {
+        let op = DeleteOp {
+            bucket: &self.bucket,
+            share,
+            id,
+        };
+        match run(self.bucket.policy(), &op).await {
+            Final::Done(()) => Ok(()),
+            Final::Refused(refused) => Err(refused),
+            Final::Unavailable => Err(FileStoreError::Unavailable),
+        }
+    }
+
+    async fn list(
+        &self,
+        after: Option<&FileCursor>,
+        limit: usize,
+    ) -> Result<FilePage, FileStoreError> {
+        self.bucket.list(after, limit).await
+    }
+}
+
+/// A delete of one file. A delete is idempotent, so a resend after a lost
+/// answer is safe, and a missing object is success.
+struct DeleteOp<'a> {
+    bucket: &'a Bucket,
+    share: &'a ShareId,
+    id: &'a FileId,
+}
+
+impl Attempt for DeleteOp<'_> {
+    type Built = ();
+    type Done = ();
+    type Refused = FileStoreError;
+
+    async fn build(&self) -> Result<(), Sent<(), FileStoreError>> {
+        Ok(())
+    }
+
+    async fn send(&self, (): &(), _token: &Token) -> Sent<(), FileStoreError> {
+        if self.bucket.faults() == Faults::DropRequests {
+            return Sent::Unknown;
+        }
+        match self.bucket.delete_request(self.share, self.id).send().await {
+            Ok(_) => Sent::Done(()),
+            Err(SdkError::ConstructionFailure(_)) => Sent::Unavailable,
+            Err(error) => {
+                let status = error.raw_response().map(|raw| raw.status().as_u16());
+                let sent = delete_failure(status);
+                if sent == Sent::Unavailable {
+                    log_failure("DeleteObject", &error_code(&error), error.request_id());
+                }
+                sent
+            }
+        }
+    }
+
+    async fn settle(&self, (): &()) -> Settled<()> {
+        match self.bucket.read(self.share, self.id).await {
+            Err(FileStoreError::NotFound) => Settled::Matches(()),
+            Ok(_) => Settled::Differs,
+            Err(_) => Settled::Unavailable,
+        }
     }
 }
 

@@ -21,6 +21,9 @@ flare-render.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
+# Decodes each uploaded image under limits, and strips its metadata.
+image.workspace = true
+img-parts.workspace = true
 hyper-util = { workspace = true, features = ["tokio", "server", "server-graceful", "http1"] }
 secrecy.workspace = true
 # Reads the share API's JSON bodies into the contract's types.

@@ -8,9 +8,10 @@ use flare_core::memory::{
     MemoryShareStore,
 };
 use flare_core::{
-    ActivityPage, AllAdmitted, CreatorList, DocumentText, Email, FlareError, Flares, MAX_GRANTS,
-    NewFlare, NoTeams, Position, Principal, PrincipalId, Role, ShareContent, ShareError, ShareId,
-    ShareTitle, ShareVersion, Timestamp,
+    ActivityPage, AllAdmitted, CreatorList, DocumentText, Email, FileId, FlareError, Flares,
+    ImagePath, MAX_GRANTS, MediaType, NewFlare, NoTeams, Position, Principal, PrincipalId, Role,
+    ShareContent, ShareError, ShareId, ShareTitle, ShareVersion, Timestamp, VersionImage,
+    VersionImages,
 };
 
 type Memory<K = CreatorList> = Flares<
@@ -610,4 +611,43 @@ fn a_creator_whose_principal_id_differs_from_their_address_gets_no_grant_on_a_re
     block_on(flares.share(&alice, flare(3, &[], &[]), at(3))).unwrap();
     block_on(flares.grant(&alice, &id(3), &[], &[id(1)], at(4))).unwrap();
     assert!(grants_on(&flares, &alice, 3).is_empty());
+}
+
+#[test]
+fn a_share_check_refuses_a_non_creator_and_a_closed_re_flare_and_writes_nothing() {
+    let flares = memory();
+    block_on(flares.share(&alice(), flare(1, &[], &[]), at(1))).unwrap();
+    assert_eq!(
+        block_on(flares.may_share(&outsider(), &flare(2, &[], &[]))),
+        Err(FlareError::NotACreator)
+    );
+    assert_eq!(
+        block_on(flares.may_share(&bob(), &flare(2, &[], &[id(1)]))),
+        Err(FlareError::NotFound)
+    );
+    assert_eq!(
+        block_on(flares.shares().open(&bob(), &id(2), None)).unwrap_err(),
+        ShareError::NotFound
+    );
+    // The admitted twin: alice may respond to her own flare.
+    assert_eq!(
+        block_on(flares.may_share(&alice(), &flare(2, &[], &[id(1)]))),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_flare_shared_with_images_keeps_its_image_table_on_version_one() {
+    let flares = memory();
+    let table = VersionImages::try_from(vec![VersionImage::new(
+        ImagePath::try_from("img/a.png").unwrap(),
+        FileId::from_random([4; 16]),
+        MediaType::try_from("image/png").unwrap(),
+        12,
+    )])
+    .unwrap();
+    let new = flare(1, &[], &[]).with_images(table.clone());
+    block_on(flares.share(&alice(), new, at(1))).unwrap();
+    let opened = block_on(flares.shares().open(&alice(), &id(1), None)).unwrap();
+    assert_eq!(opened.version.images(), &table);
 }

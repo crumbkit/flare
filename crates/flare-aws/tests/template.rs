@@ -184,7 +184,12 @@ fn the_managed_policy_allows_exactly_the_actions_the_stores_call() {
         json!({"Fn::GetAtt": ["SharesTable", "Arn"]})
     );
     let objects = statement(&policy, "FilesObjects");
-    assert_eq!(objects["Action"], json!(["s3:GetObject", "s3:PutObject"]));
+    // DeleteObject lets a failed create or publish, and the sweep, delete
+    // the files no version lists; it reaches files/* and nothing else.
+    assert_eq!(
+        objects["Action"],
+        json!(["s3:GetObject", "s3:PutObject", "s3:DeleteObject"])
+    );
     assert_eq!(
         objects["Resource"],
         json!({"Fn::Sub": "${FilesBucket.Arn}/files/*"})

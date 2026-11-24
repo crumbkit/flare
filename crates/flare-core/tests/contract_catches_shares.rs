@@ -208,3 +208,36 @@ fn a_file_store_that_overwrites_a_taken_id_fails_the_taken_id_clause() {
     });
     assert_eq!(clause, Clause::ATakenFileIdChangesNothing);
 }
+
+#[test]
+fn a_file_store_whose_delete_keeps_the_file_fails_the_delete_clause() {
+    let clause = file_clause(FileFlaw::KeepsADeletedFile, async |store, fixture| {
+        file_store::a_deleted_file_is_not_found_and_others_stay(store, fixture).await
+    });
+    assert_eq!(clause, Clause::ADeletedFileIsNotFoundAndOthersStay);
+}
+
+#[test]
+fn a_file_store_whose_list_never_ends_fails_the_paging_clause() {
+    let clause = file_clause(FileFlaw::RepeatsTheFirstPage, async |store, fixture| {
+        file_store::a_list_pages_through_every_file(store, fixture).await
+    });
+    assert_eq!(clause, Clause::AListPagesThroughEveryFile);
+}
+
+#[test]
+fn a_file_store_with_a_working_delete_and_list_passes_both_clauses() {
+    // The admitted twin of the two tests above: a flaw elsewhere leaves
+    // delete and list correct, so both clauses pass.
+    let fixture = FileFixture::standard().unwrap();
+    let store = FlawedFiles::new(FileFlaw::OverwritesATakenId);
+    block_on(file_store::a_deleted_file_is_not_found_and_others_stay(
+        &store, &fixture,
+    ))
+    .unwrap();
+    let store = FlawedFiles::new(FileFlaw::OverwritesATakenId);
+    block_on(file_store::a_list_pages_through_every_file(
+        &store, &fixture,
+    ))
+    .unwrap();
+}

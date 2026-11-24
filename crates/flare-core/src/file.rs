@@ -1,6 +1,12 @@
 //! Files that a share's pages show, such as images, each stored under one
 //! share.
 
+mod images;
+mod sweep;
+
+pub use images::{ImagePath, MAX_IMAGE_PATH, MAX_IMAGES, VersionImage, VersionImages};
+pub use sweep::{MAX_SWEPT_FILES, SWEEP_AGE, SweepReport, sweep_files};
+
 use crate::error::{ParseError, Subject};
 use crate::share::{ShareId, check_hex_id, hex_id};
 use std::fmt;

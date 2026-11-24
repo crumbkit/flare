@@ -43,6 +43,7 @@ mod shares {
         the_owners_list_holds_only_their_shares_newest_first,
         a_share_is_listed_once_created,
         a_share_always_has_its_first_version,
+        each_version_keeps_its_image_table,
     );
 
     concurrent_suite!(share_store, MemoryShareStore, ShareFixture;
@@ -95,6 +96,10 @@ mod files {
         a_taken_file_id_changes_nothing,
         an_unknown_file_is_not_found,
         the_largest_file_reads_back,
+        a_deleted_file_is_not_found_and_others_stay,
+        deleting_a_missing_file_succeeds,
+        a_list_names_each_file_with_its_store_time,
+        a_list_pages_through_every_file,
     );
 
     concurrent_suite!(file_store, MemoryFileStore, FileFixture;

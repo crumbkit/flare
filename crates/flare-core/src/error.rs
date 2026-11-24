@@ -52,6 +52,10 @@ pub enum Subject {
     MediaType,
     /// A [`FileBytes`](crate::FileBytes).
     FileBytes,
+    /// An [`ImagePath`](crate::ImagePath).
+    ImagePath,
+    /// A [`VersionImages`](crate::VersionImages).
+    VersionImages,
     /// A [`TokenId`](crate::TokenId).
     TokenId,
     /// A [`TokenLabel`](crate::TokenLabel).
@@ -98,6 +102,8 @@ impl fmt::Display for Subject {
             Self::FileId => "file id",
             Self::MediaType => "media type",
             Self::FileBytes => "file",
+            Self::ImagePath => "image path",
+            Self::VersionImages => "image table",
             Self::TokenId => "token id",
             Self::TokenLabel => "token label",
             Self::TeamName => "team name",

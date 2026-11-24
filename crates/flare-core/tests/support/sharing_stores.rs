@@ -4,9 +4,9 @@
 //! stores whose every method fails.
 
 use flare_core::{
-    FileId, FileStore, FileStoreError, Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite,
-    ListKey, Listing, NewFile, NewShare, NewVersion, PrincipalId, Share, ShareId, ShareStore,
-    ShareStoreError, ShareVersion, SharedVersion, StoredFile,
+    FileCursor, FileId, FilePage, FileStore, FileStoreError, Grant, GrantRevoke, GrantStore,
+    GrantStoreError, GrantWrite, ListKey, Listing, NewFile, NewShare, NewVersion, PrincipalId,
+    Share, ShareId, ShareStore, ShareStoreError, ShareVersion, SharedVersion, StoredFile,
 };
 use std::sync::{Arc, Mutex};
 
@@ -255,6 +255,18 @@ impl FileStore for BrokenFiles {
     }
 
     async fn get(&self, _share: &ShareId, _id: &FileId) -> Result<StoredFile, FileStoreError> {
+        Err(FileStoreError::Unavailable)
+    }
+
+    async fn delete(&self, _share: &ShareId, _id: &FileId) -> Result<(), FileStoreError> {
+        Err(FileStoreError::Unavailable)
+    }
+
+    async fn list(
+        &self,
+        _after: Option<&FileCursor>,
+        _limit: usize,
+    ) -> Result<FilePage, FileStoreError> {
         Err(FileStoreError::Unavailable)
     }
 }

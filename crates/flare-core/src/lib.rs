@@ -49,7 +49,11 @@ pub use comment::{
 };
 pub use email::Email;
 pub use error::{ParseError, Subject};
-pub use file::{FileBytes, FileId, MAX_FILE_BYTES, MediaType, NewFile, StoredFile};
+pub use file::{
+    FileBytes, FileId, ImagePath, MAX_FILE_BYTES, MAX_IMAGE_PATH, MAX_IMAGES, MAX_SWEPT_FILES,
+    MediaType, NewFile, SWEEP_AGE, StoredFile, SweepReport, VersionImage, VersionImages,
+    sweep_files,
+};
 pub use flares::{
     ActivityItem, ActivityPage, AddressesOnly, AllAdmitted, CommentActivity, CommentDraft,
     CommentThread, CreatorDomain, CreatorList, Creators, CreatorsError, FlareError, Flared, Flares,
@@ -78,10 +82,11 @@ pub use share::{
 };
 pub use sharing::{ListedGrant, Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
-    Added, CommentStore, CommentStoreError, CursorStore, FileStore, FileStoreError, FillTypes,
-    GrantStore, GrantStoreError, ListKey, ListPage, MoveError, PageStore, PageStoreError,
-    ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError, ShareStore,
-    ShareStoreError, TokenStore, TokenStoreError, WriteError,
+    Added, CommentStore, CommentStoreError, CursorStore, FileCursor, FilePage, FileStore,
+    FileStoreError, FillTypes, GrantStore, GrantStoreError, ListKey, ListPage, ListedFile,
+    MAX_FILE_PAGE, MoveError, PageStore, PageStoreError, ReadError, RecordStore, Rejection,
+    ResponseStore, ResponseStoreError, ShareStore, ShareStoreError, TokenStore, TokenStoreError,
+    WriteError,
 };
 pub use teams::{
     Admission, Audience, FlareTeams, Group, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED,
