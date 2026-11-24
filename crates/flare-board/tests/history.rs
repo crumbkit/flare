@@ -184,3 +184,40 @@ fn a_page_whose_newest_version_is_the_shallow_boundary_answers_unavailable() {
         Err(PageStoreError::Unavailable)
     );
 }
+
+#[test]
+fn at_refuses_a_version_on_a_branch_that_head_cannot_reach() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, "one");
+    publish(&store, "two");
+    board.git(&["checkout", "-q", "-b", "side"]);
+    let side = publish(&store, "on a side branch");
+    board.git(&["checkout", "-q", "main"]);
+
+    assert_eq!(
+        block_on(store.at(&pin(&side))),
+        Err(PageStoreError::NotFound)
+    );
+    assert_eq!(
+        block_on(store.save_binding(binding(&side), &store)),
+        Err(PageStoreError::UnknownVersion)
+    );
+    assert_eq!(
+        block_on(store.binding(&view())),
+        Err(PageStoreError::NotFound)
+    );
+}
+
+#[test]
+fn at_answers_a_version_older_than_the_newest_on_heads_history() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    let first = publish(&store, "one");
+    publish(&store, "two");
+    board.git(&["checkout", "-q", "-b", "side"]);
+    publish(&store, "on a side branch");
+    board.git(&["checkout", "-q", "main"]);
+
+    assert_eq!(text_at(&store, &first), "one");
+}

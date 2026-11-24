@@ -243,3 +243,16 @@ This file records the notable changes to flare. The format follows
   session that expires first.
 - `App::new` in `hangar-server` takes a `Site` in place of a `Gate` and a
   `StateDir`.
+
+### Fixed
+
+- `BoardStore` publishes a page whose first publish wrote its files and
+  made no commit, which a put stopped at its deadline or answered
+  `board::put::head_moved` leaves behind. The page's first committed
+  version names no previous version. Before, every later publish of that
+  page answered `Unavailable` until a person deleted the files.
+- `BoardStore::at` answers `NotFound` for a commit that changed a page but
+  that `HEAD` cannot reach, such as one on another branch or one a reset
+  orphaned, so a binding can no longer pin a version that `versions` does
+  not list. `docs/board-store.md` holds flare-board's state tables, crash
+  points, invariants and accepted gaps.

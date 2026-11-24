@@ -6,14 +6,19 @@
 //! it replaced in `previous`, so every publish makes a commit. That commit's
 //! id is the version's name.
 
+mod history;
+
+pub(crate) use history::versions;
+
 use crate::bindings;
 use crate::process::{Board, Rows};
-use crate::report::{Failure, Got, LogRow};
+use crate::report::{Failure, Got};
 use crate::stored::{self, PAGE_TYPE, PageRecord};
 use flare_core::{
     ContentFormat, MadeFrom, Page, PageName, PagePin, PageStoreError, PageVersion, Provenance,
     PublishedPage,
 };
+use history::{Newest, is_newest, newest, reachable};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -39,49 +44,6 @@ fn is_commit(text: &str) -> bool {
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// The commits that changed the page's record, newest first. A walk that
-/// stopped after 100,000 commits or reached a shallow clone's boundary
-/// answers `Unavailable`, because its list may miss versions or name the
-/// boundary as one.
-pub(crate) async fn versions(
-    board: &Arc<Board>,
-    name: &PageName,
-) -> Result<Vec<PageVersion>, PageStoreError> {
-    match board.log(&record_path(name), None, Rows::All).await {
-        Ok(log) if log.truncated || !log.summary.complete => Err(PageStoreError::Unavailable),
-        Ok(log) => {
-            let mut versions = Vec::with_capacity(log.data.len());
-            for row in log.data {
-                versions.push(
-                    PageVersion::try_from(row.commit.as_str())
-                        .map_err(|_| PageStoreError::Unavailable)?,
-                );
-            }
-            Ok(versions)
-        }
-        Err(Failure::Board(failure)) if failure.code == "board::path::not_found" => {
-            Err(PageStoreError::NotFound)
-        }
-        Err(other) => unavailable(other),
-    }
-}
-
-/// The newest row of the page record's log from `HEAD`, which a version
-/// needs a complete walk to trust. No row from a complete walk is
-/// `NotFound`. A walk that stopped after 100,000 commits or reached a
-/// shallow clone's boundary is `Unavailable`, because the row it lists, or
-/// the row it missed, may not be the page's last change.
-async fn newest(board: &Arc<Board>, name: &PageName) -> Result<LogRow, PageStoreError> {
-    match board.log(&record_path(name), None, Rows::Newest).await {
-        Ok(log) if !log.summary.complete => Err(PageStoreError::Unavailable),
-        Ok(log) => log.data.into_iter().next().ok_or(PageStoreError::NotFound),
-        Err(Failure::Board(failure)) if failure.code == "board::path::not_found" => {
-            Err(PageStoreError::NotFound)
-        }
-        Err(other) => unavailable(other),
-    }
-}
-
 /// The newest version of a page.
 pub(crate) async fn latest(
     board: &Arc<Board>,
@@ -94,18 +56,24 @@ pub(crate) async fn latest(
 }
 
 /// One version of a page. A version is only a commit that changed the
-/// page's record, so a commit that never changed it is not found.
+/// page's record and that `HEAD` reaches, so a commit that never changed
+/// it, or one on another branch or orphaned by a reset, is not found.
 ///
-/// One `board log --at <version> --limit 1` decides it: its first row is
-/// the version itself exactly when the version changed the record, and the
-/// walk reads that one commit, however long the history. When the walk is
-/// not complete, the version is a shallow clone's boundary, where every
-/// file looks added, and the answer is `Unavailable`. A commit the board
-/// does not hold is not found.
+/// When the version is the newest row of a complete walk from `HEAD`, that
+/// one read decides it. Otherwise one `board log --at <version> --limit 1`
+/// checks that the version changed the record: its first row is the
+/// version itself exactly when it did, and the walk reads that one commit.
+/// When that walk is not complete, the version is a shallow clone's
+/// boundary, where every file looks added, and the answer is
+/// `Unavailable`. A commit the board does not hold is not found. Then the
+/// record's log from `HEAD` decides whether `HEAD` reaches the version.
 pub(crate) async fn at(board: &Arc<Board>, pin: &PagePin) -> Result<PublishedPage, PageStoreError> {
     let version = pin.version().as_str();
     if !is_commit(version) {
         return Err(PageStoreError::NotFound);
+    }
+    if let Newest::Is = is_newest(board, pin.name(), version).await? {
+        return read_version(board, pin.name(), pin.version()).await;
     }
     let log = match board
         .log(&record_path(pin.name()), Some(version), Rows::Newest)
@@ -128,6 +96,7 @@ pub(crate) async fn at(board: &Arc<Board>, pin: &PagePin) -> Result<PublishedPag
         }
         _ => return Err(PageStoreError::NotFound),
     }
+    reachable(board, pin.name(), version).await?;
     read_version(board, pin.name(), pin.version()).await
 }
 
@@ -264,23 +233,22 @@ pub(crate) async fn publish(
         );
         let previous = match &record_blob {
             None => None,
-            Some(blob) => {
-                // A page whose last change the walk cannot reach, past
-                // 100,000 commits or at a shallow boundary, answers
-                // Unavailable, so no publish names a wrong previous version.
-                let row = match newest(board, name).await {
-                    Err(PageStoreError::NotFound) => return Err(PageStoreError::Unavailable),
-                    other => other?,
-                };
+            // A page whose last change the walk cannot reach, past 100,000
+            // commits or at a shallow boundary, answers Unavailable, so no
+            // publish names a wrong previous version. A record that a
+            // complete walk finds no commit for is a first publish that a
+            // stopped put left uncommitted, so this publish expects its
+            // dirty blobs, replaces its files and names no previous version.
+            Some(blob) => match newest(board, name).await {
+                Err(PageStoreError::NotFound) => None,
+                Err(other) => return Err(other),
                 // The record's bytes differ from its last commit's when
                 // another publish committed between the two reads, or when
                 // a stopped put left them uncommitted. A new read settles
                 // the first; the last attempt replaces the second.
-                if row.blob.as_ref() != Some(blob) && attempt < attempts {
-                    continue;
-                }
-                Some(row.commit)
-            }
+                Ok(row) if row.blob.as_ref() != Some(blob) && attempt < attempts => continue,
+                Ok(row) => Some(row.commit),
+            },
         };
         let stored_record =
             stored::to_value(&PageRecord::of(page, provenance, previous.as_deref()))
