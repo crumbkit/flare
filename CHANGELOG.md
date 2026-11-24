@@ -270,6 +270,13 @@ This file records the notable changes to flare. The format follows
 
 ### Fixed
 
+- A release run whose `release` job cannot read whether the tag already has
+  a release, because of a token, rate-limit, network or GitHub fault, now
+  prints gh's error and `could not read whether <tag> has a release, so the
+  job made no release; re-run the failed jobs once GitHub answers`, and
+  fails before any write. Before this fix the job treated every failed read
+  as "no release" and ran `gh release create`, which hid the cause and could
+  give a tag a second release beside a draft that an earlier run left.
 - `flare share` and `flare share --update` no longer tell the caller to run
   the same command again after the server answers with success and flare
   cannot read the answer, or does not answer a request it was sent,

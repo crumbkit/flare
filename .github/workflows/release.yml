@@ -224,7 +224,11 @@ jobs:
   # releases. The job replaces files only on a draft. When the tag's release
   # is already published, the job fails before any upload and leaves the
   # release unchanged, because the tap and anyone who installed the version
-  # rely on its archives and SHA256SUMS staying the same.
+  # rely on its archives and SHA256SUMS staying the same. Only a read that
+  # gh answers with `release not found` leads to gh release create. When the
+  # read fails for any other reason, such as a token, rate limit or network
+  # fault, the job prints gh's error and fails before any write, because a
+  # create beside an unseen draft would give the tag a second release.
   release:
     if: needs.version.outputs.tag != ''
     needs: [version, advisories, build, formula]
@@ -246,8 +250,15 @@ jobs:
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
       - run: |
-          if ! draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+          err="$RUNNER_TEMP/release-view.err"
+          if draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>"$err"); then
+            :
+          elif [ "$(< "$err")" = "release not found" ]; then
             draft=absent
+          else
+            cat "$err" >&2
+            echo "could not read whether $TAG has a release, so the job made no release; re-run the failed jobs once GitHub answers" >&2
+            exit 1
           fi
           case "$draft" in
             true)
