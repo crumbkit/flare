@@ -19,7 +19,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/crumbkit/flare"
 # LIB-4: the minimum supported Rust version equals the toolchain pin in
 # rust-toolchain.toml.
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 
 [workspace.dependencies]
 # Random bytes, SHA-256 and constant-time comparison for flare-auth-oidc
