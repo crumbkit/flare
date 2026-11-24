@@ -13,7 +13,7 @@
 
 use crate::board;
 use crate::cli::ServeArgs;
-use crate::codes::Failed;
+use crate::codes::{Failed, HeldPort};
 use crate::config::{
     self, Hosted, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig, Site as Configured,
 };
@@ -130,6 +130,13 @@ impl Signals {
 ///
 /// Returns the failure that stopped it before or while it served.
 pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
+    serve_board(args, env)
+        .await
+        .map_err(|failed| failed.for_board(args.board.board.as_deref()))
+}
+
+/// Serves the board that `args` names.
+async fn serve_board(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop), Failed> {
     let (root, store) = board::checked_store(&args.board, env).await?;
     let config = config::load(args.config.as_deref(), env)?;
     let metrics = Metrics::new(config.metrics);
@@ -139,9 +146,14 @@ pub(crate) async fn run(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Sto
     }
 }
 
-fn bind_failed(error: BindError) -> Failed {
+/// The failure of a bind, where `held` says which port a held `port` is.
+fn bind_failed(error: BindError, held: impl Fn(u16) -> HeldPort) -> Failed {
     match error {
-        BindError::PortInUse { port } => Failed::PortInUse { port },
+        BindError::PortInUse { port } => Failed::PortInUse {
+            port,
+            held: held(port),
+            board: None,
+        },
         other => system(other),
     }
 }
@@ -159,12 +171,20 @@ async fn local(
         None => None,
     };
     if open::answers(root, env).await {
-        return Err(Failed::AlreadyRunning);
+        return Err(Failed::AlreadyRunning { board: None });
     }
     let state = board::loopback_state(root, env)?;
     let mut signals = Signals::install()?;
     let wanted = oidc.as_ref().map(|_| SIGN_IN_PORT);
-    let listeners = Listeners::bind(args.port, wanted).map_err(bind_failed)?;
+    let listeners = Listeners::bind(args.port, wanted).map_err(|error| {
+        bind_failed(error, |port| {
+            if wanted == Some(port) {
+                HeldPort::SignIn
+            } else {
+                HeldPort::Launch
+            }
+        })
+    })?;
     let principal = local_principal(&env.user()).map_err(|error| Failed::StateUnusable {
         problem: format!("the account name is not a principal: {error}"),
     })?;
@@ -211,7 +231,8 @@ async fn hosted(
         None => None,
     };
     let mut signals = Signals::install()?;
-    let listeners = Listeners::bind_hosted(listen).map_err(bind_failed)?;
+    let listeners =
+        Listeners::bind_hosted(listen).map_err(|error| bind_failed(error, |_| HeldPort::Hosted))?;
     log::start();
     tracing::info!(
         board = %root.display(),

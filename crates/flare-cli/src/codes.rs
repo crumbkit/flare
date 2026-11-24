@@ -2,11 +2,15 @@
 //! step it names (CLI-3). No message holds a token, a login code, a launch
 //! host, a launch URL or a client secret.
 
-use crumbkit::{Call, Code, Failure, Recovery};
+use crumbkit::{Code, Failure, Recovery};
 
+pub mod server;
 pub mod sharing;
+pub mod sign_in;
 
+pub use server::HeldPort;
 pub use sharing::{NextRun, Refused, SharingFailed};
+pub use sign_in::SignInAgain;
 
 /// No server answers for the board.
 pub const SERVER_NOT_RUNNING: Code<'static> = Code::from_spelling("flare::server::not_running");
@@ -71,25 +75,34 @@ pub const SYSTEM_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::system
 pub enum Failed {
     /// No server answers for the board.
     #[error("no flare server answers for this board: {reason}")]
-    #[failure(code = SERVER_NOT_RUNNING, recovery = Recovery::Run(Call::new(&["serve"])))]
+    #[failure(code = SERVER_NOT_RUNNING, recovery = server::serve(board.as_deref()))]
     NotRunning {
         /// What `open` found.
         reason: String,
+        /// The `--board` that the command was given.
+        board: Option<String>,
     },
     /// A server already serves the board.
     #[error("a flare server already serves this board")]
-    #[failure(code = SERVER_ALREADY_RUNNING, recovery = Recovery::Run(Call::new(&["open"])))]
-    AlreadyRunning,
+    #[failure(code = SERVER_ALREADY_RUNNING, recovery = server::open(board.as_deref()))]
+    AlreadyRunning {
+        /// The `--board` that the command was given.
+        board: Option<String>,
+    },
     /// Another program holds the port.
     #[error("port {port} is in use by another program")]
     #[failure(
         code = SERVER_PORT_IN_USE,
-        recovery = Recovery::Run(Call::new(&["serve"])),
+        recovery = server::port_in_use(*port, *held, board.as_deref()),
         field(port = *port)
     )]
     PortInUse {
         /// The port.
         port: u16,
+        /// Which port it is.
+        held: HeldPort,
+        /// The `--board` that the command was given.
+        board: Option<String>,
     },
     /// The board's directory does not exist.
     #[error("{path} does not exist")]
@@ -342,6 +355,10 @@ pub enum Failed {
     #[error(transparent)]
     #[failure(forward)]
     Refused(#[from] Refused),
+    /// A failure of `flare login`'s token exchange.
+    #[error(transparent)]
+    #[failure(forward)]
+    SignIn(SignInAgain),
 }
 
 const LOCAL: usize = Failed::CODES.len();

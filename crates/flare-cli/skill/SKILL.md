@@ -27,12 +27,16 @@ called flares, and the owners of those flares can then read it.
     - When the call does the original command's work in its place, stop
       after it. `flare grant` finishes a share that was made without all
       its grants, `flare activity` without `--since` lists the responses
-      in place of a listing whose cursor was refused, and `flare open`
-      opens the board on the server that already runs in place of a
-      second `flare serve`.
+      in place of a listing whose cursor was refused, `flare open` opens
+      the board on the server that already runs in place of a second
+      `flare serve`, and `flare serve` without `--port` after
+      `flare::server::port_in_use` serves on a free port in place of the
+      held one.
     - When the call prepares something the original command needs, run
       the original command again after it. `flare serve` starts the
-      server that `flare open` needs.
+      server that `flare open` needs. Start `flare serve` in the
+      background, because it runs until it is stopped, then run
+      `flare open`.
 
     A word in angle brackets in `call`, such as `<ADDRESS>`, is a value
     to fill in from the failed command or from the person, and `...`

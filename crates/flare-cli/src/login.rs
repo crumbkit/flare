@@ -155,8 +155,20 @@ async fn finish(
     })
 }
 
-/// Trades the login code for a token.
+/// Trades the login code for a token. Running `flare login` again starts
+/// a new browser sign-in, so every failure hands its retry to a person.
 async fn exchange(origin: &str, code: &SecretString, label: &str) -> Result<TokenIssued, Failed> {
+    send_exchange(origin, code, label)
+        .await
+        .map_err(|failed| failed.in_a_sign_in(origin))
+}
+
+/// Sends the exchange and reads the token.
+async fn send_exchange(
+    origin: &str,
+    code: &SecretString,
+    label: &str,
+) -> Result<TokenIssued, Failed> {
     let api = Api::new(origin, None)?;
     let request = ExchangeRequest {
         code: code.expose_secret().to_owned(),
@@ -169,12 +181,11 @@ async fn exchange(origin: &str, code: &SecretString, label: &str) -> Result<Toke
                 SharingFailed::BadAnswer {
                     server: origin.to_owned(),
                     problem: "the exchange answered with no token".to_owned(),
-                    next: NextRun::AfterSuccess,
+                    next: NextRun::MaybeDone,
                 }
                 .into()
             })
         })
-        .map_err(Failed::in_a_sign_in)
 }
 
 /// Runs `flare logout`: revokes the token on the server, then deletes it

@@ -195,10 +195,12 @@ This file records the notable changes to flare. The format follows
 - `flare::network::bad_answer` recovers with a repair and then a retry:
   check that the server runs flare with the share API, then run the same
   command again. In JSON its recovery is of kind `after`. After `flare
-  login`'s token exchange, the step after the check is a `terminal`
-  recovery for `flare login <server>`, because only a person can finish
-  the new sign-in, and `flare::network::unreachable` from the exchange
-  gives the same `terminal` recovery in place of a retry.
+  login`'s token exchange, every step that would run the login again is a
+  `terminal` recovery for `flare login <server>`, because only a person
+  can finish the new sign-in. That covers the step after the check of
+  `flare::network::bad_answer`, and `flare::network::unreachable`,
+  `flare::tokens::unavailable` and `flare::system::unavailable` from the
+  exchange, which recovered with a retry before.
 - A `flare::shares::partly_shared` refusal names `flare grant` as a call
   with the share the server named, and a `flare::activity::bad_cursor`
   refusal names `flare activity` with the flare ids the command was given
@@ -253,13 +255,21 @@ This file records the notable changes to flare. The format follows
 
 - `flare share` and `flare share --update` no longer tell the caller to run
   the same command again after the server answers with success and flare
-  cannot read the answer, because the server may already have made the
-  share or the version, and a second run would make a second one. The
-  failure keeps the code `flare::network::bad_answer`, and its recovery
-  says to check that `flare shares` does not already list the share or the
-  version before running the command again. Every other bad answer, except
-  one from `flare login`'s token exchange, keeps the server check and
-  retry.
+  cannot read the answer, or does not answer a request it was sent,
+  because the server may already have made the share or the version, and
+  a second run would make a second one. The failures keep their codes,
+  `flare::network::bad_answer` and `flare::network::unreachable`, and
+  their recovery says to check that `flare shares` does not already list
+  the share or the version before running the command again. A connection
+  that was refused sends nothing, so it keeps the retry, and other
+  commands keep their recoveries.
+- The recoveries of `flare::server::not_running` and
+  `flare::server::already_running` carry the `--board` that the failed
+  command was given, so the next `flare serve` or `flare open` names the
+  same board. A `flare::server::port_in_use` for the sign-in port or the
+  hosted listen address, which `flare serve` cannot move, asks for the
+  program that holds the port to stop before `flare serve` runs again; a
+  held `--port` still recovers with `flare serve` without `--port`.
 - Sign-ins that arrive while another sign-in is fetching the provider's key
   set wait for that fetch and take its outcome. When the fetch fails, each
   of them is refused with the same `ProviderUnavailable` or

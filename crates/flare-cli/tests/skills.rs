@@ -287,3 +287,17 @@ fn the_skill_says_the_step_after_a_repair_can_be_for_a_person() {
         "{SKILL}"
     );
 }
+
+#[test]
+fn the_skill_names_the_port_in_use_call_as_one_that_replaces_the_original_and_starts_flare_serve_in_the_background()
+ {
+    let text = skill_text();
+    assert!(
+        text.contains("`flare serve` without `--port` after `flare::server::port_in_use`"),
+        "{SKILL}"
+    );
+    assert!(
+        text.contains("Start `flare serve` in the background, because it runs until it is stopped, then run `flare open`."),
+        "{SKILL}"
+    );
+}

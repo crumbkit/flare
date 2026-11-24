@@ -646,6 +646,17 @@ fn a_server_that_does_not_answer_fails_with_network_unreachable() {
         "{}",
         ran.all()
     );
+    // A refused connection sent nothing, so a share can run again.
+    let file = home.path().join("review.md");
+    write(&file, "# Review\n");
+    let ran = home.sharing(&["share", file.to_str().unwrap(), "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
 }
 
 #[test]
@@ -1090,6 +1101,87 @@ fn a_share_whose_success_answer_is_cut_short_or_empty_tells_the_caller_to_check_
             ran.all()
         );
     }
+}
+
+#[test]
+fn a_share_or_a_new_version_whose_request_gets_no_answer_tells_the_caller_to_check_flare_shares_first()
+ {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route_silent("POST", "/api/shares");
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+
+    api.route_silent("POST", &format!("/api/shares/{PARTLY}/versions"));
+    let ran = home.sharing(&["share", &file, "--update", PARTLY, "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+}
+
+#[test]
+fn a_listing_or_a_grant_whose_request_gets_no_answer_keeps_retry() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route_silent("GET", "/api/shares");
+    let ran = home.sharing(&["shares", "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+
+    api.route_silent("POST", &format!("/api/grants/{PARTLY}"));
+    let ran = home.sharing(&["grant", PARTLY, "--with", "ana@example.org", "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_login_whose_token_store_is_unavailable_hands_the_sign_in_to_a_person() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    api.route(
+        "POST",
+        "/api/tokens/exchange",
+        503,
+        &problem("flare::tokens::unavailable", 503, &api.origin),
+    );
+    let ran = home.sharing(&["login", &api.origin, "--json"]);
+    let printed = failure(&ran, "flare::tokens::unavailable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "terminal", "call": format!("flare login {}", api.origin)}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_listing_whose_token_store_is_unavailable_keeps_retry() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/shares",
+        503,
+        &problem("flare::tokens::unavailable", 503, &api.origin),
+    );
+    let ran = home.sharing(&["shares", "--json"]);
+    let printed = failure(&ran, "flare::tokens::unavailable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
 }
 
 #[test]

@@ -113,6 +113,13 @@ impl FakeApi {
         });
     }
 
+    /// Reads the next `method` request to `path` and closes the connection
+    /// without an answer, as a server that dropped the request after it
+    /// arrived would. A route with status 0 stands for this.
+    pub fn route_silent(&self, method: &'static str, path: &str) {
+        self.route_raw(method, path, 0, "", 0);
+    }
+
     /// Answers the next `method` request to `path` with `status`, the text
     /// `body` and a `content-length` of `length`, so a `length` longer than
     /// the body cuts the answer short as a dropped connection would.
@@ -202,6 +209,9 @@ impl FakeApi {
                 .position(|route| route.method == method && route.path == path);
             found.map(|index| routes.remove(index))
         };
+        if route.as_ref().is_some_and(|route| route.status == 0) {
+            return;
+        }
         let (status, content_type, body, length) = route.map_or_else(
             || (404, "text/plain", "no route".to_owned(), 8),
             |route| (route.status, route.content_type, route.body, route.length),

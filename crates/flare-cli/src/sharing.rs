@@ -55,7 +55,7 @@ fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
         SharingFailed::BadAnswer {
             server: api.origin().to_owned(),
             problem: "the answer has no body".to_owned(),
-            next: NextRun::AfterSuccess,
+            next: NextRun::MaybeDone,
         }
         .into()
     })

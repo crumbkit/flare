@@ -42,6 +42,7 @@ struct Server {
 fn not_running(reason: impl Into<String>) -> Failed {
     Failed::NotRunning {
         reason: reason.into(),
+        board: None,
     }
 }
 
@@ -171,6 +172,13 @@ fn record(root: &std::path::Path, env: &Snapshot) -> Result<ServerRecord, Failed
 ///
 /// Returns the failure that stopped it.
 pub(crate) async fn run(args: &OpenArgs, env: &Snapshot) -> Result<Opened, Failed> {
+    open_board(args, env)
+        .await
+        .map_err(|failed| failed.for_board(args.board.as_deref()))
+}
+
+/// Opens the page or binding that `args` names.
+async fn open_board(args: &OpenArgs, env: &Snapshot) -> Result<Opened, Failed> {
     let root = board::root(args.board.as_deref(), Need::Directory, env)?;
     let server = Server::new(record(&root, env)?)?;
     server.prove().await?;

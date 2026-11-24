@@ -58,7 +58,7 @@ impl Api {
             server: self.origin.clone(),
             problem: problem.into(),
             next: if status.is_success() {
-                NextRun::AfterSuccess
+                NextRun::MaybeDone
             } else {
                 NextRun::Clean
             },
@@ -99,7 +99,13 @@ impl Api {
             Failed::from(SharingFailed::Unreachable {
                 server: self.origin.clone(),
                 problem: without_url(&error),
-                next: NextRun::Clean,
+                // A refused connection sent nothing; any other failure may
+                // follow a request the server received.
+                next: if error.is_connect() {
+                    NextRun::Clean
+                } else {
+                    NextRun::MaybeDone
+                },
             })
         })?;
         let status = reply.status();

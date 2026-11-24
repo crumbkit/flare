@@ -5,6 +5,7 @@
 //! the command. No message holds a token or a login code.
 
 use super::Failed;
+use super::sign_in::sign_in;
 use crumbkit::{Call, Code, Failure, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
 use flare_core::ShareId;
@@ -78,7 +79,7 @@ pub enum SharingFailed {
     #[error("{server} did not answer: {problem}")]
     #[failure(
         code = NETWORK_UNREACHABLE,
-        recovery = unreachable(*next, server),
+        recovery = if *next == NextRun::CheckShares { check_shares() } else { Recovery::Retry },
         field(server = server)
     )]
     Unreachable {
@@ -93,7 +94,7 @@ pub enum SharingFailed {
     #[error("{server} answered with something flare cannot read: {problem}")]
     #[failure(
         code = NETWORK_BAD_ANSWER,
-        recovery = bad_answer(*next, server),
+        recovery = bad_answer(*next),
         field(server = server)
     )]
     BadAnswer {
@@ -143,72 +144,55 @@ pub enum SharingFailed {
 /// again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NextRun {
-    /// The server answered that the request did not succeed, so the next
-    /// run starts clean.
+    /// The request did nothing on the server: the server refused it, or
+    /// flare could not connect and sent nothing. The next run starts clean.
     Clean,
-    /// The server answered that the request succeeded. A command whose next
-    /// run ends in the same state, such as a read, `flare grant`, `flare
-    /// login` or `flare logout`, keeps this; a command that writes a share
-    /// or a version turns it into [`NextRun::CheckShares`] with
-    /// `Failed::after_a_write`.
-    AfterSuccess,
+    /// The server may have done what the request asked: it answered with a
+    /// success status that flare cannot read, or it did not answer after
+    /// the request was sent. A command whose next run ends in the same
+    /// state, such as a read or `flare grant`, keeps this, and a command
+    /// that writes a share or a version turns it into
+    /// [`NextRun::CheckShares`] with `Failed::after_a_write`.
+    MaybeDone,
     /// The server may have made the share or the version, and the share API
     /// takes no idempotency key, so a second run could make a second one.
     CheckShares,
-    /// The answer was to `flare login`'s token exchange. Running the command
-    /// again starts a new browser sign-in, which only a person can finish.
-    SignIn,
 }
 
-/// The recovery of [`SharingFailed::Unreachable`] from `server`: run the
-/// command again, or hand a sign-in to a person.
-fn unreachable(next: NextRun, server: &str) -> Recovery {
-    match next {
-        NextRun::SignIn => sign_in(Some(server)),
-        NextRun::Clean | NextRun::AfterSuccess | NextRun::CheckShares => Recovery::Retry,
-    }
+/// The recovery after a write that may have happened: check `flare
+/// shares` before running the command again.
+fn check_shares() -> Recovery {
+    Recovery::after(
+        "check that flare shares does not already list the share or the version this command meant to make",
+        Then::Retry,
+    )
 }
 
-/// The recovery of [`SharingFailed::BadAnswer`] from `server`: check the
-/// server and run the command again, or hand the sign-in to a person after
-/// the check, or, after a write that may have happened, check `flare
-/// shares` first.
-fn bad_answer(next: NextRun, server: &str) -> Recovery {
-    const CHECK_SERVER: &str = "check that the server runs flare with the share API";
+/// The recovery of [`SharingFailed::BadAnswer`]: check the server and run
+/// the command again, or, after a write that may have happened, check
+/// `flare shares` first.
+fn bad_answer(next: NextRun) -> Recovery {
     match next {
-        NextRun::Clean | NextRun::AfterSuccess => Recovery::after(CHECK_SERVER, Then::Retry),
-        NextRun::SignIn => Recovery::after(CHECK_SERVER, Then::Terminal(login(server))),
-        NextRun::CheckShares => Recovery::after(
-            "check that flare shares does not already list the share or the version this command meant to make",
+        NextRun::Clean | NextRun::MaybeDone => Recovery::after(
+            "check that the server runs flare with the share API",
             Then::Retry,
         ),
+        NextRun::CheckShares => check_shares(),
     }
 }
 
 impl Failed {
     /// The same failure for a command that writes a share or a version. A
-    /// success answer that flare could not read may follow a write the
-    /// server made, so its recovery checks `flare shares` before the
-    /// command runs again.
+    /// request that may have reached the server, whose answer flare could
+    /// not read or did not get, may have made the share or the version, so
+    /// its recovery checks `flare shares` before the command runs again.
     pub(crate) fn after_a_write(mut self) -> Self {
-        if let Self::Sharing(SharingFailed::BadAnswer { next, .. }) = &mut self
-            && *next == NextRun::AfterSuccess
-        {
-            *next = NextRun::CheckShares;
-        }
-        self
-    }
-
-    /// The same failure for `flare login`'s token exchange. A login that
-    /// runs again starts a new browser sign-in, so a server that did not
-    /// answer, or whose answer flare cannot read, hands the next run to a
-    /// person.
-    pub(crate) fn in_a_sign_in(mut self) -> Self {
         if let Self::Sharing(
             SharingFailed::BadAnswer { next, .. } | SharingFailed::Unreachable { next, .. },
         ) = &mut self
+            && *next == NextRun::MaybeDone
         {
-            *next = NextRun::SignIn;
+            *next = NextRun::CheckShares;
         }
         self
     }
@@ -350,26 +334,6 @@ impl Failure for Refused {
             )],
             _ => Vec::new(),
         }
-    }
-}
-
-/// `flare login` with `server`.
-fn login(server: &str) -> Call {
-    Call::new(&["login"]).value("server", server.to_owned())
-}
-
-/// The recovery of a failure that needs a new sign-in. Only a person can
-/// finish the browser sign-in, so with a known server it is a `terminal`
-/// recovery for `flare login <server>`. crumbkit renders a terminal call
-/// only when every argument has a value, and with no saved login flare does
-/// not know the server, so in that case the recovery is a hint that names
-/// the command and the server's address the person supplies.
-fn sign_in(server: Option<&str>) -> Recovery {
-    match server {
-        Some(server) => Recovery::Terminal(login(server)),
-        None => Recovery::hint(
-            "a person runs flare login with their flare server's address, such as https://flare.example.org, in a terminal",
-        ),
     }
 }
 
