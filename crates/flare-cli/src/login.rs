@@ -163,15 +163,18 @@ async fn exchange(origin: &str, code: &SecretString, label: &str) -> Result<Toke
         label: label.to_owned(),
     };
     api.send(Method::POST, "/api/tokens/exchange", Some(&request))
-        .await?
-        .ok_or_else(|| {
-            SharingFailed::BadAnswer {
-                server: origin.to_owned(),
-                problem: "the exchange answered with no token".to_owned(),
-                next: NextRun::AfterSuccess,
-            }
-            .into()
+        .await
+        .and_then(|answer| {
+            answer.ok_or_else(|| {
+                SharingFailed::BadAnswer {
+                    server: origin.to_owned(),
+                    problem: "the exchange answered with no token".to_owned(),
+                    next: NextRun::AfterSuccess,
+                }
+                .into()
+            })
         })
+        .map_err(Failed::in_a_sign_in)
 }
 
 /// Runs `flare logout`: revokes the token on the server, then deletes it

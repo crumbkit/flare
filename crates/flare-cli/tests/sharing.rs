@@ -638,8 +638,51 @@ fn a_server_that_does_not_answer_fails_with_network_unreachable() {
         &home.path().join("keychain-item"),
         &format!("{moved} {TOKEN}\n"),
     );
-    home.sharing(&["shares"])
-        .assert_failed("flare::network::unreachable");
+    let ran = home.sharing(&["shares", "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_login_whose_server_does_not_answer_the_exchange_hands_the_sign_in_to_a_person() {
+    let home = Home::new();
+    let gone = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let origin = format!("http://127.0.0.1:{}", gone.local_addr().unwrap().port());
+    drop(gone);
+    let ran = home.sharing(&["login", &origin, "--json"]);
+    let printed = failure(&ran, "flare::network::unreachable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "terminal", "call": format!("flare login {origin}")}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_login_whose_exchange_answer_flare_cannot_read_hands_the_sign_in_to_a_person() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    let expected = json!({
+        "kind": "after",
+        "repair": "check that the server runs flare with the share API",
+        "then": {"kind": "terminal", "call": format!("flare login {}", api.origin)},
+    });
+    for status in [502, 200] {
+        api.route("POST", "/api/tokens/exchange", status, &json!("lost"));
+        let ran = home.sharing(&["login", &api.origin, "--json"]);
+        let printed = failure(&ran, "flare::network::bad_answer");
+        assert_eq!(printed["recovery"], expected, "{status}: {}", ran.all());
+    }
+    api.route_raw("POST", "/api/tokens/exchange", 200, "", 0);
+    let ran = home.sharing(&["login", &api.origin, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], expected, "empty: {}", ran.all());
 }
 
 #[test]
@@ -944,9 +987,9 @@ fn partly_shared(api: &FakeApi, share: Option<&str>) {
 #[test]
 fn a_server_that_is_not_flare_fails_with_bad_answer_whose_recovery_repairs_then_retries() {
     let api = FakeApi::start();
-    let home = Home::new();
-    api.route("POST", "/api/tokens/exchange", 502, &json!("lost"));
-    let ran = home.sharing(&["login", &api.origin, "--json"]);
+    let home = logged_in(&api);
+    api.route("GET", "/api/shares", 502, &json!("lost"));
+    let ran = home.sharing(&["shares", "--json"]);
     let printed = failure(&ran, "flare::network::bad_answer");
     assert_eq!(
         printed["recovery"],
@@ -958,8 +1001,8 @@ fn a_server_that_is_not_flare_fails_with_bad_answer_whose_recovery_repairs_then_
         "{}",
         ran.all()
     );
-    api.route("POST", "/api/tokens/exchange", 502, &json!("lost"));
-    let ran = home.sharing(&["login", &api.origin]);
+    api.route("GET", "/api/shares", 502, &json!("lost"));
+    let ran = home.sharing(&["shares"]);
     ran.assert_failed("flare::network::bad_answer");
     assert!(
         help_line(&ran).contains(

@@ -22,16 +22,30 @@ called flares, and the owners of those flares can then read it.
   rows under `data` and a failure for each id it could not serve under
   `failures`, each in the same shape.
 - Act on the failure's `recovery` by its `kind`:
-  - `run`: run the command in `call`, then run the original command
-    again. A word in angle brackets in `call`, such as `<ADDRESS>`, is a
-    value to fill in from the failed command or from the person, and `...`
+  - `run`: run the command in `call` as the next step. What happens to
+    the original command depends on what the call does:
+    - When the call does the original command's work in its place, stop
+      after it. `flare grant` finishes a share that was made without all
+      its grants, `flare activity` without `--since` lists the responses
+      in place of a listing whose cursor was refused, and `flare open`
+      opens the board on the server that already runs in place of a
+      second `flare serve`.
+    - When the call prepares something the original command needs, run
+      the original command again after it. `flare serve` starts the
+      server that `flare open` needs.
+
+    A word in angle brackets in `call`, such as `<ADDRESS>`, is a value
+    to fill in from the failed command or from the person, and `...`
     after it means the value may repeat.
   - `terminal`: only a person can run the command in `call`, such as a
-    browser sign-in. Ask the person to run it, and wait for them before
-    you run the original command again.
+    browser sign-in. Ask the person to run it, and wait for them. When
+    the call is the original command, such as `flare login` after a
+    sign-in that failed, the person's run replaces it; otherwise run the
+    original command again after the person's run.
   - `retry`: run the original command again.
   - `after`: make the repair that `repair` describes first, then take
-    the step in `then`, which is a `run` or `retry` step as above.
+    the step in `then`, which is a `run`, `terminal` or `retry` step as
+    above.
   - `hint`: follow the advice in `text`. When it names a step for a
     person, ask the person.
   - `none`: flare offers no next step. Tell the person the failure's

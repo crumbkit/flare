@@ -194,11 +194,16 @@ This file records the notable changes to flare. The format follows
   These recoveries were `run` recoveries before.
 - `flare::network::bad_answer` recovers with a repair and then a retry:
   check that the server runs flare with the share API, then run the same
-  command again. In JSON its recovery is of kind `after`.
+  command again. In JSON its recovery is of kind `after`. After `flare
+  login`'s token exchange, the step after the check is a `terminal`
+  recovery for `flare login <server>`, because only a person can finish
+  the new sign-in, and `flare::network::unreachable` from the exchange
+  gives the same `terminal` recovery in place of a retry.
 - A `flare::shares::partly_shared` refusal names `flare grant` as a call
   with the share the server named, and a `flare::activity::bad_cursor`
-  refusal names `flare activity <FLARE>...` without a cursor, with an
-  alternative that runs it with `--since` once the right cursor is found.
+  refusal names `flare activity` with the flare ids the command was given
+  and without a cursor, with an alternative that runs it with `--since`
+  once the right cursor is found.
 - `flare activity` prints its next command as a step: in text, a `Next:`
   sentence on standard error with `flare activity <id>... --since <cursor>`
   under it, and in JSON, the same call under `next`. The summary line
@@ -252,9 +257,6 @@ This file records the notable changes to flare. The format follows
   share or the version, and a second run would make a second one. The
   failure keeps the code `flare::network::bad_answer`, and its recovery
   says to check that `flare shares` does not already list the share or the
-  version before running the command again. Every other bad answer keeps
-  the server check and retry.
-- A `flare::activity::bad_cursor` refusal names `flare activity` with the
-  flare ids the command was given, such as `flare activity <id> <id>`, in
-  its recovery and its alternative, in place of the `<FLARE>...`
-  placeholder.
+  version before running the command again. Every other bad answer, except
+  one from `flare login`'s token exchange, keeps the server check and
+  retry.

@@ -99,6 +99,7 @@ impl Api {
             Failed::from(SharingFailed::Unreachable {
                 server: self.origin.clone(),
                 problem: without_url(&error),
+                next: NextRun::Clean,
             })
         })?;
         let status = reply.status();
