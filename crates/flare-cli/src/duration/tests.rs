@@ -1,4 +1,4 @@
-use super::parse;
+use super::{parse, text};
 use std::time::Duration;
 
 #[test]
@@ -28,5 +28,20 @@ fn a_number_without_a_unit_a_zero_or_other_text_is_refused() {
         "99999999999999999999h",
     ] {
         assert!(parse(text).is_err(), "{text}");
+    }
+}
+
+#[test]
+fn a_duration_prints_in_the_largest_unit_that_divides_it_and_parses_back() {
+    for (seconds, expected) in [
+        (1, "1s"),
+        (90, "90s"),
+        (1800, "30m"),
+        (28_800, "8h"),
+        (172_800, "2d"),
+    ] {
+        let printed = text(Duration::from_secs(seconds));
+        assert_eq!(printed, expected);
+        assert_eq!(parse(&printed), Ok(Duration::from_secs(seconds)));
     }
 }

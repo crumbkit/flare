@@ -17,7 +17,7 @@ mod tests;
 
 use crate::cli::LoginArgs;
 use crate::client::Api;
-use crate::codes::{Failed, SharingFailed};
+use crate::codes::{Failed, NextRun, SharingFailed};
 use crate::documents::{LoggedIn, LoggedOut};
 use crate::env::Snapshot;
 use crate::{keychain, opener};
@@ -155,21 +155,36 @@ async fn finish(
     })
 }
 
-/// Trades the login code for a token.
+/// Trades the login code for a token. Running `flare login` again starts
+/// a new browser sign-in, so every failure hands its retry to a person.
 async fn exchange(origin: &str, code: &SecretString, label: &str) -> Result<TokenIssued, Failed> {
+    send_exchange(origin, code, label)
+        .await
+        .map_err(|failed| failed.in_a_sign_in(origin))
+}
+
+/// Sends the exchange and reads the token.
+async fn send_exchange(
+    origin: &str,
+    code: &SecretString,
+    label: &str,
+) -> Result<TokenIssued, Failed> {
     let api = Api::new(origin, None)?;
     let request = ExchangeRequest {
         code: code.expose_secret().to_owned(),
         label: label.to_owned(),
     };
     api.send(Method::POST, "/api/tokens/exchange", Some(&request))
-        .await?
-        .ok_or_else(|| {
-            SharingFailed::BadAnswer {
-                server: origin.to_owned(),
-                problem: "the exchange answered with no token".to_owned(),
-            }
-            .into()
+        .await
+        .and_then(|answer| {
+            answer.ok_or_else(|| {
+                SharingFailed::BadAnswer {
+                    server: origin.to_owned(),
+                    problem: "the exchange answered with no token".to_owned(),
+                    next: NextRun::MaybeDone,
+                }
+                .into()
+            })
         })
 }
 

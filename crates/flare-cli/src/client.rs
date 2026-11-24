@@ -6,7 +6,7 @@
 //! server's code; any other answer that is not the expected JSON is
 //! [`SharingFailed::BadAnswer`].
 
-use crate::codes::{Failed, Refused, SharingFailed};
+use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use flare_contract::{ApiCode, ProblemDocument};
 use reqwest::{Client, Method, StatusCode};
 use secrecy::{ExposeSecret as _, SecretString};
@@ -50,10 +50,28 @@ impl Api {
         &self.origin
     }
 
-    fn bad(&self, problem: impl Into<String>) -> Failed {
+    /// A bad answer with `status`, which flare could not read as the share
+    /// API's answer. After a success status, or a 502, 503 or 504 that a
+    /// proxy in front of the server may send after the server did the
+    /// work, the server may have done what the request asked, which the
+    /// command that sent it weighs with [`Failed::after_a_write`]. Any other
+    /// status says the request did not succeed.
+    fn bad(&self, status: StatusCode, problem: impl Into<String>) -> Failed {
+        let maybe_done = status.is_success()
+            || matches!(
+                status,
+                StatusCode::BAD_GATEWAY
+                    | StatusCode::SERVICE_UNAVAILABLE
+                    | StatusCode::GATEWAY_TIMEOUT
+            );
         SharingFailed::BadAnswer {
             server: self.origin.clone(),
             problem: problem.into(),
+            next: if maybe_done {
+                NextRun::MaybeDone
+            } else {
+                NextRun::Clean
+            },
         }
         .into()
     }
@@ -91,28 +109,42 @@ impl Api {
             Failed::from(SharingFailed::Unreachable {
                 server: self.origin.clone(),
                 problem: without_url(&error),
+                // A refused connection sent nothing; any other failure may
+                // follow a request the server received.
+                next: if error.is_connect() {
+                    NextRun::Clean
+                } else {
+                    NextRun::MaybeDone
+                },
             })
         })?;
         let status = reply.status();
         let bytes = reply
             .bytes()
             .await
-            .map_err(|_| self.bad("the answer was cut short"))?;
+            .map_err(|_| self.bad(status, "the answer was cut short"))?;
         if status.is_success() {
             if bytes.is_empty() || status == StatusCode::NO_CONTENT {
                 return Ok(None);
             }
             return serde_json::from_slice(&bytes).map(Some).map_err(|error| {
-                self.bad(format!("the answer is not the expected JSON: {error}"))
+                self.bad(
+                    status,
+                    format!("the answer is not the expected JSON: {error}"),
+                )
             });
         }
-        let problem: ProblemDocument = serde_json::from_slice(&bytes)
-            .map_err(|_| self.bad(format!("it answered {status} with no problem document")))?;
+        let problem: ProblemDocument = serde_json::from_slice(&bytes).map_err(|_| {
+            self.bad(
+                status,
+                format!("it answered {status} with no problem document"),
+            )
+        })?;
         match ApiCode::from_text(&problem.code) {
             Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
                 .naming(problem.share.as_deref())
                 .into()),
-            None => Err(self.bad(format!(
+            None => Err(self.bad(StatusCode::BAD_REQUEST, format!(
                 "it answered {status} with the code {}, which this flare does not know; a newer flare may",
                 problem.code
             ))),
