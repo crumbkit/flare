@@ -12,7 +12,7 @@ pub mod schema;
 mod time;
 mod wire;
 
-pub use cursor::{Cursor, CursorError};
+pub use cursor::{Cursor, CursorError, ListScope, ShareCursor};
 pub use problem::{ApiCode, ProblemDocument, Recovery};
 pub use time::utc;
 pub use wire::{

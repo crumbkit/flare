@@ -61,3 +61,16 @@ fn a_recipient_problem_shows_the_address_form() {
     };
     assert!(text.contains("ana@example.org"));
 }
+
+#[test]
+fn a_bad_share_cursor_has_its_own_code_whose_hint_names_flare_shares() {
+    let problem = ProblemDocument::new(ApiCode::SharesBadCursor, "https://f.example");
+    assert_eq!(problem.code, "flare::shares::bad_cursor");
+    assert_eq!(problem.status, 400);
+    let Some(Recovery::Hint { text }) = &problem.recovery else {
+        panic!("{problem:?}");
+    };
+    assert!(text.contains("flare shares"), "{text}");
+    let activity = ProblemDocument::new(ApiCode::BadCursor, "https://f.example");
+    assert_eq!(activity.code, "flare::activity::bad_cursor");
+}

@@ -535,6 +535,228 @@ fn shares_with_me_asks_for_the_shares_granted_to_the_caller_up_to_the_limit() {
     );
 }
 
+/// A share cursor of `scope=mine` that flare wrote.
+const MINE_CURSOR: &str = "fs1.AAAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg";
+
+/// A share cursor of `scope=with-me` that flare wrote.
+const WITH_ME_CURSOR: &str = "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg";
+
+/// A share cursor of `scope=with-me` one second older than
+/// [`WITH_ME_CURSOR`], so it sorts after it in the list.
+const LATER_CURSOR: &str = "fs1.AQAAAABpJID_qqqqqqqqqqqqqqqqqqqqqg";
+
+/// Answers the next share list with one share titled `title`, and `next`
+/// when given.
+fn share_page(api: &FakeApi, title: &str, next: Option<&str>) {
+    let mut page = json!({"items": [summary(FLARE, title)], "more": next.is_some()});
+    if let Some(next) = next {
+        page["next"] = json!(next);
+    }
+    api.route("GET", "/api/shares", 200, &page);
+}
+
+/// The targets of the share list requests.
+fn share_targets(api: &FakeApi) -> Vec<String> {
+    api.requests_to("/api/shares")
+        .into_iter()
+        .map(|request| request.target)
+        .collect()
+}
+
+#[test]
+fn shares_with_all_follows_the_cursor_until_no_next_comes_back_and_prints_every_row() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    share_page(&api, "First", Some(WITH_ME_CURSOR));
+    share_page(&api, "Second", None);
+    let ran = home.sharing(&["shares", "--with-me", "--all", "--json"]);
+    ran.assert_ok();
+    for expected in ["First", "Second"] {
+        assert!(ran.stdout.contains(expected), "{expected}: {}", ran.all());
+    }
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["data"].as_array().unwrap().len(),
+        2,
+        "{}",
+        ran.all()
+    );
+    assert!(printed.get("next").is_none(), "{}", ran.all());
+    assert_eq!(
+        share_targets(&api),
+        [
+            "/api/shares?scope=with-me&limit=500".to_owned(),
+            format!("/api/shares?scope=with-me&limit=500&cursor={WITH_ME_CURSOR}"),
+        ]
+    );
+}
+
+#[test]
+fn shares_cut_by_limit_names_the_next_call_with_the_cursor_and_a_last_page_names_none() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    share_page(&api, "First", Some(WITH_ME_CURSOR));
+    let ran = home.sharing(&["shares", "--with-me", "--limit", "2", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["next"],
+        json!([{
+            "text": "Read the shares that follow this page.",
+            "commands": [{"call": format!("flare shares --with-me --limit 2 --cursor {WITH_ME_CURSOR}")}],
+        }]),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["summary"],
+        json!({"cursor": WITH_ME_CURSOR}),
+        "{}",
+        ran.all()
+    );
+
+    share_page(&api, "First", Some(MINE_CURSOR));
+    let ran = home.sharing(&["shares", "--limit", "2"]);
+    ran.assert_ok();
+    assert!(
+        ran.stderr.contains(&format!(
+            "Next: Read the shares that follow this page.\n  flare shares --limit 2 --cursor {MINE_CURSOR}\n"
+        )),
+        "{}",
+        ran.all()
+    );
+
+    share_page(&api, "Last", None);
+    let ran = home.sharing(&["shares", "--cursor", MINE_CURSOR, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert!(printed.get("next").is_none(), "{}", ran.all());
+    assert_eq!(printed["summary"], json!({"cursor": null}), "{}", ran.all());
+    assert_eq!(
+        share_targets(&api).last().unwrap(),
+        &format!("/api/shares?scope=mine&limit=50&cursor={MINE_CURSOR}")
+    );
+}
+
+#[test]
+fn shares_with_all_follows_a_cursor_that_moves_forward_and_stops_with_bad_answer_on_one_that_does_not()
+ {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    share_page(&api, "First", Some(WITH_ME_CURSOR));
+    share_page(&api, "Second", Some(LATER_CURSOR));
+    share_page(&api, "Third", None);
+    home.sharing(&["shares", "--with-me", "--all", "--json"])
+        .assert_ok();
+    assert_eq!(share_targets(&api).len(), 3);
+
+    // Each answer below sends a `next` that the command must refuse: the
+    // same cursor again, one that moves back, one of the other scope and
+    // text that is no share cursor. Each run stops with a typed failure.
+    for (start, bad) in [
+        (WITH_ME_CURSOR, WITH_ME_CURSOR),
+        (LATER_CURSOR, WITH_ME_CURSOR),
+        (WITH_ME_CURSOR, MINE_CURSOR),
+        (WITH_ME_CURSOR, "nonsense"),
+    ] {
+        let before = share_targets(&api).len();
+        share_page(&api, "Again", Some(bad));
+        let ran = home.sharing(&["shares", "--with-me", "--all", "--cursor", start, "--json"]);
+        let printed = failure(&ran, "flare::network::bad_answer");
+        assert!(
+            printed["message"].as_str().unwrap().contains("cursor"),
+            "{start} then {bad}: {}",
+            ran.all()
+        );
+        assert_eq!(share_targets(&api).len(), before + 1, "{start} then {bad}");
+    }
+}
+
+#[test]
+fn shares_cut_by_limit_refuses_a_next_cursor_that_does_not_move_forward() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    share_page(&api, "First", Some(WITH_ME_CURSOR));
+    let ran = home.sharing(&[
+        "shares",
+        "--with-me",
+        "--limit",
+        "1",
+        "--cursor",
+        LATER_CURSOR,
+        "--json",
+    ]);
+    failure(&ran, "flare::network::bad_answer");
+    share_page(&api, "First", Some(LATER_CURSOR));
+    home.sharing(&[
+        "shares",
+        "--with-me",
+        "--limit",
+        "1",
+        "--cursor",
+        WITH_ME_CURSOR,
+        "--json",
+    ])
+    .assert_ok();
+}
+
+/// Asserts that `ran` failed with `flare::shares::bad_cursor`, whose
+/// recovery lists from the start with `scope`'s flag.
+fn assert_bad_share_cursor(ran: &run::Ran, flags: &str) {
+    let printed = failure(ran, "flare::shares::bad_cursor");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "run", "call": format!("flare shares{flags}")}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["alternatives"],
+        json!([{
+            "kind": "after",
+            "repair": "find the cursor that the last flare shares printed",
+            "then": {"kind": "run", "call": format!("flare shares{flags} --cursor <CURSOR>")},
+        }]),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn shares_refuses_an_activity_cursor_or_one_of_the_other_scope_before_any_request_and_sends_a_good_one()
+ {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let ran = home.sharing(&["shares", "--cursor", "fc1.AAAAAAAAAAA", "--json"]);
+    assert_bad_share_cursor(&ran, "");
+    let ran = home.sharing(&["shares", "--with-me", "--cursor", MINE_CURSOR, "--json"]);
+    assert_bad_share_cursor(&ran, " --with-me");
+    assert!(api.requests_to("/api/shares").is_empty());
+    share_page(&api, "Plans", None);
+    home.sharing(&["shares", "--with-me", "--cursor", WITH_ME_CURSOR, "--json"])
+        .assert_ok();
+    assert_eq!(
+        share_targets(&api),
+        [format!(
+            "/api/shares?scope=with-me&limit=50&cursor={WITH_ME_CURSOR}"
+        )]
+    );
+}
+
+#[test]
+fn a_share_cursor_the_server_refuses_fails_with_bad_cursor_and_names_flare_shares() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let mut refusal = problem("flare::shares::bad_cursor", 400, &api.origin);
+    refusal["recovery"] = json!({
+        "kind": "hint",
+        "text": "pass the cursor that the last flare shares printed, or none to start over",
+    });
+    api.route("GET", "/api/shares", 400, &refusal);
+    let ran = home.sharing(&["shares", "--with-me", "--cursor", WITH_ME_CURSOR, "--json"]);
+    assert_bad_share_cursor(&ran, " --with-me");
+}
+
 #[test]
 fn activity_with_all_follows_the_cursor_until_no_more_and_prints_the_last_cursor() {
     let api = FakeApi::start();

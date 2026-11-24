@@ -59,9 +59,9 @@ pub use share::{
 };
 pub use sharing::{Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{
-    FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, MoveError, PageStore,
-    PageStoreError, ReadError, RecordStore, Rejection, ResponseStore, ResponseStoreError,
-    ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
+    FileStore, FileStoreError, FillTypes, GrantStore, GrantStoreError, ListKey, ListPage,
+    MoveError, PageStore, PageStoreError, ReadError, RecordStore, Rejection, ResponseStore,
+    ResponseStoreError, ShareStore, ShareStoreError, TokenStore, TokenStoreError, WriteError,
 };
 pub use time::Timestamp;
 pub use token::{
