@@ -109,30 +109,24 @@ fn original_binding(version: &PageVersion) -> Binding {
 }
 
 // The one test that runs past board's real walk bound. Each walk of
-// 100,000 commits takes seconds and a test is stopped after 60 seconds, so
-// it runs three: the save, the move and `latest`. The tests below that use
-// a board program answering an incomplete walk cover the other cases.
+// 100,000 commits takes several seconds on CI and a test is stopped after
+// 60 seconds, so it runs one, in the save. The tests below that use a board
+// program answering an incomplete walk cover moves and the other cases.
 #[test]
-fn pins_saves_moves_and_fit_checks_keep_working_past_the_logs_walk() {
+fn pins_saves_and_fit_checks_keep_working_past_the_logs_walk() {
     let board = ScratchBoard::new();
     board.seed_record("/tasks/a", r#"{"$type":"tasks/task/v2","title":"first"}"#);
     let store = board.store_with(board.program(), slow_limits());
     let first = publish(&store, "one");
-    let second = publish(&store, "two");
+    publish(&store, "two");
     board.filler(PAST_THE_WALK);
 
     assert_eq!(text_at(&store, &first), "one");
     block_on(store.save_binding(original_binding(&first), &store)).unwrap();
     block_on(store.check_fit(&view(), &store)).unwrap();
-    block_on(store.move_binding(&view(), &first, &second, &store, &mover())).unwrap();
-    let moved = block_on(store.binding(&view())).unwrap();
-    assert_eq!(moved.pin().version(), &second);
-
-    // Accepted gap: the newest version needs the walk from HEAD to reach
-    // the page's last change.
     assert_eq!(
-        block_on(store.latest(&home())),
-        Err(PageStoreError::Unavailable)
+        block_on(store.binding(&view())).unwrap().pin().version(),
+        &first
     );
 }
 
@@ -291,13 +285,18 @@ exec "{}" "$@"
 }
 
 #[test]
-fn a_pin_is_saved_unchecked_when_the_newest_walk_from_head_stops_early() {
-    let (board, _, [_, _, side]) = with_a_side_branch();
+fn a_pin_is_saved_and_moved_unchecked_when_the_newest_walk_from_head_stops_early() {
+    let (board, _, [first, _, side]) = with_a_side_branch();
     let stopping = answering_walks(&board, "log --json --limit 1 ", STOPPED);
     let store = board.store_with(&stopping, Limits::default());
 
     // Accepted gap: a walk that stops before its end cannot decide.
-    block_on(store.save_binding(binding(&side), &store)).unwrap();
+    block_on(store.save_binding(binding(&first), &store)).unwrap();
+    block_on(store.move_binding(&view(), &first, &side, &store, &mover())).unwrap();
+    assert_eq!(
+        block_on(store.binding(&view())).unwrap().pin().version(),
+        &side
+    );
 }
 
 #[test]
