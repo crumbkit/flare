@@ -40,6 +40,8 @@ pub(crate) enum ItemRole {
     Sequence,
     PairItem,
     LinkItem,
+    IndexMarker,
+    IndexEntry,
 }
 
 /// The items of one transaction, with the role of each.

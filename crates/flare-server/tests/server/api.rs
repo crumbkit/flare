@@ -844,3 +844,47 @@ async fn a_response_from_someone_else_opens_for_the_flares_owner_without_naming_
     let (status, body) = api.read("GET", &path, Some(&alice)).await;
     assert_eq!(status, 200, "{body}");
 }
+
+#[tokio::test]
+async fn a_repeated_grant_writes_the_activity_entries_that_a_failed_index_write_left_out() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    let carol = api.token_for("carol").await;
+    let flare = api
+        .share(
+            &alice,
+            "Plan",
+            &["bob@example.com", "carol@example.com"],
+            &[],
+        )
+        .await;
+    let path = format!("/api/activity?flare={flare}");
+    api.faults.index.store(true, Ordering::SeqCst);
+    let (status, body) = api
+        .json(
+            "POST",
+            "/api/shares",
+            Some(&bob),
+            share_body("Counter-plan", &["carol@example.com"], &[&flare]),
+        )
+        .await;
+    assert_eq!((status, code(&body)), (409, "flare::shares::partly_shared"));
+    let response = body["share"].as_str().unwrap().to_owned();
+    api.faults.index.store(false, Ordering::SeqCst);
+    let (_, missing) = api.read("GET", &path, Some(&carol)).await;
+    assert_eq!(ids(&missing), Vec::<String>::new());
+    let (status, _) = api
+        .json(
+            "POST",
+            &format!("/api/grants/{response}"),
+            Some(&bob),
+            json!({"with": ["carol@example.com"], "re": [flare]}),
+        )
+        .await;
+    assert_eq!(status, 200);
+    for reader in [&alice, &bob, &carol] {
+        let (_, page) = api.read("GET", &path, Some(reader)).await;
+        assert_eq!(ids(&page), vec![response.clone()]);
+    }
+}
