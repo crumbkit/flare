@@ -1,13 +1,14 @@
 //! Turns flare-core's shares, activity and refusals into the contract's
 //! bodies and codes.
 
-use super::Refusal;
+use super::{BodyRefused, Refusal};
 use flare_contract::{
-    ActivityItem as WireItem, ApiCode, FlareRef, Format, Role as WireRole, ShareSummary, utc,
+    ActivityItem as WireItem, ApiCode, FlareRef, Format, ListScope, Role as WireRole, ShareCursor,
+    ShareSummary, utc,
 };
 use flare_core::{
-    ActivityItem, FlareError, ParseError, RecipientError, ResponseActivity, Role, Share,
-    ShareError, Standing,
+    ActivityItem, FlareError, ListKey, ParseError, RecipientError, ResponseActivity, Role, Share,
+    ShareError, ShareId, Standing, Timestamp,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -132,16 +133,33 @@ pub(super) fn recipient_error(error: RecipientError, identifier: &str) -> Refusa
 
 /// The refusal for a title or content that its type refused: too large
 /// for a document over the limit, and invalid otherwise.
-pub(super) fn content_error(error: &ParseError) -> Refusal {
+pub(super) fn content_error(error: &ParseError) -> BodyRefused {
     match error {
         ParseError::TooLong {
             subject: flare_core::Subject::DocumentText,
             ..
-        } => ApiCode::ShareTooLarge.into(),
-        other => Refusal {
+        } => BodyRefused {
+            code: ApiCode::ShareTooLarge,
+            detail: None,
+        },
+        other => BodyRefused {
             code: ApiCode::ShareInvalid,
             detail: Some(other.to_string()),
-            share: None,
         },
     }
+}
+
+/// The key after which a list continues, from a share cursor. A share id
+/// that `ShareId` refuses is a cursor flare did not write.
+pub(crate) fn list_key(cursor: ShareCursor) -> Result<ListKey, Refusal> {
+    let share = ShareId::try_from(cursor.share_hex().as_str())
+        .map_err(|_| Refusal::from(ApiCode::SharesBadCursor))?;
+    Ok(ListKey::new(Timestamp::from_secs(cursor.seconds()), share))
+}
+
+/// The text of the share cursor after `key` in the list of `scope`.
+pub(super) fn share_cursor(scope: ListScope, key: &ListKey) -> Result<String, Refusal> {
+    ShareCursor::from_hex(scope, key.created().as_secs(), key.share().as_str())
+        .map(|cursor| cursor.to_string())
+        .map_err(|_| ApiCode::SharesUnavailable.into())
 }

@@ -434,3 +434,77 @@ fn an_unreadable_cursors_file_fails_the_command_before_it_prints_and_a_control_r
         healthy.all()
     );
 }
+
+#[test]
+fn a_since_last_call_names_the_next_call_with_the_saved_name_and_a_plain_call_with_the_cursor() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/activity",
+        200,
+        &activity_page(&[comment_item()], 8, false),
+    );
+    api.route(
+        "PUT",
+        "/api/cursors/inbox",
+        200,
+        &json!({"cursor": cursor(8)}),
+    );
+    let ran = home.sharing(&["activity", FLARE, "--since-last", "inbox", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["next"],
+        json!([{
+            "text": "Read the activity that arrives after this.",
+            "commands": [{"call": format!("flare activity {FLARE} --since-last inbox")}],
+        }]),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["summary"],
+        json!({"cursor": cursor(8), "saved_as": "inbox", "more": false}),
+        "{}",
+        ran.all()
+    );
+    // The twin without --since-last names the cursor.
+    api.route(
+        "GET",
+        "/api/activity",
+        200,
+        &activity_page(&[comment_item()], 9, false),
+    );
+    let ran = home.sharing(&["activity", FLARE, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["next"][0]["commands"][0]["call"],
+        format!("flare activity {FLARE} --since {}", cursor(9)),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn a_cursor_name_the_server_does_not_know_recovers_with_flare_activity_on_the_same_flares() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let mut refusal = problem("flare::cursors::not_found", 404, &api.origin);
+    refusal["recovery"] = json!({
+        "kind": "hint",
+        "text": "start from the beginning; flare activity --since-last saves the cursor",
+    });
+    api.route("GET", "/api/activity", 404, &refusal);
+    let ran = home.sharing(&["activity", FLARE, "--since-last", "inbox", "--json"]);
+    ran.assert_failed("flare::cursors::not_found");
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "run", "call": format!("flare activity {FLARE}")}),
+        "{}",
+        ran.all()
+    );
+    assert!(api.requests_to("/api/cursors/inbox").is_empty());
+}

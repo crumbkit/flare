@@ -35,6 +35,7 @@ use flare_auth_loopback::StateDir;
 use run::{Home, Ran};
 use secrecy::ExposeSecret as _;
 use std::io::{BufRead as _, BufReader};
+use std::os::unix::fs::PermissionsExt as _;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -329,6 +330,32 @@ fn launch_target(opener: &std::path::Path) -> String {
 }
 
 #[test]
+fn open_names_an_opener_that_fails_in_the_program_field() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let (root, _) = paths(&board);
+    let running = Running::start(&home, &board, &[]);
+    let failing = home.script("failing-opener", "exit 1\n");
+    #[expect(clippy::disallowed_methods, reason = "the test runs the built binary")]
+    let output = home
+        .command(&["open", "--board", &root, "--json"])
+        .env("FLARE_OPENER", &failing)
+        .output()
+        .unwrap();
+    let ran = Ran::from(output);
+    ran.assert_failed("flare::opener::failed");
+    let printed: serde_json::Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"program": failing.to_str().unwrap()}),
+        "{}",
+        ran.all()
+    );
+    home.run(&["open", "--board", &root]).assert_ok();
+    running.stop("-TERM");
+}
+
+#[test]
 fn open_names_a_page_or_a_binding_and_refuses_an_unknown_name() {
     let home = Home::new();
     let board = ScratchBoard::new();
@@ -387,6 +414,31 @@ fn open_names_a_page_or_a_binding_and_refuses_an_unknown_name() {
 }
 
 #[test]
+fn serve_names_an_untrusted_state_directory_in_the_path_field() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let state = StateDir::for_board(&home.state(), &board.root());
+    std::fs::create_dir_all(state.path()).unwrap();
+    let chmod = |mode| {
+        std::fs::set_permissions(state.path(), std::fs::Permissions::from_mode(mode)).unwrap();
+    };
+    chmod(0o755);
+    let (root, program) = paths(&board);
+    let mut args = serve_args(&board, &root, &program);
+    args.push("--json");
+    let ran = home.run(&args);
+    ran.assert_failed("flare::state::unusable");
+    let printed: serde_json::Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"path": state.path().to_str().unwrap()}),
+        "{printed}"
+    );
+    chmod(0o700);
+    Running::start(&home, &board, &[]).stop("-TERM");
+}
+
+#[test]
 fn serve_stops_on_sigterm_and_exits_0() {
     let home = Home::new();
     let board = ScratchBoard::new();
@@ -418,8 +470,17 @@ fn a_second_serve_for_the_same_board_is_refused_while_the_first_answers() {
     let board = ScratchBoard::new();
     let running = Running::start(&home, &board, &[]);
     let (root, program) = paths(&board);
-    home.run(&serve_args(&board, &root, &program))
-        .assert_failed("flare::server::already_running");
+    let mut args = serve_args(&board, &root, &program);
+    args.push("--json");
+    let ran = home.run(&args);
+    ran.assert_failed("flare::server::already_running");
+    let printed: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        serde_json::json!({"kind": "run", "call": format!("flare open --board {root}")}),
+        "{}",
+        ran.all()
+    );
     running.stop("-TERM");
 }
 
@@ -464,8 +525,29 @@ fn serve_refuses_a_port_that_another_program_holds() {
     let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = held.local_addr().unwrap().port().to_string();
     let (root, program) = paths(&board);
+    let config = home.write_config("{}");
+    let config = config.to_str().unwrap();
     let mut args = serve_args(&board, &root, &program);
-    args.extend(["--port", &port]);
-    home.run(&args).assert_failed("flare::server::port_in_use");
+    args.extend([
+        "--port",
+        &port,
+        "--config",
+        config,
+        "--idle-exit",
+        "2h",
+        "--json",
+    ]);
+    let ran = home.run(&args);
+    ran.assert_failed("flare::server::port_in_use");
+    let printed: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    let call = format!(
+        "flare serve --board {root} --board-program {program} --config {config} --idle-exit 2h"
+    );
+    assert_eq!(
+        printed["recovery"],
+        serde_json::json!({"kind": "run", "call": call}),
+        "{}",
+        ran.all()
+    );
     drop(held);
 }

@@ -4,14 +4,15 @@
 
 use crate::cli::ActivityArgs;
 use crate::client::Api;
+use crate::codes::sharing::activity_call;
 use crate::codes::{Failed, Refused};
 use crate::cursors;
 use crate::documents::{ActivityRow, Next};
 use crate::env::Snapshot;
 use crate::sharing::{body, session, share_id};
-use crumbkit::Listing;
+use crumbkit::{Listing, Step};
 use flare_contract::{ActivityItem, ActivityPage, ApiCode, Cursor, NamedCursor};
-use flare_core::CursorName;
+use flare_core::{CursorName, ShareId};
 use reqwest::Method;
 
 /// The most responses the server lists at once, which each page of
@@ -108,6 +109,23 @@ fn activity_row(item: ActivityItem) -> Option<ActivityRow> {
     }
 }
 
+/// The step that reads the activity after `next`: `flare activity` with
+/// each of `flares`, in the order given, and the name the cursor was saved
+/// under, or else the cursor of the last page.
+fn next_step(flares: &[ShareId], next: &Next) -> Step {
+    let sentence = if next.more {
+        "Read the activity that waits past this page."
+    } else {
+        "Read the activity that arrives after this."
+    };
+    let call = activity_call(flares);
+    let call = match &next.saved_as {
+        Some(name) => call.value("since_last", name.clone()),
+        None => call.value("since", next.cursor.clone()),
+    };
+    Step::new(sentence).call(call)
+}
+
 /// The cursor name that `--since-last` gives, which the server and this
 /// computer's file both key by.
 fn cursor_name(api: &Api, text: &str) -> Result<CursorName, Failed> {
@@ -135,11 +153,13 @@ pub(crate) async fn activity(
 ) -> Result<Listing<ActivityRow, Next>, Failed> {
     let api = session(env)?;
     let mut query = String::new();
+    let mut flares = Vec::with_capacity(args.flares.len());
     for flare in &args.flares {
         let id = share_id(&api, flare)?;
         query.push_str("flare=");
         query.push_str(id.as_str());
         query.push('&');
+        flares.push(id);
     }
     let name = args
         .since_last
@@ -147,10 +167,9 @@ pub(crate) async fn activity(
         .map(|text| cursor_name(&api, text))
         .transpose()?;
     let given = match &args.since {
-        Some(text) => Some(
-            Cursor::try_from(text.as_str())
-                .map_err(|_| Refused::new(ApiCode::BadCursor, None, api.origin()))?,
-        ),
+        Some(text) => Some(Cursor::try_from(text.as_str()).map_err(|_| {
+            Refused::new(ApiCode::BadCursor, None, api.origin()).for_flares(&flares)
+        })?),
         None => None,
     };
     let kept = match &name {
@@ -168,7 +187,10 @@ pub(crate) async fn activity(
             .as_ref()
             .map_or_else(String::new, |cursor| format!("since={cursor}&"));
         let target = format!("/api/activity?{query}{after}{last}limit={limit}");
-        let answer: Option<ActivityPage> = api.send(Method::GET, &target, None::<&()>).await?;
+        let answer: Option<ActivityPage> = api
+            .send(Method::GET, &target, None::<&()>)
+            .await
+            .map_err(|failed| failed.for_flares(&flares))?;
         let page = body(&api, answer)?;
         rows.extend(page.items.into_iter().filter_map(activity_row));
         let mut next = Next {
@@ -182,9 +204,11 @@ pub(crate) async fn activity(
                 Some(name) => save(&api, env, name, &mut next).await?,
                 None => None,
             };
+            let step = next_step(&flares, &next);
             let listing = Listing::uncounted(rows, more)
                 .described("activity items")
-                .summary(next);
+                .summary(next)
+                .step(step);
             return Ok(match note {
                 Some(note) => listing.note(note),
                 None => listing,

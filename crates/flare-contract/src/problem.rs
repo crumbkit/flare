@@ -39,6 +39,12 @@ macro_rules! codes {
 
             /// What the caller does next. `server` is the deployment's
             /// origin, which `flare login` names.
+            ///
+            /// The hints of `PartlyShared`, `BadCursor`, `SharesBadCursor`
+            /// and `CursorNotFound` stay as wire text for API callers. The
+            /// `flare` command prints typed calls of `flare grant`, `flare
+            /// activity` and `flare shares` in their place, so it never
+            /// prints those four hints.
             #[must_use]
             pub fn recovery(self, server: &str) -> Recovery {
                 let make: fn(&str) -> Recovery = match self { $(Self::$variant => $recovery,)* };
@@ -83,6 +89,8 @@ codes! {
         |_| hint("run flare grant with the share id, --with and --re to finish")),
     NoVerifiedEmail => ("flare::shares::no_email", 403, "Your sign-in has no verified email address.",
         |server| Recovery::Run { call: format!("flare login {server}") }),
+    SharesBadCursor => ("flare::shares::bad_cursor", 400, "The cursor is not one this flare wrote for this list of shares.",
+        |_| hint("pass the cursor that the last flare shares printed, or none to start over")),
     SharesUnavailable => ("flare::shares::unavailable", 503, "The share stores did not answer.",
         |_| Recovery::Retry),
     TooManyGrants => ("flare::grants::too_many", 409, "A flare is shared with at most 256 people.",

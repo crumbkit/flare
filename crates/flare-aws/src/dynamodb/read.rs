@@ -38,13 +38,23 @@ impl Table {
     }
 
     /// The consistent `Query` of the sort keys in `partition` that start
-    /// with `prefix`, ascending, at most `limit` items per page.
+    /// with `prefix`, ascending, at most `limit` items per page, after
+    /// `start` when given. DynamoDB does not require `start` to name an
+    /// item that exists, so a query after a deleted item starts at the
+    /// next one.
     pub(crate) fn query_request(
         &self,
         partition: &str,
         prefix: &str,
         limit: i32,
+        start: Option<&Key>,
     ) -> QueryFluentBuilder {
+        let start = start.map(|key| {
+            HashMap::from([
+                (attr::PK.to_owned(), text(&key.pk)),
+                (attr::SK.to_owned(), text(&key.sk)),
+            ])
+        });
         self.client()
             .query()
             .table_name(self.name())
@@ -54,6 +64,7 @@ impl Table {
             .consistent_read(true)
             .scan_index_forward(true)
             .limit(limit)
+            .set_exclusive_start_key(start)
     }
 
     /// The consistent `Query` of the sort keys in `partition` from `low`
@@ -100,7 +111,7 @@ impl Table {
         kind: ItemKind,
     ) -> Result<Option<Item>, Unavailable> {
         let sent = self
-            .query_request(partition, prefix, 1)
+            .query_request(partition, prefix, 1, None)
             .scan_index_forward(false)
             .send()
             .await;
@@ -114,15 +125,17 @@ impl Table {
     }
 
     /// The first `limit` items of `partition` whose sort keys start with
-    /// `prefix`, in sort key order.
+    /// `prefix` and sort after `start`, or from the first without it, in
+    /// sort key order.
     pub(crate) async fn query(
         &self,
         partition: &str,
         prefix: &str,
         limit: usize,
+        start: Option<&Key>,
         kind: ItemKind,
     ) -> Result<Vec<Item>, Unavailable> {
-        let request = |wanted| self.query_request(partition, prefix, wanted);
+        let request = |wanted| self.query_request(partition, prefix, wanted, start);
         self.pages(request, limit, kind).await
     }
 
@@ -144,10 +157,13 @@ impl Table {
         loop {
             let wanted =
                 i32::try_from(limit.saturating_sub(items.len())).map_err(|_| Unavailable)?;
-            let page = request(wanted)
-                .set_exclusive_start_key(start.take())
-                .send()
-                .await;
+            // The first page starts where `request` says; each later page
+            // starts after the last key of the page before it.
+            let mut builder = request(wanted);
+            if let Some(next) = start.take() {
+                builder = builder.set_exclusive_start_key(Some(next));
+            }
+            let page = builder.send().await;
             let page = match page {
                 Ok(page) => page,
                 Err(error) => {

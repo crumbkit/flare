@@ -1,16 +1,23 @@
 //! `flare`'s command-line grammar and tool record.
 
 pub(crate) mod comments;
+mod schemas;
 mod sharing;
+mod skills;
 
 pub(crate) use comments::{
     CommentArgs, CommentDeleteArgs, CommentEditArgs, CommentsArgs, ReplyArgs,
 };
-pub(crate) use sharing::{ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs};
+pub(crate) use schemas::SchemasCommand;
+pub(crate) use skills::{FlareSkills, SKILL};
+
+pub(crate) use sharing::{
+    ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs, ShowArgs,
+};
 
 use crate::documents::{
-    ACTIVITY, BIND, COMMENT, COMMENT_DELETE, COMMENT_EDIT, COMMENTS, GRANT, LOGIN, LOGOUT, OPEN,
-    PUBLISH, REPLY, SERVE, SHARE, SHARES,
+    ACTIVITY, BIND, COMMENT, COMMENT_DELETE, COMMENT_EDIT, COMMENTS, GRANT, LOGIN, LOGOUT, METRICS,
+    OPEN, PUBLISH, REPLY, SERVE, SHARE, SHARES, SHOW,
 };
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
@@ -54,13 +61,15 @@ pub(crate) enum Verb {
     Logout(LogoutArgs),
     /// Share a Markdown file with people, or as a response to flares
     Share(ShareArgs),
+    /// Show one version of a share you can open, or its latest
+    Show(ShowArgs),
     /// Grant an existing share to more people
     Grant(GrantArgs),
     /// List your shares or the shares granted to you
     ///
-    /// The server lists at most 500 shares in one answer and has no cursor
-    /// for the rest, so --all lists at most 500 shares and says more follow
-    /// when there are more.
+    /// The server lists at most 500 shares in one answer. A list cut short
+    /// names the next call with --cursor, which resumes the list after the
+    /// last share printed, and --all follows the cursor until the list ends.
     Shares(SharesArgs),
     /// List responses and comments since a cursor
     Activity(ActivityArgs),
@@ -74,11 +83,30 @@ pub(crate) enum Verb {
     CommentEdit(CommentEditArgs),
     /// Delete a comment or reply you wrote
     CommentDelete(CommentDeleteArgs),
+    /// Count the metric lines in a flare server's log, by day
+    ///
+    /// The counts come from the metric lines that flare serve writes on
+    /// standard error when its config sets log.metrics to true. A page
+    /// view is one page response, so one person who reloads a page counts
+    /// twice. Lines that are not metric lines are skipped and counted.
+    Metrics(MetricsArgs),
     /// Explore flare's commands
     Commands {
         /// What to do with the commands.
         #[command(subcommand)]
         command: CommandsVerb,
+    },
+    /// Explore the JSON documents that flare prints
+    Schemas {
+        /// What to do with the documents.
+        #[command(subcommand)]
+        command: SchemasCommand,
+    },
+    /// Manage flare's agent skill
+    Skills {
+        /// What to do with the skill.
+        #[command(subcommand)]
+        command: FlareSkills,
     },
     /// Review flare's own use
     #[command(name = "self")]
@@ -182,8 +210,16 @@ pub(crate) struct BindArgs {
     pub(crate) dry_run: DryRun,
 }
 
+/// The arguments of `flare metrics`.
+#[derive(Debug, Args)]
+pub(crate) struct MetricsArgs {
+    /// The log files to read, oldest first; without them, standard input
+    #[arg(value_name = "FILE")]
+    pub(crate) files: Vec<PathBuf>,
+}
+
 /// Why flare's commands are verbs at the root.
-const ROOT: &str = "each command names what a person does with the board flare serves or the server flare shares through";
+const ROOT: &str = "each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes";
 
 /// flare's help and failures.
 pub const TOOL: Tool = Tool::new()
@@ -191,26 +227,30 @@ pub const TOOL: Tool = Tool::new()
         Help::new()
             .root_verbs(
                 &[
-                    "serve", "open", "publish", "bind", "login", "logout", "share", "grant",
-                    "shares", "activity", "comments", "comment", "reply", "comment-edit", "comment-delete",
+                    "serve", "open", "publish", "bind", "login", "logout", "share", "show",
+                    "grant", "shares", "activity", "comments", "comment", "reply",
+                    "comment-edit", "comment-delete", "metrics",
                 ],
                 ROOT,
             )
             .leaves(&[
                 Leaf::new(&["serve"])
+                    // A serve run lasts until Ctrl-C or an idle hour, so the
+                    // example check, which stops a run after 10 seconds,
+                    // cannot run either example even with a board.
                     .examples(&[
-                        Example::new(&[], "Serve the board in the current directory"),
+                        Example::new(&[], "Serve the board in the current directory").needs(&["board"]),
                         Example::new(
                             &["--board", "../notes", "--idle-exit", "1h"],
                             "Serve another board and stop after an hour without a request",
-                        ),
+                        ).needs(&["board"]),
                     ])
                     .effects(Effects::additive())
                     .document(SERVE),
                 Leaf::new(&["open"])
                     .examples(&[
-                        Example::new(&[], "Open the index of the running server"),
-                        Example::new(&["kitchen"], "Open the binding or page named kitchen"),
+                        Example::new(&[], "Open the index of the running server").needs(&["board", "server"]),
+                        Example::new(&["kitchen"], "Open the binding or page named kitchen").needs(&["board", "server"]),
                     ])
                     .effects(Effects::additive())
                     .document(OPEN),
@@ -219,11 +259,11 @@ pub const TOOL: Tool = Tool::new()
                         Example::new(
                             &["card.html", "--name", "task-card", "--slots", "slots.json"],
                             "Publish card.html as the page task-card with the slots in slots.json",
-                        ),
+                        ).needs(&["board"]),
                         Example::new(
                             &["card.md", "--name", "task-card", "--dry-run"],
                             "Check card.md and publish nothing",
-                        ),
+                        ).needs(&["board"]),
                     ])
                     .effects(Effects::additive())
                     .document(PUBLISH),
@@ -231,21 +271,21 @@ pub const TOOL: Tool = Tool::new()
                     .examples(&[Example::new(
                         &["task-card", "--name", "kitchen", "task=/tasks/tap"],
                         "Save the binding kitchen, which fills task-card's task slot with /tasks/tap",
-                    )])
+                    ).needs(&["board"])])
                     .effects(Effects::additive().all_or_none())
                     .document(BIND),
     Leaf::new(&["login"])
         .examples(&[Example::new(
             &["https://flare.example.org"],
             "Sign in to a flare server in the browser and keep its token in the Keychain",
-        )])
+        ).needs(&["server", "browser"])])
         .effects(Effects::additive())
         .document(LOGIN),
     Leaf::new(&["logout"])
         .examples(&[Example::new(
             &[],
             "Revoke this computer's token and delete it from the Keychain",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::destructive())
         .document(LOGOUT),
     Leaf::new(&["share"])
@@ -253,32 +293,53 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["review.md", "--with", "ana@example.org,jo@example.org"],
                 "Share review.md with two people",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["answer.md", "--re", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Share answer.md as a response to a flare",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Publish review.md as the next version of a share you own",
+            ).needs(&["server"]),
+            Example::new(
+                &["review.md", "--dry-run", "--out", "review.html"],
+                "Check review.md as the server would and write its HTML to review.html, sharing nothing",
             ),
         ])
         .effects(Effects::additive())
         .document(SHARE),
+    Leaf::new(&["show"])
+        .examples(&[
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Show the latest version of a share",
+            ).needs(&["server"]),
+            Example::new(
+                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--version", "1"],
+                "Show the first version of a share",
+            ).needs(&["server"]),
+        ])
+        .effects(Effects::read_only())
+        .document(SHOW),
     Leaf::new(&["grant"])
         .examples(&[Example::new(
             &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
             "Grant a share to one more person",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::additive())
         .document(GRANT),
     Leaf::new(&["shares"])
         .examples(&[
-            Example::new(&[], "List your shares, newest first"),
+            Example::new(&[], "List your shares, newest first").needs(&["server"]),
             Example::new(
                 &["--with-me", "--limit", "20"],
                 "List the 20 newest shares granted to you",
-            ),
+            ).needs(&["server"]),
+            Example::new(
+                &["--with-me", "--cursor", "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg"],
+                "List the shares granted to you after the cursor an earlier call printed",
+            ).needs(&["server"]),
         ])
         .effects(Effects::read_only())
         .document(SHARES),
@@ -287,15 +348,15 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "List the responses to a flare, oldest first",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
                 "List the activity after the cursor an earlier call printed",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since-last", "inbox"],
                 "List what is new since the last call that used the name inbox, then save where this one ends",
-            ),
+            ).needs(&["server"]),
         ])
         .effects(Effects::additive().all_or_none())
         .document(ACTIVITY),
@@ -303,7 +364,7 @@ pub const TOOL: Tool = Tool::new()
         .examples(&[Example::new(
             &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
             "List a flare's comments, each followed by its replies",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::read_only())
         .document(COMMENTS),
     Leaf::new(&["comment"])
@@ -311,11 +372,11 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body", "Is this final?"],
                 "Comment on a flare",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body-file", "note.txt", "--key", "note-1"],
                 "Comment with the text of a file; running it again writes nothing new",
-            ),
+            ).needs(&["server"]),
         ])
         .effects(Effects::additive())
         .document(COMMENT),
@@ -323,23 +384,33 @@ pub const TOOL: Tool = Tool::new()
         .examples(&[Example::new(
             &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--flare", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body", "Yes, ship it"],
             "Reply to a comment",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::additive())
         .document(REPLY),
     Leaf::new(&["comment-edit"])
         .examples(&[Example::new(
             &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--body", "Is this final, or a draft?"],
             "Replace the text of your comment",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::additive())
         .document(COMMENT_EDIT),
     Leaf::new(&["comment-delete"])
         .examples(&[Example::new(
             &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--yes"],
             "Delete your comment without a question",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::destructive())
         .document(COMMENT_DELETE),
+    Leaf::new(&["metrics"])
+        .examples(&[
+            Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),
+            Example::new(
+                &["flare.log.1", "flare.log", "--json"],
+                "Count the metric lines of a rotated log and its newer file as JSON",
+            ),
+        ])
+        .effects(Effects::read_only())
+        .document(METRICS),
                 Leaf::new(&["commands", "list"])
                     .examples(&[
                         Example::new(&[], "List every command"),
@@ -347,10 +418,19 @@ pub const TOOL: Tool = Tool::new()
                     ])
                     .effects(Effects::read_only())
                     .document(COMMANDS_LIST),
+                schemas::LIST_LEAF,
+                schemas::SHOW_LEAF,
                 Leaf::new(&["self", "usage"])
-                    .examples(&[Example::new(&[], "Report the findings of the last 7 days")])
+                    // The report names the first day of the 7, so its output changes
+                    // each day and no golden file can hold it.
+                    .examples(&[
+                        Example::new(&[], "Report the findings of the last 7 days").needs(&["date"])
+                    ])
                     .effects(Effects::read_only())
                     .document(SELF_USAGE),
+                FlareSkills::install_leaf(&["skills", "install"]),
+                FlareSkills::check_leaf(&["skills", "check"]),
+                FlareSkills::print_leaf(&["skills", "print"]),
             ]),
     )
     .failures(

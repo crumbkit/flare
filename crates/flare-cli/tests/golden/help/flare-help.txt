@@ -10,6 +10,7 @@ Verbs
   login           Sign in to a flare server and keep its token in the Keychain
   logout          Revoke and delete this computer's token
   share           Share a Markdown file with people, or as a response to flares
+  show            Show one version of a share you can open, or its latest
   grant           Grant an existing share to more people
   shares          List your shares or the shares granted to you
   activity        List responses and comments since a cursor
@@ -18,9 +19,12 @@ Verbs
   reply           Reply to a comment
   comment-edit    Edit a comment or reply you wrote
   comment-delete  Delete a comment or reply you wrote
+  metrics         Count the metric lines in a flare server's log, by day
 
 Commands
   commands        Explore flare's commands
+  schemas         Explore the JSON documents that flare prints
+  skills          Manage flare's agent skill
   self            Review flare's own use
 
 Options:

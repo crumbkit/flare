@@ -1,18 +1,16 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
-use super::convert::{
-    content_error, flare_error, recipient_error, role, share_error, standing, summary,
-};
+use super::convert::{flare_error, recipient_error, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
-use super::{Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck};
+use super::{Answer, Api, Boxed, Call, Refusal, Sharing, TokenCheck, check_share, check_version};
 use flare_contract::{
-    ApiCode, ExchangeRequest, Format, OpenedShare, Role as WireRole, ShareList, ShareRequest,
-    Shared, TokenIssued, VersionRequest, utc,
+    ApiCode, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest, Shared, TokenIssued,
+    VersionRequest, utc,
 };
 use flare_core::{
-    CommentStore, CursorStore, DocumentText, Email, FlareError, Flared, GrantStore, LoginCode,
-    NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId,
-    ShareStore, ShareTitle, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
+    CommentStore, CursorStore, Email, FlareError, Flared, GrantStore, LoginCode, NewFlare,
+    NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId, ShareStore,
+    ShareVersion, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -84,12 +82,7 @@ where
     }
 
     async fn create(&self, who: &Principal, request: ShareRequest, now: Timestamp) -> Answer {
-        if request.format == Format::Html {
-            return Err(ApiCode::KindNotServed.into());
-        }
-        let title = ShareTitle::try_from(request.title.as_str()).map_err(|e| content_error(&e))?;
-        let text =
-            DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
+        let (title, text) = check_share(&request)?;
         let with = self.recipients(&request.with).await?;
         let re = request
             .re
@@ -124,11 +117,7 @@ where
         now: Timestamp,
     ) -> Answer {
         let id = share_id(id)?;
-        if request.format == Format::Html {
-            return Err(ApiCode::KindNotServed.into());
-        }
-        let text =
-            DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))?;
+        let text = check_version(&request)?;
         // This does less than an idempotent publish would: it takes no key,
         // so a client that repeats a post whose answer was lost writes a
         // second version with the same content. The owner finds the number
@@ -147,50 +136,32 @@ where
         json(201, &share)
     }
 
-    async fn list(&self, who: &Principal, scope: Scope, limit: usize) -> Answer {
-        let shares = self.flares.shares();
-        let (mut items, truncated) = match scope {
-            Scope::Mine => {
-                let listed = shares.mine(who).await.map_err(share_error)?;
-                let truncated = listed.truncated();
-                let items = listed
-                    .items()
-                    .iter()
-                    .map(|share| summary(share, WireRole::Owner))
-                    .collect::<Vec<_>>();
-                (items, truncated)
-            }
-            Scope::WithMe => {
-                let listed = shares.shared_with_me(who).await.map_err(share_error)?;
-                let truncated = listed.truncated();
-                let items = listed
-                    .items()
-                    .iter()
-                    .map(|entry| summary(&entry.share, role(entry.role)))
-                    .collect::<Vec<_>>();
-                (items, truncated)
-            }
-        };
-        let more = truncated || items.len() > limit;
-        items.truncate(limit);
-        json(200, &ShareList { items, more })
-    }
-
-    async fn open(&self, who: &Principal, id: &str) -> Answer {
+    /// Opens version `number` of a share, or its latest. A number above
+    /// the latest answers `flare::shares::not_found`, as a share the caller
+    /// cannot open does, after the caller's standing is checked.
+    async fn open(&self, who: &Principal, id: &str, number: Option<ShareVersion>) -> Answer {
         let id = share_id(id)?;
         let opened = self
             .flares
             .shares()
-            .open(who, &id, None)
+            .open(who, &id, number)
             .await
             .map_err(share_error)?;
         let content = match opened.version.content() {
             ShareContent::Document(text) => text.as_str().to_owned(),
             _ => return Err(ApiCode::KindNotServed.into()),
         };
+        let version = opened.version.number().get();
         let mut share = summary(&opened.share, standing(opened.standing));
         share.comments = self.live_comments(who, &id).await.ok();
-        json(200, &OpenedShare { share, content })
+        json(
+            200,
+            &OpenedShare {
+                share,
+                version,
+                content,
+            },
+        )
     }
 
     async fn grant(
@@ -348,8 +319,12 @@ where
         Box::pin(async move {
             match call {
                 Call::Create(request) => self.create(who, request, now).await,
-                Call::List { scope, limit } => self.list(who, scope, limit).await,
-                Call::Open(id) => self.open(who, &id).await,
+                Call::List {
+                    scope,
+                    after,
+                    limit,
+                } => self.list(who, scope, after.as_ref(), limit).await,
+                Call::Open(id, number) => self.open(who, &id, number).await,
                 Call::Publish(id, request) => self.publish(who, &id, request, now).await,
                 Call::Grant(id, request) => self.grant(who, &id, request, now).await,
                 Call::Activity {

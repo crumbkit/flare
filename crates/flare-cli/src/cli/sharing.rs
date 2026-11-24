@@ -1,8 +1,9 @@
-//! The arguments and help of `flare login`, `logout`, `share`, `grant`,
-//! `shares` and `activity`.
+//! The arguments and help of `flare login`, `logout`, `share`, `show`,
+//! `grant`, `shares` and `activity`.
 
 use clap::Args;
-use crumbkit::{Page, Yes};
+use crumbkit::{DryRun, Page, Yes};
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 /// The most flares one `flare activity` names.
@@ -33,18 +34,36 @@ pub(crate) struct ShareArgs {
     /// The file to share: .md for Markdown
     #[arg(value_name = "FILE")]
     pub(crate) file: PathBuf,
-    /// The share's title; without it, the file's name without its ending
+    /// The title; without it, the file name without its ending
     #[arg(long, value_name = "TITLE")]
     pub(crate) title: Option<String>,
-    /// The addresses to grant Reader, repeated or separated by commas
+    /// The addresses to grant Reader, repeated or comma-separated
     #[arg(long, value_name = "ADDRESS", value_delimiter = ',')]
     pub(crate) with: Vec<String>,
-    /// The flares this share responds to, repeated or separated by commas; their owners become Readers of it
+    /// The flares it responds to, whose owners become Readers; repeated or comma-separated
     #[arg(long, value_name = "ID", value_delimiter = ',')]
     pub(crate) re: Vec<String>,
-    /// Publish the file as the next version of this share you own, which changes only its content; grants stay with flare grant
+    /// Publish the file as your share's next version
+    ///
+    /// It changes only the content; grants stay with flare grant.
     #[arg(long, value_name = "ID", conflicts_with_all = ["title", "with", "re"])]
     pub(crate) update: Option<String>,
+    #[command(flatten)]
+    pub(crate) dry_run: DryRun,
+    /// With --dry-run, write the HTML here
+    #[arg(long, value_name = "PATH", requires = "crumbkit_dry_run")]
+    pub(crate) out: Option<PathBuf>,
+}
+
+/// The arguments of `flare show`.
+#[derive(Debug, Args)]
+pub(crate) struct ShowArgs {
+    /// The share to show
+    #[arg(value_name = "ID")]
+    pub(crate) id: String,
+    /// The version to show, a number from 1; without it, the latest
+    #[arg(long, value_name = "N")]
+    pub(crate) version: Option<NonZeroU32>,
 }
 
 /// The arguments of `flare grant`.
@@ -67,7 +86,10 @@ pub(crate) struct SharesArgs {
     /// List the shares granted to you in place of your own
     #[arg(long)]
     pub(crate) with_me: bool,
-    /// How many shares to list.
+    /// List the shares after this cursor, which an earlier flare shares printed
+    #[arg(long, value_name = "CURSOR")]
+    pub(crate) cursor: Option<String>,
+    /// How many shares to list; --all follows the cursor to the end.
     #[command(flatten)]
     pub(crate) page: Page<50, 500>,
 }

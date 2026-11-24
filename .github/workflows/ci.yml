@@ -12,7 +12,8 @@
 # those stand-ins, without --all-features, so the lane skips that test: its
 # --all-features build turns on the `testing` features, and the test must
 # run the flare command as it ships. The ui job
-# installs, checks and tests the TypeScript workspace in ui/.
+# installs, checks and tests the TypeScript workspace in ui/. The scheduled
+# advisories job checks the Rust and the npm dependencies.
 name: CI
 
 on:
@@ -88,7 +89,7 @@ jobs:
       - run: rustup toolchain install
       # install-action runs before rust-cache, so the cache leaves out the
       # tool binaries that install-action downloads on every run.
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-nextest@0.9.140,cargo-deny@0.20.2,cargo-shear@1.14.0,zizmor@1.30.1,cargo-hack@0.6.45
           fallback: none
@@ -99,7 +100,7 @@ jobs:
       - name: workflows
         run: zizmor .
       # Only a run on main saves the cache.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: deny
@@ -178,7 +179,7 @@ jobs:
       # pnpm/action-setup installs the pnpm that ui/package.json's
       # `packageManager` names, and setup-node the Node that .node-version
       # names. setup-node caches pnpm's store, keyed by the lockfile.
-      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: ui/package.json
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -223,11 +224,11 @@ jobs:
             -e AWS_ACCESS_KEY_ID=flaretest -e AWS_SECRET_ACCESS_KEY=flaretestsecret \
             chrislusf/seaweedfs@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-nextest@0.9.140
           fallback: none
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: template
@@ -288,9 +289,28 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-deny@0.20.2
           fallback: none
-      - name: advisories
+      - name: rust advisories
         run: cargo deny --locked check advisories
+      # The npm steps run even when the rust advisories step fails, so an
+      # advisory against a Rust crate does not hide one against an npm
+      # package. pnpm/action-setup installs the pnpm that ui/package.json's
+      # `packageManager` names, and setup-node the Node that .node-version
+      # names. Neither caches anything, because this job installs nothing.
+      - if: ${{ !cancelled() }}
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ui/package.json
+      - if: ${{ !cancelled() }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      # pnpm audit reads the lockfile and asks the npm registry for advisories
+      # against every package in it (BASE-17).
+      - name: npm advisories
+        if: ${{ !cancelled() }}
+        working-directory: ui
+        run: pnpm audit

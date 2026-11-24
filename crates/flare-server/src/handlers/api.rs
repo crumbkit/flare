@@ -13,13 +13,14 @@
 
 use super::Ctx;
 use super::edit::read_body;
+use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
-use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of};
+use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of, list_key};
 use flare_auth_oidc::Clock as OidcClock;
-use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument};
-use flare_core::{Credential, PageStore, Principal, RecordStore, Timestamp};
+use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument, ShareCursor};
+use flare_core::{Credential, ListKey, PageStore, Principal, RecordStore, ShareVersion, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
@@ -32,7 +33,8 @@ pub(crate) enum ApiRoute {
     CreateShare,
     /// `GET /api/shares`.
     ListShares,
-    /// `GET /api/shares/{id}`.
+    /// `GET /api/shares/{id}`, with `?version=n` for a version other than
+    /// the latest.
     OpenShare,
     /// `POST /api/shares/{id}/versions`.
     PublishVersion,
@@ -114,6 +116,26 @@ where
     }
 }
 
+/// The share version that `version` in the query names, or `None` when
+/// absent. A value that is not a number from 1 is a bad query.
+fn version<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Option<ShareVersion>, Refusal>
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
+    match ctx.query("version") {
+        None => Ok(None),
+        Some(text) => text
+            .parse::<u32>()
+            .ok()
+            .and_then(|number| ShareVersion::try_from(number).ok())
+            .map(Some)
+            .ok_or_else(|| ApiCode::BadQuery.into()),
+    }
+}
+
 /// Every value of `name` in the query, decoded.
 fn every(ctx_uri: &http::Uri, name: &str) -> Vec<String> {
     let query = ctx_uri.query().unwrap_or_default();
@@ -121,6 +143,27 @@ fn every(ctx_uri: &http::Uri, name: &str) -> Vec<String> {
         .filter(|(key, _)| key == name)
         .map(|(_, value)| value.into_owned())
         .collect()
+}
+
+/// The key after which a share list of `scope` starts, from the query's
+/// one `cursor` value, or `None` when it has none. Two values are a bad
+/// query. A value that is not a share cursor, or one of the other scope,
+/// is a bad cursor. The cursor names no person: the list is the caller's,
+/// whatever key it holds.
+fn list_after(uri: &http::Uri, scope: Scope) -> Result<Option<ListKey>, Refusal> {
+    let cursors = every(uri, "cursor");
+    let [text] = cursors.as_slice() else {
+        return if cursors.is_empty() {
+            Ok(None)
+        } else {
+            Err(ApiCode::BadQuery.into())
+        };
+    };
+    let cursor = ShareCursor::try_from(text.as_str())
+        .ok()
+        .filter(|cursor| cursor.scope() == scope)
+        .ok_or(ApiCode::SharesBadCursor)?;
+    list_key(cursor).map(Some)
 }
 
 /// Reads and parses a JSON body.
@@ -176,7 +219,8 @@ where
     }
 }
 
-/// Answers one route of the share API.
+/// Answers one route of the share API, and counts its token event from
+/// the final answer's status.
 pub(crate) async fn handle<P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
     route: ApiRoute,
@@ -193,6 +237,43 @@ where
     let Some(api) = ctx.shared.sharing.as_deref() else {
         return Err(Code::NotFound.into());
     };
+    let reply = answer(ctx, api, route, name, credential, body)
+        .await
+        .unwrap_or_else(|problem| problem.reply(ctx.headers));
+    if let Some(event) = token_event(route, reply.status()) {
+        ctx.shared.count(event);
+    }
+    Ok(reply)
+}
+
+/// The token event an answer of `route` with `status` counts: an exchange
+/// that answered 2xx traded a code, one that answered 4xx refused it, and
+/// any other `/api/` route that answered 401 refused the request's
+/// credential. A 5xx, such as a token store that is down, counts nothing.
+fn token_event(route: ApiRoute, status: StatusCode) -> Option<Event> {
+    match route {
+        ApiRoute::Exchange if status.is_success() => Some(Event::TokenExchanged),
+        ApiRoute::Exchange if status.is_client_error() => Some(Event::TokenRefused),
+        ApiRoute::Exchange | ApiRoute::CliLogin => None,
+        _ => (status == StatusCode::UNAUTHORIZED).then_some(Event::TokenRefused),
+    }
+}
+
+/// The answer of one route of the share API from `api`.
+async fn answer<P, R, S, K>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    api: &dyn Api,
+    route: ApiRoute,
+    name: &str,
+    credential: Option<Credential>,
+    body: Incoming,
+) -> Result<Reply, Problem>
+where
+    P: PageStore,
+    R: RecordStore,
+    S: Schemas,
+    K: OidcClock,
+{
     let origin = ctx
         .shared
         .site
@@ -212,7 +293,13 @@ where
         _ => match caller(ctx, api, credential.as_ref(), now).await {
             Err(refusal) => Err(refusal),
             Ok(who) => match call(ctx, route, name, body).await? {
-                Ok(call) => api.run(&who, call, now).await,
+                Ok(call) => {
+                    let answer = api.run(&who, call, now).await;
+                    if route == ApiRoute::CreateShare && answer.is_ok() {
+                        ctx.shared.count(Event::ShareCreated);
+                    }
+                    answer
+                }
                 Err(refusal) => Err(refusal),
             },
         },
@@ -250,7 +337,7 @@ where
         ApiRoute::Grant => body_of(ctx, body)
             .await?
             .map(|request| Call::Grant(name.to_owned(), request)),
-        ApiRoute::OpenShare => Ok(Call::Open(name.to_owned())),
+        ApiRoute::OpenShare => version(ctx).map(|number| Call::Open(name.to_owned(), number)),
         ApiRoute::RevokeToken => Ok(Call::Revoke(name.to_owned())),
         ApiRoute::ListShares => {
             let scope = match ctx.query("scope").as_deref() {
@@ -259,7 +346,12 @@ where
                 _ => Err(ApiCode::BadQuery.into()),
             };
             scope.and_then(|scope| {
-                number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List { scope, limit })
+                let after = list_after(ctx.uri, scope)?;
+                number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List {
+                    scope,
+                    after,
+                    limit,
+                })
             })
         }
         ApiRoute::Activity => {

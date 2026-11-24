@@ -29,6 +29,15 @@ impl Snapshot {
         Self { vars, current_dir }
     }
 
+    /// A snapshot that holds only `name`, set to `value`, for unit tests.
+    #[cfg(test)]
+    pub(crate) fn with_var(name: &str, value: impl Into<OsString>) -> Self {
+        Self {
+            vars: HashMap::from([(OsString::from(name), value.into())]),
+            current_dir: None,
+        }
+    }
+
     /// The value of `name`, when it is set and not empty.
     pub(crate) fn get(&self, name: &str) -> Option<&OsStr> {
         self.vars

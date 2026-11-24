@@ -1,0 +1,12 @@
+Print flare's skill
+
+Usage: flare skills print [OPTIONS]
+
+Options:
+  -h, --help  Print help (see more with '--help')
+
+Examples:
+  flare skills print
+
+Effects: read-only, closed-world.
+Global flags: --json, --no-input. `flare skills print --help` describes them.

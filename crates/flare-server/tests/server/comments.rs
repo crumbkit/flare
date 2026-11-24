@@ -486,7 +486,7 @@ async fn a_cookie_of_a_person_the_admit_rule_no_longer_names_is_refused_on_comme
         )])
         .unwrap(),
     );
-    let api = Api::start_with(rule).await;
+    let api = Api::start_admitting(rule).await;
     let alice = api.token_for("alice").await;
     let flare = api.share(&alice, "Plan", &["bob@example.com"], &[]).await;
     let comments = format!("/api/comments?flare={flare}");

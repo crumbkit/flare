@@ -24,6 +24,7 @@ impl RemoveAllOp<'_> {
                 &session_partition(self.person),
                 SESSION_LINK_PREFIX,
                 limit,
+                None,
                 ItemKind::SessionLink,
             )
             .await

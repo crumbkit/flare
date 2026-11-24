@@ -95,6 +95,7 @@ mod grants {
         a_leave_applies_under_the_expected_role_alone,
         stale_authority_comes_before_changed,
         a_list_shows_its_truncation_and_order,
+        a_persons_grants_page_in_order_past_the_listing_limit,
     );
 
     concurrent_suite!(grant_store, grants, GrantFixture;

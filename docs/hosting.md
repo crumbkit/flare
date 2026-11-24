@@ -21,6 +21,7 @@ up around it.
 ```json
 {
   "hosted": { "origin": "https://flare.example.com", "listen": "127.0.0.1:8080" },
+  "log": { "metrics": true },
   "oidc": {
     "issuer": "https://accounts.google.com",
     "client_id": "<from the Google console>",
@@ -59,6 +60,12 @@ up around it.
   restart the server.
 - Register `<origin>/auth/oidc/callback` as the redirect URI of the Google
   client, such as `https://flare.example.com/auth/oidc/callback`.
+- `log.metrics` set to `true` writes a CloudWatch metric line on standard
+  error for each request, share, page view, sign-in and refusal. A hosted
+  site sets it, so its operator can count use in CloudWatch; it is off
+  when the config leaves it out. The counts hold no person, token or
+  share, and no route of the site serves them.
+  [metrics.md](metrics.md) lists the metrics.
 - A config error exits with `flare::config::invalid` and names the key.
 
 ## The share API
@@ -117,7 +124,9 @@ Routes:
 - `DELETE /api/tokens/<id>` revokes the caller's token.
 - `POST /api/shares` creates a share, with its grants and the flares it
   responds to.
-- `GET /api/shares?scope=mine|with-me&limit=<n>` lists shares, at most 500.
+- `GET /api/shares?scope=mine|with-me&limit=<n>&cursor=<cursor>` lists
+  shares, at most 500 in one answer, newest first. When more follow, the
+  answer's `next` holds the cursor to pass as `cursor` for the next page.
 - `GET /api/shares/<id>` reads a share.
 - `POST /api/shares/<id>/versions` publishes the next version of a share,
   from a `format` and `content`. Only the owner may, and the answer is the
@@ -145,6 +154,10 @@ Routes:
   the others.
 - The activity cursor is `fc1.` and a base64url position. A cursor flare did
   not write answers 400 `flare::activity::bad_cursor`.
+- The share list cursor is `fs1.` and base64url of the list's scope, the
+  last entry's time and its share id. A cursor flare did not write, or one
+  of the other scope, answers 400 `flare::shares::bad_cursor`, and two
+  `cursor` values answer 400 `flare::requests::bad_query`.
 
 ## The client secret file
 

@@ -152,12 +152,74 @@ pub(crate) struct SharedOut {
     pub(crate) responds_to: Option<Vec<String>>,
 }
 
+/// A share that `flare share` made or updated, or that a dry run checked.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct ShareOut {
+    /// The share's id; none on a dry run of a new share.
+    #[row(column)]
+    pub(crate) id: Option<String>,
+    /// The share's title; none on a dry run of `--update`, which does not read the share.
+    #[row(column)]
+    pub(crate) title: Option<String>,
+    /// The share's latest version; none on a dry run.
+    #[row(column)]
+    pub(crate) version: Option<u32>,
+    /// The addresses that now hold a role on it; none after `--update` or a dry run.
+    #[row(column)]
+    pub(crate) granted: Option<Vec<String>>,
+    /// The flares it responds to; none after `--update` or a dry run.
+    #[row(column)]
+    pub(crate) responds_to: Option<Vec<String>>,
+    /// What a dry run checked, wrote and could not check; empty on a real run.
+    #[row(children(help = "A dry run lists its checks."))]
+    pub(crate) checks: Vec<String>,
+}
+
 /// The document of `flare share`.
-pub(crate) const SHARE: Document<SharedOut> = Document::new(
+pub(crate) const SHARE: Document<ShareOut> = Document::new(
     "flare",
     "share",
     1,
-    "The share, its latest version, the people it is granted to and the flares it responds to.",
+    "The share, its latest version, the people it is granted to and the flares it responds to, or what a dry run checked.",
+);
+
+/// One version of a share that `flare show` read.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct Shown {
+    /// The share's id.
+    #[row(column, uncut)]
+    pub(crate) id: String,
+    /// The share's title.
+    #[row(column)]
+    pub(crate) title: String,
+    /// The owner's identifier.
+    #[row(column)]
+    pub(crate) owner: String,
+    /// The caller's role: `owner`, `admin` or `reader`.
+    #[row(column)]
+    pub(crate) role: String,
+    /// The version whose content this holds.
+    #[row(column)]
+    pub(crate) version: u32,
+    /// The share's latest version.
+    #[row(column)]
+    pub(crate) latest: u32,
+    /// The version's Markdown.
+    #[row(children(lines = content_lines, help = "The version's Markdown follows the share, one line of text for each line of the file."))]
+    pub(crate) content: String,
+}
+
+/// The lines of a shown version's Markdown.
+fn content_lines(shown: &Shown) -> Vec<String> {
+    shown.content.lines().map(str::to_owned).collect()
+}
+
+/// The document of `flare show`.
+pub(crate) const SHOW: Document<Shown> = Document::new(
+    "flare",
+    "show",
+    1,
+    "One version of a share the caller can open: its title, owner, the caller's role, its number and its Markdown.",
 );
 
 /// The document of `flare grant`.
@@ -191,12 +253,29 @@ pub(crate) struct ShareRow {
     pub(crate) created: String,
 }
 
+/// Where the next `flare shares` starts.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct SharesNext {
+    /// The cursor to pass as `--cursor` for the shares that follow, or none
+    /// when the list ends here.
+    pub(crate) cursor: Option<String>,
+}
+
+/// The text output prints no summary line: the listing's step names the
+/// next `flare shares` call with the cursor, and the JSON document keeps
+/// `cursor` under `summary`.
+impl std::fmt::Display for SharesNext {
+    fn fmt(&self, _formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
 /// The document of `flare shares`.
-pub(crate) const SHARES: Document<Listing<ShareRow>> = Document::new(
+pub(crate) const SHARES: Document<Listing<ShareRow, SharesNext>> = Document::new(
     "flare",
     "shares",
     1,
-    "The caller's shares, or the shares granted to the caller, newest first.",
+    "The caller's shares, or the shares granted to the caller, newest first, and the cursor of the shares that follow.",
 )
 .when_empty("No shares.");
 
@@ -250,15 +329,11 @@ pub(crate) struct Next {
     pub(crate) more: bool,
 }
 
+/// The text output prints no summary line: the listing's step names the
+/// next `flare activity` call with the saved cursor name or the cursor, and
+/// the JSON document keeps `cursor`, `saved_as` and `more` under `summary`.
 impl std::fmt::Display for Next {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.saved_as {
-            Some(name) => write!(formatter, "Next: --since-last {name}")?,
-            None => write!(formatter, "Next: --since {}", self.cursor)?,
-        }
-        if self.more {
-            formatter.write_str(" (more activity waits)")?;
-        }
+    fn fmt(&self, _formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Ok(())
     }
 }
@@ -368,3 +443,59 @@ pub(crate) const COMMENTS: Document<Listing<CommentRow>> = Document::new(
     "The flare's comments, oldest first, each followed by its replies, oldest first.",
 )
 .when_empty("No comments.");
+
+/// The count of one metric on one day in `flare metrics`.
+#[derive(Debug, Serialize, JsonSchema, Row)]
+pub(crate) struct MetricRow {
+    /// The day, as `YYYY-MM-DD` in UTC.
+    #[row(column)]
+    pub(crate) day: String,
+    /// The metric's name, such as `PagesViewed`.
+    #[row(column)]
+    pub(crate) metric: String,
+    /// The number of events the metric counted that day.
+    #[row(column)]
+    pub(crate) count: u64,
+}
+
+/// The count of one metric over every day in `flare metrics`.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct MetricTotal {
+    /// The metric's name.
+    pub(crate) metric: String,
+    /// The number of events the metric counted.
+    pub(crate) count: u64,
+}
+
+/// The totals of `flare metrics` and the lines it read.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct MetricTotals {
+    /// The count of each metric over every day, ordered by name.
+    pub(crate) totals: Vec<MetricTotal>,
+    /// The number of lines read.
+    pub(crate) lines: u64,
+    /// The number of lines skipped because they are not Flare metric lines.
+    pub(crate) skipped: u64,
+}
+
+impl std::fmt::Display for MetricTotals {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for total in &self.totals {
+            writeln!(formatter, "{}: {}", total.metric, total.count)?;
+        }
+        write!(
+            formatter,
+            "Read {} lines and skipped {} that are not Flare metric lines.",
+            self.lines, self.skipped
+        )
+    }
+}
+
+/// The document of `flare metrics`.
+pub(crate) const METRICS: Document<Listing<MetricRow, MetricTotals>> = Document::new(
+    "flare",
+    "metrics",
+    1,
+    "The count of each Flare metric on each day in UTC, the total of each metric, and the lines read and skipped.",
+)
+.when_empty("No Flare metric lines.");

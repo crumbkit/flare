@@ -125,6 +125,7 @@ clauses! {
     ALeaveAppliesUnderTheExpectedRoleAlone => "a revoke under the grantee's own authority applies under the expected role alone, including for an admin ending their own grant",
     StaleAuthorityComesBeforeChanged => "a revoke under a revoked admin answers stale authority and keeps the grant, and stale authority wins over changed",
     AListShowsItsTruncationAndOrder => "a list shows its truncation flag and its order",
+    APersonsGrantsPageInOrderPastTheListingLimit => "a person's grants read in pages after a key come back once each and in order past the listing limit, a grant added during the walk repeats or skips none, and a revoked key starts at the next grant",
     AStoredFileReadsBack => "a stored file reads back with its media type and bytes",
     AFileIsNotFoundUnderAnotherShare => "a file stored under one share is not found under another share",
     ATakenFileIdChangesNothing => "storing to a taken id answers id taken and leaves the first file unchanged",

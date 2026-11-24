@@ -87,3 +87,16 @@ fn the_comment_and_cursor_codes_carry_the_statuses_the_routes_answer() {
         assert_eq!((code.text(), code.status()), (text, status));
     }
 }
+
+#[test]
+fn a_bad_share_cursor_has_its_own_code_whose_hint_names_flare_shares() {
+    let problem = ProblemDocument::new(ApiCode::SharesBadCursor, "https://f.example");
+    assert_eq!(problem.code, "flare::shares::bad_cursor");
+    assert_eq!(problem.status, 400);
+    let Some(Recovery::Hint { text }) = &problem.recovery else {
+        panic!("{problem:?}");
+    };
+    assert!(text.contains("flare shares"), "{text}");
+    let activity = ProblemDocument::new(ApiCode::BadCursor, "https://f.example");
+    assert_eq!(activity.code, "flare::activity::bad_cursor");
+}

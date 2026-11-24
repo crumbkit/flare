@@ -3,7 +3,7 @@
 
 use crate::codes::Failed;
 use crate::env::Snapshot;
-use flare_auth_loopback::StateDir;
+use flare_auth_loopback::{StateDir, StateError};
 use flare_board::{BoardConfig, BoardStore, Committer, OpenError, ProgramError};
 use std::os::unix::fs::DirBuilderExt as _;
 use std::path::{Path, PathBuf};
@@ -63,11 +63,17 @@ pub(crate) fn root(given: Option<&Path>, need: Need, env: &Snapshot) -> Result<P
 ///
 /// Returns [`Failed::StateUnusable`] when neither is an absolute path.
 pub(crate) fn state_home(env: &Snapshot) -> Result<PathBuf, Failed> {
-    flare_auth_loopback::state_home(env.get("XDG_STATE_HOME"), env.get("HOME")).map_err(|error| {
-        Failed::StateUnusable {
-            problem: error.to_string(),
-        }
-    })
+    flare_auth_loopback::state_home(env.get("XDG_STATE_HOME"), env.get("HOME"))
+        .map_err(|error| state_unusable(&error))
+}
+
+/// [`Failed::StateUnusable`] for `error`, with the path it names, so
+/// `flare open` and `flare serve` report the loopback state alike.
+pub(crate) fn state_unusable(error: &StateError) -> Failed {
+    Failed::StateUnusable {
+        path: error.path().map(|path| path.display().to_string()),
+        problem: error.to_string(),
+    }
 }
 
 /// The loopback state directory of the board at `root`.
@@ -86,7 +92,10 @@ pub(crate) fn loopback_state(root: &Path, env: &Snapshot) -> Result<StateDir, Fa
 ///
 /// Returns [`Failed::ProgramUnavailable`] when none is found.
 pub(crate) fn program(given: Option<&Path>, env: &Snapshot) -> Result<PathBuf, Failed> {
-    let unavailable = |problem: String| Failed::ProgramUnavailable { problem };
+    let unavailable = |program: Option<&Path>, problem: String| Failed::ProgramUnavailable {
+        program: program.map(|program| program.display().to_string()),
+        problem,
+    };
     let named = given
         .map(Path::to_path_buf)
         .or_else(|| env.get("FLARE_BOARD").map(PathBuf::from));
@@ -95,10 +104,9 @@ pub(crate) fn program(given: Option<&Path>, env: &Snapshot) -> Result<PathBuf, F
         None => std::env::split_paths(&env.search_path())
             .map(|dir| dir.join("board"))
             .find(|candidate| candidate.is_file())
-            .ok_or_else(|| unavailable("board was not found on PATH".to_owned()))?,
+            .ok_or_else(|| unavailable(None, "board was not found on PATH".to_owned()))?,
     };
-    std::fs::canonicalize(&found)
-        .map_err(|error| unavailable(format!("{}: {error}", found.display())))
+    std::fs::canonicalize(&found).map_err(|error| unavailable(Some(&found), error.to_string()))
 }
 
 /// Opens the store of the board at `root` with the board program
@@ -122,6 +130,7 @@ pub(crate) fn open(root: &Path, program: PathBuf, env: &Snapshot) -> Result<Boar
         .mode(0o700)
         .create(&children)
         .map_err(|error| Failed::StateUnusable {
+            path: Some(children.display().to_string()),
             problem: format!("{}: {error}", children.display()),
         })?;
     let committer = Committer::new("flare", "flare@localhost").map_err(unavailable)?;
@@ -151,7 +160,8 @@ pub(crate) async fn check(store: &BoardStore, program: &Path) -> Result<(), Fail
             program: program.display().to_string(),
         },
         _ => Failed::ProgramUnavailable {
-            problem: format!("at {} did not answer", program.display()),
+            program: Some(program.display().to_string()),
+            problem: "did not answer".to_owned(),
         },
     })
 }

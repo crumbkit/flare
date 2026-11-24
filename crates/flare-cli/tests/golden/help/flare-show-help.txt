@@ -1,0 +1,44 @@
+Show one version of a share you can open, or its latest
+
+Usage: flare show [OPTIONS] <ID>
+
+Arguments:
+  <ID>
+          The share to show
+
+Options:
+      --version <N>
+          The version to show, a number from 1; without it, the latest
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+          Show the latest version of a share
+
+  flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
+          Show the first version of a share
+
+Columns:
+  id       The share's id.
+  title    The share's title.
+  owner    The owner's identifier.
+  role     The caller's role: `owner`, `admin` or `reader`.
+  version  The version whose content this holds.
+  latest   The share's latest version.
+
+Effects: read-only, closed-world.
+Children: The version's Markdown follows the share, one line of text for each line of the file.

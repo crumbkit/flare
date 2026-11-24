@@ -15,8 +15,8 @@ use crate::dynamodb::retry::{Attempt, Final, Sent, Settled, Token, run};
 use crate::dynamodb::settle::{self, malformed};
 use crate::dynamodb::transact::{self, GrantPlan, ItemRole, RevokePlan, Transaction};
 use flare_core::{
-    Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Granter, Listing, MAX_GRANTS,
-    MAX_LISTED, PrincipalId, Revoker, Role, ShareId, Timestamp,
+    Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Granter, ListKey, Listing,
+    MAX_GRANTS, MAX_LISTED, PrincipalId, Revoker, Role, ShareId, Timestamp,
 };
 
 /// Keeps the grants of shares in the table.
@@ -317,6 +317,7 @@ impl GrantStore for DynamoGrantStore {
                 &share_partition(share),
                 GRANT_PREFIX,
                 MAX_GRANTS + 1,
+                None,
                 ItemKind::Grant,
             )
             .await
@@ -341,14 +342,24 @@ impl GrantStore for DynamoGrantStore {
         Ok(grants)
     }
 
-    async fn granted_to(&self, grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
-        // One entry more than a listing holds tells whether more exist.
+    async fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
+        let limit = limit.clamp(1, MAX_LISTED);
+        // The entries' sort keys run newest first and then by share id, the
+        // order of a list key, so the query starts at the key's own sort key.
+        let start = after.map(|key| Key::grantee_entry(grantee, key.created(), key.share()));
+        // One entry more than the page holds tells whether more follow.
         let items = self
             .table
             .query(
                 &grantee_partition(grantee),
                 ENTRY_PREFIX,
-                MAX_LISTED + 1,
+                limit + 1,
+                start.as_ref(),
                 ItemKind::GranteeEntry,
             )
             .await
@@ -361,7 +372,7 @@ impl GrantStore for DynamoGrantStore {
                 malformed(error);
                 GrantStoreError::Unavailable
             })?;
-        Ok(Listing::new(grants))
+        Ok(Listing::bounded(grants, limit))
     }
 }
 

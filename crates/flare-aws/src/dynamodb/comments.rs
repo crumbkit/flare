@@ -301,6 +301,7 @@ impl CommentStore for DynamoCommentStore {
                 &comment_partition(flare),
                 COMMENT_PREFIX,
                 self.limit,
+                None,
                 ItemKind::Comment,
             )
             .await

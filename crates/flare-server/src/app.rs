@@ -6,6 +6,7 @@ use crate::forms::Forms;
 use crate::handlers;
 use crate::handover::Handover;
 use crate::limits::Limits;
+use crate::metrics::{Event, Metrics, StatusClass};
 use crate::problem::{Code, Problem};
 use crate::schemas::Schemas;
 use crate::sharing::{Api, Sharing};
@@ -75,6 +76,7 @@ pub(crate) struct Shared<P, R, S, K: OidcClock> {
     pub(crate) forms: Forms,
     pub(crate) handover: Handover,
     pub(crate) sharing: Option<Arc<dyn Api>>,
+    pub(crate) metrics: Metrics,
     pub(crate) in_work: Semaphore,
     token_calls: Semaphore,
     /// Callbacks that hold or wait for a slot of `token_calls`: at most
@@ -112,6 +114,7 @@ where
                     .min(Semaphore::MAX_PERMITS),
             ),
             sharing: None,
+            metrics: Metrics::default(),
             pages,
             records,
             schemas,
@@ -156,6 +159,17 @@ where
     {
         if let Some(shared) = Arc::get_mut(&mut self.shared) {
             shared.sharing = Some(Arc::new(sharing));
+        }
+        self
+    }
+
+    /// The same app writing a metric line for each counted event when
+    /// `metrics` is on. Call it before cloning the app; on a cloned app it
+    /// changes nothing.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Metrics) -> Self {
+        if let Some(shared) = Arc::get_mut(&mut self.shared) {
+            shared.metrics = metrics;
         }
         self
     }
@@ -294,6 +308,10 @@ where
             ms = millis,
             "served"
         );
+        shared.count(Event::Request {
+            route,
+            status: StatusClass::of(reply.status().as_u16()),
+        });
         reply.into_response(self.site())
     }
 
@@ -308,6 +326,11 @@ where
 }
 
 impl<P, R, S, K: OidcClock> Shared<P, R, S, K> {
+    /// Writes the metric line of `event`, when metrics are on.
+    pub(crate) fn count(&self, event: Event) {
+        self.metrics.record(event, self.clock.wall());
+    }
+
     /// The sign-in host's origin, when it listens.
     pub(crate) fn oidc_origin(&self) -> Option<&str> {
         self.oidc_origin.get().map(String::as_str)

@@ -77,3 +77,24 @@ fn the_activity_item_kinds_are_response_comment_reply_edited_and_deleted() {
         .collect();
     assert_eq!(kinds, ["response", "comment", "reply", "edited", "deleted"]);
 }
+
+#[test]
+fn a_share_list_leaves_next_out_when_no_entry_follows_and_names_it_when_one_does() {
+    let last = flare_contract::ShareList {
+        items: Vec::new(),
+        more: false,
+        next: None,
+    };
+    let value = serde_json::to_value(&last).unwrap();
+    assert_eq!(value, serde_json::json!({"items": [], "more": false}));
+    let first = flare_contract::ShareList {
+        items: Vec::new(),
+        more: true,
+        next: Some("fs1.cursor".to_owned()),
+    };
+    let value = serde_json::to_value(&first).unwrap();
+    assert_eq!(value["next"], "fs1.cursor");
+    let read: flare_contract::ShareList =
+        serde_json::from_value(serde_json::json!({"items": [], "more": false})).unwrap();
+    assert_eq!(read.next, None);
+}

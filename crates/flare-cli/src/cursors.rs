@@ -7,27 +7,22 @@
 //! file clears. The server keeps its own cursors under the same names, and
 //! a call reads from the larger of the two.
 
-use crate::board::state_home;
 use crate::codes::Failed;
 use crate::env::Snapshot;
-use crate::login::saved::{read_capped, unusable, write};
+use crate::login::saved::{StateFile, read_capped, write};
 use flare_contract::Cursor;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
-/// The largest cursors file flare reads or writes, in bytes.
-const MAX_BYTES: u64 = 64 * 1024;
+/// The file this module keeps.
+const FILE: StateFile = StateFile::Cursors;
 
 /// Each server's named cursors, as cursor text.
 type Saved = BTreeMap<String, BTreeMap<String, String>>;
 
-fn path(env: &Snapshot) -> Result<PathBuf, Failed> {
-    Ok(state_home(env)?.join("flare").join("cursors.json"))
-}
-
 fn load(env: &Snapshot) -> Result<Saved, Failed> {
-    match read_capped(&path(env)?, MAX_BYTES)? {
-        Some(text) => serde_json::from_str(&text).map_err(unusable),
+    let path = FILE.path(env)?;
+    match read_capped(FILE, &path)? {
+        Some(text) => serde_json::from_str(&text).map_err(|error| FILE.unusable(&path, error)),
         None => Ok(Saved::new()),
     }
 }
@@ -39,11 +34,12 @@ fn load(env: &Snapshot) -> Result<Saved, Failed> {
 /// Returns [`Failed::StateUnusable`] for a file that cannot be read or
 /// holds text that is not a cursor.
 pub(crate) fn read(env: &Snapshot, server: &str, name: &str) -> Result<Option<Cursor>, Failed> {
+    let path = FILE.path(env)?;
     let saved = load(env)?;
     saved
         .get(server)
         .and_then(|names| names.get(name))
-        .map(|text| Cursor::try_from(text.as_str()).map_err(unusable))
+        .map(|text| Cursor::try_from(text.as_str()).map_err(|error| FILE.unusable(&path, error)))
         .transpose()
 }
 
@@ -62,11 +58,10 @@ pub(crate) fn save(env: &Snapshot, server: &str, name: &str, cursor: Cursor) -> 
         .entry(server.to_owned())
         .or_default()
         .insert(name.to_owned(), cursor.to_string());
-    let bytes = serde_json::to_vec_pretty(&saved).map_err(unusable)?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_BYTES {
-        return Err(unusable(format!(
-            "the cursors file would pass {MAX_BYTES} bytes"
-        )));
+    let path = FILE.path(env)?;
+    let bytes = serde_json::to_vec_pretty(&saved).map_err(|error| FILE.unusable(&path, error))?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > FILE.limit() {
+        return Err(FILE.unusable(&path, format!("it would pass {} bytes", FILE.limit())));
     }
-    write(&path(env)?, &bytes)
+    write(&path, FILE, &bytes)
 }
