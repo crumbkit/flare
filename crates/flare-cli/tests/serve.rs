@@ -329,6 +329,32 @@ fn launch_target(opener: &std::path::Path) -> String {
 }
 
 #[test]
+fn open_names_an_opener_that_fails_in_the_program_field() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let (root, _) = paths(&board);
+    let running = Running::start(&home, &board, &[]);
+    let failing = home.script("failing-opener", "exit 1\n");
+    #[expect(clippy::disallowed_methods, reason = "the test runs the built binary")]
+    let output = home
+        .command(&["open", "--board", &root, "--json"])
+        .env("FLARE_OPENER", &failing)
+        .output()
+        .unwrap();
+    let ran = Ran::from(output);
+    ran.assert_failed("flare::opener::failed");
+    let printed: serde_json::Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"program": failing.to_str().unwrap()}),
+        "{}",
+        ran.all()
+    );
+    home.run(&["open", "--board", &root]).assert_ok();
+    running.stop("-TERM");
+}
+
+#[test]
 fn open_names_a_page_or_a_binding_and_refuses_an_unknown_name() {
     let home = Home::new();
     let board = ScratchBoard::new();

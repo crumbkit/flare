@@ -202,6 +202,7 @@ async fn local(
         })
     })?;
     let principal = local_principal(&env.user()).map_err(|error| Failed::StateUnusable {
+        path: None,
         problem: format!("the account name is not a principal: {error}"),
     })?;
     let loopback = Loopback::new(listeners.port(), principal, Reach::Everything).map_err(system)?;
@@ -314,6 +315,7 @@ async fn serve(
         .await
         .map_err(|error| match error {
             ServeError::State(error) => Failed::StateUnusable {
+                path: None,
                 problem: error.to_string(),
             },
             other => system(other),

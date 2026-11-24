@@ -115,6 +115,7 @@ pub(crate) fn remember_label(env: &Snapshot, server: &str, label: &str) -> Resul
 
 fn unusable(problem: impl std::fmt::Display) -> Failed {
     Failed::StateUnusable {
+        path: None,
         problem: format!("the saved login could not be used: {problem}"),
     }
 }

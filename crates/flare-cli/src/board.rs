@@ -65,6 +65,7 @@ pub(crate) fn root(given: Option<&Path>, need: Need, env: &Snapshot) -> Result<P
 pub(crate) fn state_home(env: &Snapshot) -> Result<PathBuf, Failed> {
     flare_auth_loopback::state_home(env.get("XDG_STATE_HOME"), env.get("HOME")).map_err(|error| {
         Failed::StateUnusable {
+            path: None,
             problem: error.to_string(),
         }
     })
@@ -86,7 +87,10 @@ pub(crate) fn loopback_state(root: &Path, env: &Snapshot) -> Result<StateDir, Fa
 ///
 /// Returns [`Failed::ProgramUnavailable`] when none is found.
 pub(crate) fn program(given: Option<&Path>, env: &Snapshot) -> Result<PathBuf, Failed> {
-    let unavailable = |problem: String| Failed::ProgramUnavailable { problem };
+    let unavailable = |program: Option<&Path>, problem: String| Failed::ProgramUnavailable {
+        program: program.map(|program| program.display().to_string()),
+        problem,
+    };
     let named = given
         .map(Path::to_path_buf)
         .or_else(|| env.get("FLARE_BOARD").map(PathBuf::from));
@@ -95,10 +99,9 @@ pub(crate) fn program(given: Option<&Path>, env: &Snapshot) -> Result<PathBuf, F
         None => std::env::split_paths(&env.search_path())
             .map(|dir| dir.join("board"))
             .find(|candidate| candidate.is_file())
-            .ok_or_else(|| unavailable("board was not found on PATH".to_owned()))?,
+            .ok_or_else(|| unavailable(None, "board was not found on PATH".to_owned()))?,
     };
-    std::fs::canonicalize(&found)
-        .map_err(|error| unavailable(format!("{}: {error}", found.display())))
+    std::fs::canonicalize(&found).map_err(|error| unavailable(Some(&found), error.to_string()))
 }
 
 /// Opens the store of the board at `root` with the board program
@@ -122,7 +125,8 @@ pub(crate) fn open(root: &Path, program: PathBuf, env: &Snapshot) -> Result<Boar
         .mode(0o700)
         .create(&children)
         .map_err(|error| Failed::StateUnusable {
-            problem: format!("{}: {error}", children.display()),
+            path: Some(children.display().to_string()),
+            problem: error.to_string(),
         })?;
     let committer = Committer::new("flare", "flare@localhost").map_err(unavailable)?;
     let config = BoardConfig::new(
@@ -151,7 +155,8 @@ pub(crate) async fn check(store: &BoardStore, program: &Path) -> Result<(), Fail
             program: program.display().to_string(),
         },
         _ => Failed::ProgramUnavailable {
-            problem: format!("at {} did not answer", program.display()),
+            program: Some(program.display().to_string()),
+            problem: "did not answer".to_owned(),
         },
     })
 }

@@ -257,3 +257,90 @@ fn a_run_appends_one_line_to_the_usage_log() {
     setup.home.run(&["self", "usage"]).assert_ok();
     assert_eq!(setup.home.usage_lines(), 2);
 }
+
+/// The failure document that a `--json` run printed, after asserting that
+/// the run failed with `code`.
+fn failure(ran: &run::Ran, code: &str) -> serde_json::Value {
+    ran.assert_failed(code);
+    let printed: serde_json::Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(printed["code"], code, "{}", ran.all());
+    printed
+}
+
+#[test]
+fn publish_names_a_board_program_it_cannot_find_in_the_program_field() {
+    let setup = Setup::new();
+    let page = setup.file("card.html", "<p>x</p>");
+    let root = setup.board.root();
+    let args = [
+        "publish",
+        page.to_str().unwrap(),
+        "--name",
+        "task-card",
+        "--json",
+    ];
+    let mut missing = args.to_vec();
+    missing.extend([
+        "--board",
+        root.to_str().unwrap(),
+        "--board-program",
+        "/missing/board",
+    ]);
+    let printed = failure(
+        &setup.home.run(&missing),
+        "flare::board::program_unavailable",
+    );
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"program": "/missing/board"}),
+        "{printed}"
+    );
+    setup.flare(&args).assert_ok();
+}
+
+#[test]
+fn publish_names_a_state_directory_it_cannot_create_in_the_path_field() {
+    let setup = Setup::new();
+    let page = setup.file("card.html", "<p>x</p>");
+    let blocked = setup.home.path().join("blocked-state");
+    std::fs::create_dir(&blocked).unwrap();
+    write(
+        &blocked.join("flare"),
+        "a file where flare wants a directory",
+    );
+    let args = [
+        "publish",
+        page.to_str().unwrap(),
+        "--name",
+        "task-card",
+        "--json",
+    ];
+    let root = setup.board.root();
+    let program = setup.board.program().to_path_buf();
+    #[expect(clippy::disallowed_methods, reason = "the test runs the built binary")]
+    let output = setup
+        .home
+        .command(&args)
+        .args([
+            "--board",
+            root.to_str().unwrap(),
+            "--board-program",
+            program.to_str().unwrap(),
+        ])
+        .env("XDG_STATE_HOME", &blocked)
+        .output()
+        .unwrap();
+    let printed = failure(&run::Ran::from(output), "flare::state::unusable");
+    let key = flare_auth_loopback::StateDir::for_board(&blocked, &root)
+        .path()
+        .file_name()
+        .unwrap()
+        .to_owned();
+    let children = blocked.join("flare").join("board").join(key);
+    assert_eq!(
+        printed["fields"],
+        serde_json::json!({"path": children.to_str().unwrap()}),
+        "{printed}"
+    );
+    setup.flare(&args).assert_ok();
+}

@@ -4,10 +4,15 @@
 
 use crumbkit::{Call, Code, Failure, Recovery};
 
+mod all;
 pub mod server;
 pub mod sharing;
 pub mod sign_in;
 
+#[cfg(test)]
+mod tests;
+
+pub use all::CODES;
 pub use server::HeldPort;
 pub use sharing::{NextRun, Refused, SharingFailed};
 pub use sign_in::SignInAgain;
@@ -141,13 +146,16 @@ pub enum Failed {
         program: String,
     },
     /// The board program was not found or did not answer.
-    #[error("the board program {problem}")]
+    #[error("the board program {}{problem}", before(.program.as_deref(), ": "))]
     #[failure(
         code = BOARD_PROGRAM_UNAVAILABLE,
         hint = "pass --board-program with the absolute path of a board program",
-        alternative = Recovery::hint("set FLARE_BOARD to the absolute path of a board program")
+        alternative = Recovery::hint("set FLARE_BOARD to the absolute path of a board program"),
+        field(program = program.as_deref())
     )]
     ProgramUnavailable {
+        /// The program's path, when flare knows it.
+        program: Option<String>,
         /// What went wrong.
         problem: String,
     },
@@ -304,17 +312,32 @@ pub enum Failed {
         problem: String,
     },
     /// The program that opens the browser failed.
-    #[error("the program that opens the browser failed: {problem}")]
-    #[failure(code = OPENER_FAILED, recovery = Recovery::Retry)]
+    #[error(
+        "the program that opens the browser failed: {}{problem}",
+        before(.program.as_deref(), " ")
+    )]
+    #[failure(
+        code = OPENER_FAILED,
+        recovery = Recovery::Retry,
+        field(program = program.as_deref())
+    )]
     OpenerFailed {
+        /// The opener's path, when flare started one.
+        program: Option<String>,
         /// What went wrong.
         problem: String,
     },
     /// The state directory cannot be used.
-    #[error("{problem}")]
-    #[failure(code = STATE_UNUSABLE, hint = "fix the state directory as the problem says")]
+    #[error("{}{problem}", before(.path.as_deref(), ": "))]
+    #[failure(
+        code = STATE_UNUSABLE,
+        hint = "fix the state directory as the problem says",
+        field(path = path.as_deref())
+    )]
     StateUnusable {
-        /// What is wrong, as flare-auth-loopback says it.
+        /// The directory, when flare holds it apart from the message.
+        path: Option<String>,
+        /// What is wrong, as flare or flare-auth-loopback says it.
         problem: String,
     },
     /// The share API's table or bucket is missing or cannot be read.
@@ -331,7 +354,8 @@ pub enum Failed {
     #[error("{path} could not be read: {problem}")]
     #[failure(
         code = METRICS_UNREADABLE,
-        hint = "pass a readable log file, or pipe the log to flare metrics",
+        hint = "pass a readable log file",
+        alternative = Recovery::hint("pipe the log to flare metrics on standard input"),
         field(path = path)
     )]
     MetricsUnreadable {
@@ -361,30 +385,9 @@ pub enum Failed {
     SignIn(SignInAgain),
 }
 
-const LOCAL: usize = Failed::CODES.len();
-const SHARING: usize = SharingFailed::CODES.len();
-const API: usize = sharing::API_CODES.len();
-
-/// Every code that `flare` declares: its own, its sharing commands' and
-/// the share API's, which a refusal carries.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "each loop's bound keeps its index inside both arrays, and a const block cannot call get"
-)]
-pub const CODES: &[Code<'static>] = &{
-    let mut codes = [SERVER_NOT_RUNNING; LOCAL + SHARING + API];
-    let mut index = 0;
-    while index < LOCAL {
-        codes[index] = Failed::CODES[index];
-        index += 1;
-    }
-    while index < LOCAL + SHARING {
-        codes[index] = SharingFailed::CODES[index - LOCAL];
-        index += 1;
-    }
-    while index < LOCAL + SHARING + API {
-        codes[index] = sharing::API_CODES[index - LOCAL - SHARING];
-        index += 1;
-    }
-    codes
-};
+/// `path` followed by `separator`, or nothing without a path, so a message
+/// that names a path reads as it did when the path was in its problem.
+fn before(path: Option<&str>, separator: &str) -> String {
+    path.map(|path| format!("{path}{separator}"))
+        .unwrap_or_default()
+}
