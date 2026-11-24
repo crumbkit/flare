@@ -1,0 +1,18 @@
+Remove people from a team you own, or leave a team you belong to
+
+Usage: flare teams remove [OPTIONS] --with <PERSON> <NAME>
+
+Arguments:
+  <NAME>  The team's name
+
+Options:
+      --with <PERSON>  The people, repeated or separated by commas: each an address, or a name the server resolves
+      --yes            Proceed without asking for confirmation
+  -h, --help           Print help (see more with '--help')
+
+Examples:
+  flare teams remove design --with jo@example.org
+
+Effects: destructive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare teams remove --help` describes them.
+Next: flare teams remove --help explains each column.

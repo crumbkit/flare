@@ -1582,7 +1582,7 @@ fn a_partly_shared_refusal_names_flare_grant_with_the_share_the_server_named() {
         "{}",
         ran.all()
     );
-    let call = format!("flare grant {PARTLY} --with <ADDRESS> --re <ID>");
+    let call = format!("flare grant {PARTLY} --with <WHO> --re <ID>");
     assert_eq!(
         printed["recovery"],
         json!({"kind": "run", "call": call}),
@@ -1620,7 +1620,7 @@ fn a_partly_shared_refusal_without_a_share_names_flare_grant_with_a_placeholder_
         let printed = failure(&ran, "flare::shares::partly_shared");
         assert_eq!(
             printed["recovery"],
-            json!({"kind": "run", "call": "flare grant <ID> --with <ADDRESS> --re <ID>"}),
+            json!({"kind": "run", "call": "flare grant <ID> --with <WHO> --re <ID>"}),
             "{share:?}: {}",
             ran.all()
         );

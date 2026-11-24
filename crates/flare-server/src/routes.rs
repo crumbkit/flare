@@ -121,7 +121,7 @@ const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 const BROWSER: (Need, Option<Access>) = (Need::TokenOrCookie, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 31] = [
+pub(crate) static ROUTES: [Route; 40] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -268,6 +268,72 @@ pub(crate) static ROUTES: [Route; 31] = [
     ),
     route(
         Method::GET,
+        "/api/grants/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::ListGrants),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/grants/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::RevokeGrants),
+        Sites::Hosted,
+    ),
+    route(
+        Method::POST,
+        "/api/teams",
+        TOKEN,
+        Handler::Api(ApiRoute::CreateTeam),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/teams",
+        TOKEN,
+        Handler::Api(ApiRoute::ListTeams),
+        Sites::Hosted,
+    ),
+    // The members and owner routes come before the team's own, whose
+    // pattern ends in <name> and would otherwise take `design/members` as
+    // the name.
+    route(
+        Method::POST,
+        "/api/teams/<name>/members",
+        TOKEN,
+        Handler::Api(ApiRoute::AddMembers),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/teams/<name>/members",
+        TOKEN,
+        Handler::Api(ApiRoute::RemoveMembers),
+        Sites::Hosted,
+    ),
+    route(
+        Method::PUT,
+        "/api/teams/<name>/owner",
+        TOKEN,
+        Handler::Api(ApiRoute::TransferTeam),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/teams/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::ShowTeam),
+        Sites::Hosted,
+    ),
+    route(
+        Method::DELETE,
+        "/api/teams/<name>",
+        TOKEN,
+        Handler::Api(ApiRoute::DeleteTeam),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
         "/api/activity",
         BROWSER,
         Handler::Api(ApiRoute::Activity),
@@ -317,58 +383,9 @@ pub(crate) static ROUTES: [Route; 31] = [
     ),
 ];
 
-/// What the table has for a request.
-#[derive(Debug)]
-pub(crate) enum Found<'p> {
-    /// This route, and the name segment when its pattern has one.
-    Route(&'static Route, &'p str),
-    /// A route has this path and another method.
-    MethodNotAllowed,
-    /// No route has this path.
-    Nothing,
-}
+mod find;
 
-/// The text after a pattern's prefix when `path` matches it. A pattern
-/// with text after `<name>` takes exactly one non-empty segment for the
-/// name, so `/api/shares/<name>/versions` never matches a path with more
-/// segments.
-fn matches<'p>(pattern: &str, path: &'p str) -> Option<&'p str> {
-    match pattern.split_once("<name>") {
-        Some((prefix, "")) => path.strip_prefix(prefix),
-        Some((prefix, suffix)) => path
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_suffix(suffix))
-            .filter(|name| !name.is_empty() && !name.contains('/')),
-        None => (pattern == path).then_some(""),
-    }
-}
-
-/// The route for `method` and `path` among the routes `site` serves.
-pub(crate) fn find<'p>(method: &Method, path: &'p str, site: SiteKind) -> Found<'p> {
-    let mut path_known = false;
-    for route in ROUTES.iter().filter(|route| route.sites.serves(site)) {
-        if let Some(name) = matches(route.pattern, path) {
-            if route.method == method {
-                return Found::Route(route, name);
-            }
-            path_known = true;
-        }
-    }
-    if path_known {
-        Found::MethodNotAllowed
-    } else {
-        Found::Nothing
-    }
-}
-
-/// The method and pattern of every route the local site's launch host
-/// serves.
-pub(crate) fn listed() -> impl Iterator<Item = (Method, &'static str)> {
-    ROUTES
-        .iter()
-        .filter(|route| route.sites.serves(SiteKind::Local))
-        .map(|route| (route.method.clone(), route.pattern))
-}
+pub(crate) use find::{Found, find, listed};
 
 #[cfg(test)]
 mod tests;

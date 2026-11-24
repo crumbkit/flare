@@ -2,9 +2,10 @@
 //! `schema/flare-api.schema.json` commits.
 
 use crate::{
-    ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread, ExchangeRequest,
-    GrantRequest, NamedCursor, NewComment, OpenedShare, ProblemDocument, Reply, ShareList,
-    ShareRequest, Shared, TokenIssued, VersionRequest,
+    ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread, ExchangeRequest, GrantList,
+    GrantRequest, MembersChanged, MembersRequest, NamedCursor, NewComment, OpenedShare,
+    ProblemDocument, Reply, RevokeRequest, Revoked, ShareList, ShareRequest, Shared, TeamDeleted,
+    TeamList, TeamRequest, TeamShown, TokenIssued, TransferRequest, VersionRequest,
 };
 use schemars::generate::SchemaSettings;
 use std::fmt;
@@ -27,6 +28,16 @@ pub fn generate() -> String {
     generator.subschema_for::<ActivityPage>();
     generator.subschema_for::<ExchangeRequest>();
     generator.subschema_for::<TokenIssued>();
+    generator.subschema_for::<RevokeRequest>();
+    generator.subschema_for::<Revoked>();
+    generator.subschema_for::<GrantList>();
+    generator.subschema_for::<TeamRequest>();
+    generator.subschema_for::<MembersRequest>();
+    generator.subschema_for::<TeamList>();
+    generator.subschema_for::<TeamShown>();
+    generator.subschema_for::<MembersChanged>();
+    generator.subschema_for::<TeamDeleted>();
+    generator.subschema_for::<TransferRequest>();
     generator.subschema_for::<CommentThread>();
     generator.subschema_for::<CommentOrReply>();
     generator.subschema_for::<Comment>();

@@ -158,5 +158,14 @@ name_type!(
     check_principal
 );
 
+impl PrincipalId {
+    /// The id of a group, `team:<name>` or `everyone`, which the group's
+    /// own type has already checked: at most 45 bytes of lowercase letters,
+    /// digits, dashes and one colon.
+    pub(crate) fn of_group(text: String) -> Self {
+        Self(text)
+    }
+}
+
 #[cfg(test)]
 mod tests;

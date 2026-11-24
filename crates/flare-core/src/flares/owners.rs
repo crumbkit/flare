@@ -8,10 +8,11 @@ use crate::grant::Role;
 use crate::share::ShareId;
 use crate::sharing::ShareError;
 use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
+use crate::teams::Teams;
 use crate::time::Timestamp;
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
-    Flares<S, G, R, C, U>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
 {
     /// Grants Reader on `response` to the owner of each flare in `flares`,
     /// once per owner. `who` owns the response. An owner who already holds

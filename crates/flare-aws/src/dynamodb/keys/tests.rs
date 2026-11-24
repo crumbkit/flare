@@ -157,6 +157,47 @@ fn link_keys_sort_in_position_order() {
 }
 
 #[test]
+fn a_group_grant_keys_its_entry_in_the_team_partition_or_the_everyone_partition() {
+    let share = ShareId::from_random([7; 16]);
+    let team = flare_core::Group::Team(flare_core::TeamName::try_from("design").unwrap());
+    let created = Timestamp::from_secs(5);
+    let team_entry = Key::grantee_entry(&team.principal_id(), created, &share);
+    assert_eq!(team_entry.pk, "TEAM#design");
+    assert_eq!(Key::grant(&share, &team.principal_id()).sk, "G#team:design");
+    let everyone = flare_core::Group::Everyone.principal_id();
+    assert_eq!(
+        Key::grantee_entry(&everyone, created, &share).pk,
+        "EVERYONE"
+    );
+    assert_eq!(Key::grant(&share, &everyone).sk, "G#everyone");
+    let person = principal("ana@example.com");
+    assert_eq!(
+        Key::grantee_entry(&person, created, &share).pk,
+        "TO#ana@example.com"
+    );
+}
+
+#[test]
+fn a_teams_items_and_a_members_pair_have_their_own_keys() {
+    let team = flare_core::TeamName::try_from("design").unwrap();
+    let ana = Email::try_from("ana@example.com").unwrap();
+    assert_eq!(
+        Key::team(&team),
+        Key {
+            pk: "TEAM#design".to_owned(),
+            sk: "META".to_owned()
+        }
+    );
+    let (in_team, in_person) = Key::member_pair(&team, &ana);
+    assert_eq!(in_team.pk, "TEAM#design");
+    assert_eq!(in_team.sk, "M#ana@example.com");
+    assert_eq!(in_person.pk, "MEMBER#ana@example.com");
+    assert_eq!(in_person.sk, "T#design");
+    assert_eq!(super::member_of("M#ana@example.com"), Some(ana));
+    assert_eq!(super::team_of("T#design"), Some(team));
+}
+
+#[test]
 fn index_keys_have_their_documented_layout_and_sort_in_position_order_per_flare() {
     let reader = Reader::Person(principal("a@x.com"));
     let flare = ShareId::from_random([0xab; 16]);
@@ -178,4 +219,21 @@ fn index_keys_have_their_documented_layout_and_sort_in_position_order_per_flare(
         .map(|at| Key::index_entry(&reader, &flare, Position::new(*at)).sk)
         .collect();
     assert_eq!(keys, positions);
+}
+
+#[test]
+fn a_group_readers_index_has_its_own_partition_apart_from_every_person() {
+    let flare = ShareId::from_random([0xab; 16]);
+    let team = Reader::Group(flare_core::Group::Team(
+        flare_core::TeamName::try_from("design").unwrap(),
+    ));
+    let everyone = Reader::Group(flare_core::Group::Everyone);
+    assert_eq!(
+        Key::index_entry(&team, &flare, Position::new(1)).pk,
+        "ACT#team:design"
+    );
+    assert_eq!(
+        Key::index_entry(&everyone, &flare, Position::new(1)).pk,
+        "ACT#everyone"
+    );
 }

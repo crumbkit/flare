@@ -67,6 +67,7 @@ mod grants {
         a_revoke_under_a_stale_admin_is_refused,
         the_grant_limit_holds,
         a_share_list_holds_only_its_grants,
+        a_group_grant_keeps_its_audience,
         a_persons_list_holds_their_grants_newest_first,
         a_role_change_keeps_the_first_grant_time,
         a_revoke_and_a_regrant_leave_no_stale_entry,

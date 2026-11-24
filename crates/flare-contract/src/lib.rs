@@ -7,12 +7,17 @@
 //! differ, so a client cannot drift from the server unseen.
 
 mod cursor;
+mod groups;
 mod problem;
 pub mod schema;
 mod time;
 mod wire;
 
 pub use cursor::{Cursor, CursorError, ListScope, ShareCursor};
+pub use groups::{
+    GrantEntry, GrantList, GrantState, GranteeKind, MembersChanged, MembersRequest, RevokeRequest,
+    Revoked, TeamDeleted, TeamList, TeamRequest, TeamRole, TeamShown, TeamSummary, TransferRequest,
+};
 pub use problem::{ApiCode, ProblemDocument, Recovery};
 pub use time::utc;
 pub use wire::{

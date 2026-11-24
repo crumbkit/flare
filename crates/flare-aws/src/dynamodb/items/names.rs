@@ -39,6 +39,10 @@ pub(crate) mod attr {
     pub(crate) const BODY: &str = "body";
     pub(crate) const EDITED: &str = "edited";
     pub(crate) const ACTION: &str = "action";
+    /// The audience of an everyone grant, on its grant item and its entry.
+    pub(crate) const AUDIENCE: &str = "audience";
+    /// A team's state, `active` or `deleting`.
+    pub(crate) const STATE: &str = "state";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.
@@ -64,6 +68,8 @@ pub(crate) enum ItemKind {
     CommentEvent,
     CommentKeySlot,
     Cursor,
+    Team,
+    Member,
     IndexEntry,
     IndexMarker,
 }
@@ -92,6 +98,8 @@ impl ItemKind {
             Self::CommentEvent => "comment event",
             Self::CommentKeySlot => "comment key slot",
             Self::Cursor => "cursor",
+            Self::Team => "team",
+            Self::Member => "team member",
             Self::IndexEntry => "activity index entry",
             Self::IndexMarker => "activity index marker",
         }

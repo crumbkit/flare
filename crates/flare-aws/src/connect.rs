@@ -6,7 +6,8 @@ use crate::config::HostedConfig;
 use crate::dynamodb::retry::Policy;
 use crate::dynamodb::{
     DynamoClient, DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
-    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTokenStore, Faults, Table,
+    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
+    Faults, Table,
 };
 use crate::s3::{Bucket, S3Client, S3FileStore};
 use aws_sdk_dynamodb::types::{KeyType, ScalarAttributeType};
@@ -15,7 +16,7 @@ use std::time::Duration;
 /// How long one attempt of one call may take before the SDK gives up on it.
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(6);
 
-/// The share, grant, file, token and response stores of a hosted flare.
+/// The stores of a hosted flare.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Stores {
@@ -29,6 +30,8 @@ pub struct Stores {
     pub tokens: DynamoTokenStore,
     /// The links from responses to flares, in the table.
     pub responses: DynamoResponseStore,
+    /// Teams and their members, in the table.
+    pub teams: DynamoTeamStore,
     /// Comments and replies, in the table, which share the responses'
     /// position counter.
     pub comments: DynamoCommentStore,
@@ -107,6 +110,7 @@ impl Stores {
             grants: DynamoGrantStore::from_table(table.clone()),
             files: S3FileStore::from_bucket(bucket.clone()),
             tokens: DynamoTokenStore::from_table(table.clone()),
+            teams: DynamoTeamStore::from_table(table.clone()),
             responses: DynamoResponseStore::from_table(table.clone()),
             comments: DynamoCommentStore::from_table(table.clone()),
             cursors: DynamoCursorStore::from_table(table.clone()),

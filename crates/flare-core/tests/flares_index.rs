@@ -12,8 +12,8 @@ use flare_core::memory::{
 };
 use flare_core::{
     ActivityPage, Creators, DocumentText, Email, FlareError, Flares, MAX_EXAMINED, NewEntry,
-    NewFlare, NewLink, Position, Principal, PrincipalId, Reader, ResponseStore, ShareContent,
-    ShareError, ShareId, ShareTitle, ShareVersion, Timestamp,
+    NewFlare, NewLink, Position, Principal, PrincipalId, Reader, ResponseStore, Revoked,
+    ShareContent, ShareId, ShareTitle, ShareVersion, Timestamp,
 };
 use instrumented_responses::Instrumented;
 use std::sync::atomic::Ordering;
@@ -77,8 +77,8 @@ fn grant(flares: &Service, who: &str, n: u16, with: &[&str]) {
     block_on(flares.grant(&person(who), &id(n), &with, &[], at(2))).unwrap();
 }
 
-fn revoke(flares: &Service, who: &str, n: u16, grantee: &str) -> Result<(), FlareError> {
-    block_on(flares.revoke(&person(who), &id(n), &email(grantee)))
+fn revoke(flares: &Service, who: &str, n: u16, grantee: &str) -> Result<Revoked, FlareError> {
+    block_on(flares.revoke(&person(who), &id(n), &[email(grantee)], &[]))
 }
 
 /// Every index entry as (reader's name, response, flare), sorted.
@@ -89,8 +89,12 @@ fn entries(flares: &Service) -> Vec<(String, ShareId, ShareId)> {
         .entries()
         .into_iter()
         .map(|entry| {
-            let Reader::Person(reader) = entry.reader;
-            let name = reader.as_str().trim_end_matches("@example.com").to_owned();
+            let name = entry
+                .reader
+                .grantee()
+                .as_str()
+                .trim_end_matches("@example.com")
+                .to_owned();
             (name, entry.response, entry.flare)
         })
         .collect();
@@ -299,16 +303,14 @@ fn a_response_granted_after_the_cursor_shows_next_and_a_revoke_hides_it_even_whe
             .items
             .is_empty()
     );
-    // A repeated revoke finds no grant and still removes the stale entry.
+    // A repeated revoke finds no grant, ends nothing and still removes
+    // the stale entry.
     flares
         .responses()
         .fail_unindex
         .store(false, Ordering::SeqCst);
-    let repeated = revoke(&flares, "bob", 2, "carol");
-    assert_eq!(
-        repeated.unwrap_err(),
-        FlareError::Share(ShareError::GrantNotFound)
-    );
+    let repeated = revoke(&flares, "bob", 2, "carol").unwrap();
+    assert!(repeated.people.is_empty(), "{repeated:?}");
     assert_eq!(entries(&flares), expect(&[("alice", 2, 1), ("bob", 2, 1)]));
 }
 

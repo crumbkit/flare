@@ -27,6 +27,34 @@ Who gets an entry:
 - After a grant of P on F: one entry for each share P owns or holds a grant
   on that links to F.
 
+## Team and everyone readers
+
+A team grant or an everyone grant makes the team, or everyone, a reader of
+its own, with its index under `ACT#team:<name>` or `ACT#everyone`. The
+rules above apply to a group as to a person: a group gets an entry when it
+holds a grant on both the response and the flare.
+
+- One entry serves every member of the team, so adding or removing a
+  member writes no entry. A member removed from the team stops reading the
+  team's entries on the next call.
+- An activity call reads, for each named flare, the caller's own entries
+  and the entries of each group through which the caller opens that flare:
+  each team grant on the flare of an active team the caller belongs to,
+  and the everyone grant when its audience covers the caller.
+- A response that two of those indexes list is listed once in one call. If
+  its two entries fall in two calls, each call lists it.
+- A revoke of a group's grant on a response removes the group's entries
+  for it. Deleting a team removes the team's entries for each share before
+  it removes that share's grant.
+- A person who holds a response directly and its flare only through a
+  group, or the reverse, gets no entry, so activity does not list that
+  response to them. The common case is listed: a response shared with the
+  same team as its flare, and with the flare's owner.
+- Comment events on a flare need no group entry. A member who opens the
+  flare through a team reads its comments in activity and in `flare
+  comments`, and can comment. A member removed from the team, or every
+  member of a deleted team, gets not-found for both on the next call.
+
 ## Crash points
 
 1. The link is written and the index writes do not finish. The response has
@@ -81,6 +109,13 @@ Who gets an entry:
 - Every link, every index transaction and every comment, edit and delete
   moves the one counter, so writes across the whole table take positions
   one at a time.
+- An activity call reads one index list for the caller and one for each
+  group through which the caller opens a flare, plus the flare's comment
+  events, for each flare named: at most 16 flares, each with at most 34
+  index lists (the caller, 32 teams and everyone).
+- Every share granted to everyone writes its entries to the one
+  `ACT#everyone` partition, so under heavy use that partition takes many
+  writes; no load test measures it.
 
 ## What a reader sees
 

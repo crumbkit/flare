@@ -11,7 +11,7 @@ use flare_contract::{
 use flare_core::{
     Comment, CommentAction, CommentActivity, CommentBody, CommentDraft, CommentId, CommentKey,
     CommentStore, CommentThread, CursorName, CursorStore, FlareError, GrantStore, Position,
-    Principal, Recipients, ResponseStore, ShareId, ShareStore, Timestamp, TokenStore,
+    Principal, Recipients, ResponseStore, ShareId, ShareStore, Teams, Timestamp, TokenStore,
 };
 use serde::Serialize;
 
@@ -150,7 +150,7 @@ fn item_of(item: &CommentActivity) -> WireItem {
     }
 }
 
-impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
@@ -159,6 +159,7 @@ where
     U: CursorStore,
     T: TokenStore,
     X: Recipients,
+    M: Teams,
 {
     /// `GET /api/comments?flare=`.
     pub(super) async fn thread(&self, who: &Principal, flare: &str) -> Answer {
@@ -270,7 +271,7 @@ fn named(position: Position) -> NamedCursor {
     }
 }
 
-impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
@@ -279,6 +280,7 @@ where
     U: CursorStore,
     T: TokenStore,
     X: Recipients,
+    M: Teams,
 {
     /// How many comments and replies of `flare` their authors have not
     /// deleted.

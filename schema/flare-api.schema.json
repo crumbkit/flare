@@ -430,10 +430,80 @@
         }
       ]
     },
+    "GrantEntry": {
+      "description": "One grant of a share.",
+      "properties": {
+        "audience": {
+          "description": "For an everyone grant, its audience: the mail domain it opens to, or\n`admitted` for the deployment's email list.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created": {
+          "description": "When the grant was first written, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "granted_by": {
+          "description": "Who wrote the grant's current role.",
+          "type": "string"
+        },
+        "grantee": {
+          "description": "The person's identifier, `team:<name>` or `everyone`. A grant to a\nteam that the caller, a share admin, does not belong to shows\n`team:*`, so no one outside a team learns its name.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/GranteeKind",
+          "description": "Who the grant is to."
+        },
+        "role": {
+          "$ref": "#/$defs/Role",
+          "description": "The grant's role; a team or everyone grant is always `reader`."
+        },
+        "state": {
+          "$ref": "#/$defs/GrantState",
+          "description": "Whether the grant opens the share."
+        }
+      },
+      "required": [
+        "grantee",
+        "kind",
+        "role",
+        "state",
+        "granted_by",
+        "created"
+      ],
+      "type": "object"
+    },
+    "GrantList": {
+      "description": "`GET /api/grants/{id}`: a share's grants, for its owner and its admins.",
+      "properties": {
+        "items": {
+          "description": "The grants, oldest first.",
+          "items": {
+            "$ref": "#/$defs/GrantEntry"
+          },
+          "type": "array"
+        },
+        "share": {
+          "description": "The share.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "share",
+        "items"
+      ],
+      "type": "object"
+    },
     "GrantRequest": {
       "additionalProperties": false,
-      "description": "`POST /api/shares/{id}/grants`: more people, or more flares the share\nresponds to.",
+      "description": "`POST /api/grants/{id}`: more people, teams or everyone, or more flares\nthe share responds to.",
       "properties": {
+        "everyone": {
+          "description": "Grant Reader to everyone signed in whom the deployment's admit rule\ncovers. Only the share's owner may. A body without it grants no\neveryone grant.",
+          "type": "boolean"
+        },
         "re": {
           "default": [],
           "description": "The ids of more flares the share responds to. Only its owner names\nthem.",
@@ -444,13 +514,86 @@
         },
         "with": {
           "default": [],
-          "description": "Who to share with.",
+          "description": "Who to share with: each a person's identifier, `team:<name>` for a\nteam the caller belongs to, or `everyone`.",
           "items": {
             "type": "string"
           },
           "type": "array"
         }
       },
+      "type": "object"
+    },
+    "GrantState": {
+      "description": "Whether a grant opens the share.",
+      "oneOf": [
+        {
+          "const": "active",
+          "description": "The grant opens the share to its grantee.",
+          "type": "string"
+        },
+        {
+          "const": "dormant",
+          "description": "The grant is to a team that is being deleted, or to a name no team\nhas, and opens nothing. The team's delete removes it, and the\nshare's owner may remove it with `flare revoke`.",
+          "type": "string"
+        }
+      ]
+    },
+    "GranteeKind": {
+      "description": "Who a grant is to.",
+      "oneOf": [
+        {
+          "const": "person",
+          "description": "One person.",
+          "type": "string"
+        },
+        {
+          "const": "team",
+          "description": "The members of a team.",
+          "type": "string"
+        },
+        {
+          "const": "everyone",
+          "description": "Everyone signed in whom the grant's audience covers.",
+          "type": "string"
+        }
+      ]
+    },
+    "MembersChanged": {
+      "description": "The answer to adding or removing members.",
+      "properties": {
+        "changed": {
+          "description": "The addresses added or removed. One already present, or already\nabsent, is left out.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "team": {
+          "$ref": "#/$defs/TeamSummary",
+          "description": "The team after the change."
+        }
+      },
+      "required": [
+        "team",
+        "changed"
+      ],
+      "type": "object"
+    },
+    "MembersRequest": {
+      "additionalProperties": false,
+      "description": "`POST` and `DELETE /api/teams/{name}/members`: the people to add or\nremove.",
+      "properties": {
+        "with": {
+          "description": "Each person's identifier, which the deployment resolves to an\naddress.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "with"
+      ],
       "type": "object"
     },
     "NamedCursor": {
@@ -688,6 +831,47 @@
       ],
       "type": "object"
     },
+    "RevokeRequest": {
+      "additionalProperties": false,
+      "description": "`DELETE /api/grants/{id}`: the grants to end.",
+      "properties": {
+        "everyone": {
+          "default": false,
+          "description": "End the grant to everyone signed in.",
+          "type": "boolean"
+        },
+        "with": {
+          "default": [],
+          "description": "Whose grant to end: each a person's identifier, which the deployment\nresolves, or `team:<name>`, or `everyone`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Revoked": {
+      "description": "The answer to `DELETE /api/grants/{id}`.",
+      "properties": {
+        "revoked": {
+          "description": "The addresses, `team:<name>` and `everyone` whose grant ended. One\nthat held no grant is left out.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "share": {
+          "description": "The share.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "share",
+        "revoked"
+      ],
+      "type": "object"
+    },
     "Role": {
       "description": "What the caller is to a share.",
       "oneOf": [
@@ -762,7 +946,7 @@
         },
         "with": {
           "default": [],
-          "description": "Who to share with: each an identifier that the deployment resolves,\nwhich by default is an email address.",
+          "description": "Who to share with: each an identifier that the deployment resolves,\nwhich by default is an email address, or `team:<name>` for a team\nthe caller belongs to, or `everyone`.",
           "items": {
             "type": "string"
           },
@@ -834,7 +1018,7 @@
       "description": "The answer to `POST /api/shares` and `POST /api/shares/{id}/grants`.",
       "properties": {
         "granted": {
-          "description": "The addresses granted Reader by this request.",
+          "description": "The addresses, `team:<name>` and `everyone` granted Reader by this\nrequest.",
           "items": {
             "type": "string"
           },
@@ -856,6 +1040,132 @@
         "share",
         "granted",
         "responds_to"
+      ],
+      "type": "object"
+    },
+    "TeamDeleted": {
+      "description": "The answer to `DELETE /api/teams/{name}`. One call removes at most 200\nof the team's grants; a team with more answers `finished` false, and\nthe owner repeats the call to go on.",
+      "properties": {
+        "finished": {
+          "description": "Whether the team is gone: its grant removed from every share, its\nmembers removed and its name free for a new team. When false the\nteam opens nothing and keeps its name until a repeat finishes.",
+          "type": "boolean"
+        },
+        "grants_removed": {
+          "description": "How many share grants this call removed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "team": {
+          "description": "The team's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "team",
+        "finished",
+        "grants_removed"
+      ],
+      "type": "object"
+    },
+    "TeamList": {
+      "description": "`GET /api/teams`: the teams the caller belongs to.",
+      "properties": {
+        "items": {
+          "description": "The teams, by name.",
+          "items": {
+            "$ref": "#/$defs/TeamSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "TeamRequest": {
+      "additionalProperties": false,
+      "description": "`POST /api/teams`: a new team.",
+      "properties": {
+        "name": {
+          "description": "The name: 1 to 40 lowercase letters, digits and dashes, which no\nteam in the deployment has.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "TeamRole": {
+      "description": "What the caller is to a team.",
+      "oneOf": [
+        {
+          "const": "owner",
+          "description": "The caller owns the team and alone manages it.",
+          "type": "string"
+        },
+        {
+          "const": "member",
+          "description": "The caller is a member.",
+          "type": "string"
+        }
+      ]
+    },
+    "TeamShown": {
+      "description": "`GET /api/teams/{name}`: a team and its members, for a member.",
+      "properties": {
+        "members": {
+          "description": "The members' addresses, in address order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "team": {
+          "$ref": "#/$defs/TeamSummary",
+          "description": "The team."
+        }
+      },
+      "required": [
+        "team",
+        "members"
+      ],
+      "type": "object"
+    },
+    "TeamSummary": {
+      "description": "One team as a list or a reply shows it.",
+      "properties": {
+        "created": {
+          "description": "When the team was created, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "members": {
+          "description": "How many members the team has, its owner included.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "The team's name.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The owner's address.",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/TeamRole",
+          "description": "What the caller is to the team."
+        }
+      },
+      "required": [
+        "name",
+        "owner",
+        "role",
+        "members",
+        "created"
       ],
       "type": "object"
     },
@@ -889,6 +1199,20 @@
         "owner",
         "label",
         "expires"
+      ],
+      "type": "object"
+    },
+    "TransferRequest": {
+      "additionalProperties": false,
+      "description": "The body of `PUT /api/teams/{name}/owner`: the member who becomes the\nteam's owner.",
+      "properties": {
+        "to": {
+          "description": "The new owner's identifier, which the deployment resolves to an\naddress. The person must be a member of the team.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to"
       ],
       "type": "object"
     },

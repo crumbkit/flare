@@ -1,10 +1,11 @@
 //! The reading page's read of a share, and [`GetFlare`], the address its
 //! foot links a reader to when that reader has never shared a flare.
 
+use super::convert::grant_entry;
 use super::{ReadRefusal, Reading, Sharing};
 use flare_core::{
     CommentStore, CursorStore, GrantStore, Principal, ResponseStore, ShareContent, ShareError,
-    ShareId, ShareStore, ShareVersion, Standing,
+    ShareId, ShareStore, ShareVersion, Standing, Teams,
 };
 use std::fmt;
 use url::Url;
@@ -58,7 +59,7 @@ impl GetFlare {
     }
 }
 
-impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M> {
     /// The share API of `self`, whose reading pages link a reader who has
     /// never shared a flare to `address`.
     #[must_use]
@@ -68,13 +69,14 @@ impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X> {
     }
 }
 
-impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
     R: ResponseStore,
     C: CommentStore,
     U: CursorStore,
+    M: Teams,
 {
     /// The get flare address for `who`, reading a share whose standing is
     /// `standing`: the configured address when `who` owns no share, and
@@ -125,11 +127,11 @@ where
         let with = match opened.standing {
             Standing::Owner | Standing::Admin => Some(
                 shares
-                    .grants(who, &id)
+                    .listed_grants(who, &id)
                     .await
                     .map_err(refused)?
                     .iter()
-                    .map(|grant| grant.grantee().as_str().to_owned())
+                    .map(|listed| grant_entry(listed).grantee)
                     .collect(),
             ),
             Standing::Reader | Standing::Stranger => None,

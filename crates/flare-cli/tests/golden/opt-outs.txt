@@ -22,9 +22,9 @@ path-budget/command: flare skills print
   Reason: It prints the 6,270-byte skill.
   Cost: An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens.
 
-flare has 31 declarations.
+flare has 43 declarations.
 
-root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics
+root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
   Reason: each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes
 
@@ -77,6 +77,42 @@ example-precondition: flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with team:design
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org --yes
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone --yes
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare grants 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams create design
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams add design --with mei@example.org,jo@example.org
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams remove design --with jo@example.org
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams list
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams show design
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams transfer design --to jo@example.org --yes
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare teams delete design --yes
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare shares

@@ -1,0 +1,37 @@
+Delete a team you own, removing its grant from every flare and freeing its name
+
+Usage: flare teams delete [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>
+          The team's name
+
+Options:
+      --yes
+          Proceed without asking for confirmation
+
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare teams delete design --yes
+          Delete the team design without a question
+
+Columns:
+  team            The team's name.
+  finished        Whether the team is gone: its grant removed from every flare, its members removed and its name free. False only when the command stopped before the server finished; running it again goes on.
+  grants_removed  How many flares' grants to the team this command removed.
+
+Effects: destructive, idempotent, closed-world.

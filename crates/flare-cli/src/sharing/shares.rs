@@ -96,7 +96,8 @@ pub(crate) async fn shares(
         let after = cursor
             .as_ref()
             .map_or_else(String::new, |cursor| format!("&cursor={cursor}"));
-        let target = format!("/api/shares?scope={name}&limit={limit}{after}");
+        let everyone = if args.everyone { "&everyone=true" } else { "" };
+        let target = format!("/api/shares?scope={name}&limit={limit}{after}{everyone}");
         let answer: Option<ShareList> = api
             .send(Method::GET, &target, None::<&()>)
             .await
@@ -115,9 +116,14 @@ pub(crate) async fn shares(
                     return Ok(listing.summary(SharesNext { cursor: None }));
                 };
                 // The next call keeps the page size the caller asked for.
+                let call = shares_call(args.with_me);
+                let call = if args.everyone {
+                    call.flag("everyone")
+                } else {
+                    call
+                };
                 let step = Step::new("Read the shares that follow this page.").call(
-                    shares_call(args.with_me)
-                        .value("limit", limit.to_string())
+                    call.value("limit", limit.to_string())
                         .value("cursor", next.clone()),
                 );
                 return Ok(listing

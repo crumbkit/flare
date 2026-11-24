@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/teams-create/v1",
+  "description": "The team that was created, with you as its owner and first member.",
+  "type": "object",
+  "properties": {
+    "data": {
+      "$ref": "#/$defs/TeamRow"
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/teams-create/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "data"
+  ],
+  "$defs": {
+    "TeamRow": {
+      "description": "One team.",
+      "type": "object",
+      "properties": {
+        "created": {
+          "description": "When the team was created, in RFC 3339 UTC.",
+          "type": "string"
+        },
+        "members": {
+          "description": "How many members the team has, its owner included.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "name": {
+          "description": "The team's name.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The owner's address.",
+          "type": "string"
+        },
+        "role": {
+          "description": "What you are to the team: `owner` or `member`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "owner",
+        "role",
+        "members"
+      ]
+    }
+  }
+}

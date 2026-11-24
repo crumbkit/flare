@@ -7,10 +7,10 @@ use super::{Answer, Sharing};
 use flare_contract::{ActivityPage, ApiCode, Cursor};
 use flare_core::{
     CommentStore, CursorStore, GrantStore, Position, Principal, Recipients, ResponseStore,
-    ShareStore, TokenStore,
+    ShareStore, Teams, TokenStore,
 };
 
-impl<S, G, R, C, U, T, X> Sharing<S, G, R, C, U, T, X>
+impl<S, G, R, C, U, T, X, M> Sharing<S, G, R, C, U, T, X, M>
 where
     S: ShareStore,
     G: GrantStore,
@@ -19,6 +19,7 @@ where
     U: CursorStore,
     T: TokenStore,
     X: Recipients,
+    M: Teams,
 {
     pub(super) async fn activity(
         &self,

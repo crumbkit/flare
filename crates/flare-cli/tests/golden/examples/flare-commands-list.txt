@@ -6,21 +6,21 @@ flare publish         Publish a page version from an HTML or Markdown file
 flare bind            Save a binding that fills a page's slots
 flare login           Sign in to a flare server and keep its token in the Keychain
 flare logout          Revoke and delete this computer's token
-flare share           Share a Markdown file with people, or as a response to flares
+flare share           Share a Markdown file
 flare show            Show one version of a share you can open, or its latest
-flare grant           Grant an existing share to more people
-flare shares          List your shares or the shares granted to you
+flare grant           Grant a share to readers
+flare revoke          End grants on a share
+flare grants          List grants
+flare teams           Manage teams
+flare teams create    Create a team that you own, with you as its first member
+flare teams add       Add people to a team you own
+flare teams remove    Remove people from a team you own, or leave a team you belong to
+flare teams list      List the teams you belong to
+flare teams show      Show the members of teams you belong to
+flare teams transfer  Hand a team you own to one of its members, who becomes its owner
+flare teams delete    Delete a team you own, removing its grant from every flare and freeing its name
+flare shares          List your shares or those granted to you
 flare activity        List responses and comments since a cursor
 flare comments        List a flare's comments and replies
 flare comment         Comment on a flare
 flare reply           Reply to a comment
-flare comment-edit    Edit a comment or reply you wrote
-flare comment-delete  Delete a comment or reply you wrote
-flare metrics         Count the metric lines in a flare server's log, by day
-flare commands        Explore flare's commands
-flare commands list   List a branch of flare's commands with their arguments and examples
-flare schemas         Explore the JSON documents that flare prints
-flare schemas list    List the JSON documents that flare prints, with a description of each
-flare schemas show    Print the JSON Schema of each document
-flare skills          Manage flare's agent skill
-flare skills install  Install flare's skills into each agent skills directory that exists

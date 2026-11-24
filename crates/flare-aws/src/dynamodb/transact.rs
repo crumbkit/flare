@@ -16,8 +16,8 @@ use aws_sdk_dynamodb::types::{
     ConditionCheck, Delete, Put, ReturnValuesOnConditionCheckFailure, TransactWriteItem, Update,
 };
 use flare_core::{
-    Grant, Granter, MAX_GRANTS, MAX_SHARES_PER_OWNER, MAX_VERSIONS, PrincipalId, Revoker, Role,
-    Share, ShareId, SharedVersion, Timestamp,
+    Audience, Grant, Granter, MAX_GRANTS, MAX_SHARES_PER_OWNER, MAX_VERSIONS, PrincipalId, Revoker,
+    Role, Share, ShareId, SharedVersion, Timestamp,
 };
 use std::collections::HashMap;
 
@@ -40,6 +40,8 @@ pub(crate) enum ItemRole {
     Sequence,
     PairItem,
     LinkItem,
+    TeamItem,
+    MemberItem,
     SessionItem,
     OldSession,
     SessionLink,
@@ -85,6 +87,8 @@ pub(crate) struct GrantPlan<'a> {
     pub(crate) read: Option<&'a Rev>,
     /// The new `rev`.
     pub(crate) rev: &'a Rev,
+    /// The audience an everyone grant records.
+    pub(crate) audience: Option<&'a Audience>,
 }
 
 /// A grant to end, read from a `GrantRevoke` and the grant the store read.
@@ -104,7 +108,7 @@ mod parts;
 pub(crate) use parts::{count, key_map, names, put, values};
 
 pub(crate) const ABSENT: &str = "attribute_not_exists(pk)";
-const PRESENT: &str = "attribute_exists(pk)";
+pub(crate) const PRESENT: &str = "attribute_exists(pk)";
 const SAME_REV: &str = "#rev = :read_rev";
 const IS_ADMIN: &str = "#r = :admin";
 
@@ -262,7 +266,8 @@ pub(crate) fn grant(table: &str, plan: &GrantPlan<'_>) -> Option<Transaction> {
         plan.role,
         plan.by.principal().clone(),
         plan.created,
-    );
+    )
+    .with_audience(plan.audience.cloned());
     let (condition, condition_names, condition_values) = grant_condition(plan.read, folded);
     let item = Put::builder()
         .table_name(table)
@@ -291,7 +296,7 @@ pub(crate) fn grant(table: &str, plan: &GrantPlan<'_>) -> Option<Transaction> {
     Some(transaction)
 }
 
-fn delete(table: &str, key: &Key) -> Option<Delete> {
+pub(crate) fn delete(table: &str, key: &Key) -> Option<Delete> {
     Delete::builder()
         .table_name(table)
         .set_key(Some(key_map(key)))

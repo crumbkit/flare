@@ -32,6 +32,7 @@ pub mod response_store;
 pub mod sealing_keys;
 pub mod session_store;
 pub mod share_store;
+pub mod team_store;
 pub mod token_store;
 
 pub use executor::{RunTogether, Threads, block_on};
@@ -149,6 +150,17 @@ clauses! {
     AFlaresListHoldsOnlyItsLinks => "a flare's list holds only links to that flare",
     AResponsesListNamesEveryFlare => "a response's list names every flare it links to",
     TheLimitBoundsAListOldestFirst => "a flare's list holds at most the limit, oldest first",
+    ACreatedTeamReadsBack => "a created team reads back active, with its owner as its only member",
+    ATeamNameInUseIsTaken => "a team name is taken while its team is active or deleting, and a refused create writes nothing",
+    MemberPairsAgree => "after adds and removes, a team's member list and each person's team list agree",
+    APresentMemberIsNotAddedTwice => "adding a present member answers false and writes nothing",
+    AnAbsentMemberIsNotRemoved => "removing an absent member answers false and writes nothing",
+    AFullTeamRefusesAMember => "a team with the member limit refuses another member and writes nothing",
+    AnInactiveTeamRefusesAMember => "a deleted or missing team refuses a member and writes nothing",
+    ADeletingTeamKeepsItsOwner => "a deleting team reads back deleting with its owner, and marking it again changes nothing",
+    AForgottenTeamFreesItsName => "forgetting a deleting team with no members removes it and frees its name, and an active team or one with members is not forgotten",
+    ATransferNeedsTheOwnerAndAMember => "a transfer makes a member the owner of an active team, and is refused from a non-owner, to a non-member or on a deleting team",
+    AGroupGrantKeepsItsAudience => "a group grant reads back with the audience it was written with, in the share's list and in the group's list",
     ASessionLivesTwelveHoursFromSignIn => "a session reads back as its principal until 12 hours after it was created, and is unknown from then on",
     ARequestSlidesTheExpiryAtMostEveryTenMinutes => "a request less than 10 minutes into a session's idle life leaves its expiry where it was, and a later request moves it to 12 hours from that request",
     ASessionEndsSevenDaysAfterSignIn => "a session that is used every 11 hours stops sliding at 7 days after sign-in and is unknown from then on",

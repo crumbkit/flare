@@ -1,4 +1,4 @@
-Share a Markdown file with people, or as a response to flares
+Share a Markdown file
 
 Usage: flare share [OPTIONS] <FILE>
 
@@ -10,8 +10,8 @@ Options:
       --title <TITLE>
           The title; without it, the file name without its ending
 
-      --with <ADDRESS>
-          The addresses to grant Reader, repeated or comma-separated
+      --with <WHO>
+          Readers, comma-separated: addresses, team:<name>, everyone
 
       --re <ID>
           The flares it responds to, whose owners become Readers; repeated or comma-separated

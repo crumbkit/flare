@@ -1,6 +1,6 @@
-//! Runs every function of flare-core's share, grant, token and response
-//! suites against `DynamoShareStore`, `DynamoGrantStore`,
-//! `DynamoTokenStore` and `DynamoResponseStore` on the DynamoDB stand-in, as
+//! Runs every function of flare-core's share, grant, token, response and
+//! team suites against `DynamoShareStore`, `DynamoGrantStore`,
+//! `DynamoTokenStore`, `DynamoResponseStore` and `DynamoTeamStore` on the DynamoDB stand-in, as
 //! flare's AGENTS.md asks of each new store, and checks what only a
 //! durable table shows: a second store on the same table sees every write,
 //! and a login code carries the expiry that the table's TTL reads.
@@ -19,6 +19,7 @@ use flare_core::contract::response_store::{self, ResponseFixture, index as respo
 use flare_core::contract::sealing_keys::{self, KeyFixture};
 use flare_core::contract::session_store::{self, SessionFixture};
 use flare_core::contract::share_store::{self, ShareFixture};
+use flare_core::contract::team_store::{self, TeamFixture};
 use flare_core::contract::token_store::{self, TokenFixture};
 use flare_core::{
     CODE_LIFE, Digest, DocumentText, Email, GrantStore, LoginCode, NewLink, NewToken, Position,
@@ -74,6 +75,23 @@ mod shares {
     );
 }
 
+mod teams {
+    use super::*;
+
+    suite!(team_store, teams, TeamFixture;
+        a_created_team_reads_back_with_its_owner_as_its_only_member,
+        a_name_is_taken_while_its_team_is_active_or_deleting,
+        member_pairs_always_agree_after_adds_and_removes,
+        adding_a_present_member_writes_nothing,
+        removing_an_absent_member_writes_nothing,
+        a_full_team_refuses_another_member_and_writes_nothing,
+        a_deleted_or_missing_team_refuses_a_member,
+        a_deleting_team_keeps_its_owner_and_its_state,
+        forgetting_a_deleting_team_with_no_members_frees_its_name,
+        a_transfer_needs_the_owner_and_a_member,
+    );
+}
+
 mod grants {
     use super::*;
 
@@ -88,6 +106,7 @@ mod grants {
         a_revoke_under_a_stale_admin_is_refused,
         the_grant_limit_holds,
         a_share_list_holds_only_its_grants,
+        a_group_grant_keeps_its_audience,
         a_persons_list_holds_their_grants_newest_first,
         a_role_change_keeps_the_first_grant_time,
         a_revoke_and_a_regrant_leave_no_stale_entry,

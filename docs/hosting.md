@@ -128,6 +128,16 @@ The share API lets people share Markdown files with named people from the
   `get_flare` without `stores` is refused. flare sends nothing to the
   address and counts no clicks.
 - A person who is not a creator gets 403 `flare::shares::not_a_creator`.
+- A share granted to everyone signed in opens to the people the `admit`
+  rule admitted when the grant was made. Under a `domain` rule the grant
+  opens to signed-in addresses at that domain. Under an `emails` rule it
+  opens to every signed-in person while the rule stays `emails`, so an
+  address added to the list later can open every share granted to everyone
+  under that rule. Under an
+  `anyone` rule the grant is refused with 409
+  `flare::grants::everyone_unbounded`, because it would open the share to
+  any Google account. [teams.md](teams.md) gives the life of teams and
+  group grants.
 
 Routes:
 
@@ -141,11 +151,22 @@ Routes:
 - `GET /api/shares?scope=mine|with-me&limit=<n>&cursor=<cursor>` lists
   shares, at most 500 in one answer, newest first. When more follow, the
   answer's `next` holds the cursor to pass as `cursor` for the next page.
+  With `scope=with-me`, `everyone=true` adds the shares granted to everyone.
 - `GET /api/shares/<id>` reads a share.
 - `POST /api/shares/<id>/versions` publishes the next version of a share,
   from a `format` and `content`. Only the owner may, and the answer is the
   share summary with the new `version`.
-- `POST /api/grants/<id>` grants a share to more addresses.
+- `POST /api/grants/<id>` grants a share to more addresses, to teams as
+  `team:<name>`, or to everyone signed in with `everyone: true`.
+- `DELETE /api/grants/<id>` ends the grants it names.
+- `GET /api/grants/<id>` lists a share's grants, with the dormant grants
+  of teams being deleted first.
+- `POST /api/teams`, `GET /api/teams`, `GET /api/teams/<name>`,
+  `PUT /api/teams/<name>/owner`, `DELETE /api/teams/<name>` and `POST` or
+  `DELETE` `/api/teams/<name>/members` create, list, show, transfer and
+  delete teams and change their members. One `DELETE /api/teams/<name>`
+  removes at most 200 of the team's grants and answers `finished: false`
+  when more remain; the owner repeats it.
 - `GET /api/activity?flare=<id>&since=<cursor>&since_last=<name>&limit=<n>`
   lists the responses and comment events on flares that the caller may
   read, oldest first, at most 100 a page.

@@ -12,7 +12,14 @@
 //!   open; for S as a flare, each share P owns or holds a grant on that
 //!   links to S.
 //! - After a revoke or a leave of P on S: P's entries for S as a response
-//!   are removed. A revoke of P on a flare removes nothing, because
+//!   are removed.
+//!
+//! A team or everyone is a reader of its own, under its grantee id, and the
+//! rules above apply to it as to a person: a group gets an entry when it
+//! holds both the response and the flare. Its members read the group's
+//! entries, so adding or removing a member rewrites nothing. A person who
+//! holds one share directly and the other only through a group gets no
+//! entry; docs/activity.md names that gap. A revoke of P on a flare removes nothing, because
 //!   `activity` refuses that flare to P, and a new grant makes the old
 //!   entries valid again.
 //!
@@ -28,20 +35,20 @@
 //! written before the grant are affected.
 
 use super::Flares;
-use crate::email::Email;
 use crate::name::PrincipalId;
 use crate::response::{NewEntry, Reader, ResponseLink};
 use crate::share::ShareId;
 use crate::store::{
     CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore, ShareStoreError,
 };
+use crate::teams::Teams;
 
 /// An index write could not finish; the caller repeats the grant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Unfinished;
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
-    Flares<S, G, R, C, U>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
 {
     /// The people who can open `share`: its owner and each grantee, or
     /// `None` when the share does not exist.
@@ -92,7 +99,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         let entries = readers
             .into_iter()
             .filter(|person| flare_readers.contains(person))
-            .map(|person| NewEntry::new(Reader::Person(person), link.clone()))
+            .map(|person| NewEntry::new(Reader::of_grantee(person), link.clone()))
             .collect();
         self.write_entries(entries).await
     }
@@ -100,7 +107,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     /// Writes the entries that a grant of `person` on `share`, already
     /// stored, makes possible, with `share` as a response and as a flare.
     async fn index_grant(&self, person: &PrincipalId, share: &ShareId) -> Result<(), Unfinished> {
-        let reader = Reader::Person(person.clone());
+        let reader = Reader::of_grantee(person.clone());
         let mut entries = Vec::new();
         let links = self
             .responses
@@ -126,24 +133,23 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         self.write_entries(entries).await
     }
 
-    /// Writes the entries of a grant on `share` to each person in
-    /// `named`, including those who already held a grant, so repeating a
-    /// grant repairs missing entries. A person in `granted` held no grant
-    /// before, so any entry they have for `share` as a response is stale,
-    /// as when an unindex failed; it goes first, so the response takes a
-    /// new position and shows as new.
+    /// Writes the entries of a grant on `share` to each grantee in
+    /// `named`, a person or a group, including those who already held a
+    /// grant, so repeating a grant repairs missing entries. A grantee in
+    /// `granted` held no grant before, so any entry they have for `share`
+    /// as a response is stale, as when an unindex failed; it goes first, so
+    /// the response takes a new position and shows as new.
     pub(super) async fn reindex(
         &self,
-        named: &[Email],
-        granted: &[Email],
+        named: &[PrincipalId],
+        granted: &[PrincipalId],
         share: &ShareId,
     ) -> Result<(), Unfinished> {
-        for person in named {
-            let id = person.principal_id();
-            if granted.contains(person) {
+        for id in named {
+            if granted.contains(id) {
                 self.unindex(id.clone(), share).await?;
             }
-            self.index_grant(&id, share).await?;
+            self.index_grant(id, share).await?;
         }
         Ok(())
     }
@@ -182,14 +188,15 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         Ok(held)
     }
 
-    /// Removes the entries of `person` for `response`.
+    /// Removes the entries of `person`, a person or a group, for
+    /// `response`.
     pub(super) async fn unindex(
         &self,
         person: PrincipalId,
         response: &ShareId,
     ) -> Result<(), Unfinished> {
         self.responses
-            .unindex(&Reader::Person(person), response)
+            .unindex(&Reader::of_grantee(person), response)
             .await
             .map_err(|_| Unfinished)
     }

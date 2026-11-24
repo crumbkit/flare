@@ -17,6 +17,7 @@ use crate::sharing::ShareError;
 use crate::store::{
     Added, CommentStore, CommentStoreError, CursorStore, GrantStore, ResponseStore, ShareStore,
 };
+use crate::teams::Teams;
 use crate::time::Timestamp;
 
 /// A comment that a caller asks to write.
@@ -79,8 +80,8 @@ fn comment_refused(error: CommentStoreError) -> FlareError {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
-    Flares<S, G, R, C, U>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
 {
     /// Checks that `who` can open `flare` and answers who they are.
     async fn readable(&self, who: &Principal, flare: &ShareId) -> Result<PrincipalId, FlareError> {

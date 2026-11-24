@@ -1,11 +1,14 @@
-//! `flare share`, `show`, `grant` and `shares`: each reads the saved login
-//! and its token from the Keychain, and calls the server's share API.
-//! `flare share --dry-run` is the exception: `dry_run.rs` checks and renders
-//! the file and reads neither the login nor the Keychain. `flare activity`
-//! is in `activity.rs`.
+//! `flare share`, `show`, `grant`, `revoke`, `grants` and `shares`: each
+//! reads the saved login and its token from the Keychain, and calls the
+//! server's share API. `flare share --dry-run` is the exception:
+//! `dry_run.rs` checks and renders the file and reads neither the login nor
+//! the Keychain. `flare activity` is in `activity.rs`.
 
 mod dry_run;
+mod grants;
 mod shares;
+
+pub(crate) use grants::{grants, revoke};
 
 pub(crate) use shares::shares;
 
@@ -236,6 +239,7 @@ pub(crate) async fn grant(args: &GrantArgs, env: &Snapshot) -> Result<SharedOut,
     let id = share_id(&api, &args.id)?;
     let request = GrantRequest {
         with: args.with.clone(),
+        everyone: args.everyone,
         re: args.re.clone(),
     };
     let target = format!("/api/grants/{}", id.as_str());

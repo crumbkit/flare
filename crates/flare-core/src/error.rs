@@ -56,6 +56,12 @@ pub enum Subject {
     TokenId,
     /// A [`TokenLabel`](crate::TokenLabel).
     TokenLabel,
+    /// A [`TeamName`](crate::TeamName).
+    TeamName,
+    /// A [`MailDomain`](crate::MailDomain).
+    MailDomain,
+    /// An [`Audience`](crate::Audience).
+    Audience,
     /// A [`CommentId`](crate::CommentId).
     CommentId,
     /// A [`CommentBody`](crate::CommentBody).
@@ -94,6 +100,9 @@ impl fmt::Display for Subject {
             Self::FileBytes => "file",
             Self::TokenId => "token id",
             Self::TokenLabel => "token label",
+            Self::TeamName => "team name",
+            Self::MailDomain => "mail domain",
+            Self::Audience => "audience",
             Self::CommentId => "comment id",
             Self::CommentBody => "comment",
             Self::CommentKey => "comment key",

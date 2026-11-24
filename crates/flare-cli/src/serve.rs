@@ -28,10 +28,11 @@ use flare_auth_oidc::{
 };
 use flare_aws::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
-    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTokenStore, Stores,
+    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
+    Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{Flares, NamedRecipients};
+use flare_core::{FlareTeams, Flares, NamedRecipients};
 use flare_server::{
     App, BindError, Gate, Limits, Listeners, Metrics, ServeError, Sharing, Site, Stopped,
 };
@@ -306,6 +307,7 @@ type HostedSharing = Sharing<
     DynamoCursorStore,
     DynamoTokenStore,
     NamedRecipients,
+    FlareTeams<DynamoTeamStore>,
 >;
 
 /// The share API on the configured table and bucket, which it checks
@@ -328,7 +330,8 @@ async fn share_api(
         stores.comments,
         stores.cursors,
         config.creators,
-    );
+    )
+    .with_teams(FlareTeams::new(stores.teams));
     let api = Sharing::new(flares, stores.tokens, config.recipients, admit);
     Ok(match config.get_flare {
         Some(address) => api.with_get_flare(address),

@@ -263,28 +263,6 @@ impl Refused {
         self.share = share.and_then(|text| ShareId::try_from(text).ok());
         self
     }
-
-    /// The typed call that replaces the API's hint for `partly_shared` and
-    /// the two `bad_cursor` codes, whose hints name `flare grant`, `flare
-    /// activity` and `flare shares` in prose for API callers, or `None` for
-    /// every other code. crumbkit
-    /// renders the call against flare's commands, so a renamed command or
-    /// flag fails the tests in place of printing a stale command.
-    fn typed_call(&self) -> Option<Recovery> {
-        match self.code {
-            ApiCode::PartlyShared => {
-                let grant = Call::new(&["grant"]);
-                let grant = match &self.share {
-                    Some(share) => grant.value("id", share.as_str()),
-                    None => grant.arg("id"),
-                };
-                Some(Recovery::Run(grant.arg("with").arg("re")))
-            }
-            ApiCode::BadCursor => Some(Recovery::Run(activity_call(&self.flares))),
-            ApiCode::SharesBadCursor => Some(Recovery::Run(shares_call(self.with_me))),
-            _ => None,
-        }
-    }
 }
 
 impl Refused {
@@ -352,8 +330,9 @@ impl Failure for Refused {
     }
 
     /// A bad cursor can also be replaced by the cursor that the last `flare
-    /// activity` or `flare shares` printed, and a flare that is not found
-    /// can be shared with the caller by its owner.
+    /// activity` or `flare shares` printed, a flare that is not found can
+    /// be shared with the caller by its owner, and a missing team can be
+    /// solved by asking the team's owner to add the caller.
     fn alternatives(&self) -> Vec<Recovery> {
         match self.code {
             ApiCode::BadCursor => vec![Recovery::after(
@@ -367,6 +346,7 @@ impl Failure for Refused {
                 "find the cursor that the last flare shares printed",
                 Then::Run(shares_call(self.with_me).arg("cursor")),
             )],
+            ApiCode::TeamNotFound => vec![Recovery::hint("ask the team's owner to add you")],
             _ => Vec::new(),
         }
     }

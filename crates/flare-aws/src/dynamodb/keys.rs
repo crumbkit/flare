@@ -10,7 +10,7 @@
 //! sort in position order.
 
 use flare_core::{
-    CommentId, CommentKey, CursorName, Digest, Email, KeyId, Position, PrincipalId, Reader,
+    CommentId, CommentKey, CursorName, Digest, Email, Group, KeyId, Position, PrincipalId, Reader,
     ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
 };
 
@@ -307,6 +307,7 @@ pub(crate) fn link_of(sort_key: &str) -> Option<(Timestamp, Digest)> {
 pub(crate) fn index_partition(reader: &Reader) -> String {
     match reader {
         Reader::Person(person) => format!("ACT#{}", person.as_str()),
+        Reader::Group(group) => format!("ACT#{group}"),
     }
 }
 
@@ -349,9 +350,14 @@ pub(crate) fn owner_partition(owner: &PrincipalId) -> String {
     format!("OWN#{}", owner.as_str())
 }
 
-/// The partition of a grantee's entries.
+/// The partition of a grantee's entries: a person's own, the team's
+/// partition for a team, or the one partition of everyone grants.
 pub(crate) fn grantee_partition(grantee: &PrincipalId) -> String {
-    format!("TO#{}", grantee.as_str())
+    match Group::of_grantee(grantee) {
+        Some(Group::Team(team)) => team_partition(&team),
+        Some(Group::Everyone) => "EVERYONE".to_owned(),
+        None => format!("TO#{}", grantee.as_str()),
+    }
 }
 
 /// `E#<inverted time>#<id>`. The time is `u64::MAX - created` in 20 digits,
@@ -382,6 +388,12 @@ pub(crate) fn entry_of(sort_key: &str) -> Option<(Timestamp, ShareId)> {
 pub(crate) fn grantee_of(sort_key: &str) -> Option<PrincipalId> {
     PrincipalId::try_from(sort_key.strip_prefix(GRANT_PREFIX)?).ok()
 }
+
+mod teams;
+
+pub(crate) use teams::{
+    MEMBER_PREFIX, TEAM_PREFIX, member_of, member_partition, team_of, team_partition,
+};
 
 #[cfg(test)]
 mod tests;

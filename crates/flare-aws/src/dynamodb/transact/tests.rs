@@ -125,6 +125,7 @@ fn grant_plan<'a>(
         created: Timestamp::from_secs(10),
         read,
         rev: new,
+        audience: None,
     }
 }
 

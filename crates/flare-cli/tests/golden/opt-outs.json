@@ -60,7 +60,7 @@
   "declarations": [
     {
       "declaration": "root-verbs",
-      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics",
+      "applies_to": "flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics",
       "declares": "Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.",
       "reason": "each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes"
     },
@@ -147,6 +147,66 @@
     {
       "declaration": "example-precondition",
       "applies_to": "flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with team:design",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare grant 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --with mei@example.org --yes",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare revoke 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --everyone --yes",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare grants 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams create design",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams add design --with mei@example.org,jo@example.org",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams remove design --with jo@example.org",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams list",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams show design",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams transfer design --to jo@example.org --yes",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare teams delete design --yes",
       "declares": "The example runs only in a test run that provides server."
     },
     {

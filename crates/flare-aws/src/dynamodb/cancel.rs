@@ -71,6 +71,8 @@ fn rank(role: ItemRole) -> u8 {
         | ItemRole::CodeItem
         | ItemRole::TokenItem
         | ItemRole::PairItem
+        | ItemRole::TeamItem
+        | ItemRole::MemberItem
         | ItemRole::SessionGuard
         | ItemRole::SealingKeyItem
         | ItemRole::CommentItem

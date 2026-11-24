@@ -25,24 +25,28 @@
 mod activity;
 mod comments;
 mod error;
+mod groups;
 mod index;
 mod owners;
 mod people;
-mod revoke;
+mod team_life;
 
 pub use activity::{ActivityItem, ActivityPage, CommentActivity, MAX_EXAMINED, ResponseActivity};
 pub use comments::{CommentDraft, CommentThread, Posted};
 pub use error::FlareError;
+pub use groups::Revoked;
 pub use people::{
     AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
 };
+pub use team_life::{MAX_SWEPT, TeamDeletion};
 
 use crate::auth::Principal;
 use crate::email::Email;
 use crate::response::NewLink;
 use crate::share::{Share, ShareContent, ShareId, ShareTitle};
-use crate::sharing::{ShareError, Shares, Standing};
+use crate::sharing::{ShareError, Shares};
 use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
+use crate::teams::{Admission, Group, NoTeams, Teams};
 use crate::time::Timestamp;
 use crate::{PrincipalId, Role, ShareVersion};
 use index::Unfinished;
@@ -58,6 +62,7 @@ pub struct NewFlare {
     title: ShareTitle,
     content: ShareContent,
     with: Vec<Email>,
+    groups: Vec<Group>,
     re: Vec<ShareId>,
 }
 
@@ -77,8 +82,17 @@ impl NewFlare {
             title,
             content,
             with: once_each(with),
+            groups: Vec::new(),
             re: once_each(re),
         }
+    }
+
+    /// The same flare, also granted to each team or to everyone in
+    /// `groups`. Repeats count once.
+    #[must_use]
+    pub fn with_groups(mut self, groups: Vec<Group>) -> Self {
+        self.groups = once_each(groups);
+        self
     }
 }
 
@@ -90,6 +104,8 @@ pub struct Flared {
     pub share: Share,
     /// The people granted Reader.
     pub granted: Vec<Email>,
+    /// The teams, or everyone, granted Reader.
+    pub groups: Vec<Group>,
     /// The flares it responds to.
     pub responds_to: Vec<ShareId>,
 }
@@ -103,8 +119,8 @@ struct Responded {
 
 /// The service: [`Shares`] with the creators rule and the response store.
 #[derive(Debug)]
-pub struct Flares<S, G, R, C, U> {
-    shares: Shares<S, G>,
+pub struct Flares<S, G, R, C, U, T = NoTeams> {
+    shares: Shares<S, G, T>,
     responses: R,
     comments: C,
     cursors: U,
@@ -131,11 +147,9 @@ fn flare_refused(error: ShareError) -> FlareError {
     }
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
-    Flares<S, G, R, C, U>
-{
-    /// A service over the five stores, admitting `creators`. The response
-    /// and comment stores share one position sequence.
+impl<S, G, R, C, U> Flares<S, G, R, C, U> {
+    /// A service over the five stores, admitting `creators`, with no
+    /// teams. The response and comment stores share one position sequence.
     #[must_use]
     pub fn new(
         shares: S,
@@ -153,15 +167,40 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
             creators,
         }
     }
+}
+
+impl<S, G, R, C, U, T> Flares<S, G, R, C, U, T> {
+    /// The same service, reading and managing teams through `teams`.
+    #[must_use]
+    pub fn with_teams<V>(self, teams: V) -> Flares<S, G, R, C, U, V> {
+        Flares {
+            shares: self.shares.with_teams(teams),
+            responses: self.responses,
+            comments: self.comments,
+            cursors: self.cursors,
+            creators: self.creators,
+        }
+    }
+
+    /// The same service under the deployment's admit rule.
+    #[must_use]
+    pub fn admitting(mut self, admission: Admission) -> Self {
+        self.shares = self.shares.admitting(admission);
+        self
+    }
 
     /// The share service, for reads and lists. A grant or a revoke made
     /// through it writes no activity index entry; use [`Flares::grant`]
     /// and [`Flares::revoke`].
     #[must_use]
-    pub fn shares(&self) -> &Shares<S, G> {
+    pub fn shares(&self) -> &Shares<S, G, T> {
         &self.shares
     }
+}
 
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
+{
     /// The response store, for tests that read the index. It is not built
     /// into a server, so no caller there can write the index around
     /// [`Flares`].
@@ -244,6 +283,12 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         at: Timestamp,
     ) -> Result<Flared, FlareError> {
         self.creator(who)?;
+        for group in &flare.groups {
+            self.shares
+                .check_group(who, group)
+                .await
+                .map_err(FlareError::Share)?;
+        }
         let flares = self.openable(who, &flare.re).await?;
         let share = self
             .shares
@@ -269,111 +314,23 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 Err(cause) => return Err(partly(granted.len(), cause)),
             }
         }
+        for (index, group) in flare.groups.iter().enumerate() {
+            if let Err(cause) = self.shares.grant_group(who, share.id(), group, at).await {
+                return Err(partly(granted.len() + index, cause));
+            }
+        }
+        let written = granted.len() + flare.groups.len();
         if let Err(cause) = self.grant_owners(who, share.id(), &flares, at).await {
-            return Err(partly(granted.len(), cause));
+            return Err(partly(written, cause));
         }
         if self.link(share.id(), &flares, at).await.is_err() {
-            return Err(partly(granted.len(), ShareError::Unavailable));
+            return Err(partly(written, ShareError::Unavailable));
         }
         Ok(Flared {
             share,
             granted,
+            groups: flare.groups,
             responds_to: flare.re,
-        })
-    }
-
-    /// Grants Reader on an existing share to each person in `with` who
-    /// holds no grant yet, and, for the share's owner, records each flare
-    /// in `re` as one it responds to. A person who already holds a role
-    /// keeps it, so an admin is never demoted.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FlareError::Share`] with the share service's refusal,
-    /// [`ShareError::Forbidden`] when someone other than the owner names
-    /// `re`, [`FlareError::NotACreator`], [`FlareError::NotFound`] for a
-    /// `re` flare the caller cannot open, and [`FlareError::PartlyShared`]
-    /// when a write fails after an earlier one.
-    pub async fn grant(
-        &self,
-        who: &Principal,
-        id: &ShareId,
-        with: &[Email],
-        re: &[ShareId],
-        at: Timestamp,
-    ) -> Result<Flared, FlareError> {
-        let opened = self
-            .shares
-            .open(who, id, None)
-            .await
-            .map_err(FlareError::Share)?;
-        let re = once_each(re.to_vec());
-        let flares = if re.is_empty() {
-            Vec::new()
-        } else {
-            if opened.standing != Standing::Owner {
-                return Err(FlareError::Share(ShareError::Forbidden));
-            }
-            self.creator(who)?;
-            self.openable(who, &re).await?
-        };
-        let mut granted = Vec::new();
-        let named = once_each(with.to_vec());
-        if !named.is_empty() {
-            let current = self
-                .shares
-                .grants(who, id)
-                .await
-                .map_err(FlareError::Share)?;
-            for person in &named {
-                let held = current
-                    .iter()
-                    .any(|grant| grant.grantee() == &person.principal_id());
-                let owner = opened.share.owner() == &person.principal_id();
-                if held || owner {
-                    continue;
-                }
-                match self.shares.grant(who, id, person, Role::Reader, at).await {
-                    Ok(_) => granted.push(person.clone()),
-                    Err(cause) if granted.is_empty() => return Err(FlareError::Share(cause)),
-                    Err(cause) => {
-                        return Err(FlareError::PartlyShared {
-                            share: id.clone(),
-                            granted: granted.len(),
-                            cause,
-                        });
-                    }
-                }
-            }
-        }
-        if self.reindex(&named, &granted, id).await.is_err() {
-            return Err(FlareError::PartlyShared {
-                share: id.clone(),
-                granted: granted.len(),
-                cause: ShareError::Unavailable,
-            });
-        }
-        if let Err(cause) = self.grant_owners(who, id, &flares, at).await {
-            if granted.is_empty() {
-                return Err(FlareError::Share(cause));
-            }
-            return Err(FlareError::PartlyShared {
-                share: id.clone(),
-                granted: granted.len(),
-                cause,
-            });
-        }
-        if self.link(id, &flares, at).await.is_err() {
-            return Err(FlareError::PartlyShared {
-                share: id.clone(),
-                granted: granted.len(),
-                cause: ShareError::Unavailable,
-            });
-        }
-        Ok(Flared {
-            share: opened.share,
-            granted,
-            responds_to: re,
         })
     }
 }

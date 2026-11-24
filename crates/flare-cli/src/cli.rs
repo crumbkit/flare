@@ -4,6 +4,7 @@ pub(crate) mod comments;
 mod schemas;
 mod sharing;
 mod skills;
+mod teams;
 
 pub(crate) use comments::{
     CommentArgs, CommentDeleteArgs, CommentEditArgs, CommentsArgs, ReplyArgs,
@@ -12,13 +13,12 @@ pub(crate) use schemas::SchemasCommand;
 pub(crate) use skills::{FlareSkills, SKILL};
 
 pub(crate) use sharing::{
-    ActivityArgs, GrantArgs, LoginArgs, LogoutArgs, ShareArgs, SharesArgs, ShowArgs,
+    ActivityArgs, GrantArgs, GrantsArgs, LoginArgs, LogoutArgs, RevokeArgs, ShareArgs, SharesArgs,
+    ShowArgs,
 };
+pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
-use crate::documents::{
-    ACTIVITY, BIND, COMMENT, COMMENT_DELETE, COMMENT_EDIT, COMMENTS, GRANT, LOGIN, LOGOUT, METRICS,
-    OPEN, PUBLISH, REPLY, SERVE, SHARE, SHARES, SHOW,
-};
+use crate::documents::{BIND, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHOW};
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
 use crumbkit::help::{Effects, Example, Help, Leaf};
@@ -59,13 +59,23 @@ pub(crate) enum Verb {
     Login(LoginArgs),
     /// Revoke and delete this computer's token
     Logout(LogoutArgs),
-    /// Share a Markdown file with people, or as a response to flares
+    /// Share a Markdown file
     Share(ShareArgs),
     /// Show one version of a share you can open, or its latest
     Show(ShowArgs),
-    /// Grant an existing share to more people
+    /// Grant a share to readers
     Grant(GrantArgs),
-    /// List your shares or the shares granted to you
+    /// End grants on a share
+    Revoke(RevokeArgs),
+    /// List grants
+    Grants(GrantsArgs),
+    /// Manage teams
+    Teams {
+        /// What to do with teams.
+        #[command(subcommand)]
+        command: TeamsVerb,
+    },
+    /// List your shares or those granted to you
     ///
     /// The server lists at most 500 shares in one answer. A list cut short
     /// names the next call with --cursor, which resumes the list after the
@@ -228,8 +238,8 @@ pub const TOOL: Tool = Tool::new()
             .root_verbs(
                 &[
                     "serve", "open", "publish", "bind", "login", "logout", "share", "show",
-                    "grant", "shares", "activity", "comments", "comment", "reply",
-                    "comment-edit", "comment-delete", "metrics",
+                    "grant", "revoke", "grants", "shares", "activity", "comments", "comment",
+                    "reply", "comment-edit", "comment-delete", "metrics",
                 ],
                 ROOT,
             )
@@ -322,85 +332,23 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::read_only())
         .document(SHOW),
-    Leaf::new(&["grant"])
-        .examples(&[Example::new(
-            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
-            "Grant a share to one more person",
-        ).needs(&["server"])])
-        .effects(Effects::additive())
-        .document(GRANT),
-    Leaf::new(&["shares"])
-        .examples(&[
-            Example::new(&[], "List your shares, newest first").needs(&["server"]),
-            Example::new(
-                &["--with-me", "--limit", "20"],
-                "List the 20 newest shares granted to you",
-            ).needs(&["server"]),
-            Example::new(
-                &["--with-me", "--cursor", "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg"],
-                "List the shares granted to you after the cursor an earlier call printed",
-            ).needs(&["server"]),
-        ])
-        .effects(Effects::read_only())
-        .document(SHARES),
-    Leaf::new(&["activity"])
-        .examples(&[
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
-                "List the responses to a flare, oldest first",
-            ).needs(&["server"]),
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
-                "List the activity after the cursor an earlier call printed",
-            ).needs(&["server"]),
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since-last", "inbox"],
-                "List what is new since the last call that used the name inbox, then save where this one ends",
-            ).needs(&["server"]),
-        ])
-        .effects(Effects::additive().all_or_none())
-        .document(ACTIVITY),
-    Leaf::new(&["comments"])
-        .examples(&[Example::new(
-            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
-            "List a flare's comments, each followed by its replies",
-        ).needs(&["server"])])
-        .effects(Effects::read_only())
-        .document(COMMENTS),
-    Leaf::new(&["comment"])
-        .examples(&[
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body", "Is this final?"],
-                "Comment on a flare",
-            ).needs(&["server"]),
-            Example::new(
-                &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body-file", "note.txt", "--key", "note-1"],
-                "Comment with the text of a file; running it again writes nothing new",
-            ).needs(&["server"]),
-        ])
-        .effects(Effects::additive())
-        .document(COMMENT),
-    Leaf::new(&["reply"])
-        .examples(&[Example::new(
-            &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--flare", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--body", "Yes, ship it"],
-            "Reply to a comment",
-        ).needs(&["server"])])
-        .effects(Effects::additive())
-        .document(REPLY),
-    Leaf::new(&["comment-edit"])
-        .examples(&[Example::new(
-            &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--body", "Is this final, or a draft?"],
-            "Replace the text of your comment",
-        ).needs(&["server"])])
-        .effects(Effects::additive())
-        .document(COMMENT_EDIT),
-    Leaf::new(&["comment-delete"])
-        .examples(&[Example::new(
-            &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--yes"],
-            "Delete your comment without a question",
-        ).needs(&["server"])])
-        .effects(Effects::destructive())
-        .document(COMMENT_DELETE),
+    sharing::GRANT_LEAF,
+    sharing::REVOKE_LEAF,
+    sharing::GRANTS_LEAF,
+    teams::CREATE_LEAF,
+    teams::ADD_LEAF,
+    teams::REMOVE_LEAF,
+    teams::LIST_LEAF,
+    teams::SHOW_LEAF,
+    teams::TRANSFER_LEAF,
+    teams::DELETE_LEAF,
+    sharing::SHARES_LEAF,
+    sharing::ACTIVITY_LEAF,
+    comments::COMMENTS_LEAF,
+    comments::COMMENT_LEAF,
+    comments::REPLY_LEAF,
+    comments::EDIT_LEAF,
+    comments::DELETE_LEAF,
     Leaf::new(&["metrics"])
         .examples(&[
             Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),

@@ -1,4 +1,4 @@
-List your shares or the shares granted to you
+List your shares or those granted to you
 
 The server lists at most 500 shares in one answer. A list cut short names the next call with --cursor, which resumes the list after the last share printed, and --all follows the cursor until the list ends.
 
@@ -7,6 +7,9 @@ Usage: flare shares [OPTIONS]
 Options:
       --with-me
           List the shares granted to you in place of your own
+
+      --everyone
+          With --with-me, also list the shares open to everyone signed in
 
       --cursor <CURSOR>
           List the shares after this cursor, which an earlier flare shares printed

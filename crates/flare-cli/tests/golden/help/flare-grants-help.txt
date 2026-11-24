@@ -1,0 +1,43 @@
+List grants
+
+Usage: flare grants [OPTIONS] <ID>
+
+Arguments:
+  <ID>
+          The share whose grants to list; you must own it or hold Admin on it
+
+Options:
+      --json
+          Print the result as a JSON document. The default prints text.
+
+      --fields <FIELD>
+          Print only these comma-separated fields, in this order. The default prints the compact columns.
+
+      --long
+          Add the long columns after the compact ones. The default prints only the compact columns.
+
+      --full
+          With --json, print every field of every row. The default prints only the fields of the columns.
+
+      --no-input
+          Fail instead of asking a question
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  flare grants 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
+          List the people, teams and everyone grants of a share
+
+Columns:
+  grantee  The person's address, `team:<name>`, `everyone`, or `team:*` for a team that you, as an Admin of the share, do not belong to.
+  kind     Who the grant is to: `person`, `team` or `everyone`.
+  role     The grant's role: `admin` or `reader`.
+  state    `active`, or `dormant` for a grant to a team that is being deleted, which opens nothing until the delete removes it.
+
+Columns that --long adds:
+  granted_by  Who wrote the grant's current role.
+  created     When the grant was first written, in RFC 3339 UTC.
+  audience    For an everyone grant, the mail domain it opens to, or `admitted` for the server's email list.
+
+Effects: read-only, closed-world.

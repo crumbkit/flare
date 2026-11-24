@@ -4,7 +4,13 @@
 //! Responses come from the caller's own activity index (see the `index`
 //! module), which holds an entry only for a response the caller could
 //! open when the entry was written, so a call never reads a response
-//! someone else hid from the caller. Comment events come from the comment
+//! someone else hid from the caller. For each flare a call also reads the
+//! index of each group through which the caller reads that flare: a team
+//! grant on the flare of an active team the caller belongs to, and an
+//! everyone grant whose audience covers the caller. A response that two
+//! of those indexes list is listed once in a call, at the first of its
+//! entries; when its entries fall in two calls, each call lists it.
+//! Comment events come from the comment
 //! store: a comment event shows to everyone who can open the flare, with
 //! the comment's text as it is now, or none after a delete. Index entries,
 //! links and comment events all take positions from one sequence, so a
@@ -39,7 +45,9 @@ use crate::sharing::ShareError;
 use crate::store::{
     CommentStore, CommentStoreError, CursorStore, GrantStore, ResponseStore, ShareStore,
 };
+use crate::teams::Teams;
 use crate::time::Timestamp;
+use std::collections::HashSet;
 
 /// One item of activity on a flare that the caller can open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,8 +136,8 @@ pub struct ActivityPage {
     pub more: bool,
 }
 
-impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore>
-    Flares<S, G, R, C, U>
+impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorStore, T: Teams>
+    Flares<S, G, R, C, U, T>
 {
     /// The responses to `flares` above `after` that the caller can open,
     /// oldest first, at most `limit` of them (1 to [`MAX_PAGE`]).
@@ -161,11 +169,20 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 .map_err(flare_refused)?;
         }
         let limit = limit.clamp(1, MAX_PAGE);
-        let reader = Reader::Person(
-            who.email()
-                .map(crate::Email::principal_id)
-                .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))?,
-        );
+        let person = who
+            .email()
+            .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))?;
+        let mut readers = Vec::with_capacity(flares.len());
+        for flare in &flares {
+            let mut of_flare = vec![Reader::Person(person.principal_id())];
+            let groups = self
+                .shares
+                .groups_reading(person, flare)
+                .await
+                .map_err(FlareError::Share)?;
+            of_flare.extend(groups.into_iter().map(Reader::Group));
+            readers.push((flare.clone(), of_flare));
+        }
         let head = self
             .responses
             .head()
@@ -174,8 +191,9 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         let mut items = Vec::new();
         let mut last = after;
         let mut examined = 0_usize;
+        let mut listed: HashSet<(ShareId, ShareId)> = HashSet::new();
         loop {
-            let (entries, cut_at) = self.read(&reader, &flares, last, head, limit).await?;
+            let (entries, cut_at) = self.read(&readers, last, head, limit).await?;
             for entry in entries {
                 if items.len() == limit || examined == MAX_EXAMINED {
                     return Ok(ActivityPage {
@@ -186,6 +204,11 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 }
                 examined = examined.saturating_add(1);
                 last = entry.position();
+                if let Entry::Index(indexed) = &entry
+                    && !listed.insert((indexed.response.clone(), indexed.flare.clone()))
+                {
+                    continue;
+                }
                 if let Some(item) = self.item(who, entry).await? {
                     items.push(item);
                 }
@@ -215,16 +238,15 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         }
     }
 
-    /// The caller's index entries and the comment events on `flares`
-    /// above `after` and up to `head`, oldest first, with the position
+    /// The index entries of each flare's readers and the comment events
+    /// on each flare above `after` and up to `head`, oldest first, with the position
     /// where the earliest cut read stopped. Each read stops after
     /// `limit + 1` items, so only the items at or below that position are
     /// complete across every flare and every store, and the rest are
     /// dropped for the next read.
     async fn read(
         &self,
-        reader: &Reader,
-        flares: &[ShareId],
+        readers: &[(ShareId, Vec<Reader>)],
         after: Position,
         head: Position,
         limit: usize,
@@ -232,28 +254,30 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         let mut entries: Vec<Entry> = Vec::new();
         let mut cut_at: Option<Position> = None;
         let bound = limit.saturating_add(1);
-        for flare in flares {
-            let indexed = self
-                .responses
-                .visible(reader, flare, after, head, bound)
-                .await
-                .map_err(|_| FlareError::ResponsesUnavailable)?;
+        for (flare, of_flare) in readers {
+            let mut reads = Vec::with_capacity(of_flare.len().saturating_add(1));
+            for reader in of_flare {
+                let indexed = self
+                    .responses
+                    .visible(reader, flare, after, head, bound)
+                    .await
+                    .map_err(|_| FlareError::ResponsesUnavailable)?;
+                reads.push((indexed.len(), indexed.last().map(|entry| entry.position)));
+                entries.extend(indexed.into_iter().map(Entry::Index));
+            }
             let events = self
                 .comments
                 .events(flare, after, head, bound)
                 .await
                 .map_err(|_| FlareError::CommentsUnavailable)?;
-            for (len, stop) in [
-                (indexed.len(), indexed.last().map(|entry| entry.position)),
-                (events.len(), events.last().map(|event| event.position)),
-            ] {
+            reads.push((events.len(), events.last().map(|event| event.position)));
+            for (len, stop) in reads {
                 if len > limit
                     && let Some(stop) = stop
                 {
                     cut_at = Some(cut_at.map_or(stop, |known| known.min(stop)));
                 }
             }
-            entries.extend(indexed.into_iter().map(Entry::Index));
             entries.extend(events.into_iter().map(Entry::Event));
         }
         if let Some(stop) = cut_at {

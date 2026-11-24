@@ -47,13 +47,15 @@ const BUDGETS: Budgets = Budgets::new().root(
 
 /// Everything the checks read, which `conventions!` expands to one test for
 /// each check. `usage`, `install`, `check` and `print` are the verbs that
-/// `self usage` and `skills` add under a resource.
+/// `self usage` and `skills` add under a resource, and `create`, `add`,
+/// `remove`, `transfer` and `delete` are the ones `teams` adds.
 const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
         "activity", "comments", "comment", "reply", "comment-edit", "comment-delete", "metrics",
-        "usage", "install", "check", "print",
+        "usage", "install", "check", "print", "revoke", "grants", "create", "add", "remove",
+        "transfer", "delete",
     ])
     .examples(EXAMPLES)
     .budgets(BUDGETS)

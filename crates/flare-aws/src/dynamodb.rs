@@ -1,4 +1,4 @@
-//! The DynamoDB share, grant, token and response stores, and the one table
+//! The DynamoDB share, grant, token, response and team stores, and the one table
 //! they share.
 //!
 //! [`Table`] is the only holder of the DynamoDB client. Every read is a
@@ -18,6 +18,7 @@ mod sealing;
 mod sessions;
 mod settle;
 mod shares;
+mod teams;
 mod tokens;
 pub(crate) mod transact;
 
@@ -28,6 +29,7 @@ pub use responses::DynamoResponseStore;
 pub use sealing::DynamoSealingKeys;
 pub use sessions::DynamoSessionStore;
 pub use shares::DynamoShareStore;
+pub use teams::DynamoTeamStore;
 pub use tokens::DynamoTokenStore;
 
 use crate::dynamodb::cancel::{Classified, Failure, Reason, classify};

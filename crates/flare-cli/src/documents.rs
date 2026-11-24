@@ -1,6 +1,11 @@
 //! The documents that `flare`'s commands print (CLI-2). None holds a
 //! token, a login code, a launch host or a launch URL.
 
+mod grants;
+pub(crate) mod teams;
+
+pub(crate) use grants::{GRANTS, GrantRow, REVOKE, RevokedOut};
+
 use crumbkit::{Document, Listing, Row};
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -144,7 +149,7 @@ pub(crate) struct SharedOut {
     /// The share's latest version.
     #[row(column)]
     pub(crate) version: u32,
-    /// The addresses that now hold a role on it; none after `--update`, which does not report them.
+    /// The addresses, `team:<name>` and `everyone` that now hold a role on it; none after `--update`, which does not report them.
     #[row(column)]
     pub(crate) granted: Option<Vec<String>>,
     /// The flares it responds to; none after `--update`, which does not report them.

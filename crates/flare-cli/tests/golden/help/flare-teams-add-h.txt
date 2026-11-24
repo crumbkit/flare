@@ -1,0 +1,17 @@
+Add people to a team you own
+
+Usage: flare teams add [OPTIONS] --with <PERSON> <NAME>
+
+Arguments:
+  <NAME>  The team's name
+
+Options:
+      --with <PERSON>  The people, repeated or separated by commas: each an address, or a name the server resolves
+  -h, --help           Print help (see more with '--help')
+
+Examples:
+  flare teams add design --with mei@example.org,jo@example.org
+
+Effects: additive, not idempotent, closed-world.
+Global flags: --json, --fields <FIELD>, --full, --no-input. `flare teams add --help` describes them.
+Next: flare teams add --help explains each column.

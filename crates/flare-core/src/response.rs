@@ -4,6 +4,7 @@
 
 use crate::name::PrincipalId;
 use crate::share::{ShareId, ShareVersion};
+use crate::teams::Group;
 use crate::time::Timestamp;
 
 /// The most links one activity page holds.
@@ -86,12 +87,34 @@ pub struct ResponseLink {
 /// Whom an activity index entry lists a response to.
 ///
 /// Each reader has its own index, so a read of one reader's index holds
-/// only the responses that reader can open. A group that shares a flare
-/// would be a second variant with its own index.
+/// only the responses that reader could open when the entry was written.
+/// A group's entry serves every person who reads through the group: a
+/// team's members, or everyone an everyone grant covers. Activity opens
+/// each response again for the caller, so an entry grants nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Reader {
     /// One person, by the principal id that grants and owners name.
     Person(PrincipalId),
+    /// A team, or everyone, that holds grants as a group.
+    Group(Group),
+}
+
+impl Reader {
+    /// The reader that a grantee id names: a group for a group's id, and
+    /// otherwise a person.
+    #[must_use]
+    pub fn of_grantee(id: PrincipalId) -> Self {
+        Group::of_grantee(&id).map_or(Self::Person(id), Self::Group)
+    }
+
+    /// The id that the reader's grants name, which keys its index.
+    #[must_use]
+    pub fn grantee(&self) -> PrincipalId {
+        match self {
+            Self::Person(id) => id.clone(),
+            Self::Group(group) => group.principal_id(),
+        }
+    }
 }
 
 /// An activity index entry to write: `reader` can open both the response

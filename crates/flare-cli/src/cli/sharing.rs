@@ -1,7 +1,9 @@
 //! The arguments and help of `flare login`, `logout`, `share`, `show`,
-//! `grant`, `shares` and `activity`.
+//! `grant`, `revoke`, `grants`, `shares` and `activity`.
 
+use crate::documents::{ACTIVITY, GRANT, GRANTS, REVOKE, SHARES};
 use clap::Args;
+use crumbkit::help::{Effects, Example, Leaf};
 use crumbkit::{DryRun, Page, Yes};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -37,8 +39,8 @@ pub(crate) struct ShareArgs {
     /// The title; without it, the file name without its ending
     #[arg(long, value_name = "TITLE")]
     pub(crate) title: Option<String>,
-    /// The addresses to grant Reader, repeated or comma-separated
-    #[arg(long, value_name = "ADDRESS", value_delimiter = ',')]
+    /// Readers, comma-separated: addresses, team:<name>, everyone
+    #[arg(long, value_name = "WHO", value_delimiter = ',')]
     pub(crate) with: Vec<String>,
     /// The flares it responds to, whose owners become Readers; repeated or comma-separated
     #[arg(long, value_name = "ID", value_delimiter = ',')]
@@ -72,9 +74,12 @@ pub(crate) struct GrantArgs {
     /// The share to grant
     #[arg(value_name = "ID")]
     pub(crate) id: String,
-    /// The addresses to grant Reader, repeated or separated by commas
-    #[arg(long, value_name = "ADDRESS", value_delimiter = ',')]
+    /// Who to grant Reader, repeated or separated by commas: an address, team:<name> for a team you belong to, or everyone
+    #[arg(long, value_name = "WHO", value_delimiter = ',')]
     pub(crate) with: Vec<String>,
+    /// Grant Reader to everyone signed in whom the server's sign-in rule covers; only the share's owner may
+    #[arg(long)]
+    pub(crate) everyone: bool,
     /// The flares the share responds to, repeated or separated by commas; only its owner may add them, and the flares' owners become Readers of it
     #[arg(long, value_name = "ID", value_delimiter = ',')]
     pub(crate) re: Vec<String>,
@@ -86,6 +91,9 @@ pub(crate) struct SharesArgs {
     /// List the shares granted to you in place of your own
     #[arg(long)]
     pub(crate) with_me: bool,
+    /// With --with-me, also list the shares open to everyone signed in
+    #[arg(long, requires = "with_me")]
+    pub(crate) everyone: bool,
     /// List the shares after this cursor, which an earlier flare shares printed
     #[arg(long, value_name = "CURSOR")]
     pub(crate) cursor: Option<String>,
@@ -110,3 +118,128 @@ pub(crate) struct ActivityArgs {
     #[command(flatten)]
     pub(crate) page: Page<50, 100>,
 }
+
+/// The arguments of `flare revoke`.
+#[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("who").required(true).multiple(true).args(["with", "everyone"])))]
+pub(crate) struct RevokeArgs {
+    /// The share whose grants end
+    #[arg(value_name = "ID")]
+    pub(crate) id: String,
+    /// Whose grant ends, repeated or separated by commas: an address, team:<name> or everyone
+    #[arg(long, value_name = "WHO", value_delimiter = ',')]
+    pub(crate) with: Vec<String>,
+    /// End the grant to everyone signed in; only the share's owner may
+    #[arg(long)]
+    pub(crate) everyone: bool,
+    /// The confirmation that `--yes` gives without a question.
+    #[command(flatten)]
+    pub(crate) yes: Yes,
+}
+
+/// The arguments of `flare grants`.
+#[derive(Debug, Args)]
+pub(crate) struct GrantsArgs {
+    /// The share whose grants to list; you must own it or hold Admin on it
+    #[arg(value_name = "ID")]
+    pub(crate) id: String,
+}
+
+/// The help of `flare grant`.
+pub(super) const GRANT_LEAF: Leaf = Leaf::new(&["grant"])
+    .examples(&[
+        Example::new(
+            &[
+                "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+                "--with",
+                "mei@example.org",
+            ],
+            "Grant a share to one more person",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "team:design"],
+            "Grant a share to the members of a team you belong to",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
+            "Open a share you own to everyone signed in",
+        )
+        .needs(&["server"]),
+    ])
+    .effects(Effects::additive())
+    .document(GRANT);
+
+/// The help of `flare revoke`.
+pub(super) const REVOKE_LEAF: Leaf = Leaf::new(&["revoke"])
+    .examples(&[
+        Example::new(
+            &[
+                "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+                "--with",
+                "mei@example.org",
+                "--yes",
+            ],
+            "End one person's grant on a share",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone", "--yes"],
+            "Close a share you own to everyone signed in",
+        )
+        .needs(&["server"]),
+    ])
+    .effects(Effects::destructive())
+    .document(REVOKE);
+
+/// The help of `flare grants`.
+pub(super) const GRANTS_LEAF: Leaf = Leaf::new(&["grants"])
+    .examples(&[Example::new(
+        &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+        "List the people, teams and everyone grants of a share",
+    )
+    .needs(&["server"])])
+    .effects(Effects::read_only())
+    .document(GRANTS);
+
+/// The help leaf of `flare shares`.
+pub(super) const SHARES_LEAF: Leaf = Leaf::new(&["shares"])
+    .examples(&[
+        Example::new(&[], "List your shares, newest first").needs(&["server"]),
+        Example::new(
+            &["--with-me", "--limit", "20"],
+            "List the 20 newest shares granted to you",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &[
+                "--with-me",
+                "--cursor",
+                "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg",
+            ],
+            "List the shares granted to you after the cursor an earlier call printed",
+        )
+        .needs(&["server"]),
+    ])
+    .effects(Effects::read_only())
+    .document(SHARES);
+
+/// The help leaf of `flare activity`.
+pub(super) const ACTIVITY_LEAF: Leaf = Leaf::new(&["activity"])
+    .examples(&[
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+            "List the responses to a flare, oldest first",
+        ).needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
+            "List the activity after the cursor an earlier call printed",
+        ).needs(&["server"]),
+        Example::new(
+            &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since-last", "inbox"],
+            "List what is new since the last call that used the name inbox, then save where this one ends",
+        ).needs(&["server"]),
+    ])
+    .effects(Effects::additive().all_or_none())
+    .document(ACTIVITY);

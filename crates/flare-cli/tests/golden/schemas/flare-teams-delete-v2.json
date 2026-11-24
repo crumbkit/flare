@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "flare/teams-delete/v2",
+  "description": "The deleted team and how many flares' grants to it were removed. Once finished, its name is free for a new team, which gets none of the old team's access.",
+  "type": "object",
+  "properties": {
+    "cut": {
+      "description": "Present when the output budget cut the result short, so data holds only its first rows.",
+      "type": "object",
+      "properties": {
+        "budget": {
+          "description": "The most bytes that the run printed on standard output.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "code": {
+          "description": "The over-budget code.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "budget"
+      ]
+    },
+    "data": {
+      "description": "The rows of the page, up to the limit.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TeamDeletedRow"
+      }
+    },
+    "dry_run": {
+      "description": "Present, and true, when the run was a dry run that changed nothing.",
+      "const": true
+    },
+    "next": {
+      "description": "The next steps, in the order the text prints them. It is absent when there are none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "commands": {
+            "description": "The commands that carry out the step, in order.",
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "call": {
+                      "description": "A command line of this tool.",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "call"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "run": {
+                      "description": "A command line of another program.",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "run"
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "description": "The sentence or phrase that the text prints for the step.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "commands"
+        ]
+      }
+    },
+    "schema": {
+      "description": "The id of this document.",
+      "const": "flare/teams-delete/v2"
+    },
+    "total": {
+      "description": "The number of rows that matched, of which data holds one page. It is absent when the tool did not count the rows.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "truncated": {
+      "description": "True when the document leaves out rows that matched, because of the limit or the output budget, and false when data holds every row.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "data",
+    "truncated"
+  ],
+  "$defs": {
+    "TeamDeletedRow": {
+      "description": "What `flare teams delete` did to one team.",
+      "type": "object",
+      "properties": {
+        "finished": {
+          "description": "Whether the team is gone: its grant removed from every flare, its members removed and its name free. False only when the command stopped before the server finished; running it again goes on.",
+          "type": "boolean"
+        },
+        "grants_removed": {
+          "description": "How many flares' grants to the team this command removed.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "team": {
+          "description": "The team's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "team",
+        "finished",
+        "grants_removed"
+      ]
+    }
+  }
+}

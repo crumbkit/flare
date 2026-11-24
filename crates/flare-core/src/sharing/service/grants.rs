@@ -11,9 +11,10 @@ use crate::sharing::{
     Authority, ShareAction, Standing, Step, Target, TargetAction, decide_actor, decide_target,
 };
 use crate::store::{GrantStore, ShareStore};
+use crate::teams::Teams;
 use crate::time::Timestamp;
 
-impl<S: ShareStore, G: GrantStore> Shares<S, G> {
+impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// Reads what `person` is to `share`, as the target of a grant or a
     /// revoke.
     async fn target(&self, share: &Share, person: &PrincipalId) -> Result<Target, ShareError> {

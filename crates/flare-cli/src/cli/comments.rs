@@ -1,8 +1,10 @@
 //! The arguments of `flare comments`, `comment`, `reply`, `comment-edit`
 //! and `comment-delete`.
 
+use crate::documents::{COMMENT, COMMENT_DELETE, COMMENT_EDIT, COMMENTS, REPLY};
 use clap::Args;
 use crumbkit::Yes;
+use crumbkit::help::{Effects, Example, Leaf};
 use std::path::PathBuf;
 
 /// Where a comment's text comes from: exactly one of `--body` and
@@ -78,3 +80,80 @@ pub(crate) struct CommentDeleteArgs {
     #[command(flatten)]
     pub(crate) yes: Yes,
 }
+
+/// The help leaf of `flare comments`.
+pub(super) const COMMENTS_LEAF: Leaf = Leaf::new(&["comments"])
+    .examples(&[Example::new(
+        &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+        "List a flare's comments, each followed by its replies",
+    )
+    .needs(&["server"])])
+    .effects(Effects::read_only())
+    .document(COMMENTS);
+
+/// The help leaf of `flare comment`.
+pub(super) const COMMENT_LEAF: Leaf = Leaf::new(&["comment"])
+    .examples(&[
+        Example::new(
+            &[
+                "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+                "--body",
+                "Is this final?",
+            ],
+            "Comment on a flare",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &[
+                "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+                "--body-file",
+                "note.txt",
+                "--key",
+                "note-1",
+            ],
+            "Comment with the text of a file; running it again writes nothing new",
+        )
+        .needs(&["server"]),
+    ])
+    .effects(Effects::additive())
+    .document(COMMENT);
+
+/// The help leaf of `flare reply`.
+pub(super) const REPLY_LEAF: Leaf = Leaf::new(&["reply"])
+    .examples(&[Example::new(
+        &[
+            "8d1f0c2a9b7e4c53a6f20e1d4b9c7a85",
+            "--flare",
+            "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
+            "--body",
+            "Yes, ship it",
+        ],
+        "Reply to a comment",
+    )
+    .needs(&["server"])])
+    .effects(Effects::additive())
+    .document(REPLY);
+
+/// The help leaf of `flare comment-edit`.
+pub(super) const EDIT_LEAF: Leaf = Leaf::new(&["comment-edit"])
+    .examples(&[Example::new(
+        &[
+            "8d1f0c2a9b7e4c53a6f20e1d4b9c7a85",
+            "--body",
+            "Is this final, or a draft?",
+        ],
+        "Replace the text of your comment",
+    )
+    .needs(&["server"])])
+    .effects(Effects::additive())
+    .document(COMMENT_EDIT);
+
+/// The help leaf of `flare comment-delete`.
+pub(super) const DELETE_LEAF: Leaf = Leaf::new(&["comment-delete"])
+    .examples(&[Example::new(
+        &["8d1f0c2a9b7e4c53a6f20e1d4b9c7a85", "--yes"],
+        "Delete your comment without a question",
+    )
+    .needs(&["server"])])
+    .effects(Effects::destructive())
+    .document(COMMENT_DELETE);

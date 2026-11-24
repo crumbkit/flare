@@ -229,7 +229,7 @@ fn a_response_is_shared_with_the_owner_of_the_flare_without_naming_them() {
     let flares = with_flare();
     block_on(flares.share(&bob(), flare(2, &[], &[id(1)]), at(3))).unwrap();
     assert!(block_on(flares.shares().open(&alice(), &id(2), None)).is_ok());
-    let with_me = block_on(flares.shares().shared_with_me(&alice())).unwrap();
+    let with_me = block_on(flares.shares().shared_with_me(&alice(), false)).unwrap();
     assert_eq!(with_me.items().len(), 1);
     assert_eq!(activity(&flares, &alice(), 0).unwrap().items.len(), 1);
 }

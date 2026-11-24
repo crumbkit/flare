@@ -20,11 +20,15 @@ use crate::schemas::Schemas;
 use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of, list_key};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument, ShareCursor};
-use flare_core::{Credential, ListKey, PageStore, Principal, RecordStore, ShareVersion, Timestamp};
+use flare_core::{Credential, ListKey, PageStore, Principal, RecordStore, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::time::UNIX_EPOCH;
+
+mod query;
+
+use query::{every, flag, number, version};
 
 /// The share API's routes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +44,24 @@ pub(crate) enum ApiRoute {
     PublishVersion,
     /// `POST /api/grants/{id}`.
     Grant,
+    /// `GET /api/grants/{id}`.
+    ListGrants,
+    /// `DELETE /api/grants/{id}`.
+    RevokeGrants,
+    /// `POST /api/teams`.
+    CreateTeam,
+    /// `GET /api/teams`.
+    ListTeams,
+    /// `GET /api/teams/{name}`.
+    ShowTeam,
+    /// `DELETE /api/teams/{name}`.
+    DeleteTeam,
+    /// `PUT /api/teams/{name}/owner`.
+    TransferTeam,
+    /// `POST /api/teams/{name}/members`.
+    AddMembers,
+    /// `DELETE /api/teams/{name}/members`.
+    RemoveMembers,
     /// `GET /api/activity`.
     Activity,
     /// `GET /api/comments`.
@@ -92,57 +114,6 @@ fn timestamp<P, R, S, K: OidcClock>(ctx: &Ctx<'_, P, R, S, K>) -> Timestamp {
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     Timestamp::from_secs(seconds)
-}
-
-/// A number in the query between 1 and `max`, or `default` when absent.
-fn number<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
-    max: usize,
-    default: usize,
-) -> Result<usize, Refusal>
-where
-    P: PageStore,
-    R: RecordStore,
-    S: Schemas,
-    K: OidcClock,
-{
-    match ctx.query("limit") {
-        None => Ok(default),
-        Some(text) => text
-            .parse::<usize>()
-            .ok()
-            .filter(|value| (1..=max).contains(value))
-            .ok_or_else(|| ApiCode::BadQuery.into()),
-    }
-}
-
-/// The share version that `version` in the query names, or `None` when
-/// absent. A value that is not a number from 1 is a bad query.
-fn version<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Option<ShareVersion>, Refusal>
-where
-    P: PageStore,
-    R: RecordStore,
-    S: Schemas,
-    K: OidcClock,
-{
-    match ctx.query("version") {
-        None => Ok(None),
-        Some(text) => text
-            .parse::<u32>()
-            .ok()
-            .and_then(|number| ShareVersion::try_from(number).ok())
-            .map(Some)
-            .ok_or_else(|| ApiCode::BadQuery.into()),
-    }
-}
-
-/// Every value of `name` in the query, decoded.
-fn every(ctx_uri: &http::Uri, name: &str) -> Vec<String> {
-    let query = ctx_uri.query().unwrap_or_default();
-    form_urlencoded::parse(query.as_bytes())
-        .filter(|(key, _)| key == name)
-        .map(|(_, value)| value.into_owned())
-        .collect()
 }
 
 /// The key after which a share list of `scope` starts, from the query's
@@ -337,6 +308,23 @@ where
         ApiRoute::Grant => body_of(ctx, body)
             .await?
             .map(|request| Call::Grant(name.to_owned(), request)),
+        ApiRoute::RevokeGrants => body_of(ctx, body)
+            .await?
+            .map(|request| Call::RevokeGrants(name.to_owned(), request)),
+        ApiRoute::CreateTeam => body_of(ctx, body).await?.map(Call::CreateTeam),
+        ApiRoute::AddMembers => body_of(ctx, body)
+            .await?
+            .map(|request| Call::AddMembers(name.to_owned(), request)),
+        ApiRoute::RemoveMembers => body_of(ctx, body)
+            .await?
+            .map(|request| Call::RemoveMembers(name.to_owned(), request)),
+        ApiRoute::ListGrants => Ok(Call::ListGrants(name.to_owned())),
+        ApiRoute::ListTeams => Ok(Call::ListTeams),
+        ApiRoute::ShowTeam => Ok(Call::ShowTeam(name.to_owned())),
+        ApiRoute::DeleteTeam => Ok(Call::DeleteTeam(name.to_owned())),
+        ApiRoute::TransferTeam => body_of(ctx, body)
+            .await?
+            .map(|request| Call::TransferTeam(name.to_owned(), request)),
         ApiRoute::OpenShare => version(ctx).map(|number| Call::Open(name.to_owned(), number)),
         ApiRoute::RevokeToken => Ok(Call::Revoke(name.to_owned())),
         ApiRoute::ListShares => {
@@ -345,12 +333,15 @@ where
                 Some("with-me") => Ok(Scope::WithMe),
                 _ => Err(ApiCode::BadQuery.into()),
             };
+            let everyone = flag(ctx, "everyone");
             scope.and_then(|scope| {
+                let everyone = everyone?;
                 let after = list_after(ctx.uri, scope)?;
                 number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List {
                     scope,
                     after,
                     limit,
+                    everyone,
                 })
             })
         }

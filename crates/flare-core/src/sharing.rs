@@ -58,7 +58,7 @@ mod error;
 mod service;
 
 pub use error::ShareError;
-pub use service::{Opened, SharedWithMe, Shares};
+pub use service::{ListedGrant, Opened, SharedWithMe, Shares};
 
 use crate::grant::Role;
 

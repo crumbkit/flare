@@ -274,6 +274,16 @@ impl Admit {
         }
     }
 
+    /// The Google Workspace domain that a domain rule admits, or `None`
+    /// for any other rule.
+    #[must_use]
+    pub fn domain(&self) -> Option<&WorkspaceDomain> {
+        match self {
+            Self::Emails(_) | Self::Anyone(_) => None,
+            Self::Domain(rule) => Some(&rule.domain),
+        }
+    }
+
     /// The domain to send as the `hd` parameter of the authorisation
     /// request. Google then offers only that organisation's accounts. A
     /// person can change the parameter, so it admits nobody.
