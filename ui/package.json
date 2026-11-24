@@ -12,7 +12,7 @@
     "test": "pnpm --recursive --filter './*' run test"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
-    "knip": "6.43.0"
+    "@biomejs/biome": "2.6.8",
+    "knip": "6.45.1"
   }
 }

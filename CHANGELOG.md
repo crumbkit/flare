@@ -246,6 +246,14 @@ This file records the notable changes to flare. The format follows
 
 ### Fixed
 
+- Sign-ins that arrive while another sign-in is fetching the provider's key
+  set wait for that fetch and take its outcome. When the fetch fails, each
+  of them is refused with the same `ProviderUnavailable` or
+  `ProviderMisbehaved`, so ten sign-ins that arrive while the provider is
+  down cost one fetch and one request deadline. Before, each waiting
+  sign-in fetched again in turn, or was refused as an unknown key. A
+  sign-in that is dropped during its fetch no longer stops the next
+  sign-in with a new key id from fetching for 60 seconds.
 - `BoardStore` publishes a page whose first publish wrote its files and
   made no commit, which a put stopped at its deadline or answered
   `board::put::head_moved` leaves behind. The page's first committed
