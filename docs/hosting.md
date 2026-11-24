@@ -265,9 +265,17 @@ check refuses it:
   own refusal.
 - A site whose `Sharing` has no file store answers an upload with an
   image with 503 `flare::shares::unavailable`, and writes nothing.
-- flare-core's `sweep_files` deletes the files that no version lists and
-  that were stored at least 30 minutes ago. It examines at most 10,000
-  files in one run, and its report says whether it stopped early.
+- A hosted `flare serve` keeps images in the bucket that `hosted.stores`
+  names, under `files/<share id>/<file id>`.
+- `flare files sweep --yes` deletes the files in that bucket that no
+  version lists and that were stored at least 30 minutes ago. It reads the
+  same config file as `flare serve`, takes `--config` as `flare serve`
+  does, and needs credentials that may read the table and list, read and
+  delete in the bucket. It examines at most 10,000 files in one run and
+  prints how many it examined, deleted and left undecided, and whether it
+  stopped early. `flare serve` runs no sweep, so the deployment schedules
+  this command, for example hourly with a cron job, a systemd timer or a
+  scheduled task: `flare files sweep --config /etc/flare/config.json --yes`.
 
 ## The client secret file
 

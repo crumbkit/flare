@@ -27,6 +27,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare reply`](#flare-reply): Reply to a comment
 - [`flare comment-edit`](#flare-comment-edit): Edit a comment or reply you wrote
 - [`flare comment-delete`](#flare-comment-delete): Delete a comment or reply you wrote
+- [`flare files`](#flare-files): Manage a hosted site's image files
 - [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
 - [`flare schemas`](#flare-schemas): Explore the JSON documents that flare prints
@@ -226,6 +227,8 @@ Effects: destructive, not idempotent, closed-world.
 ## `flare share`
 
 Share a Markdown file
+
+Each image that the Markdown shows by a relative path, such as img/chart.png, is uploaded with the file: at most 10 images, each a PNG, JPEG, GIF or WebP file of at most 5 MiB. The server removes each image's metadata, its GPS position included, and keeps its orientation and colour profile. An image file that does not exist fails with flare::images::missing, and one outside the Markdown file's folder fails with flare::images::outside\_folder.
 
 ### Arguments
 
@@ -875,6 +878,42 @@ flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
 - `body`: Its text; absent once deleted.
 
 Effects: destructive, not idempotent, closed-world.
+
+## `flare files`
+
+Manage a hosted site's image files
+
+### Commands
+
+- [`flare files sweep`](#flare-files-sweep): Delete the image files that no version lists from the hosted site's bucket
+
+## `flare files sweep`
+
+Delete the image files that no version lists from the hosted site's bucket
+
+A failed or interrupted share can leave image files in the bucket that no version lists, and no reader can open them. The sweep deletes each such file stored at least 30 minutes ago, and keeps every file a version lists. One run examines at most 10,000 files. Run it on a schedule, such as hourly; flare serve runs no sweep.
+
+### Arguments
+
+- `--config <PATH>`: The config file whose hosted.stores names the table and the bucket; without it, $XDG\_CONFIG\_HOME/flare/config.json or \~/.config/flare/config.json
+- `--yes`: Proceed without asking for confirmation
+
+### Examples
+
+Delete the files that no version lists from the bucket that /etc/flare/config.json names.
+
+```sh
+flare files sweep --config /etc/flare/config.json --yes
+```
+
+### Columns
+
+- `examined`: The files it read from the bucket's list.
+- `deleted`: The files it deleted, which no version listed.
+- `undecided`: The files it left because the table or the bucket did not answer; the next run examines them again.
+- `stopped_early`: Whether it stopped at 10,000 files before the end of the list; the next run starts from the beginning of the list again.
+
+Effects: destructive, idempotent, closed-world.
 
 ## `flare metrics`
 

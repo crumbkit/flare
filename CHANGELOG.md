@@ -28,6 +28,16 @@ This file records the notable changes to flare. The format follows
   `s3:DeleteObject` on `files/*`.
 - flare-core's `sweep_files` deletes the stored files that no version lists
   and that are at least 30 minutes old, at most 10,000 in one run.
+  `flare files sweep --yes` runs it on the table and the bucket that the
+  config's `hosted.stores` names, and prints how many files it examined
+  and deleted. A deployment runs it on a schedule, such as hourly.
+- A hosted `flare serve` keeps the images of shares in the bucket that
+  `hosted.stores` names.
+- `flare share` and `flare share --update` send the images that a
+  Markdown file shows by a relative path, and stop before sending with
+  `flare::images::missing` for a missing image file and
+  `flare::images::outside_folder` for one outside the Markdown file's
+  folder.
 - The metric `FilesCleanupFailed` counts each refused upload that could not
   delete a file it had stored.
 - flare-server's `Sharing::with_files` sets the store that images are kept

@@ -39,23 +39,24 @@ const PATHS: PathBudgets<'_> = PathBudgets::new("tests/golden/examples").nodes(&
 )]);
 
 /// The budgets of flare's `-h` pages: crumbkit's default for every page
-/// but the root's, which lists 17 verbs.
+/// but the root's, which lists 19 verbs and 6 groups.
 const BUDGETS: Budgets = Budgets::new().root(
-    1_800,
-    "The root lists 17 verbs, five of them the comment commands, and each needs a line.",
+    1_900,
+    "The root lists 19 verbs, five of them the comment commands, and 6 groups, and each needs a line.",
 );
 
 /// Everything the checks read, which `conventions!` expands to one test for
 /// each check. `usage`, `install`, `check` and `print` are the verbs that
 /// `self usage` and `skills` add under a resource, and `create`, `add`,
-/// `remove`, `transfer` and `delete` are the ones `teams` adds.
+/// `remove`, `transfer` and `delete` are the ones `teams` adds. `sweep` is
+/// the verb that `files` adds.
 const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
     .allow(ALLOW)
     .verbs(&[
         "serve", "open", "publish", "bind", "login", "logout", "share", "grant", "shares",
         "activity", "comments", "comment", "reply", "comment-edit", "comment-delete", "metrics",
         "usage", "install", "check", "print", "revoke", "grants", "create", "add", "remove",
-        "transfer", "delete",
+        "transfer", "delete", "sweep",
     ])
     .examples(EXAMPLES)
     .budgets(BUDGETS)

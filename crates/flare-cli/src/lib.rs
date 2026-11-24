@@ -12,7 +12,9 @@
 //! `shares`, `activity`, `comments`, `comment`, `reply`, `comment-edit` and
 //! `comment-delete` call a flare server's share API with the token that
 //! `login` keeps in the Keychain; `share --dry-run` calls no server.
-//! `metrics` totals the metric lines of a server's log. `serve` is the only long-running command; the
+//! `metrics` totals the metric lines of a server's log. `files sweep`
+//! deletes the image files that no version lists from a hosted site's
+//! bucket. `serve` is the only long-running command; the
 //! others run to their end on a runtime of their own.
 
 mod activity;
@@ -27,6 +29,7 @@ mod cursors;
 mod documents;
 mod duration;
 mod env;
+mod files;
 mod keychain;
 mod log;
 mod login;
@@ -42,7 +45,7 @@ mod teams;
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;
 
-use cli::{CommandsVerb, SKILL, SchemasCommand, SelfVerb, TeamsVerb, Verb};
+use cli::{CommandsVerb, FilesVerb, SKILL, SchemasCommand, SelfVerb, TeamsVerb, Verb};
 use codes::Failed;
 use env::Snapshot;
 use std::process::ExitCode;
@@ -150,6 +153,16 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             }
             let result = block_on(false, comments::delete(&args, &env));
             crumbkit::finish(run, documents::COMMENT_DELETE, result)
+        }
+        Verb::Files {
+            command: FilesVerb::Sweep(args),
+        } => {
+            let question = "Delete the image files in the bucket that no version lists?";
+            if let Err(refused) = run.confirm(args.yes, question) {
+                return crumbkit::finish(run, files::FILES_SWEEP, Err(refused));
+            }
+            let result = block_on(false, files::sweep(&args, &env));
+            crumbkit::finish(run, files::FILES_SWEEP, result)
         }
         Verb::Metrics(args) => {
             let result = metrics::run(&args);

@@ -31,15 +31,15 @@
     {
       "rule": "help-budget/root",
       "applies_to": "flare",
-      "reason": "The root lists 17 verbs, five of them the comment commands, and each needs a line.",
+      "reason": "The root lists 19 verbs, five of them the comment commands, and 6 groups, and each needs a line.",
       "costs": [
-        "Each read of the page can cost 300 bytes more than the default, about 75 tokens."
+        "Each read of the page can cost 400 bytes more than the default, about 100 tokens."
       ],
       "budget": {
-        "bytes": 1800,
+        "bytes": 1900,
         "default": 1500,
-        "extra_bytes": 300,
-        "extra_tokens": 75
+        "extra_bytes": 400,
+        "extra_tokens": 100
       }
     },
     {
@@ -268,6 +268,11 @@
       "declaration": "example-precondition",
       "applies_to": "flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes",
       "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare files sweep --config /etc/flare/config.json --yes",
+      "declares": "The example runs only in a test run that provides stores."
     },
     {
       "declaration": "example-precondition",
