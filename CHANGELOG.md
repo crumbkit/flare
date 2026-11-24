@@ -204,7 +204,8 @@ This file records the notable changes to flare. The format follows
   `flare::network::bad_answer`.
 - More failures give their values in fields of the JSON failure document.
   `flare::login::needed` gives `server`, the saved login's server, which is
-  null when no login is saved. `flare::keychain::unavailable` gives
+  null when no login is saved, and `flare::login::failed` gives `server`,
+  the server the browser sign-in was for. `flare::keychain::unavailable` gives
   `action`, the Keychain command that failed: `save`, `read` or `delete`.
   Every refusal of the share API gives `server`, and
   `flare::shares::partly_shared` also gives `share`, the share that the
@@ -217,8 +218,10 @@ This file records the notable changes to flare. The format follows
   directory that the problem names" as an alternative, in place of one
   hint that offered both repairs.
 - flare's convention tests now run each example that needs no board, flare
-  server, log file, file to share or particular date, and compare its
-  output with a golden file.
+  server, browser or particular date, including the `flare metrics` and
+  `flare share --dry-run` examples on fixture files, and compare its output
+  with a golden file. They also check every path through flare's help
+  against its byte budget.
 - A `flare::state::unusable` failure from the saved login or the login
   labels file now names the file at the start of its message, so the text
   form, which prints no fields, says which file to fix. A login.json that

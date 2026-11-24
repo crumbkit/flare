@@ -12,15 +12,6 @@
     },
     {
       "rule": "suite/skip",
-      "applies_to": "Check::PathWeights",
-      "reason": "With crumbkit's default budget of 8,000 bytes a path, the path of `flare skills print` reads 8,494 bytes, because the command prints the 6,270-byte skill.",
-      "costs": [
-        "No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention."
-      ],
-      "budget": null
-    },
-    {
-      "rule": "suite/skip",
       "applies_to": "Check::Recoveries",
       "reason": "The recovery of server::not_running is `flare serve`, which does not exit, the other recoveries need a scratch board, and the sharing commands' recoveries need a flare server; tests/open.rs, tests/serve.rs and tests/sharing.rs assert each failure and the command its recovery names.",
       "costs": [
@@ -36,6 +27,20 @@
         "No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention."
       ],
       "budget": null
+    },
+    {
+      "rule": "path-budget/command",
+      "applies_to": "flare skills print",
+      "reason": "It prints the 6,270-byte skill.",
+      "costs": [
+        "An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens."
+      ],
+      "budget": {
+        "bytes": 9000,
+        "default": 8000,
+        "extra_bytes": 1000,
+        "extra_tokens": 250
+      }
     }
   ],
   "declarations": [
@@ -83,7 +88,7 @@
     {
       "declaration": "example-precondition",
       "applies_to": "flare login https://flare.example.org",
-      "declares": "The example runs only in a test run that provides server."
+      "declares": "The example runs only in a test run that provides server and browser."
     },
     {
       "declaration": "example-precondition",
@@ -109,11 +114,6 @@
       "declaration": "example-precondition",
       "applies_to": "flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6",
       "declares": "The example runs only in a test run that provides server."
-    },
-    {
-      "declaration": "example-precondition",
-      "applies_to": "flare share review.md --dry-run --out review.html",
-      "declares": "The example runs only in a test run that provides file."
     },
     {
       "declaration": "children",
@@ -159,16 +159,6 @@
       "declaration": "example-precondition",
       "applies_to": "flare activity 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --since fc1.AAAAAAAAAC8",
       "declares": "The example runs only in a test run that provides server."
-    },
-    {
-      "declaration": "example-precondition",
-      "applies_to": "flare metrics flare.log",
-      "declares": "The example runs only in a test run that provides log."
-    },
-    {
-      "declaration": "example-precondition",
-      "applies_to": "flare metrics flare.log.1 flare.log --json",
-      "declares": "The example runs only in a test run that provides log."
     },
     {
       "declaration": "example-precondition",

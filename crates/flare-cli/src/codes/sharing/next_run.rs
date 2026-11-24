@@ -6,16 +6,18 @@ use crate::codes::Failed;
 use crumbkit::{Recovery, Then};
 use flare_contract::ApiCode;
 
-/// What a missing or unreadable answer means for running the command
-/// again.
+/// What a missing or unreadable answer, or the server's own busy, fault or
+/// deadline answer, means for running the command again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NextRun {
-    /// The request did nothing on the server: the server refused it, or
-    /// flare could not connect and sent nothing. The next run starts clean.
+    /// The request did nothing on the server: the server refused it, was
+    /// too busy to start it, or flare could not connect and sent nothing.
+    /// The next run starts clean.
     Clean,
     /// The server may have done what the request asked: it answered with a
-    /// success status that flare cannot read, or it did not answer after
-    /// the request was sent. A command whose next run ends in the same
+    /// success status that flare cannot read, it failed or passed its
+    /// deadline while it ran, or it did not answer after the request was
+    /// sent. A command whose next run ends in the same
     /// state, such as a read or `flare grant`, keeps this, and a command
     /// that writes a share or a version turns it into
     /// [`NextRun::CheckShares`] with `Failed::after_a_write`.

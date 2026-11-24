@@ -276,7 +276,13 @@ fn a_login_whose_browser_sign_in_fails_gives_a_terminal_recovery_for_flare_login
 
     let ran = home.sharing(&["login", &api.origin, "--json"]);
 
-    ran.assert_failed("flare::login::failed");
+    let printed = failure(&ran, "flare::login::failed");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin}),
+        "{}",
+        ran.all()
+    );
     let recovery = recovery(&ran);
     assert_eq!(recovery["kind"], "terminal", "{}", ran.all());
     assert_eq!(

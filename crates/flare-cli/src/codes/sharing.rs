@@ -56,7 +56,11 @@ pub enum SharingFailed {
     },
     /// The browser sign-in did not hand back a login code.
     #[error("the browser sign-in did not finish: {problem}")]
-    #[failure(code = LOGIN_FAILED, recovery = sign_in(Some(server)))]
+    #[failure(
+        code = LOGIN_FAILED,
+        recovery = sign_in(Some(server)),
+        field(server = server)
+    )]
     LoginFailed {
         /// The server the sign-in was for.
         server: String,

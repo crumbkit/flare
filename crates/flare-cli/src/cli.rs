@@ -219,6 +219,9 @@ pub const TOOL: Tool = Tool::new()
             )
             .leaves(&[
                 Leaf::new(&["serve"])
+                    // A serve run lasts until Ctrl-C or an idle hour, so the
+                    // example check, which stops a run after 10 seconds,
+                    // cannot run either example even with a board.
                     .examples(&[
                         Example::new(&[], "Serve the board in the current directory").needs(&["board"]),
                         Example::new(
@@ -259,7 +262,7 @@ pub const TOOL: Tool = Tool::new()
         .examples(&[Example::new(
             &["https://flare.example.org"],
             "Sign in to a flare server in the browser and keep its token in the Keychain",
-        ).needs(&["server"])])
+        ).needs(&["server", "browser"])])
         .effects(Effects::additive())
         .document(LOGIN),
     Leaf::new(&["logout"])
@@ -286,7 +289,7 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["review.md", "--dry-run", "--out", "review.html"],
                 "Check review.md as the server would and write its HTML to review.html, sharing nothing",
-            ).needs(&["file"]),
+            ),
         ])
         .effects(Effects::additive())
         .document(SHARE),
@@ -339,11 +342,11 @@ pub const TOOL: Tool = Tool::new()
         .document(ACTIVITY),
     Leaf::new(&["metrics"])
         .examples(&[
-            Example::new(&["flare.log"], "Count the metric lines in flare.log by day").needs(&["log"]),
+            Example::new(&["flare.log"], "Count the metric lines in flare.log by day"),
             Example::new(
                 &["flare.log.1", "flare.log", "--json"],
                 "Count the metric lines of a rotated log and its newer file as JSON",
-            ).needs(&["log"]),
+            ),
         ])
         .effects(Effects::read_only())
         .document(METRICS),
