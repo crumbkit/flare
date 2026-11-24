@@ -7,8 +7,12 @@ const ORIGIN = "http://flare.test";
 const PAGE = `${ORIGIN}/s/sample`;
 const sample = process.env.FLARE_READING_SAMPLE ?? join(import.meta.dirname, "../../sample");
 const assets = join(import.meta.dirname, "../../dist/assets");
+const fonts = join(import.meta.dirname, "../../../../crates/flare-server/fonts");
 
-/** Serves the sample page, the stylesheet and the built files from one origin. */
+/**
+ * Serves the sample page, the stylesheet, the built files and the fonts that
+ * flare-server vendors from one origin.
+ */
 async function serve(page: Page): Promise<void> {
   const policy = (await readFile(join(sample, "policy.txt"), "utf8")).trim();
   await page.route(`${ORIGIN}/**`, async (route) => {
@@ -23,6 +27,15 @@ async function serve(page: Page): Promise<void> {
       await route.fulfill({
         contentType: "text/css; charset=utf-8",
         body: await readFile(join(sample, "style.css"), "utf8"),
+      });
+    } else if (
+      path.startsWith("/flare/assets/") &&
+      path.endsWith(".woff2") &&
+      !path.includes("..")
+    ) {
+      await route.fulfill({
+        contentType: "font/woff2",
+        body: await readFile(join(fonts, path.slice("/flare/assets/".length))),
       });
     } else if (path.startsWith("/flare/assets/") && !path.includes("..")) {
       await route.fulfill({
