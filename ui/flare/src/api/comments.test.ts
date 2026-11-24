@@ -148,9 +148,9 @@ describe("the comments query", () => {
       vi.fn(async () => json(200, deleted)),
     );
     const loaded = await new QueryClient().fetchQuery(commentsQuery("f1"));
-    expect(loaded.map((c) => [c.id, c.deleted, c.body, c.replies.length])).toEqual([
-      ["c3", true, "", 1],
-    ]);
+    expect(
+      loaded.map((c) => [c.id, c.deleted, "author" in c, "body" in c, c.replies.length]),
+    ).toEqual([["c3", true, false, false, 1]]);
   });
 
   it("throws a refusal for a 404, no answer for a network failure and malformed for a bad body", async () => {

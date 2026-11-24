@@ -126,6 +126,10 @@ test("a signed-in reader comments on a shared page and replies, and both stay af
   await expect(gone).toHaveCSS("color", muted);
   await expect(orphaned.getByText("BO", { exact: true })).toHaveCount(1);
   await expect(orphaned.getByText(comment)).toHaveCount(0);
+  await expect(orphaned.getByRole("textbox", { name: "Reply", exact: true })).toHaveAttribute(
+    "placeholder",
+    "Write a reply.",
+  );
 
   expect(await axe(page)).toEqual([]);
   expect(violations).toEqual([]);

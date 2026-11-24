@@ -5,7 +5,7 @@
 // deleted comment that still has replies keeps its place as a line saying
 // so, with no author or time.
 import { deletedText } from "@flare/headless/comments/a11y";
-import type { Comment, Reply, ThreadLoad } from "@flare/headless/comments/thread";
+import type { Comment, LiveComment, Reply, ThreadLoad } from "@flare/headless/comments/thread";
 import { useThread } from "@flare/react/useThread";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../api/client.ts";
@@ -36,7 +36,7 @@ interface Clock {
   readonly timeZone: string | undefined;
 }
 
-function Byline({ post, clock }: { readonly post: Comment | Reply; readonly clock: Clock }) {
+function Byline({ post, clock }: { readonly post: LiveComment | Reply; readonly clock: Clock }) {
   return (
     <div className="c-head">
       <span className="who" aria-hidden="true">

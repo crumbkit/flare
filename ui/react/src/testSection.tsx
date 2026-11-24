@@ -9,6 +9,7 @@ import {
   isCommentId,
   isReplyId,
   type Reply,
+  replyTarget,
   type ThreadLoad,
 } from "@flare/headless/comments/thread";
 import { useComposer } from "./useComposer.ts";
@@ -73,7 +74,7 @@ interface ReplyFieldProps {
 
 export function ReplyField({ parent, send, onSent }: ReplyFieldProps) {
   const composer = useComposer({
-    target: { kind: "reply", to: parent.author },
+    target: replyTarget(parent),
     send,
     maxLength: 2000,
     owner: "Ana Okafor",
@@ -166,8 +167,8 @@ export function Section({ load, onRetry, sendReply, sendComment }: SectionProps)
         <>
           {view.thread.map((comment) => (
             <article key={comment.id}>
-              <b>{comment.author.name}</b>
-              <p>{comment.body}</p>
+              {!comment.deleted && <b>{comment.author.name}</b>}
+              {!comment.deleted && <p>{comment.body}</p>}
               {comment.replies.map((reply) => (
                 <div key={reply.id}>
                   <b>{reply.author.name}</b>

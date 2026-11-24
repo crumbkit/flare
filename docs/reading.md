@@ -81,7 +81,8 @@ page with unsent text asks first.
 - An edited comment shows its current text with no edited mark, a deleted
   reply is left out, and a deleted comment stays only while it still has
   replies. Its card keeps its place above them and shows "Its author deleted
-  this comment." in muted italic type, with no author or time. Editing and
+  this comment." in muted italic type, with no author or time, and its reply
+  field is labelled "Reply" with the placeholder "Write a reply.". Editing and
   deleting from the page are not built yet.
 - New comments from other readers show only after a reload.
 

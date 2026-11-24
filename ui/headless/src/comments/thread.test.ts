@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { comment, jonas, mockupThread, priya, reply } from "./testThread.ts";
-import { isCommentId, isReplyId, withPosted } from "./thread.ts";
+import { isCommentId, isReplyId, replyTarget, withPosted } from "./thread.ts";
 
 describe("thread", () => {
   it("an empty string is neither a comment id nor a reply id", () => {
@@ -28,6 +28,22 @@ describe("thread", () => {
     const twice = withPosted(once, reply("r3", "c2", priya, "Only for a cancelled one."));
     expect(twice[1]?.replies).toHaveLength(1);
     expect(withPosted(once, comment("c1", jonas, "x"))).toHaveLength(2);
+  });
+
+  it("a reply answers its comment's author, and a deleted comment's reply answers no one", () => {
+    const [first] = mockupThread();
+    if (first === undefined) throw new Error("expected the mockup's first comment");
+    expect(replyTarget(first)).toEqual({
+      kind: "reply",
+      to: first.deleted ? undefined : first.author,
+    });
+    const deleted = {
+      kind: "comment",
+      id: first.id,
+      deleted: true,
+      replies: first.replies,
+    } as const;
+    expect(replyTarget(deleted)).toEqual({ kind: "reply", to: undefined });
   });
 
   it("a reply whose parent is not in the thread leaves the thread as it was", () => {

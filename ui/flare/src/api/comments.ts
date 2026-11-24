@@ -69,14 +69,18 @@ function reply(wire: WireReply): Reply {
 
 function comment(wire: WireComment): Comment | undefined {
   const replies = wire.replies.filter((each) => !each.deleted).map(reply);
-  if (wire.deleted && replies.length === 0) return undefined;
+  if (wire.deleted) {
+    return replies.length === 0
+      ? undefined
+      : { kind: "comment", id: wire.id, deleted: true, replies };
+  }
   return {
     kind: "comment",
     id: wire.id,
+    deleted: false,
     author: { name: wire.author },
-    body: wire.deleted ? "" : (wire.body ?? ""),
+    body: wire.body ?? "",
     at: wire.at,
-    deleted: wire.deleted,
     replies,
   };
 }

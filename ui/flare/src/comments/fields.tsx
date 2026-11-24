@@ -2,7 +2,12 @@
 // them: the page field under the thread (artboards 01 to 05) and the
 // one-line reply field under each top-level comment. The React binding
 // gives every label, state and word; these components only lay them out.
-import type { Comment, Posted, Reply } from "@flare/headless/comments/thread";
+import {
+  type Comment,
+  type Posted,
+  type Reply,
+  replyTarget,
+} from "@flare/headless/comments/thread";
 import { type ComposerProps, useComposer } from "@flare/react/useComposer";
 import { useSend } from "./send.ts";
 
@@ -75,7 +80,7 @@ interface ReplyFieldProps {
 export function ReplyField({ flare, owner, parent, onSent }: ReplyFieldProps) {
   const send = useSend(flare, parent.id, isReply);
   const composer = useComposer({
-    target: { kind: "reply", to: parent.author },
+    target: replyTarget(parent),
     send,
     maxLength: MAX_LENGTH,
     owner,

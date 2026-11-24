@@ -28,6 +28,12 @@ describe("copy", () => {
   it("a reply field is named after the first name of the person it answers", () => {
     expect(fieldLabel(page)).toBe("Comment on the whole page");
     expect(fieldLabel(toTomas)).toBe("Reply to Tomás");
+  });
+
+  it("a reply field under a deleted comment names no one", () => {
+    const toNoOne: Target = { kind: "reply", to: undefined };
+    expect(fieldLabel(toNoOne)).toBe("Reply");
+    expect(placeholder(toNoOne, false)).toBe("Write a reply.");
     expect(placeholder(toTomas, false)).toBe("Reply to Tomás");
   });
 

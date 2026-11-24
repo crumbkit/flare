@@ -173,6 +173,10 @@ describe("a deleted comment that still has replies", () => {
     expect(card.querySelectorAll(":scope > .c-head")).toHaveLength(0);
     expect(within(card).getByText("Yes. All three do.")).toBeInTheDocument();
     expect(within(card).getByText("AO")).toBeInTheDocument();
+    const field = within(card).getByRole("textbox", { name: "Reply" });
+    expect(field).toHaveAttribute("placeholder", "Write a reply.");
+    expect(card.outerHTML).not.toContain("tomas");
+    expect(card.outerHTML).not.toContain("Tomas");
   });
 });
 

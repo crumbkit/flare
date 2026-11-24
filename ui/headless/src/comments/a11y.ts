@@ -43,7 +43,7 @@ export function fieldLabel(target: Target): string {
     case "comment":
       return "Comment on the whole page";
     case "reply":
-      return `Reply to ${firstName(target.to.name)}`;
+      return target.to === undefined ? "Reply" : `Reply to ${firstName(target.to.name)}`;
   }
 }
 
@@ -52,7 +52,7 @@ export function placeholder(target: Target, threadIsEmpty: boolean): string {
     case "comment":
       return threadIsEmpty ? "Be the first to comment." : "Write a comment.";
     case "reply":
-      return fieldLabel(target);
+      return target.to === undefined ? "Write a reply." : fieldLabel(target);
   }
 }
 
@@ -85,6 +85,8 @@ function refusedCharacter(text: string): { codePoint: string; position: number }
 
 function invalidMessage(target: Target, text: string): string {
   const found = refusedCharacter(text);
+  // The general wording shows when the server refuses text the page cannot
+  // pin to one character, such as a lone surrogate that its JSON parser rejects.
   const what =
     found === undefined
       ? "a control character"
