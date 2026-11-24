@@ -28,6 +28,24 @@ async fn shared(markdown: &str) -> (Api, String, String) {
     (api, bob, id)
 }
 
+/// The get flare address of the tests' badged site.
+const GET_FLARE: &str = "https://example.com/flare";
+
+/// The link the foot holds for a reader who has never shared.
+const BADGE: &str = "<a class=\"badge\" href=\"https://example.com/flare\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Get Flare, opens in a new tab\">";
+
+/// A site that links to [`GET_FLARE`], where alice shared `markdown` with
+/// bob, bob's session and the share's id.
+async fn badged(markdown: &str) -> (Api, String, String) {
+    let api = Api::with_get_flare(GET_FLARE).await;
+    let token = api.token_for("alice").await;
+    let id = api
+        .share_markdown(&token, TITLE, markdown, &["bob@example.com"])
+        .await;
+    let bob = api.session("bob").await;
+    (api, bob, id)
+}
+
 async fn read(api: &Api, cookie: &str, path: &str) -> Reply {
     api.hosted.get(path).cookie(cookie).send().await
 }
@@ -212,9 +230,10 @@ async fn the_entry_script_is_served_with_an_immutable_cache_and_an_unknown_file_
 /// unset the test only checks the page.
 #[tokio::test]
 async fn the_sample_share_renders_for_the_acceptance_journey() {
-    let (api, bob, id) = shared(SAMPLE).await;
+    let (api, bob, id) = badged(SAMPLE).await;
     let page = read(&api, &bob, &format!("/s/{id}")).await;
     assert_eq!(page.status, 200, "{}", page.body);
+    assert!(page.body.contains(BADGE), "{}", page.body);
     let style = api.hosted.get("/flare/style.css").send().await;
     assert_eq!(style.status, 200);
     #[expect(
@@ -277,4 +296,52 @@ async fn the_reading_pages_fonts_resolve_on_flares_own_origin() {
     }
     assert!(!style.body.contains("fonts.googleapis.com"));
     assert!(!style.body.contains("fonts.gstatic.com"));
+}
+
+#[tokio::test]
+async fn a_reader_who_has_never_shared_sees_the_get_flare_link_at_the_foot() {
+    let (api, bob, id) = badged("Text.\n").await;
+    let reply = read(&api, &bob, &format!("/s/{id}")).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    let body = &reply.body;
+    assert!(body.contains("<footer class=\"share-foot\">"), "{body}");
+    assert!(body.contains("Shared with Flare"), "{body}");
+    assert!(body.contains(BADGE), "{body}");
+    assert!(body.find("</article>") < body.find(BADGE), "{body}");
+}
+
+#[tokio::test]
+async fn a_reader_who_has_shared_sees_the_note_and_no_link() {
+    let (api, bob, id) = badged("Text.\n").await;
+    assert!(
+        read(&api, &bob, &format!("/s/{id}"))
+            .await
+            .body
+            .contains(BADGE)
+    );
+    let token = api.token_for("bob").await;
+    api.share(&token, "Bob's plan", &[], &[]).await;
+    let reply = read(&api, &bob, &format!("/s/{id}")).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    assert!(reply.body.contains("Shared with Flare"), "{}", reply.body);
+    assert!(!reply.body.contains("Get Flare"), "{}", reply.body);
+}
+
+#[tokio::test]
+async fn the_owner_reading_their_own_share_sees_no_link() {
+    let (api, _, id) = badged("Text.\n").await;
+    let alice = api.session("alice").await;
+    let reply = read(&api, &alice, &format!("/s/{id}")).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    assert!(reply.body.contains("Shared with Flare"), "{}", reply.body);
+    assert!(!reply.body.contains("Get Flare"), "{}", reply.body);
+}
+
+#[tokio::test]
+async fn a_site_with_no_get_flare_address_shows_every_reader_the_note_and_no_link() {
+    let (api, bob, id) = shared("Text.\n").await;
+    let reply = read(&api, &bob, &format!("/s/{id}")).await;
+    assert_eq!(reply.status, 200, "{}", reply.body);
+    assert!(reply.body.contains("Shared with Flare"), "{}", reply.body);
+    assert!(!reply.body.contains("Get Flare"), "{}", reply.body);
 }

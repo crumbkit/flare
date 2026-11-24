@@ -396,3 +396,45 @@ fn a_misspelt_log_key_or_a_metrics_value_that_is_not_a_boolean_is_refused_naming
         assert!(message.contains(named), "{message}");
     }
 }
+
+#[test]
+fn a_get_flare_address_is_read_with_the_share_api() {
+    let text = hosted_with(&format!(
+        r#"{STORES},"get_flare":"https://example.com/flare""#
+    ));
+    let Site::Hosted(hosted) = parse(&text).unwrap().site else {
+        panic!("a hosted config");
+    };
+    let get_flare = hosted.sharing.expect("the share API").get_flare;
+    assert_eq!(
+        get_flare.as_ref().map(flare_server::GetFlare::as_str),
+        Some("https://example.com/flare")
+    );
+    let Site::Hosted(plain) = parse(&hosted_with(STORES)).unwrap().site else {
+        panic!("a hosted config");
+    };
+    assert!(plain.sharing.expect("the share API").get_flare.is_none());
+}
+
+#[test]
+fn a_get_flare_address_that_is_not_an_https_url_with_a_host_is_refused_naming_the_key() {
+    for address in [
+        "http://example.com/flare",
+        "/flare",
+        "example.com/flare",
+        "not a url",
+    ] {
+        let message = invalid(&hosted_with(&format!(
+            r#"{STORES},"get_flare":"{address}""#
+        )));
+        assert!(message.contains("hosted.get_flare"), "{address}: {message}");
+        assert!(!message.contains(address), "{address}: {message}");
+    }
+}
+
+#[test]
+fn a_get_flare_address_without_stores_is_refused_naming_hosted_stores() {
+    let message = invalid(&hosted_with(r#""get_flare":"https://example.com/flare""#));
+    assert!(message.contains("hosted.get_flare"), "{message}");
+    assert!(message.contains("hosted.stores"), "{message}");
+}

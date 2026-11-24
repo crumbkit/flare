@@ -43,9 +43,20 @@ body.reading { background: var(--app); color: var(--fg); font-family: var(--font
 .share-meta { display: flex; flex-direction: column; gap: 8px; }
 .share-meta .line { font-size: 13px; color: var(--muted); display: flex; gap: 6px 10px; align-items: center; flex-wrap: wrap; }
 .share-meta b { color: var(--fg); font-weight: 600; }
+/* The foot below the article and the Get Flare link (the badge mockup, option a) */
+.share-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; padding: 14px 32px; border-top: 1px solid var(--line); }
+.share-foot .note { font-size: 12px; color: var(--muted); }
+.share-foot .badge { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--card); color: var(--fg); font: 500 13px var(--font-body); text-decoration: none; white-space: nowrap; }
+.share-foot .badge svg { width: 14px; height: 14px; fill: var(--accent); flex: none; }
+.share-foot .badge .arr { color: var(--muted); }
+.share-foot .badge:hover { border-color: var(--accent); background: var(--accent-tint); color: var(--accent-ink); }
+.share-foot .badge:hover .arr { color: var(--accent-ink); }
+.share-foot .badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 640px) {
   .bar { padding: 10px 16px; }
   .screen { padding: 20px 16px 28px; }
+  .share-foot { padding: 14px 16px; flex-direction: column; align-items: stretch; }
+  .share-foot .badge { min-height: 44px; justify-content: center; }
 }
 "#;
 

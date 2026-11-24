@@ -8,6 +8,12 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- The reading page's foot says "Shared with Flare", and shows a Get Flare
+  link to a reader who has never shared a flare when the config sets
+  `hosted.get_flare`, an https address that the link opens in a new tab.
+  A reader who owns a share, and the share's owner, see no link, and a
+  site without the setting shows the link to no one.
+
 - A hosted site shows a Markdown share at `/s/<id>` to a signed-in reader
   the share is granted to, in the signed Flare layout: a header with the
   flare name and the reader's initials, a line naming who shared it, with
