@@ -13,7 +13,7 @@ pub mod schema;
 mod time;
 mod wire;
 
-pub use cursor::{Cursor, CursorError};
+pub use cursor::{Cursor, CursorError, ListScope, ShareCursor};
 pub use groups::{
     GrantEntry, GrantList, GrantState, GranteeKind, MembersChanged, MembersRequest, RevokeRequest,
     Revoked, TeamDeleted, TeamList, TeamRequest, TeamRole, TeamShown, TeamSummary,

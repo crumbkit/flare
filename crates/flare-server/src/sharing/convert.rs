@@ -4,11 +4,11 @@
 use super::{BodyRefused, Refusal};
 use flare_contract::{
     ActivityItem as WireItem, ApiCode, FlareRef, Format, GrantEntry, GrantState, GranteeKind,
-    Role as WireRole, ShareSummary, TeamRole, TeamSummary, utc,
+    ListScope, Role as WireRole, ShareCursor, ShareSummary, TeamRole, TeamSummary, utc,
 };
 use flare_core::{
-    ActivityItem, Email, FlareError, Group, ListedGrant, ParseError, RecipientError, Role, Share,
-    ShareError, Standing, Team, TeamsError,
+    ActivityItem, Email, FlareError, Group, ListKey, ListedGrant, ParseError, RecipientError, Role,
+    Share, ShareError, ShareId, Standing, Team, TeamsError, Timestamp,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -198,4 +198,19 @@ pub(super) fn grant_entry(listed: &ListedGrant) -> GrantEntry {
             .audience()
             .map(|audience| audience.as_str().to_owned()),
     }
+}
+
+/// The key after which a list continues, from a share cursor. A share id
+/// that `ShareId` refuses is a cursor flare did not write.
+pub(crate) fn list_key(cursor: ShareCursor) -> Result<ListKey, Refusal> {
+    let share = ShareId::try_from(cursor.share_hex().as_str())
+        .map_err(|_| Refusal::from(ApiCode::SharesBadCursor))?;
+    Ok(ListKey::new(Timestamp::from_secs(cursor.seconds()), share))
+}
+
+/// The text of the share cursor after `key` in the list of `scope`.
+pub(super) fn share_cursor(scope: ListScope, key: &ListKey) -> Result<String, Refusal> {
+    ShareCursor::from_hex(scope, key.created().as_secs(), key.share().as_str())
+        .map(|cursor| cursor.to_string())
+        .map_err(|_| ApiCode::SharesUnavailable.into())
 }

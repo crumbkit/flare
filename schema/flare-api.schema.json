@@ -507,7 +507,7 @@
       ]
     },
     "ShareList": {
-      "description": "`GET /api/shares?scope=mine|with-me&limit=N`.",
+      "description": "`GET /api/shares?scope=mine|with-me&limit=N&cursor=<cursor>`.",
       "properties": {
         "items": {
           "description": "The shares, newest first.",
@@ -517,8 +517,15 @@
           "type": "array"
         },
         "more": {
-          "description": "Whether more shares exist than `limit` let through.",
+          "description": "Whether more shares follow this page; true exactly when `next` is\npresent.",
           "type": "boolean"
+        },
+        "next": {
+          "description": "The cursor to pass as `cursor` for the page that follows, present\nonly when more shares follow. A page can hold fewer than `limit`\nshares and still name one, when a share granted to the caller no\nlonger exists.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

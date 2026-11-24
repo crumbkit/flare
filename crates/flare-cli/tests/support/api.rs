@@ -58,6 +58,9 @@ struct Route {
     status: u16,
     content_type: &'static str,
     body: String,
+    /// The `content-length` the answer declares, which is longer than the
+    /// body for an answer cut short.
+    length: usize,
 }
 
 /// The fake share API.
@@ -105,7 +108,36 @@ impl FakeApi {
             path: path.to_owned(),
             status,
             content_type,
+            length: body.to_string().len(),
             body: body.to_string(),
+        });
+    }
+
+    /// Reads the next `method` request to `path` and closes the connection
+    /// without an answer, as a server that dropped the request after it
+    /// arrived would. A route with status 0 stands for this.
+    pub fn route_silent(&self, method: &'static str, path: &str) {
+        self.route_raw(method, path, 0, "", 0);
+    }
+
+    /// Answers the next `method` request to `path` with `status`, the text
+    /// `body` and a `content-length` of `length`, so a `length` longer than
+    /// the body cuts the answer short as a dropped connection would.
+    pub fn route_raw(
+        &self,
+        method: &'static str,
+        path: &str,
+        status: u16,
+        body: &str,
+        length: usize,
+    ) {
+        self.routes.lock().unwrap().push(Route {
+            method,
+            path: path.to_owned(),
+            status,
+            content_type: "application/json",
+            body: body.to_owned(),
+            length,
         });
     }
 
@@ -177,15 +209,17 @@ impl FakeApi {
                 .position(|route| route.method == method && route.path == path);
             found.map(|index| routes.remove(index))
         };
-        let (status, content_type, body) = route.map_or_else(
-            || (404, "text/plain", "no route".to_owned()),
-            |route| (route.status, route.content_type, route.body),
+        if route.as_ref().is_some_and(|route| route.status == 0) {
+            return;
+        }
+        let (status, content_type, body, length) = route.map_or_else(
+            || (404, "text/plain", "no route".to_owned(), 8),
+            |route| (route.status, route.content_type, route.body, route.length),
         );
         let mut stream = stream;
         let _ = write!(
             stream,
-            "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-            body.len()
+            "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n{body}"
         );
     }
 }

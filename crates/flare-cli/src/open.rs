@@ -42,6 +42,7 @@ struct Server {
 fn not_running(reason: impl Into<String>) -> Failed {
     Failed::NotRunning {
         reason: reason.into(),
+        board: None,
     }
 }
 
@@ -136,6 +137,7 @@ impl Server {
             .map_err(|_| not_running("the server stopped answering"))?;
         if reply.status() != StatusCode::OK {
             return Err(Failed::OpenerFailed {
+                program: None,
                 problem: format!("the server answered {} for a launch code", reply.status()),
             });
         }
@@ -144,6 +146,7 @@ impl Server {
             .await
             .map_err(|_| not_running("the server stopped answering"))?;
         let codes: Codes = serde_json::from_slice(&body).map_err(|_| Failed::OpenerFailed {
+            program: None,
             problem: "the server's answer names no opener file".to_owned(),
         })?;
         Ok(codes.opener)
@@ -159,9 +162,7 @@ fn record(root: &std::path::Path, env: &Snapshot) -> Result<ServerRecord, Failed
         Err(StateError::Malformed { .. }) => {
             Err(not_running("server.json is not a flare server file"))
         }
-        Err(error) => Err(Failed::StateUnusable {
-            problem: error.to_string(),
-        }),
+        Err(error) => Err(board::state_unusable(&error)),
     }
 }
 
@@ -171,6 +172,13 @@ fn record(root: &std::path::Path, env: &Snapshot) -> Result<ServerRecord, Failed
 ///
 /// Returns the failure that stopped it.
 pub(crate) async fn run(args: &OpenArgs, env: &Snapshot) -> Result<Opened, Failed> {
+    open_board(args, env)
+        .await
+        .map_err(|failed| failed.for_board(args.board.as_deref()))
+}
+
+/// Opens the page or binding that `args` names.
+async fn open_board(args: &OpenArgs, env: &Snapshot) -> Result<Opened, Failed> {
     let root = board::root(args.board.as_deref(), Need::Directory, env)?;
     let server = Server::new(record(&root, env)?)?;
     server.prove().await?;

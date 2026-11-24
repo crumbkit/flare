@@ -8,7 +8,7 @@ mod sharing_stores;
 use flare_core::contract::block_on;
 use flare_core::memory::{MemoryFileStore, MemoryGrantStore, MemoryShareStore};
 use flare_core::{
-    DocumentText, Email, FileBytes, FileId, FileStore, MAX_GRANTS, MAX_SHARES_PER_OWNER,
+    DocumentText, Email, FileBytes, FileId, FileStore, ListKey, MAX_GRANTS, MAX_SHARES_PER_OWNER,
     MAX_VERSIONS, MediaType, NewFile, Principal, PrincipalId, Role, ShareContent, ShareError,
     ShareId, ShareTitle, ShareVersion, Shares, Standing, Timestamp,
 };
@@ -756,4 +756,109 @@ fn the_debug_output_of_an_opened_share_and_a_shared_with_me_entry_holds_no_addre
     ] {
         assert!(!debug.contains("example.com"), "{debug}");
     }
+}
+
+/// The share numbered `number`, for lists longer than 255 shares.
+fn numbered(number: u32) -> ShareId {
+    let mut bytes = [7; 16];
+    for (slot, byte) in bytes.iter_mut().skip(12).zip(number.to_be_bytes()) {
+        *slot = byte;
+    }
+    ShareId::from_random(bytes)
+}
+
+#[test]
+fn mine_page_pages_an_owners_120_shares_in_pages_of_50_newest_first_with_a_key_until_the_last() {
+    let shares = memory();
+    for number in 0..120 {
+        // Pairs of shares share a time, so ties are ordered by share id.
+        let created = at(u64::from(number / 2));
+        block_on(shares.create(&alice(), numbered(number), title(), doc("# N\n"), created))
+            .unwrap();
+    }
+    let whole: Vec<ShareId> = block_on(shares.mine(&alice()))
+        .unwrap()
+        .items()
+        .iter()
+        .map(|share| share.id().clone())
+        .collect();
+    assert_eq!(whole.len(), 120);
+    let mut walked = Vec::new();
+    let mut sizes = Vec::new();
+    let mut after: Option<ListKey> = None;
+    loop {
+        let page = block_on(shares.mine_page(&alice(), after.as_ref(), 50)).unwrap();
+        sizes.push(page.items.len());
+        walked.extend(page.items.iter().map(|share| share.id().clone()));
+        match page.next {
+            Some(key) => {
+                let last = page.items.last().unwrap();
+                assert_eq!(key, ListKey::new(last.created(), last.id().clone()));
+                after = Some(key);
+            }
+            None => break,
+        }
+    }
+    assert_eq!(sizes, [50, 50, 20]);
+    assert_eq!(walked, whole);
+}
+
+#[test]
+fn shared_with_me_page_advances_its_key_past_a_grant_whose_share_does_not_exist() {
+    let grants = Shared(Arc::new(MemoryGrantStore::new()));
+    let shares = Shares::new(MemoryShareStore::new(), grants.clone());
+    let bob = person("bob@example.com");
+    for (byte, seconds) in [(1, 30), (3, 10)] {
+        block_on(shares.create(&alice(), id(byte), title(), doc("# S\n"), at(seconds))).unwrap();
+        block_on(shares.grant(
+            &alice(),
+            &id(byte),
+            &email("bob@example.com"),
+            Role::Reader,
+            at(seconds),
+        ))
+        .unwrap();
+    }
+    // A grant on a share that only another share store holds, between the
+    // two, as a grant on a share that no longer exists.
+    let missing = id(2);
+    let elsewhere = Shares::new(MemoryShareStore::new(), grants);
+    block_on(elsewhere.create(&alice(), missing.clone(), title(), doc("# S\n"), at(20))).unwrap();
+    block_on(elsewhere.grant(
+        &alice(),
+        &missing,
+        &email("bob@example.com"),
+        Role::Reader,
+        at(20),
+    ))
+    .unwrap();
+
+    let first = block_on(shares.shared_with_me_page(&bob, false, None, 2)).unwrap();
+    let ids: Vec<&ShareId> = first.items.iter().map(|entry| entry.share.id()).collect();
+    assert_eq!(ids, [&id(1)]);
+    assert_eq!(first.next, Some(ListKey::new(at(20), missing)));
+    let second = block_on(shares.shared_with_me_page(&bob, false, first.next.as_ref(), 2)).unwrap();
+    let ids: Vec<&ShareId> = second.items.iter().map(|entry| entry.share.id()).collect();
+    assert_eq!(ids, [&id(3)]);
+    assert_eq!(second.next, None);
+}
+
+#[test]
+fn a_page_whose_store_fails_answers_unavailable_and_a_working_store_answers_the_page() {
+    let bob = person("bob@example.com");
+    let broken = Shares::new(BrokenShares, MemoryGrantStore::new());
+    assert_eq!(
+        block_on(broken.mine_page(&alice(), None, 50)).unwrap_err(),
+        ShareError::Unavailable
+    );
+    let broken = Shares::new(MemoryShareStore::new(), BrokenGrants);
+    assert_eq!(
+        block_on(broken.shared_with_me_page(&bob, false, None, 50)).unwrap_err(),
+        ShareError::Unavailable
+    );
+    let shares = with_share();
+    grant(&shares, &alice(), "bob@example.com", Role::Reader);
+    let page = block_on(shares.shared_with_me_page(&bob, false, None, 50)).unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.next, None);
 }

@@ -116,7 +116,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
         };
         let mut granted = Vec::new();
         let mut granted_groups = Vec::new();
-        if !with.is_empty() || !groups.is_empty() {
+        let named = once_each(with.to_vec());
+        if !named.is_empty() || !groups.is_empty() {
             let current = self
                 .shares
                 .grants(who, id)
@@ -125,12 +126,12 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
             let held = |grantee: crate::PrincipalId| {
                 current.iter().any(|grant| grant.grantee() == &grantee)
             };
-            for person in once_each(with.to_vec()) {
+            for person in &named {
                 if held(person.principal_id()) || opened.share.owner() == &person.principal_id() {
                     continue;
                 }
-                match self.shares.grant(who, id, &person, Role::Reader, at).await {
-                    Ok(_) => granted.push(person),
+                match self.shares.grant(who, id, person, Role::Reader, at).await {
+                    Ok(_) => granted.push(person.clone()),
                     Err(cause) => return Err(failed(id, granted.len(), cause)),
                 }
             }
@@ -146,6 +147,22 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
             }
         }
         let written = granted.len() + granted_groups.len();
+        let ids = |people: &[Email], groups: &[Group]| -> Vec<crate::PrincipalId> {
+            people
+                .iter()
+                .map(Email::principal_id)
+                .chain(groups.iter().map(Group::principal_id))
+                .collect()
+        };
+        let named_ids = ids(&named, &once_each(groups.to_vec()));
+        let granted_ids = ids(&granted, &granted_groups);
+        if self.reindex(&named_ids, &granted_ids, id).await.is_err() {
+            return Err(FlareError::PartlyShared {
+                share: id.clone(),
+                granted: written,
+                cause: ShareError::Unavailable,
+            });
+        }
         if let Err(cause) = self.grant_owners(who, id, &flares, at).await {
             return Err(failed(id, written, cause));
         }
@@ -164,9 +181,14 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
         })
     }
 
-    /// Ends the grant of each person in `with` and each group in `groups`.
-    /// One who holds no grant is skipped, so a repeat finishes a revoke
-    /// that failed midway. The caller's own address ends their own grant.
+    /// Ends the grant of each person in `with` and each group in `groups`,
+    /// and removes their activity index entries for the share as a
+    /// response. One who holds no grant is skipped, and their entries are
+    /// still removed, so a repeat finishes a revoke that failed midway. The
+    /// caller's own address ends their own grant.
+    ///
+    /// Each grant ends before its entries go, so a failure leaves entries
+    /// that `activity` skips, because it opens every response again.
     ///
     /// # Errors
     ///
@@ -174,7 +196,9 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
     /// the first revoke that failed: [`ShareError::NotFound`],
     /// [`ShareError::Forbidden`], [`ShareError::OwnerCannotBeChanged`],
     /// [`ShareError::TeamNotFound`], [`ShareError::GrantChanged`],
-    /// [`ShareError::NoVerifiedEmail`] or [`ShareError::Unavailable`].
+    /// [`ShareError::NoVerifiedEmail`] or [`ShareError::Unavailable`], and
+    /// [`FlareError::ResponsesUnavailable`] when a grant ended and its
+    /// entries could not be removed.
     pub async fn revoke(
         &self,
         who: &Principal,
@@ -188,14 +212,31 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
             groups: Vec::new(),
         };
         for person in once_each(with.to_vec()) {
-            match self.shares.revoke(who, id, &person).await {
+            let leaving = who.email() == Some(&person);
+            let outcome = self.shares.revoke(who, id, &person).await;
+            // Only a caller allowed to revoke learns that no grant exists,
+            // and a person leaving removes only their own entries.
+            let unindex = match &outcome {
+                Ok(()) | Err(ShareError::GrantNotFound) => true,
+                Err(ShareError::NotFound) => leaving,
+                Err(_) => false,
+            };
+            if unindex && self.unindex(person.principal_id(), id).await.is_err() {
+                return Err(FlareError::ResponsesUnavailable);
+            }
+            match outcome {
                 Ok(()) => revoked.people.push(person),
                 Err(ShareError::GrantNotFound) => {}
                 Err(cause) => return Err(FlareError::Share(cause)),
             }
         }
         for group in once_each(groups.to_vec()) {
-            match self.shares.revoke_group(who, id, &group).await {
+            let outcome = self.shares.revoke_group(who, id, &group).await;
+            let unindex = matches!(outcome, Ok(()) | Err(ShareError::GrantNotFound));
+            if unindex && self.unindex(group.principal_id(), id).await.is_err() {
+                return Err(FlareError::ResponsesUnavailable);
+            }
+            match outcome {
                 Ok(()) => revoked.groups.push(group),
                 Err(ShareError::GrantNotFound) => {}
                 Err(cause) => return Err(FlareError::Share(cause)),

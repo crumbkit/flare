@@ -5,7 +5,7 @@
 
 use flare_core::{
     FileId, FileStore, FileStoreError, Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite,
-    Listing, NewFile, NewShare, NewVersion, PrincipalId, Share, ShareId, ShareStore,
+    ListKey, Listing, NewFile, NewShare, NewVersion, PrincipalId, Share, ShareId, ShareStore,
     ShareStoreError, ShareVersion, SharedVersion, StoredFile,
 };
 use std::sync::{Arc, Mutex};
@@ -70,8 +70,13 @@ impl<T: GrantStore> GrantStore for Shared<T> {
         self.0.of_share(share).await
     }
 
-    async fn granted_to(&self, grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
-        self.0.granted_to(grantee).await
+    async fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
+        self.0.granted_page(grantee, after, limit).await
     }
 }
 
@@ -130,8 +135,13 @@ impl<G: GrantStore> GrantStore for InterleavingGrants<G> {
         self.inner.of_share(share).await
     }
 
-    async fn granted_to(&self, grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
-        self.inner.granted_to(grantee).await
+    async fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
+        self.inner.granted_page(grantee, after, limit).await
     }
 }
 
@@ -226,7 +236,12 @@ impl GrantStore for BrokenGrants {
         Err(GrantStoreError::Unavailable)
     }
 
-    async fn granted_to(&self, _grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
+    async fn granted_page(
+        &self,
+        _grantee: &PrincipalId,
+        _after: Option<&ListKey>,
+        _limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
         Err(GrantStoreError::Unavailable)
     }
 }

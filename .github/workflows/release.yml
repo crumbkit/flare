@@ -7,8 +7,10 @@
 #
 # A push of the tag `v<version>` releases that tag, where <version> is the
 # workspace version in Cargo.toml. A manual run with a tag releases that
-# existing tag. A manual run without a tag, and a pull request that changes
-# this file, build the archives, run the tap check and release nothing.
+# existing tag. A manual run with the tag of a published release fails in
+# the `release` job and changes nothing. A manual run without a tag, and a
+# pull request that changes this file, build the archives, run the tap check
+# and release nothing.
 # docs/releasing.md says how the owner cuts a release.
 #
 # The workflow runs no tests, because ci.yml's `lane` and `hosted` jobs ran
@@ -71,9 +73,14 @@ jobs:
           ref: ${{ steps.tag.outputs.ref }}
           fetch-depth: 0
           persist-credentials: false
-      # A tag is released only when its commit is on main, because this
-      # workflow runs no tests and relies on ci.yml having tested main. A
-      # version with a `-`, such as 0.2.0-rc.1, is refused, because gh marks
+      # The ancestry check refuses a tag whose commit is not on main, because
+      # this workflow runs no tests and relies on ci.yml having tested main.
+      # It catches a tag placed on the wrong commit. It runs from the
+      # release.yml that the tag holds, so a person with write access who tags
+      # a commit whose release.yml drops the check bypasses it, and only a tag
+      # ruleset that limits who creates `v*` tags stops that.
+      #
+      # A version with a `-`, such as 0.2.0-rc.1, is refused, because gh marks
       # every release it creates as the latest, and the tap would make a
       # pre-release the formula that every colleague upgrades to.
       - id: version
@@ -214,7 +221,14 @@ jobs:
   # when an upload fails. A job stopped during its upload, by its timeout or
   # a cancel, leaves the draft behind. A run again finds that draft, replaces
   # its files and publishes it, because the tap reads only published
-  # releases.
+  # releases. The job replaces files only on a draft. When the tag's release
+  # is already published, the job fails before any upload and leaves the
+  # release unchanged, because the tap and anyone who installed the version
+  # rely on its archives and SHA256SUMS staying the same. Only a read that
+  # gh answers with `release not found` leads to gh release create. When the
+  # read fails for any other reason, such as a token, rate limit or network
+  # fault, the job prints gh's error and fails before any write, because a
+  # create beside an unseen draft would give the tag a second release.
   release:
     if: needs.version.outputs.tag != ''
     needs: [version, advisories, build, formula]
@@ -236,9 +250,30 @@ jobs:
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
       - run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/*
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          err="$RUNNER_TEMP/release-view.err"
+          if draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>"$err"); then
+            :
+          elif [ "$(< "$err")" = "release not found" ]; then
+            draft=absent
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes dist/*
+            cat "$err" >&2
+            echo "could not read whether $TAG has a release, so the job made no release; re-run the failed jobs once GitHub answers" >&2
+            exit 1
           fi
+          case "$draft" in
+            true)
+              gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber dist/*
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+              ;;
+            false)
+              echo "the release $TAG is already published, and a published release keeps its archives; raise the version in Cargo.toml and tag the new version" >&2
+              exit 1
+              ;;
+            absent)
+              gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes dist/*
+              ;;
+            *)
+              echo "gh release view answered '$draft' for $TAG" >&2
+              exit 1
+              ;;
+          esac

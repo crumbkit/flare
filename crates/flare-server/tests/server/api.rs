@@ -264,6 +264,164 @@ async fn a_share_list_obeys_its_limit_and_says_more() {
     assert_eq!((status, code(&body)), (400, "flare::requests::bad_query"));
 }
 
+/// The ids of a share list's items.
+fn listed(list: &Value) -> Vec<String> {
+    list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_share_list_names_next_on_the_first_of_two_pages_and_none_on_the_last() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    for title in ["One", "Two", "Three"] {
+        api.share(&alice, title, &["bob@example.com"], &[]).await;
+    }
+    let (_, whole) = api
+        .read("GET", "/api/shares?scope=with-me&limit=500", Some(&bob))
+        .await;
+    assert_eq!(whole["more"], false);
+    assert!(whole.get("next").is_none(), "{whole}");
+    let (status, first) = api
+        .read("GET", "/api/shares?scope=with-me&limit=2", Some(&bob))
+        .await;
+    assert_eq!(status, 200, "{first}");
+    assert_eq!(first["more"], true);
+    let next = first["next"].as_str().unwrap().to_owned();
+    assert!(next.starts_with("fs1."), "{next}");
+    let (status, second) = api
+        .read(
+            "GET",
+            &format!("/api/shares?scope=with-me&limit=2&cursor={next}"),
+            Some(&bob),
+        )
+        .await;
+    assert_eq!(status, 200, "{second}");
+    assert_eq!(second["more"], false);
+    assert!(second.get("next").is_none(), "{second}");
+    let mut walked = listed(&first);
+    walked.extend(listed(&second));
+    assert_eq!(walked, listed(&whole));
+
+    let (_, mine) = api
+        .read("GET", "/api/shares?scope=mine&limit=2", Some(&alice))
+        .await;
+    let next = mine["next"].as_str().unwrap();
+    let (_, rest) = api
+        .read(
+            "GET",
+            &format!("/api/shares?scope=mine&limit=2&cursor={next}"),
+            Some(&alice),
+        )
+        .await;
+    assert_eq!(listed(&rest).len(), 1, "{rest}");
+}
+
+#[tokio::test]
+async fn a_cursor_that_is_malformed_of_activity_or_of_the_other_scope_is_bad_cursor_and_two_are_a_bad_query()
+ {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    for title in ["One", "Two"] {
+        api.share(&alice, title, &[], &[]).await;
+    }
+    let (_, first) = api
+        .read("GET", "/api/shares?scope=mine&limit=1", Some(&alice))
+        .await;
+    let next = first["next"].as_str().unwrap().to_owned();
+    for path in [
+        "/api/shares?scope=mine&cursor=nonsense".to_owned(),
+        "/api/shares?scope=mine&cursor=fc1.AAAAAAAAAAA".to_owned(),
+        format!("/api/shares?scope=with-me&cursor={next}"),
+    ] {
+        let (status, body) = api.read("GET", &path, Some(&alice)).await;
+        assert_eq!(
+            (status, code(&body)),
+            (400, "flare::shares::bad_cursor"),
+            "{path}"
+        );
+    }
+    let (status, body) = api
+        .read(
+            "GET",
+            &format!("/api/shares?scope=mine&cursor={next}&cursor={next}"),
+            Some(&alice),
+        )
+        .await;
+    assert_eq!((status, code(&body)), (400, "flare::requests::bad_query"));
+    let (status, page) = api
+        .read(
+            "GET",
+            &format!("/api/shares?scope=mine&cursor={next}"),
+            Some(&alice),
+        )
+        .await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(listed(&page).len(), 1);
+}
+
+#[tokio::test]
+async fn a_cursor_from_another_caller_lists_only_the_callers_own_shares() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    let carol = api.token_for("carol").await;
+    // Carol's one grant is older than every grant of Bob's, so it sorts
+    // after any key Bob's list gives, and her page after his key holds it.
+    let theirs = api
+        .share(&alice, "To carol", &["carol@example.com"], &[])
+        .await;
+    for title in ["One", "Two", "Three"] {
+        api.hosted.time.advance(Duration::from_secs(10));
+        api.share(&alice, title, &["bob@example.com"], &[]).await;
+    }
+    api.hosted.time.advance(Duration::from_secs(10));
+    api.share(&carol, "Carol's", &["bob@example.com"], &[])
+        .await;
+    let (_, bobs) = api
+        .read("GET", "/api/shares?scope=with-me&limit=1", Some(&bob))
+        .await;
+    let next = bobs["next"].as_str().unwrap();
+    let (status, page) = api
+        .read(
+            "GET",
+            &format!("/api/shares?scope=with-me&cursor={next}"),
+            Some(&carol),
+        )
+        .await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(listed(&page), [theirs], "{page}");
+    assert!(page.get("next").is_none(), "{page}");
+}
+
+#[tokio::test]
+async fn a_share_list_whose_share_store_fails_answers_503_with_no_items_and_answers_once_it_recovers()
+ {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    api.share(&alice, "One", &["bob@example.com"], &[]).await;
+    api.faults.shares.store(true, Ordering::SeqCst);
+    for (path, token) in [
+        ("/api/shares?scope=with-me&limit=1", &bob),
+        ("/api/shares?scope=mine&limit=1", &alice),
+    ] {
+        let (status, body) = api.read("GET", path, Some(token)).await;
+        assert_eq!((status, code(&body)), (503, "flare::shares::unavailable"));
+        assert!(body.get("items").is_none(), "{body}");
+    }
+    api.faults.shares.store(false, Ordering::SeqCst);
+    let (status, page) = api
+        .read("GET", "/api/shares?scope=with-me&limit=1", Some(&bob))
+        .await;
+    assert_eq!((status, listed(&page).len()), (200, 1));
+}
+
 #[tokio::test]
 async fn a_non_creator_gets_not_a_creator_for_a_share_and_a_response_and_a_creator_succeeds() {
     let api = Api::start().await;
@@ -685,4 +843,48 @@ async fn a_response_from_someone_else_opens_for_the_flares_owner_without_naming_
     let path = format!("/api/shares/{response}");
     let (status, body) = api.read("GET", &path, Some(&alice)).await;
     assert_eq!(status, 200, "{body}");
+}
+
+#[tokio::test]
+async fn a_repeated_grant_writes_the_activity_entries_that_a_failed_index_write_left_out() {
+    let api = Api::start().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    let carol = api.token_for("carol").await;
+    let flare = api
+        .share(
+            &alice,
+            "Plan",
+            &["bob@example.com", "carol@example.com"],
+            &[],
+        )
+        .await;
+    let path = format!("/api/activity?flare={flare}");
+    api.faults.index.store(true, Ordering::SeqCst);
+    let (status, body) = api
+        .json(
+            "POST",
+            "/api/shares",
+            Some(&bob),
+            share_body("Counter-plan", &["carol@example.com"], &[&flare]),
+        )
+        .await;
+    assert_eq!((status, code(&body)), (409, "flare::shares::partly_shared"));
+    let response = body["share"].as_str().unwrap().to_owned();
+    api.faults.index.store(false, Ordering::SeqCst);
+    let (_, missing) = api.read("GET", &path, Some(&carol)).await;
+    assert_eq!(ids(&missing), Vec::<String>::new());
+    let (status, _) = api
+        .json(
+            "POST",
+            &format!("/api/grants/{response}"),
+            Some(&bob),
+            json!({"with": ["carol@example.com"], "re": [flare]}),
+        )
+        .await;
+    assert_eq!(status, 200);
+    for reader in [&alice, &bob, &carol] {
+        let (_, page) = api.read("GET", &path, Some(reader)).await;
+        assert_eq!(ids(&page), vec![response.clone()]);
+    }
 }

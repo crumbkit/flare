@@ -227,6 +227,7 @@ impl TeamStore for DynamoTeamStore {
                 &team_partition(name),
                 MEMBER_PREFIX,
                 MAX_MEMBERS + 1,
+                None,
                 ItemKind::Member,
             )
             .await
@@ -248,6 +249,7 @@ impl TeamStore for DynamoTeamStore {
                 &member_partition(member),
                 TEAM_PREFIX,
                 MAX_TEAMS_READ,
+                None,
                 ItemKind::Member,
             )
             .await

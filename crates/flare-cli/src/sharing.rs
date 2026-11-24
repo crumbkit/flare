@@ -6,20 +6,24 @@
 
 mod dry_run;
 mod grants;
+mod shares;
 
 pub(crate) use grants::{grants, revoke};
 
-use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, SharesArgs, ShowArgs};
+pub(crate) use shares::shares;
+
+use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, ShowArgs};
 use crate::client::Api;
-use crate::codes::{Failed, Refused, SharingFailed};
-use crate::documents::{ActivityRow, Next, ShareOut, ShareRow, SharedOut, Shown};
+use crate::codes::sharing::activity_call;
+use crate::codes::{Failed, NextRun, Refused, SharingFailed};
+use crate::documents::{ActivityRow, Next, ShareOut, SharedOut, Shown};
 use crate::env::Snapshot;
 use crate::keychain;
 use crate::login::saved;
-use crumbkit::{Call, Listing, Step};
+use crumbkit::{Listing, Step};
 use flare_contract::{
     ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, OpenedShare, Role,
-    ShareList, ShareRequest, ShareSummary, Shared, VersionRequest,
+    ShareRequest, ShareSummary, Shared, VersionRequest,
 };
 use flare_core::ShareId;
 use reqwest::Method;
@@ -29,9 +33,6 @@ use std::path::Path;
 /// The largest file `flare share` reads, in bytes. The server takes far
 /// less, and refuses a larger document with `flare::shares::too_large`.
 const MAX_FILE: u64 = 4 * 1024 * 1024;
-
-/// The most shares the server lists at once, which `--all` asks for.
-const MAX_SHARES: usize = 500;
 
 /// The most responses the server lists at once, which each page of
 /// `--all` asks for.
@@ -51,12 +52,14 @@ pub(crate) fn session(env: &Snapshot) -> Result<Api, Failed> {
     Api::new(&saved.server, Some(token))
 }
 
-/// The answer, or a bad-answer failure when the server sent no body.
+/// The answer, or a bad-answer failure when the server sent a success
+/// status with no body.
 pub(crate) fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
     answer.ok_or_else(|| {
         SharingFailed::BadAnswer {
             server: api.origin().to_owned(),
             problem: "the answer has no body".to_owned(),
+            next: NextRun::MaybeDone,
         }
         .into()
     })
@@ -161,10 +164,11 @@ pub(crate) async fn share(
     match outgoing {
         Outgoing::Update(id, request) => update(&api, &id, request).await,
         Outgoing::Create(request) => {
-            let answer = api
+            let shared: Shared = api
                 .send(Method::POST, "/api/shares", Some(&request))
-                .await?;
-            let shared: Shared = body(&api, answer)?;
+                .await
+                .and_then(|answer| body(&api, answer))
+                .map_err(Failed::after_a_write)?;
             Ok(ShareOut {
                 id: Some(shared.share.id),
                 title: Some(shared.share.title),
@@ -182,8 +186,11 @@ pub(crate) async fn share(
 async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<ShareOut, Failed> {
     let id = share_id(api, id)?;
     let target = format!("/api/shares/{}/versions", id.as_str());
-    let answer: Option<ShareSummary> = api.send(Method::POST, &target, Some(&request)).await?;
-    let share = body(api, answer)?;
+    let share: ShareSummary = api
+        .send(Method::POST, &target, Some(&request))
+        .await
+        .and_then(|answer| body(api, answer))
+        .map_err(Failed::after_a_write)?;
     Ok(ShareOut {
         id: Some(share.id),
         title: Some(share.title),
@@ -220,7 +227,7 @@ pub(crate) async fn show(args: &ShowArgs, env: &Snapshot) -> Result<Shown, Faile
 }
 
 /// The name of `role` as the commands print it.
-fn role_name(role: Role) -> &'static str {
+pub(crate) fn role_name(role: Role) -> &'static str {
     match role {
         Role::Owner => "owner",
         Role::Admin => "admin",
@@ -244,34 +251,6 @@ pub(crate) async fn grant(args: &GrantArgs, env: &Snapshot) -> Result<SharedOut,
     let target = format!("/api/grants/{}", id.as_str());
     let answer = api.send(Method::POST, &target, Some(&request)).await?;
     Ok(shared_out(body(&api, answer)?))
-}
-
-/// Runs `flare shares`.
-///
-/// # Errors
-///
-/// Returns the failure that stopped it.
-pub(crate) async fn shares(args: &SharesArgs, env: &Snapshot) -> Result<Listing<ShareRow>, Failed> {
-    let api = session(env)?;
-    let scope = if args.with_me { "with-me" } else { "mine" };
-    let limit = args.page.limit().unwrap_or(MAX_SHARES);
-    let everyone = if args.everyone { "&everyone=true" } else { "" };
-    let target = format!("/api/shares?scope={scope}&limit={limit}{everyone}");
-    let answer: Option<ShareList> = api.send(Method::GET, &target, None::<&()>).await?;
-    let list = body(&api, answer)?;
-    let rows = list
-        .items
-        .into_iter()
-        .map(|share| ShareRow {
-            id: share.id,
-            title: share.title,
-            owner: share.owner,
-            role: role_name(share.role).to_owned(),
-            version: share.version,
-            created: share.created,
-        })
-        .collect();
-    Ok(Listing::uncounted(rows, list.more).described("shares"))
 }
 
 fn activity_row(item: ActivityItem) -> Option<ActivityRow> {
@@ -307,13 +286,7 @@ fn next_step(flares: &[ShareId], next: &Next) -> Step {
     } else {
         "Read the responses that arrive after these."
     };
-    let call = flares
-        .iter()
-        .fold(Call::new(&["activity"]), |call, flare| {
-            call.value("flares", flare.as_str())
-        })
-        .value("since", next.cursor.clone());
-    Step::new(sentence).call(call)
+    Step::new(sentence).call(activity_call(flares).value("since", next.cursor.clone()))
 }
 
 /// Runs `flare activity`. With `--all` it follows the cursor until the
@@ -339,7 +312,9 @@ pub(crate) async fn activity(
     let mut since = match &args.since {
         Some(text) => Some(
             Cursor::try_from(text.as_str())
-                .map_err(|_| Refused::new(ApiCode::BadCursor, None, api.origin()))?
+                .map_err(|_| {
+                    Refused::new(ApiCode::BadCursor, None, api.origin()).for_flares(&flares)
+                })?
                 .to_string(),
         ),
         None => None,
@@ -351,7 +326,10 @@ pub(crate) async fn activity(
             .as_ref()
             .map_or_else(String::new, |cursor| format!("since={cursor}&"));
         let target = format!("/api/activity?{query}{after}limit={limit}");
-        let answer: Option<ActivityPage> = api.send(Method::GET, &target, None::<&()>).await?;
+        let answer: Option<ActivityPage> = api
+            .send(Method::GET, &target, None::<&()>)
+            .await
+            .map_err(|failed| failed.for_flares(&flares))?;
         let page = body(&api, answer)?;
         rows.extend(page.items.into_iter().filter_map(activity_row));
         let next = Next {

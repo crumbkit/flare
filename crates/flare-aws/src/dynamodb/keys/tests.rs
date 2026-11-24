@@ -1,6 +1,7 @@
 use super::{Key, entry_of, grantee_of};
 use flare_core::{
-    Digest, Email, Position, PrincipalId, ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
+    Digest, Email, Position, PrincipalId, Reader, ShareId, ShareVersion, Timestamp, TokenId,
+    TokenLabel,
 };
 use proptest::prelude::*;
 use std::collections::HashSet;
@@ -33,6 +34,12 @@ fn every_key(
         Key::sequence(),
         Key::pair(share, other),
         Key::link(share, Position::new(created.as_secs())),
+        Key::index_entry(
+            &Reader::Person(person.clone()),
+            share,
+            Position::new(created.as_secs()),
+        ),
+        Key::index_marker(&Reader::Person(person.clone()), share, other),
     ]
 }
 
@@ -188,4 +195,45 @@ fn a_teams_items_and_a_members_pair_have_their_own_keys() {
     assert_eq!(in_person.sk, "T#design");
     assert_eq!(super::member_of("M#ana@example.com"), Some(ana));
     assert_eq!(super::team_of("T#design"), Some(team));
+}
+
+#[test]
+fn index_keys_have_their_documented_layout_and_sort_in_position_order_per_flare() {
+    let reader = Reader::Person(principal("a@x.com"));
+    let flare = ShareId::from_random([0xab; 16]);
+    let response = ShareId::from_random([0xcd; 16]);
+    let (flare_hex, response_hex) = ("ab".repeat(16), "cd".repeat(16));
+    let entry = Key::index_entry(&reader, &flare, Position::new(7));
+    assert_eq!(entry.pk, "ACT#a@x.com");
+    assert_eq!(entry.sk, format!("A#{flare_hex}#{:020}", 7));
+    let marker = Key::index_marker(&reader, &response, &flare);
+    assert_eq!(marker.pk, "ACT#a@x.com");
+    assert_eq!(marker.sk, format!("R#{response_hex}#{flare_hex}"));
+    let mut keys: Vec<String> = [u64::MAX, 10, 9, 0]
+        .iter()
+        .map(|at| Key::index_entry(&reader, &flare, Position::new(*at)).sk)
+        .collect();
+    keys.sort();
+    let positions: Vec<String> = [0, 9, 10, u64::MAX]
+        .iter()
+        .map(|at| Key::index_entry(&reader, &flare, Position::new(*at)).sk)
+        .collect();
+    assert_eq!(keys, positions);
+}
+
+#[test]
+fn a_group_readers_index_has_its_own_partition_apart_from_every_person() {
+    let flare = ShareId::from_random([0xab; 16]);
+    let team = Reader::Group(flare_core::Group::Team(
+        flare_core::TeamName::try_from("design").unwrap(),
+    ));
+    let everyone = Reader::Group(flare_core::Group::Everyone);
+    assert_eq!(
+        Key::index_entry(&team, &flare, Position::new(1)).pk,
+        "ACT#team:design"
+    );
+    assert_eq!(
+        Key::index_entry(&everyone, &flare, Position::new(1)).pk,
+        "ACT#everyone"
+    );
 }

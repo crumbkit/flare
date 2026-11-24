@@ -15,10 +15,10 @@ use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
-use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of};
+use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of, list_key};
 use flare_auth_oidc::Clock as OidcClock;
-use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument};
-use flare_core::{Credential, PageStore, Principal, RecordStore, Timestamp};
+use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument, ShareCursor};
+use flare_core::{Credential, ListKey, PageStore, Principal, RecordStore, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
@@ -98,6 +98,27 @@ fn timestamp<P, R, S, K: OidcClock>(ctx: &Ctx<'_, P, R, S, K>) -> Timestamp {
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     Timestamp::from_secs(seconds)
+}
+
+/// The key after which a share list of `scope` starts, from the query's
+/// one `cursor` value, or `None` when it has none. Two values are a bad
+/// query. A value that is not a share cursor, or one of the other scope,
+/// is a bad cursor. The cursor names no person: the list is the caller's,
+/// whatever key it holds.
+fn list_after(uri: &http::Uri, scope: Scope) -> Result<Option<ListKey>, Refusal> {
+    let cursors = every(uri, "cursor");
+    let [text] = cursors.as_slice() else {
+        return if cursors.is_empty() {
+            Ok(None)
+        } else {
+            Err(ApiCode::BadQuery.into())
+        };
+    };
+    let cursor = ShareCursor::try_from(text.as_str())
+        .ok()
+        .filter(|cursor| cursor.scope() == scope)
+        .ok_or(ApiCode::SharesBadCursor)?;
+    list_key(cursor).map(Some)
 }
 
 /// Reads and parses a JSON body.
@@ -286,8 +307,10 @@ where
             let everyone = flag(ctx, "everyone");
             scope.and_then(|scope| {
                 let everyone = everyone?;
+                let after = list_after(ctx.uri, scope)?;
                 number(ctx, MAX_LIST, DEFAULT_LIST).map(|limit| Call::List {
                     scope,
+                    after,
                     limit,
                     everyone,
                 })

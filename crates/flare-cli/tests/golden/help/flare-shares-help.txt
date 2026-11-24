@@ -1,6 +1,6 @@
 List your shares or those granted to you
 
-The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+The server lists at most 500 shares in one answer. A list cut short names the next call with --cursor, which resumes the list after the last share printed, and --all follows the cursor until the list ends.
 
 Usage: flare shares [OPTIONS]
 
@@ -10,6 +10,9 @@ Options:
 
       --everyone
           With --with-me, also list the shares open to everyone signed in
+
+      --cursor <CURSOR>
+          List the shares after this cursor, which an earlier flare shares printed
 
       --limit <N>
           Print at most this many rows, up to 500
@@ -40,6 +43,9 @@ Examples:
 
   flare shares --with-me --limit 20
           List the 20 newest shares granted to you
+
+  flare shares --with-me --cursor fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg
+          List the shares granted to you after the cursor an earlier call printed
 
 Columns:
   id       The share's id.

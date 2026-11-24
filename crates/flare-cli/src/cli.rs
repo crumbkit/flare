@@ -75,9 +75,9 @@ pub(crate) enum Verb {
     },
     /// List your shares or those granted to you
     ///
-    /// The server lists at most 500 shares in one answer and has no cursor
-    /// for the rest, so --all lists at most 500 shares and says more follow
-    /// when there are more.
+    /// The server lists at most 500 shares in one answer. A list cut short
+    /// names the next call with --cursor, which resumes the list after the
+    /// last share printed, and --all follows the cursor until the list ends.
     Shares(SharesArgs),
     /// List the responses to flares, oldest first
     Activity(ActivityArgs),
@@ -232,19 +232,22 @@ pub const TOOL: Tool = Tool::new()
             )
             .leaves(&[
                 Leaf::new(&["serve"])
+                    // A serve run lasts until Ctrl-C or an idle hour, so the
+                    // example check, which stops a run after 10 seconds,
+                    // cannot run either example even with a board.
                     .examples(&[
-                        Example::new(&[], "Serve the board in the current directory"),
+                        Example::new(&[], "Serve the board in the current directory").needs(&["board"]),
                         Example::new(
                             &["--board", "../notes", "--idle-exit", "1h"],
                             "Serve another board and stop after an hour without a request",
-                        ),
+                        ).needs(&["board"]),
                     ])
                     .effects(Effects::additive())
                     .document(SERVE),
                 Leaf::new(&["open"])
                     .examples(&[
-                        Example::new(&[], "Open the index of the running server"),
-                        Example::new(&["kitchen"], "Open the binding or page named kitchen"),
+                        Example::new(&[], "Open the index of the running server").needs(&["board", "server"]),
+                        Example::new(&["kitchen"], "Open the binding or page named kitchen").needs(&["board", "server"]),
                     ])
                     .effects(Effects::additive())
                     .document(OPEN),
@@ -253,11 +256,11 @@ pub const TOOL: Tool = Tool::new()
                         Example::new(
                             &["card.html", "--name", "task-card", "--slots", "slots.json"],
                             "Publish card.html as the page task-card with the slots in slots.json",
-                        ),
+                        ).needs(&["board"]),
                         Example::new(
                             &["card.md", "--name", "task-card", "--dry-run"],
                             "Check card.md and publish nothing",
-                        ),
+                        ).needs(&["board"]),
                     ])
                     .effects(Effects::additive())
                     .document(PUBLISH),
@@ -265,21 +268,21 @@ pub const TOOL: Tool = Tool::new()
                     .examples(&[Example::new(
                         &["task-card", "--name", "kitchen", "task=/tasks/tap"],
                         "Save the binding kitchen, which fills task-card's task slot with /tasks/tap",
-                    )])
+                    ).needs(&["board"])])
                     .effects(Effects::additive().all_or_none())
                     .document(BIND),
     Leaf::new(&["login"])
         .examples(&[Example::new(
             &["https://flare.example.org"],
             "Sign in to a flare server in the browser and keep its token in the Keychain",
-        )])
+        ).needs(&["server", "browser"])])
         .effects(Effects::additive())
         .document(LOGIN),
     Leaf::new(&["logout"])
         .examples(&[Example::new(
             &[],
             "Revoke this computer's token and delete it from the Keychain",
-        )])
+        ).needs(&["server"])])
         .effects(Effects::destructive())
         .document(LOGOUT),
     Leaf::new(&["share"])
@@ -287,15 +290,15 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["review.md", "--with", "ana@example.org,jo@example.org"],
                 "Share review.md with two people",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["answer.md", "--re", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Share answer.md as a response to a flare",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Publish review.md as the next version of a share you own",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["review.md", "--dry-run", "--out", "review.html"],
                 "Check review.md as the server would and write its HTML to review.html, sharing nothing",
@@ -308,11 +311,11 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "Show the latest version of a share",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--version", "1"],
                 "Show the first version of a share",
-            ),
+            ).needs(&["server"]),
         ])
         .effects(Effects::read_only())
         .document(SHOW),
@@ -321,15 +324,18 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "mei@example.org"],
                 "Grant a share to one more person",
-            ),
+            )
+            .needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--with", "team:design"],
                 "Grant a share to the members of a team you belong to",
-            ),
+            )
+            .needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone"],
                 "Open a share you own to everyone signed in",
-            ),
+            )
+            .needs(&["server"]),
         ])
         .effects(Effects::additive())
         .document(GRANT),
@@ -343,11 +349,15 @@ pub const TOOL: Tool = Tool::new()
     teams::DELETE_LEAF,
     Leaf::new(&["shares"])
         .examples(&[
-            Example::new(&[], "List your shares, newest first"),
+            Example::new(&[], "List your shares, newest first").needs(&["server"]),
             Example::new(
                 &["--with-me", "--limit", "20"],
                 "List the 20 newest shares granted to you",
-            ),
+            ).needs(&["server"]),
+            Example::new(
+                &["--with-me", "--cursor", "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg"],
+                "List the shares granted to you after the cursor an earlier call printed",
+            ).needs(&["server"]),
         ])
         .effects(Effects::read_only())
         .document(SHARES),
@@ -356,11 +366,11 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
                 "List the responses to a flare, oldest first",
-            ),
+            ).needs(&["server"]),
             Example::new(
                 &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--since", "fc1.AAAAAAAAAC8"],
                 "List the responses after the cursor an earlier call printed",
-            ),
+            ).needs(&["server"]),
         ])
         .effects(Effects::read_only())
         .document(ACTIVITY),
@@ -384,7 +394,11 @@ pub const TOOL: Tool = Tool::new()
                 schemas::LIST_LEAF,
                 schemas::SHOW_LEAF,
                 Leaf::new(&["self", "usage"])
-                    .examples(&[Example::new(&[], "Report the findings of the last 7 days")])
+                    // The report names the first day of the 7, so its output changes
+                    // each day and no golden file can hold it.
+                    .examples(&[
+                        Example::new(&[], "Report the findings of the last 7 days").needs(&["date"])
+                    ])
                     .effects(Effects::read_only())
                     .document(SELF_USAGE),
                 FlareSkills::install_leaf(&["skills", "install"]),

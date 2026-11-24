@@ -9,9 +9,9 @@ use flare_core::memory::{
 };
 use flare_core::{
     Admission, Creators, DocumentText, Email, FlareError, FlareTeams, Flares, Grant, GrantRevoke,
-    GrantStore, GrantStoreError, GrantWrite, Group, Listing, MailDomain, NewFlare, Principal,
-    PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Standing, Team, TeamName,
-    TeamStore, TeamStoreError, Teams, TeamsError, Timestamp,
+    GrantStore, GrantStoreError, GrantWrite, Group, ListKey, Listing, MailDomain, NewFlare,
+    Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Standing, Team,
+    TeamName, TeamStore, TeamStoreError, Teams, TeamsError, Timestamp,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -95,8 +95,13 @@ impl GrantStore for GroupGrantsFail {
         self.inner.of_share(share).await
     }
 
-    async fn granted_to(&self, grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
-        self.inner.granted_to(grantee).await
+    async fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
+        self.inner.granted_page(grantee, after, limit).await
     }
 }
 

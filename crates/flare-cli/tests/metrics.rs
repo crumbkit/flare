@@ -158,6 +158,21 @@ fn flare_metrics_refuses_a_file_it_cannot_read_and_reads_one_it_can() {
     let ran = home.run(&["metrics", missing.to_str().unwrap()]);
     ran.assert_failed("flare::metrics::unreadable");
     assert!(ran.all().contains("no-such.log"), "{}", ran.all());
+    let json = home.run(&["metrics", missing.to_str().unwrap(), "--json"]);
+    json.assert_failed("flare::metrics::unreadable");
+    let printed: Value = serde_json::from_str(json.stdout.trim()).unwrap();
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "hint", "text": "pass a readable log file"}),
+        "{}",
+        json.all()
+    );
+    assert_eq!(
+        printed["alternatives"],
+        json!([{"kind": "hint", "text": "pipe the log to flare metrics on standard input"}]),
+        "{}",
+        json.all()
+    );
     run::write(&missing, &log_text());
     home.run(&["metrics", missing.to_str().unwrap()])
         .assert_ok();

@@ -24,8 +24,8 @@ pub use changes::{
 pub use groups::a_group_grant_keeps_its_audience;
 pub use limits::{concurrent_grants_at_the_limit_give_one_too_many, the_grant_limit_holds};
 pub use lists::{
-    a_list_shows_its_truncation_and_order, a_persons_list_holds_their_grants_newest_first,
-    a_share_list_holds_only_its_grants,
+    a_list_shows_its_truncation_and_order, a_persons_grants_page_in_order_past_the_listing_limit,
+    a_persons_list_holds_their_grants_newest_first, a_share_list_holds_only_its_grants,
 };
 pub use races::{
     a_grant_and_a_revoke_together_leave_a_consistent_state,

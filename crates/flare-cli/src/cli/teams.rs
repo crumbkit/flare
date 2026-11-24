@@ -86,7 +86,7 @@ pub(crate) struct DeleteTeamArgs {
 
 /// The help of `flare teams create`.
 pub(super) const CREATE_LEAF: Leaf = Leaf::new(&["teams", "create"])
-    .examples(&[Example::new(&["design"], "Create the team design")])
+    .examples(&[Example::new(&["design"], "Create the team design").needs(&["server"])])
     .effects(Effects::additive())
     .document(TEAMS_CREATE);
 
@@ -95,7 +95,8 @@ pub(super) const ADD_LEAF: Leaf = Leaf::new(&["teams", "add"])
     .examples(&[Example::new(
         &["design", "--with", "mei@example.org,jo@example.org"],
         "Add two people to the team design",
-    )])
+    )
+    .needs(&["server"])])
     .effects(Effects::additive())
     .document(TEAMS_ADD);
 
@@ -104,22 +105,22 @@ pub(super) const REMOVE_LEAF: Leaf = Leaf::new(&["teams", "remove"])
     .examples(&[Example::new(
         &["design", "--with", "jo@example.org"],
         "Remove one person from the team design",
-    )])
+    )
+    .needs(&["server"])])
     .effects(Effects::destructive())
     .document(TEAMS_REMOVE);
 
 /// The help of `flare teams list`.
 pub(super) const LIST_LEAF: Leaf = Leaf::new(&["teams", "list"])
-    .examples(&[Example::new(&[], "List the teams you belong to")])
+    .examples(&[Example::new(&[], "List the teams you belong to").needs(&["server"])])
     .effects(Effects::read_only())
     .document(TEAMS_LIST);
 
 /// The help of `flare teams show`.
 pub(super) const SHOW_LEAF: Leaf = Leaf::new(&["teams", "show"])
-    .examples(&[Example::new(
-        &["design"],
-        "Show the members of the team design",
-    )])
+    .examples(&[
+        Example::new(&["design"], "Show the members of the team design").needs(&["server"]),
+    ])
     .effects(Effects::read_only())
     .document(TEAMS_SHOW);
 
@@ -128,6 +129,7 @@ pub(super) const DELETE_LEAF: Leaf = Leaf::new(&["teams", "delete"])
     .examples(&[Example::new(
         &["design", "--yes"],
         "Delete the team design without a question",
-    )])
+    )
+    .needs(&["server"])])
     .effects(Effects::destructive())
     .document(TEAMS_DELETE);

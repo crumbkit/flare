@@ -4,6 +4,7 @@
 mod grants;
 mod group_grants;
 mod groups;
+mod lists;
 
 use super::error::ShareError;
 use super::{Decision, ShareAction, Standing, Step, decide_actor};
@@ -12,8 +13,7 @@ use crate::file::{FileId, StoredFile};
 use crate::grant::Role;
 use crate::name::PrincipalId;
 use crate::share::{
-    Listing, NewShare, NewVersion, Share, ShareContent, ShareId, ShareTitle, ShareVersion,
-    SharedVersion,
+    NewShare, NewVersion, Share, ShareContent, ShareId, ShareTitle, ShareVersion, SharedVersion,
 };
 use crate::store::{FileStore, GrantStore, ShareStore, ShareStoreError};
 use crate::teams::{Admission, NoTeams, Teams};
@@ -150,6 +150,18 @@ impl<S, G, T> Shares<S, G, T> {
 }
 
 impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
+    /// The share store, for reads that work out who can open a share
+    /// without a caller to check.
+    pub(crate) fn share_store(&self) -> &S {
+        &self.shares
+    }
+
+    /// The grant store, for reads that work out who can open a share
+    /// without a caller to check.
+    pub(crate) fn grant_store(&self) -> &G {
+        &self.grants
+    }
+
     /// Reads the share and works out what `actor` is to it.
     async fn standing(
         &self,
@@ -272,20 +284,6 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             .shares
             .publish(id, NewVersion::new(content, actor, at))
             .await?)
-    }
-
-    /// The shares that the caller owns, newest first.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
-    /// [`ShareError::Unavailable`].
-    pub async fn mine(&self, who: &Principal) -> Result<Listing<Share>, ShareError> {
-        let actor = actor(who)?;
-        self.shares
-            .owned_by(&actor)
-            .await
-            .map_err(|_| ShareError::Unavailable)
     }
 
     /// Reads a file of a share that the caller may read.

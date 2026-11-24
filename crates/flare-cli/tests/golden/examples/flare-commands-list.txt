@@ -1,0 +1,26 @@
+PATH                 ABOUT
+flare                Serve a board's pages and bindings on this machine, open them in a browser, publish pages and save bindings, and share files through a flare server
+flare serve          Serve a board's pages and bindings on this machine, or its pages behind a TLS proxy, until Ctrl-C
+flare open           Open the running server's index, a page or a binding in a browser
+flare publish        Publish a new version of a page from an HTML or Markdown file
+flare bind           Save a binding that fills a page's slots with records
+flare login          Sign in to a flare server and keep its token in the Keychain
+flare logout         Revoke this computer's flare token and delete it
+flare share          Share a Markdown file
+flare show           Show one version of a share you can open, or its latest
+flare grant          Grant a share to readers
+flare revoke         End grants on a share
+flare grants         List grants
+flare teams          Manage teams
+flare teams create   Create a team that you own, with you as its first member
+flare teams add      Add people to a team you own
+flare teams remove   Remove people from a team you own, or leave a team you belong to
+flare teams list     List the teams you belong to
+flare teams show     Show the members of teams you belong to
+flare teams delete   Delete a team you own; its grants stay and open nothing, and its name is never used again
+flare shares         List your shares or those granted to you
+flare activity       List the responses to flares, oldest first
+flare metrics        Count the metric lines in a flare server's log, by day
+flare commands       Explore flare's commands
+flare commands list  List a branch of flare's commands with their arguments and examples
+flare schemas        Explore the JSON documents that flare prints

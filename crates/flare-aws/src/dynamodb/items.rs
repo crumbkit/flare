@@ -71,6 +71,8 @@ pub(crate) enum ItemKind {
     Sequence,
     Team,
     Member,
+    IndexEntry,
+    IndexMarker,
 }
 
 impl ItemKind {
@@ -90,6 +92,8 @@ impl ItemKind {
             Self::Sequence => "response sequence",
             Self::Team => "team",
             Self::Member => "team member",
+            Self::IndexEntry => "activity index entry",
+            Self::IndexMarker => "activity index marker",
         }
     }
 }

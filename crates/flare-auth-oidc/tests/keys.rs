@@ -1,5 +1,6 @@
 //! The provider's key set: the checks at `connect`, a refresh that returns
-//! an unusable set, and the one hour limit on the cached set.
+//! an unusable set, the one hour limit on the cached set, and sign-ins that
+//! wait for one fetch.
 #![cfg(test)]
 
 #[path = "support/fake_provider.rs"]
@@ -99,18 +100,56 @@ async fn a_refresh_that_returns_an_unusable_key_set_leaves_the_cached_keys_in_pl
     }
 }
 
+/// Waits until the fake has received both sign-ins' token requests and
+/// `keys` key set requests.
+async fn until_requests(fake: &Fake, keys: usize) {
+    while fake.token_requests() < 2 || fake.key_set_requests() < keys {
+        tokio::task::yield_now().await;
+    }
+}
+
 #[tokio::test]
 async fn two_sign_ins_that_present_a_rotated_key_together_both_succeed_with_one_fetch() {
     let fake = Fake::start().await;
     let (authenticator, _clock) = connect(&fake).await;
     let before = fake.key_set_requests();
     fake.rotate_key();
+    // The first sign-in's fetch is held until the fake has answered both
+    // token requests, so the second sign-in reaches the key cache while the
+    // fetch is in flight. The unit tests in src/keys/tests.rs fix that order
+    // by polling each sign-in by hand; this test checks the same outcome
+    // through `complete`.
+    fake.keys_reply(KeysReply::Hold);
+    let release = async {
+        until_requests(&fake, before + 1).await;
+        fake.keys_reply(KeysReply::Normal);
+    };
+    let (first, second, ()) = tokio::join!(
+        sign_in(&authenticator, &fake),
+        sign_in(&authenticator, &fake),
+        release
+    );
+    assert!(first.is_ok(), "{first:?}");
+    assert!(second.is_ok(), "{second:?}");
+    assert_eq!(fake.key_set_requests(), before + 1);
+}
+
+#[tokio::test]
+async fn two_sign_ins_that_wait_for_one_failed_fetch_both_get_provider_unavailable() {
+    let fake = Fake::start().await;
+    let (authenticator, clock) = connect(&fake).await;
+    let before = fake.key_set_requests();
+    clock.advance(Duration::from_secs(60 * 60));
+    // The held fetch is never released, so it fails when the two second
+    // request deadline passes. The second sign-in has those two seconds to
+    // reach the key cache and wait for the fetch.
+    fake.keys_reply(KeysReply::Hold);
     let (first, second) = tokio::join!(
         sign_in(&authenticator, &fake),
         sign_in(&authenticator, &fake)
     );
-    assert!(first.is_ok(), "{first:?}");
-    assert!(second.is_ok(), "{second:?}");
+    assert_refused(first, &SignInRefusal::ProviderUnavailable);
+    assert_refused(second, &SignInRefusal::ProviderUnavailable);
     assert_eq!(fake.key_set_requests(), before + 1);
 }
 

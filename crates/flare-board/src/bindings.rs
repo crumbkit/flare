@@ -48,12 +48,12 @@ pub(crate) async fn read(
 }
 
 /// The page at `pin`, or `UnknownVersion` when the page has no such
-/// version.
+/// version or `HEAD` cannot reach it.
 async fn pinned_page(
     board: &Arc<Board>,
     pin: &PagePin,
 ) -> Result<flare_core::Page, PageStoreError> {
-    match pages::at(board, pin).await {
+    match pages::pinned(board, pin).await {
         Ok(published) => Ok(published.page().clone()),
         Err(PageStoreError::NotFound) => Err(PageStoreError::UnknownVersion),
         Err(other) => Err(other),

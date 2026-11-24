@@ -215,6 +215,7 @@ impl ShareStore for DynamoShareStore {
                 &owner_partition(owner),
                 ENTRY_PREFIX,
                 MAX_LISTED + 1,
+                None,
                 ItemKind::OwnerEntry,
             )
             .await

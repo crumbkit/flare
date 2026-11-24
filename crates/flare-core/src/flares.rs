@@ -12,9 +12,10 @@
 //! `share` checks in this order and writes nothing until every check has
 //! passed: a verified address, the creators rule, then that the caller can
 //! open each `--re` flare. It then creates the share, grants each
-//! recipient, and writes the response links. A grant or link that fails
-//! after the share exists answers [`FlareError::PartlyShared`], which names
-//! the share, so the owner finishes with [`Flares::grant`].
+//! recipient, and writes the response links and their activity index
+//! entries. A write that fails after the share exists answers
+//! [`FlareError::PartlyShared`], which names the share, so the owner
+//! finishes with [`Flares::grant`].
 //!
 //! A response is always shared with the owner of each flare it responds
 //! to: before the links are written, the owner of each `--re` flare is
@@ -23,10 +24,11 @@
 
 mod activity;
 mod groups;
+mod index;
 mod owners;
 mod people;
 
-pub use activity::{ActivityItem, ActivityPage};
+pub use activity::{ActivityItem, ActivityPage, MAX_EXAMINED};
 pub use groups::Revoked;
 pub use people::{
     AddressesOnly, CreatorDomain, Creators, NamedRecipients, RecipientError, Recipients,
@@ -41,6 +43,7 @@ use crate::store::{GrantStore, ResponseStore, ShareStore};
 use crate::teams::{Admission, Group, NoTeams, Teams};
 use crate::time::Timestamp;
 use crate::{PrincipalId, Role, ShareVersion};
+use index::Unfinished;
 
 /// The most flares one share responds to, and one activity call reads.
 pub const MAX_FLARES: usize = 16;
@@ -200,7 +203,9 @@ impl<S, G, R, T> Flares<S, G, R, T> {
         self
     }
 
-    /// The share service, for reads, lists and grant changes.
+    /// The share service, for reads and lists. A grant or a revoke made
+    /// through it writes no activity index entry; use [`Flares::grant`]
+    /// and [`Flares::revoke`].
     #[must_use]
     pub fn shares(&self) -> &Shares<S, G, T> {
         &self.shares
@@ -208,6 +213,15 @@ impl<S, G, R, T> Flares<S, G, R, T> {
 }
 
 impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T> {
+    /// The response store, for tests that read the index. It is not built
+    /// into a server, so no caller there can write the index around
+    /// [`Flares`].
+    #[cfg(any(test, feature = "testing"))]
+    #[must_use]
+    pub fn responses(&self) -> &R {
+        &self.responses
+    }
+
     /// Checks that `who` has a verified address and is a creator.
     fn creator(&self, who: &Principal) -> Result<(), FlareError> {
         if who.email().is_none() {
@@ -246,16 +260,19 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, T: Teams> Flares<S, G, R, T
         Ok(versions)
     }
 
-    /// Writes a link from `response` to each flare.
+    /// Writes a link from `response` to each flare, then the index entries
+    /// of each link. A repeated link keeps its first position, and its
+    /// entries are written again where they are missing.
     async fn link(
         &self,
         response: &ShareId,
         flares: &[Responded],
         at: Timestamp,
-    ) -> Result<(), ()> {
+    ) -> Result<(), Unfinished> {
         for Responded { flare, version, .. } in flares {
             let link = NewLink::new(response.clone(), flare.clone(), *version, at);
-            self.responses.link(link).await.map_err(|_| ())?;
+            let stored = self.responses.link(link).await.map_err(|_| Unfinished)?;
+            self.index_link(&stored).await?;
         }
         Ok(())
     }

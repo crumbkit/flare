@@ -207,3 +207,75 @@ fn bindings_of_a_page_that_does_not_exist_is_not_found() {
         Err(PageStoreError::NotFound)
     );
 }
+
+/// The version that the page record in the working tree names as the one
+/// it replaced.
+fn previous_in_tree(board: &ScratchBoard) -> serde_json::Value {
+    let record: serde_json::Value =
+        serde_json::from_str(&board.file("pages/home/page.json")).unwrap();
+    record.get("previous").cloned().unwrap_or_default()
+}
+
+#[test]
+fn a_page_whose_first_publish_was_left_uncommitted_publishes_again_with_no_previous() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, ContentFormat::Html, "one");
+    // The reviewer's probe: undo the first publish's commit and keep its
+    // files, as a put stopped after board wrote them leaves the tree.
+    board.git(&["reset", "-q", "HEAD~1"]);
+    assert_eq!(
+        block_on(store.latest(&home())).map(|_| ()),
+        Err(PageStoreError::NotFound)
+    );
+
+    let recovered = publish(&store, ContentFormat::Html, "two");
+
+    assert_eq!(block_on(store.versions(&home())).unwrap(), [recovered]);
+    assert_eq!(previous_in_tree(&board), serde_json::Value::Null);
+    let latest = block_on(store.latest(&home())).unwrap();
+    assert_eq!(latest.page().content().text(), "two");
+}
+
+#[test]
+fn a_second_publish_after_a_committed_first_names_the_first_as_previous() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    let first = publish(&store, ContentFormat::Html, "one");
+    let second = publish(&store, ContentFormat::Html, "two");
+    assert_eq!(
+        previous_in_tree(&board),
+        serde_json::Value::String(first.as_str().to_owned())
+    );
+    assert_eq!(block_on(store.versions(&home())).unwrap(), [second, first]);
+}
+
+#[test]
+fn a_record_that_a_complete_walk_finds_no_commit_for_publishes_with_no_previous() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, ContentFormat::Html, "one");
+    board.git(&["reset", "-q", "HEAD~1"]);
+    // A board program whose walk of the record's newest row from HEAD is
+    // complete and lists no row, the answer that `board::path::not_found`
+    // stands in for when the path is not in HEAD.
+    let real = board.program().display().to_string();
+    let empty = board.script(
+        "empty-walk-board",
+        &format!(
+            r#"case "$*" in
+  "log --json --limit 1 "*)
+    printf '%s\n' '{{"schema":"board/log-report/v2","data":[],"truncated":false,"summary":{{"complete":true}}}}'
+    exit 0;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    );
+    let walking = board.store_with(&empty, Limits::default());
+
+    let recovered = publish(&walking, ContentFormat::Html, "two");
+
+    assert_eq!(block_on(store.versions(&home())).unwrap(), [recovered]);
+    assert_eq!(previous_in_tree(&board), serde_json::Value::Null);
+}

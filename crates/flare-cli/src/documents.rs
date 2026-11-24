@@ -258,12 +258,29 @@ pub(crate) struct ShareRow {
     pub(crate) created: String,
 }
 
+/// Where the next `flare shares` starts.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct SharesNext {
+    /// The cursor to pass as `--cursor` for the shares that follow, or none
+    /// when the list ends here.
+    pub(crate) cursor: Option<String>,
+}
+
+/// The text output prints no summary line: the listing's step names the
+/// next `flare shares` call with the cursor, and the JSON document keeps
+/// `cursor` under `summary`.
+impl std::fmt::Display for SharesNext {
+    fn fmt(&self, _formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
 /// The document of `flare shares`.
-pub(crate) const SHARES: Document<Listing<ShareRow>> = Document::new(
+pub(crate) const SHARES: Document<Listing<ShareRow, SharesNext>> = Document::new(
     "flare",
     "shares",
     1,
-    "The caller's shares, or the shares granted to the caller, newest first.",
+    "The caller's shares, or the shares granted to the caller, newest first, and the cursor of the shares that follow.",
 )
 .when_empty("No shares.");
 

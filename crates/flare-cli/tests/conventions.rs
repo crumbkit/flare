@@ -7,7 +7,7 @@
 #![cfg(test)]
 
 use clap::CommandFactory as _;
-use crumbkit_test::{Allow, Check, Examples, Rule, Suite};
+use crumbkit_test::{Allow, Budget, Check, Examples, PathBudgets, Rule, Suite};
 use flare_cli::{Cli, TOOL};
 
 /// flare's opt-outs from crumbkit's conventions, which every check reads.
@@ -21,9 +21,21 @@ const ALLOW: &[Allow] = &[Allow::new(
     "flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id",
 )];
 
-/// flare's built binary and the directory of its golden files.
-const EXAMPLES: Examples<'_> =
-    Examples::new(env!("CARGO_BIN_EXE_flare"), "tests/golden/examples").allow(ALLOW);
+/// flare's built binary and the directory of its golden files. Each
+/// example runs in a fresh copy of tests/fixtures/examples, which holds the
+/// review.md that `flare share --dry-run` checks and the flare.log and
+/// flare.log.1 that `flare metrics` reads.
+const EXAMPLES: Examples<'_> = Examples::new(env!("CARGO_BIN_EXE_flare"), "tests/golden/examples")
+    .fresh_dir("tests/fixtures/examples")
+    .allow(ALLOW);
+
+/// The budgets of the paths through flare's help: crumbkit's default for
+/// every path but `flare skills print`.
+const PATHS: PathBudgets<'_> = PathBudgets::new("tests/golden/examples").nodes(&[Budget::new(
+    "skills print",
+    9_000,
+    "It prints the 6,270-byte skill.",
+)]);
 
 /// Everything the checks read, which `conventions!` expands to one test for
 /// each check. `usage`, `install`, `check` and `print` are the verbs that
@@ -36,18 +48,7 @@ const SUITE: Suite<'_> = Suite::new(|| (Cli::command(), TOOL))
         "add", "remove", "delete",
     ])
     .examples(EXAMPLES)
-    .skip(
-        Check::Examples,
-        "Every example needs a board and the board program, `serve` does not exit, and `open` and the sharing commands need a running server, so no example has fixed output; tests/pages.rs, tests/serve.rs and tests/sharing.rs run each command on a scratch board or a fake server.",
-    )
-    .skip(
-        Check::OutputBudget,
-        "It runs the examples, which need a scratch board; see the Examples skip.",
-    )
-    .skip(
-        Check::PathWeights,
-        "The path weights read the example golden files, which the Examples skip leaves out.",
-    )
+    .path_budgets(PATHS)
     .skip(
         Check::Recoveries,
         "The recovery of server::not_running is `flare serve`, which does not exit, the other recoveries need a scratch board, and the sharing commands' recoveries need a flare server; tests/open.rs, tests/serve.rs and tests/sharing.rs assert each failure and the command its recovery names.",

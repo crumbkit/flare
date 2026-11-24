@@ -20,10 +20,12 @@
 
 mod convert;
 mod grants;
+mod list;
 mod run;
 mod teams;
 mod tokens;
 
+pub(crate) use convert::list_key;
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 
 use convert::content_error;
@@ -34,7 +36,7 @@ use flare_contract::{
     TeamRequest, VersionRequest,
 };
 use flare_core::{
-    Admission, DocumentText, Email, Flares, MailDomain, NoTeams, Principal, ShareTitle,
+    Admission, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal, ShareTitle,
     ShareVersion, Timestamp,
 };
 use secrecy::SecretString;
@@ -90,23 +92,19 @@ impl<S, G, R, T, X, M> fmt::Debug for Sharing<S, G, R, T, X, M> {
     }
 }
 
-/// Which shares a list shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Scope {
-    /// The caller's own shares.
-    Mine,
-    /// The shares granted to the caller.
-    WithMe,
-}
+/// Which shares a list shows: the caller's own, or those granted to the
+/// caller. It is the contract's scope, which a share cursor also names.
+pub(crate) use flare_contract::ListScope as Scope;
 
 /// One request to the share API, parsed from its route, query and body.
 #[derive(Debug)]
 pub(crate) enum Call {
     /// `POST /api/shares`.
     Create(ShareRequest),
-    /// `GET /api/shares`.
+    /// `GET /api/shares`, from the first entry or after a key.
     List {
         scope: Scope,
+        after: Option<ListKey>,
         limit: usize,
         everyone: bool,
     },

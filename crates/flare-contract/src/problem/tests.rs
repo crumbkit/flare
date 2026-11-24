@@ -82,3 +82,16 @@ fn the_team_codes_name_the_teams_area_and_the_everyone_refusal_names_grants() {
         "flare::grants::everyone_unbounded"
     );
 }
+
+#[test]
+fn a_bad_share_cursor_has_its_own_code_whose_hint_names_flare_shares() {
+    let problem = ProblemDocument::new(ApiCode::SharesBadCursor, "https://f.example");
+    assert_eq!(problem.code, "flare::shares::bad_cursor");
+    assert_eq!(problem.status, 400);
+    let Some(Recovery::Hint { text }) = &problem.recovery else {
+        panic!("{problem:?}");
+    };
+    assert!(text.contains("flare shares"), "{text}");
+    let activity = ProblemDocument::new(ApiCode::BadCursor, "https://f.example");
+    assert_eq!(activity.code, "flare::activity::bad_cursor");
+}

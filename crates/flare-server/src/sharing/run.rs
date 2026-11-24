@@ -1,13 +1,11 @@
 //! The generic implementation of [`Api`] over flare-core's stores.
 
-use super::convert::{flare_error, item, role, share_error, standing, summary};
+use super::convert::{flare_error, item, share_error, standing, summary};
 use super::tokens::{code_digest, digest, new_secret, random_id, same, split, token_text};
-use super::{
-    Answer, Api, Boxed, Call, Refusal, Scope, Sharing, TokenCheck, check_share, check_version,
-};
+use super::{Answer, Api, Boxed, Call, Refusal, Sharing, TokenCheck, check_share, check_version};
 use flare_contract::{
-    ActivityPage, ApiCode, Cursor, ExchangeRequest, OpenedShare, Role as WireRole, ShareList,
-    ShareRequest, Shared, TokenIssued, VersionRequest, utc,
+    ActivityPage, ApiCode, Cursor, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest,
+    Shared, TokenIssued, VersionRequest, utc,
 };
 use flare_core::{
     Email, FlareError, Flared, GrantStore, LoginCode, NewFlare, NewToken, Position, Principal,
@@ -123,38 +121,6 @@ where
         let mut share = summary(&opened.share, standing(opened.standing));
         share.version = number.get();
         json(201, &share)
-    }
-
-    async fn list(&self, who: &Principal, scope: Scope, limit: usize, everyone: bool) -> Answer {
-        let shares = self.flares.shares();
-        let (mut items, truncated) = match scope {
-            Scope::Mine => {
-                let listed = shares.mine(who).await.map_err(share_error)?;
-                let truncated = listed.truncated();
-                let items = listed
-                    .items()
-                    .iter()
-                    .map(|share| summary(share, WireRole::Owner))
-                    .collect::<Vec<_>>();
-                (items, truncated)
-            }
-            Scope::WithMe => {
-                let listed = shares
-                    .shared_with_me(who, everyone)
-                    .await
-                    .map_err(share_error)?;
-                let truncated = listed.truncated();
-                let items = listed
-                    .items()
-                    .iter()
-                    .map(|entry| summary(&entry.share, role(entry.role)))
-                    .collect::<Vec<_>>();
-                (items, truncated)
-            }
-        };
-        let more = truncated || items.len() > limit;
-        items.truncate(limit);
-        json(200, &ShareList { items, more })
     }
 
     /// Opens version `number` of a share, or its latest. A number above
@@ -343,9 +309,10 @@ where
                 Call::Create(request) => self.create(who, request, now).await,
                 Call::List {
                     scope,
+                    after,
                     limit,
                     everyone,
-                } => self.list(who, scope, limit, everyone).await,
+                } => self.list(who, scope, after.as_ref(), limit, everyone).await,
                 Call::Open(id, number) => self.open(who, &id, number).await,
                 Call::Publish(id, request) => self.publish(who, &id, request, now).await,
                 Call::Grant(id, request) => self.grant(who, &id, request, now).await,

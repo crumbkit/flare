@@ -94,7 +94,10 @@ pub(crate) struct SharesArgs {
     /// With --with-me, also list the shares open to everyone signed in
     #[arg(long, requires = "with_me")]
     pub(crate) everyone: bool,
-    /// How many shares to list.
+    /// List the shares after this cursor, which an earlier flare shares printed
+    #[arg(long, value_name = "CURSOR")]
+    pub(crate) cursor: Option<String>,
+    /// How many shares to list; --all follows the cursor to the end.
     #[command(flatten)]
     pub(crate) page: Page<50, 500>,
 }
@@ -150,11 +153,13 @@ pub(super) const REVOKE_LEAF: Leaf = Leaf::new(&["revoke"])
                 "--yes",
             ],
             "End one person's grant on a share",
-        ),
+        )
+        .needs(&["server"]),
         Example::new(
             &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6", "--everyone", "--yes"],
             "Close a share you own to everyone signed in",
-        ),
+        )
+        .needs(&["server"]),
     ])
     .effects(Effects::destructive())
     .document(REVOKE);
@@ -164,6 +169,7 @@ pub(super) const GRANTS_LEAF: Leaf = Leaf::new(&["grants"])
     .examples(&[Example::new(
         &["3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
         "List the people, teams and everyone grants of a share",
-    )])
+    )
+    .needs(&["server"])])
     .effects(Effects::read_only())
     .document(GRANTS);
