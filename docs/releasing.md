@@ -79,6 +79,7 @@ raises the version and tag that version.
 | The `formula` job fails because the tap's `scripts/formula` refuses the archive names | Yes | Retag, after the archive names in release.yml are fixed |
 | The `release` job fails | See below | Re-run the failed jobs |
 | The `release` job refuses the tag because its release is already published | No, the release is published | Raise the version and tag it |
+| The `release` job cannot read whether the tag has a release, because the token, a rate limit, the network or GitHub failed | Unchanged: the job writes nothing | Re-run the failed jobs once GitHub answers |
 
 The `version` job's ancestry check catches a tag placed on a commit that is
 not on main, such as a branch commit tagged by mistake. The check runs from
@@ -102,6 +103,14 @@ leaves the release, its archives and SHA256SUMS untouched. The rebuilt
 archives would differ from the published ones, so the tap's formula and every
 installed copy would stop matching the release. The recovery is a new
 version: land a pull request that raises the version and tag that version.
+
+The `release` job first asks gh whether the tag has a release. When gh
+answers `release not found`, the job creates the release. When the read fails
+for any other reason, the job prints gh's error and `could not read whether
+v<version> has a release, so the job made no release; re-run the failed jobs
+once GitHub answers`, and fails before it creates, uploads or publishes
+anything, so a draft left by an earlier run stays the tag's only release. The
+recovery is to re-run the failed jobs.
 
 A pull request that changes the workflow, and a manual run with no tag, run
 every job except `release`, so they build the archives and run the tap check
