@@ -8,6 +8,12 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- `GET /api/shares` answers `next`, a cursor, when more shares follow the
+  page, and takes `cursor=<cursor>` to read the page after it.
+  `flare shares --cursor <CURSOR>` resumes a list, a list cut by `--limit`
+  names the next call with its cursor, and `flare shares --with-me --all`
+  lists every share granted to you, past the 500 that one answer holds.
+
 - `flare skills install` writes flare's agent skill to `flare/SKILL.md` in
   each of `~/.claude/skills`, `~/.agents/skills` and `$CODEX_HOME/skills`
   that exists, or in the directory that `--dir` names. The skill tells an

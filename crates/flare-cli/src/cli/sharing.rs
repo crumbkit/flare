@@ -86,7 +86,10 @@ pub(crate) struct SharesArgs {
     /// List the shares granted to you in place of your own
     #[arg(long)]
     pub(crate) with_me: bool,
-    /// How many shares to list.
+    /// List the shares after this cursor, which an earlier flare shares printed
+    #[arg(long, value_name = "CURSOR")]
+    pub(crate) cursor: Option<String>,
+    /// How many shares to list; --all follows the cursor to the end.
     #[command(flatten)]
     pub(crate) page: Page<50, 500>,
 }

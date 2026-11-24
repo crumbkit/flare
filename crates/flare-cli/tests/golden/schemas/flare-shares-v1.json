@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/shares/v1",
-  "description": "The caller's shares, or the shares granted to the caller, newest first.",
+  "description": "The caller's shares, or the shares granted to the caller, newest first, and the cursor of the shares that follow.",
   "type": "object",
   "properties": {
     "cut": {
@@ -91,6 +91,9 @@
       "description": "The id of this document.",
       "const": "flare/shares/v1"
     },
+    "summary": {
+      "$ref": "#/$defs/SharesNext"
+    },
     "total": {
       "description": "The number of rows that matched, of which data holds one page. It is absent when the tool did not count the rows.",
       "type": "integer",
@@ -104,7 +107,8 @@
   "required": [
     "schema",
     "data",
-    "truncated"
+    "truncated",
+    "summary"
   ],
   "$defs": {
     "ShareRow": {
@@ -145,6 +149,22 @@
         "role",
         "version",
         "created"
+      ]
+    },
+    "SharesNext": {
+      "description": "Where the next `flare shares` starts.",
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "description": "The cursor to pass as `--cursor` for the shares that follow, or none\nwhen the list ends here.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cursor"
       ]
     }
   }

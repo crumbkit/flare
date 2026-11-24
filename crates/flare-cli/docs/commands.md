@@ -337,11 +337,12 @@ Effects: additive, not idempotent, closed-world.
 
 List your shares or the shares granted to you
 
-The server lists at most 500 shares in one answer and has no cursor for the rest, so --all lists at most 500 shares and says more follow when there are more.
+The server lists at most 500 shares in one answer. A list cut short names the next call with --cursor, which resumes the list after the last share printed, and --all follows the cursor until the list ends.
 
 ### Arguments
 
 - `--with-me`: List the shares granted to you in place of your own
+- `--cursor <CURSOR>`: List the shares after this cursor, which an earlier flare shares printed
 - `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
 - `--all`: Print every row
 
@@ -357,6 +358,12 @@ List the 20 newest shares granted to you.
 
 ```sh
 flare shares --with-me --limit 20
+```
+
+List the shares granted to you after the cursor an earlier call printed.
+
+```sh
+flare shares --with-me --cursor fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg
 ```
 
 ### Columns

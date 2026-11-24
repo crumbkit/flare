@@ -2,6 +2,7 @@
 //! into a decision and a write.
 
 mod grants;
+mod lists;
 
 use super::error::ShareError;
 use super::{Decision, ShareAction, Standing, Step, decide_actor};
@@ -10,8 +11,7 @@ use crate::file::{FileId, StoredFile};
 use crate::grant::Role;
 use crate::name::PrincipalId;
 use crate::share::{
-    Listing, NewShare, NewVersion, Share, ShareContent, ShareId, ShareTitle, ShareVersion,
-    SharedVersion,
+    NewShare, NewVersion, Share, ShareContent, ShareId, ShareTitle, ShareVersion, SharedVersion,
 };
 use crate::store::{FileStore, GrantStore, ShareStore, ShareStoreError};
 use crate::time::Timestamp;
@@ -211,52 +211,6 @@ impl<S: ShareStore, G: GrantStore> Shares<S, G> {
             .shares
             .publish(id, NewVersion::new(content, actor, at))
             .await?)
-    }
-
-    /// The shares that the caller owns, newest first.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
-    /// [`ShareError::Unavailable`].
-    pub async fn mine(&self, who: &Principal) -> Result<Listing<Share>, ShareError> {
-        let actor = actor(who)?;
-        self.shares
-            .owned_by(&actor)
-            .await
-            .map_err(|_| ShareError::Unavailable)
-    }
-
-    /// The shares granted to the caller, newest grant first, each with the
-    /// caller's role. A grant whose share no longer exists is left out.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
-    /// [`ShareError::Unavailable`] when either store fails.
-    pub async fn shared_with_me(
-        &self,
-        who: &Principal,
-    ) -> Result<Listing<SharedWithMe>, ShareError> {
-        let actor = actor(who)?;
-        let granted = self
-            .grants
-            .granted_to(&actor)
-            .await
-            .map_err(|_| ShareError::Unavailable)?;
-        let truncated = granted.truncated();
-        let mut entries = Vec::with_capacity(granted.items().len());
-        for grant in granted.into_items() {
-            match self.shares.get(grant.share()).await {
-                Ok(share) => entries.push(SharedWithMe {
-                    share,
-                    role: grant.role(),
-                }),
-                Err(ShareStoreError::NotFound) => {}
-                Err(_) => return Err(ShareError::Unavailable),
-            }
-        }
-        Ok(Listing::with_truncated(entries, truncated))
     }
 
     /// Reads a file of a share that the caller may read.

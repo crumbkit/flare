@@ -62,9 +62,9 @@ pub(crate) enum Verb {
     Grant(GrantArgs),
     /// List your shares or the shares granted to you
     ///
-    /// The server lists at most 500 shares in one answer and has no cursor
-    /// for the rest, so --all lists at most 500 shares and says more follow
-    /// when there are more.
+    /// The server lists at most 500 shares in one answer. A list cut short
+    /// names the next call with --cursor, which resumes the list after the
+    /// last share printed, and --all follows the cursor until the list ends.
     Shares(SharesArgs),
     /// List the responses to flares since a cursor, oldest first
     Activity(ActivityArgs),
@@ -316,6 +316,10 @@ pub const TOOL: Tool = Tool::new()
             Example::new(
                 &["--with-me", "--limit", "20"],
                 "List the 20 newest shares granted to you",
+            ),
+            Example::new(
+                &["--with-me", "--cursor", "fs1.AQAAAABpJIEAqqqqqqqqqqqqqqqqqqqqqg"],
+                "List the shares granted to you after the cursor an earlier call printed",
             ),
         ])
         .effects(Effects::read_only())

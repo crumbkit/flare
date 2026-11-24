@@ -4,6 +4,10 @@
 //! a caller sees `flare::shares::not_a_creator` whether it reads the API or
 //! the command. No message holds a token or a login code.
 
+mod calls;
+
+pub(crate) use calls::{activity_call, shares_call};
+
 use super::Failed;
 use super::sign_in::sign_in;
 use crumbkit::{Call, Code, Failure, Recovery, Then};
@@ -201,6 +205,15 @@ impl Failed {
         self
     }
 
+    /// The same failure of a `flare shares` with `--with-me` when `with_me`
+    /// holds, when it is a refusal of the share API.
+    pub(crate) fn for_shares(self, with_me: bool) -> Self {
+        match self {
+            Self::Refused(refused) => Self::Refused(refused.for_shares(with_me)),
+            other => other,
+        }
+    }
+
     /// The same failure naming `flares`, the flares a `flare activity`
     /// asked about, when it is a refusal of the share API.
     pub(crate) fn for_flares(self, flares: &[ShareId]) -> Self {
@@ -209,18 +222,6 @@ impl Failed {
             other => other,
         }
     }
-}
-
-/// `flare activity` with each of `flares` in the order given, or with a
-/// placeholder when there are none.
-pub(crate) fn activity_call(flares: &[ShareId]) -> Call {
-    let call = Call::new(&["activity"]);
-    if flares.is_empty() {
-        return call.arg("flares");
-    }
-    flares
-        .iter()
-        .fold(call, |call, flare| call.value("flares", flare.as_str()))
 }
 
 fn for_server(server: Option<&str>) -> String {
@@ -239,6 +240,9 @@ pub struct Refused {
     /// The flares of the `flare activity` that was refused, which a
     /// `bad_cursor` recovery names.
     flares: Vec<ShareId>,
+    /// Whether the `flare shares` that was refused listed the shares
+    /// granted to the caller, which a `shares::bad_cursor` recovery names.
+    with_me: bool,
     /// Whether the refused request was a write of a share or a version
     /// whose outcome the server does not know, which `shares::unavailable`
     /// says after a write, so the recovery checks `flare shares` first.
@@ -254,6 +258,7 @@ impl Refused {
             server: server.to_owned(),
             share: None,
             flares: Vec::new(),
+            with_me: false,
             maybe_written: false,
         }
     }
@@ -261,6 +266,13 @@ impl Refused {
     /// The same refusal of a `flare activity` that asked about `flares`.
     pub(crate) fn for_flares(mut self, flares: &[ShareId]) -> Self {
         self.flares = flares.to_vec();
+        self
+    }
+
+    /// The same refusal of a `flare shares` that listed the shares granted
+    /// to the caller when `with_me` holds.
+    pub(crate) fn for_shares(mut self, with_me: bool) -> Self {
+        self.with_me = with_me;
         self
     }
 
@@ -273,8 +285,9 @@ impl Refused {
     }
 
     /// The typed call that replaces the API's hint for `partly_shared` and
-    /// `bad_cursor`, whose hints name `flare grant` and `flare activity` in
-    /// prose for API callers, or `None` for every other code. crumbkit
+    /// the two `bad_cursor` codes, whose hints name `flare grant`, `flare
+    /// activity` and `flare shares` in prose for API callers, or `None` for
+    /// every other code. crumbkit
     /// renders the call against flare's commands, so a renamed command or
     /// flag fails the tests in place of printing a stale command.
     fn typed_call(&self) -> Option<Recovery> {
@@ -288,6 +301,7 @@ impl Refused {
                 Some(Recovery::Run(grant.arg("with").arg("re")))
             }
             ApiCode::BadCursor => Some(Recovery::Run(activity_call(&self.flares))),
+            ApiCode::SharesBadCursor => Some(Recovery::Run(shares_call(self.with_me))),
             _ => None,
         }
     }
@@ -338,12 +352,16 @@ impl Failure for Refused {
     }
 
     /// A bad cursor can also be replaced by the cursor that the last `flare
-    /// activity` printed.
+    /// activity` or `flare shares` printed.
     fn alternatives(&self) -> Vec<Recovery> {
         match self.code {
             ApiCode::BadCursor => vec![Recovery::after(
                 "find the cursor that the last flare activity printed",
                 Then::Run(activity_call(&self.flares).arg("since")),
+            )],
+            ApiCode::SharesBadCursor => vec![Recovery::after(
+                "find the cursor that the last flare shares printed",
+                Then::Run(shares_call(self.with_me).arg("cursor")),
             )],
             _ => Vec::new(),
         }

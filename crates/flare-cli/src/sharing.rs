@@ -4,19 +4,22 @@
 //! and renders the file and reads neither the login nor the Keychain.
 
 mod dry_run;
+mod shares;
 
-use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, SharesArgs, ShowArgs};
+pub(crate) use shares::shares;
+
+use crate::cli::{ActivityArgs, GrantArgs, ShareArgs, ShowArgs};
 use crate::client::Api;
 use crate::codes::sharing::activity_call;
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
-use crate::documents::{ActivityRow, Next, ShareOut, ShareRow, SharedOut, Shown};
+use crate::documents::{ActivityRow, Next, ShareOut, SharedOut, Shown};
 use crate::env::Snapshot;
 use crate::keychain;
 use crate::login::saved;
 use crumbkit::{Listing, Step};
 use flare_contract::{
     ActivityItem, ActivityPage, ApiCode, Cursor, Format, GrantRequest, OpenedShare, Role,
-    ShareList, ShareRequest, ShareSummary, Shared, VersionRequest,
+    ShareRequest, ShareSummary, Shared, VersionRequest,
 };
 use flare_core::ShareId;
 use reqwest::Method;
@@ -26,9 +29,6 @@ use std::path::Path;
 /// The largest file `flare share` reads, in bytes. The server takes far
 /// less, and refuses a larger document with `flare::shares::too_large`.
 const MAX_FILE: u64 = 4 * 1024 * 1024;
-
-/// The most shares the server lists at once, which `--all` asks for.
-const MAX_SHARES: usize = 500;
 
 /// The most responses the server lists at once, which each page of
 /// `--all` asks for.
@@ -40,7 +40,7 @@ const MAX_RESPONSES: usize = 100;
 ///
 /// Returns [`SharingFailed::LoginNeeded`] when no login is saved or the
 /// Keychain holds no token for it.
-fn session(env: &Snapshot) -> Result<Api, Failed> {
+pub(crate) fn session(env: &Snapshot) -> Result<Api, Failed> {
     let saved = saved::required(env)?;
     let token = keychain::read(env, &saved.server)?.ok_or_else(|| SharingFailed::LoginNeeded {
         server: Some(saved.server.clone()),
@@ -50,7 +50,7 @@ fn session(env: &Snapshot) -> Result<Api, Failed> {
 
 /// The answer, or a bad-answer failure when the server sent a success
 /// status with no body.
-fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
+pub(crate) fn body<T>(api: &Api, answer: Option<T>) -> Result<T, Failed> {
     answer.ok_or_else(|| {
         SharingFailed::BadAnswer {
             server: api.origin().to_owned(),
@@ -223,7 +223,7 @@ pub(crate) async fn show(args: &ShowArgs, env: &Snapshot) -> Result<Shown, Faile
 }
 
 /// The name of `role` as the commands print it.
-fn role_name(role: Role) -> &'static str {
+pub(crate) fn role_name(role: Role) -> &'static str {
     match role {
         Role::Owner => "owner",
         Role::Admin => "admin",
@@ -246,33 +246,6 @@ pub(crate) async fn grant(args: &GrantArgs, env: &Snapshot) -> Result<SharedOut,
     let target = format!("/api/grants/{}", id.as_str());
     let answer = api.send(Method::POST, &target, Some(&request)).await?;
     Ok(shared_out(body(&api, answer)?))
-}
-
-/// Runs `flare shares`.
-///
-/// # Errors
-///
-/// Returns the failure that stopped it.
-pub(crate) async fn shares(args: &SharesArgs, env: &Snapshot) -> Result<Listing<ShareRow>, Failed> {
-    let api = session(env)?;
-    let scope = if args.with_me { "with-me" } else { "mine" };
-    let limit = args.page.limit().unwrap_or(MAX_SHARES);
-    let target = format!("/api/shares?scope={scope}&limit={limit}");
-    let answer: Option<ShareList> = api.send(Method::GET, &target, None::<&()>).await?;
-    let list = body(&api, answer)?;
-    let rows = list
-        .items
-        .into_iter()
-        .map(|share| ShareRow {
-            id: share.id,
-            title: share.title,
-            owner: share.owner,
-            role: role_name(share.role).to_owned(),
-            version: share.version,
-            created: share.created,
-        })
-        .collect();
-    Ok(Listing::uncounted(rows, list.more).described("shares"))
 }
 
 fn activity_row(item: ActivityItem) -> Option<ActivityRow> {

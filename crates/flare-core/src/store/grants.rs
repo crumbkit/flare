@@ -1,5 +1,6 @@
 //! The [`GrantStore`] trait and its error.
 
+use super::ListKey;
 use crate::grant::{Grant, GrantRevoke, GrantWrite, Role};
 use crate::name::PrincipalId;
 use crate::share::{Listing, ShareId};
@@ -105,8 +106,29 @@ pub trait GrantStore: Send + Sync {
         share: &ShareId,
     ) -> impl Future<Output = Result<Vec<Grant>, GrantStoreError>> + Send;
 
-    /// The grantee's grants across shares, newest first by time of first
-    /// grant and then by share, at most [`MAX_LISTED`](crate::MAX_LISTED).
+    /// The grantee's grants across shares that sort after `after`, or from
+    /// the first without it, newest first by time of first grant and then
+    /// by share: at most `limit` of them, with the truncation flag set when
+    /// more follow. A `limit` above [`MAX_LISTED`](crate::MAX_LISTED) reads
+    /// [`MAX_LISTED`](crate::MAX_LISTED), and a `limit` of 0 reads one.
+    ///
+    /// `after` need not name a grant the store holds, so a key whose grant
+    /// was revoked since starts at the grant after it. A grant written
+    /// during a walk of pages makes no grant that was there repeat or go
+    /// missing; it is read when it sorts after the key, and not otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GrantStoreError::Unavailable`] when the store cannot answer.
+    fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> impl Future<Output = Result<Listing<Grant>, GrantStoreError>> + Send;
+
+    /// The grantee's first [`MAX_LISTED`](crate::MAX_LISTED) grants across
+    /// shares, as [`GrantStore::granted_page`] reads them with no key.
     ///
     /// # Errors
     ///
@@ -114,5 +136,7 @@ pub trait GrantStore: Send + Sync {
     fn granted_to(
         &self,
         grantee: &PrincipalId,
-    ) -> impl Future<Output = Result<Listing<Grant>, GrantStoreError>> + Send;
+    ) -> impl Future<Output = Result<Listing<Grant>, GrantStoreError>> + Send {
+        self.granted_page(grantee, None, crate::MAX_LISTED)
+    }
 }

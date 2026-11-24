@@ -92,7 +92,12 @@ server. Never look for, print or copy the token.
   version.
 - `flare grant <id> --with <address>` grants a share you own to more people.
 - `flare shares` lists your own shares, newest first. `flare shares --with-me`
-  lists the shares granted to you.
+  lists the shares granted to you. When more shares follow the page, the
+  JSON holds the next step under `next`, whose `call` is the same
+  `flare shares` with `--cursor` and the cursor where this page ended. Run
+  that call as given to read the next page; do not build the `--cursor`
+  argument yourself. `flare shares --all` follows the cursor itself and
+  lists every share.
 
 ## Follow responses
 

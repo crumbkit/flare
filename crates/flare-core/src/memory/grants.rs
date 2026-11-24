@@ -3,8 +3,7 @@
 use super::locked;
 use crate::grant::{MAX_GRANTS, Role};
 use crate::store::{GrantStore, GrantStoreError};
-use crate::{Grant, GrantRevoke, GrantWrite, Listing, PrincipalId, ShareId};
-use std::cmp::Reverse;
+use crate::{Grant, GrantRevoke, GrantWrite, ListKey, Listing, PrincipalId, ShareId};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -116,13 +115,19 @@ impl GrantStore for MemoryGrantStore {
         Ok(grants)
     }
 
-    async fn granted_to(&self, grantee: &PrincipalId) -> Result<Listing<Grant>, GrantStoreError> {
+    async fn granted_page(
+        &self,
+        grantee: &PrincipalId,
+        after: Option<&ListKey>,
+        limit: usize,
+    ) -> Result<Listing<Grant>, GrantStoreError> {
         let state = locked(&self.state).ok_or(GrantStoreError::Unavailable)?;
         let mut grants: Vec<Grant> = state
             .values()
             .filter_map(|grants| grants.get(grantee).cloned())
+            .filter(|grant| after.is_none_or(|key| key.precedes(&ListKey::of_grant(grant))))
             .collect();
-        grants.sort_by_key(|grant| (Reverse(grant.created()), grant.share().clone()));
-        Ok(Listing::new(grants))
+        grants.sort_by_key(ListKey::of_grant);
+        Ok(Listing::bounded(grants, limit.max(1)))
     }
 }
