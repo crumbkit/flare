@@ -889,7 +889,7 @@ A word or a "quoted phrase" matches inside a title, in any case. type:markdown o
 
 ### Arguments
 
-- `<QUERY>`: The search, such as 'budget -type:html' or 'from:me "review notes"'. Required.
+- `<QUERY>`: The search, such as 'budget -type:html' or 'from:me "review notes"'. It may start with a minus, as in '-from:me'. Required.
 - `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
 - `--all`: Print every row
 

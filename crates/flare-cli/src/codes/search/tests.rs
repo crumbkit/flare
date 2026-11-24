@@ -3,7 +3,7 @@ use flare_contract::{SearchError, SearchSpan};
 
 fn error(start: u32, end: u32, message: &str) -> SearchError {
     SearchError {
-        code: "flare::search::unknown_filter".to_owned(),
+        code: "flare::search::unknown_field".to_owned(),
         span: SearchSpan { start, end },
         message: message.to_owned(),
     }
@@ -58,7 +58,7 @@ fn an_invalid_search_refusal_names_its_query_and_errors_as_fields() {
     assert_eq!(
         listed,
         &[FieldValue::object([
-            ("code", FieldValue::from("flare::search::unknown_filter")),
+            ("code", FieldValue::from("flare::search::unknown_field")),
             ("start", FieldValue::from(0_u32)),
             ("end", FieldValue::from(4_u32)),
             ("message", FieldValue::from(errors[0].message.as_str())),

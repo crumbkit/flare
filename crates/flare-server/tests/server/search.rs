@@ -92,7 +92,7 @@ async fn an_invalid_query_answers_422_with_every_error_and_its_valid_twin_answer
     assert_eq!(code(&problem), "flare::search::invalid");
     let errors = problem["errors"].as_array().unwrap();
     assert_eq!(errors.len(), 2);
-    assert_eq!(errors[0]["code"], "flare::search::unknown_filter");
+    assert_eq!(errors[0]["code"], "flare::search::unknown_field");
     assert_eq!(errors[0]["span"], json!({"start": 0, "end": 4}));
     assert_eq!(
         errors[0]["message"],

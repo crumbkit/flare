@@ -83,8 +83,7 @@ impl Clause {
             Test::Text(text) => share.title().as_str().to_lowercase().contains(text),
             Test::Types(types) => types.iter().any(|kind| match (kind, share.kind()) {
                 (ShareType::Markdown, ShareKind::Document) => true,
-                // flare serves no HTML shares yet, so html matches none.
-                _ => false,
+                (ShareType::Html, ShareKind::Document) => false,
             }),
             Test::People(people) => people.contains(share.owner()),
         };

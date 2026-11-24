@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[non_exhaustive]
 pub enum ErrorCode {
     /// A `field:` that the syntax does not have yet.
-    UnknownFilter,
+    UnknownField,
     /// A quote with no closing quote.
     UnclosedQuote,
     /// A filter with no value, or an empty value in a comma list.
@@ -28,18 +28,20 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
-    /// The code's spelling, such as `flare::search::unknown_filter`.
+    /// The code's spelling, such as `unknown_field`, which names no tool,
+    /// so every tool that reads the case file reads it as it is. Flare
+    /// reports it after its own `flare::search::` prefix.
     #[must_use]
     pub const fn text(self) -> &'static str {
         match self {
-            Self::UnknownFilter => "flare::search::unknown_filter",
-            Self::UnclosedQuote => "flare::search::unclosed_quote",
-            Self::EmptyValue => "flare::search::empty_value",
-            Self::EmptyPhrase => "flare::search::empty_phrase",
-            Self::NothingToExclude => "flare::search::nothing_to_exclude",
-            Self::TooLong => "flare::search::too_long",
-            Self::UnknownType => "flare::search::unknown_type",
-            Self::UnknownPerson => "flare::search::unknown_person",
+            Self::UnknownField => "unknown_field",
+            Self::UnclosedQuote => "unclosed_quote",
+            Self::EmptyValue => "empty_value",
+            Self::EmptyPhrase => "empty_phrase",
+            Self::NothingToExclude => "nothing_to_exclude",
+            Self::TooLong => "too_long",
+            Self::UnknownType => "unknown_type",
+            Self::UnknownPerson => "unknown_person",
         }
     }
 }
@@ -106,7 +108,7 @@ fn distance(one: &str, two: &str) -> usize {
 }
 
 /// The sentence for an unknown filter called `name`.
-fn unknown_filter(name: &str) -> String {
+fn unknown_field(name: &str) -> String {
     let lower = name.to_ascii_lowercase();
     if LATER.contains(&lower.as_str()) {
         return format!(
@@ -133,7 +135,7 @@ fn unknown_filter(name: &str) -> String {
 /// or the value that names nothing.
 pub(crate) fn message(code: ErrorCode, span: Span, field: Option<Field>, name: &str) -> QueryError {
     let sentence = match (code, field) {
-        (ErrorCode::UnknownFilter, _) => unknown_filter(name),
+        (ErrorCode::UnknownField, _) => unknown_field(name),
         (ErrorCode::UnclosedQuote, _) => {
             "This quote is not closed; add \" after the last word of the phrase.".to_owned()
         }

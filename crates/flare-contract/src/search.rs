@@ -113,7 +113,8 @@ pub struct SearchFields {
 /// One error in a search's text, which a problem document lists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SearchError {
-    /// The stable code, such as `flare::search::unknown_filter`.
+    /// The stable code, such as `flare::search::unknown_field`: flare's
+    /// prefix before the code the case file spells.
     pub code: String,
     /// The characters it covers.
     pub span: SearchSpan,
@@ -161,10 +162,14 @@ impl From<&Part> for SearchPart {
     }
 }
 
+/// The prefix flare puts before each code of the case file when it
+/// reports a search error.
+const SEARCH_PREFIX: &str = "flare::search::";
+
 impl From<&QueryError> for SearchError {
     fn from(error: &QueryError) -> Self {
         Self {
-            code: error.code.text().to_owned(),
+            code: format!("{SEARCH_PREFIX}{}", error.code.text()),
             span: error.span.into(),
             message: error.message.clone(),
         }

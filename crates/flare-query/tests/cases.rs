@@ -127,3 +127,13 @@ fn the_canonical_text_of_every_valid_case_parses_back_to_the_same_parts() {
         assert_eq!(again.to_string(), query.to_string(), "{}", case.about);
     }
 }
+
+#[test]
+fn the_case_file_s_codes_name_no_tool_so_board_reads_them_as_they_are() {
+    for case in file().cases {
+        for error in case.errors.unwrap_or_default() {
+            assert!(!error.code.contains("::"), "{}: {}", case.about, error.code);
+        }
+    }
+    assert!(CASES.contains("\"unknown_field\""));
+}

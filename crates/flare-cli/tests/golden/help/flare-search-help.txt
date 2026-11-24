@@ -6,7 +6,7 @@ Usage: flare search [OPTIONS] <QUERY>
 
 Arguments:
   <QUERY>
-          The search, such as 'budget -type:html' or 'from:me "review notes"'
+          The search, such as 'budget -type:html' or 'from:me "review notes"'. It may start with a minus, as in '-from:me'
 
 Options:
       --limit <N>
