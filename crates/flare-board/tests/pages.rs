@@ -249,3 +249,33 @@ fn a_second_publish_after_a_committed_first_names_the_first_as_previous() {
     );
     assert_eq!(block_on(store.versions(&home())).unwrap(), [second, first]);
 }
+
+#[test]
+fn a_record_that_a_complete_walk_finds_no_commit_for_publishes_with_no_previous() {
+    let board = ScratchBoard::new();
+    let store = board.store();
+    publish(&store, ContentFormat::Html, "one");
+    board.git(&["reset", "-q", "HEAD~1"]);
+    // A board program whose walk of the record's newest row from HEAD is
+    // complete and lists no row, the answer that `board::path::not_found`
+    // stands in for when the path is not in HEAD.
+    let real = board.program().display().to_string();
+    let empty = board.script(
+        "empty-walk-board",
+        &format!(
+            r#"case "$*" in
+  "log --json --limit 1 "*)
+    printf '%s\n' '{{"schema":"board/log-report/v2","data":[],"truncated":false,"summary":{{"complete":true}}}}'
+    exit 0;;
+esac
+exec "{real}" "$@"
+"#
+        ),
+    );
+    let walking = board.store_with(&empty, Limits::default());
+
+    let recovered = publish(&walking, ContentFormat::Html, "two");
+
+    assert_eq!(block_on(store.versions(&home())).unwrap(), [recovered]);
+    assert_eq!(previous_in_tree(&board), serde_json::Value::Null);
+}

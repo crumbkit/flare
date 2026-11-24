@@ -6,10 +6,10 @@
 //! <commit>` starts at any commit the repository holds, including one on
 //! another branch, so a walk from the version alone cannot decide it.
 
-use super::{record_path, unavailable};
+use super::{at, record_path, unavailable};
 use crate::process::{Board, Rows};
 use crate::report::{Failure, LogRow};
-use flare_core::{PageName, PageStoreError, PageVersion};
+use flare_core::{PageName, PagePin, PageStoreError, PageVersion, PublishedPage};
 use std::sync::Arc;
 
 /// The commits that changed the page's record, newest first. A walk that
@@ -56,7 +56,7 @@ pub(crate) async fn newest(board: &Arc<Board>, name: &PageName) -> Result<LogRow
 }
 
 /// What the newest row from `HEAD` says about a version.
-pub(crate) enum Newest {
+enum Newest {
     /// The version is the newest row of a complete walk, so it changed the
     /// record, `HEAD` reaches it and it is no shallow boundary.
     Is,
@@ -71,7 +71,7 @@ pub(crate) enum Newest {
 
 /// Whether `version` is the newest row of the page record's log from
 /// `HEAD`. A failed read answers `Unavailable`.
-pub(crate) async fn is_newest(
+async fn is_newest(
     board: &Arc<Board>,
     name: &PageName,
     version: &str,
@@ -98,9 +98,8 @@ pub(crate) async fn is_newest(
 /// past 100,000 commits or at a shallow clone's boundary, and does not list
 /// the version, the version is accepted unchecked, so a page whose history
 /// is longer than the walk can still be pinned (an accepted gap in
-/// docs/board-store.md). A caller that already knows the walk is not
-/// complete skips this read.
-pub(crate) async fn reachable(
+/// docs/board-store.md).
+async fn reachable(
     board: &Arc<Board>,
     name: &PageName,
     version: &str,
@@ -118,4 +117,28 @@ pub(crate) async fn reachable(
         (true, _) | (false, false) => Ok(()),
         (false, true) => Err(PageStoreError::NotFound),
     }
+}
+
+/// The page at `pin`, for a pin about to be written: `at`'s check, and
+/// then that `HEAD` reaches the version, so a binding or an origin never
+/// pins a version that `versions` does not list (invariant 4). A version
+/// on another branch, or one a reset orphaned, is not found.
+///
+/// When the version is the newest row of a complete walk from `HEAD`, that
+/// read decides it. Otherwise the walk of every row from `HEAD` does. When
+/// the walk from `HEAD` is not complete and does not list the version, the
+/// version is accepted unchecked (an accepted gap in docs/board-store.md).
+pub(crate) async fn pinned(
+    board: &Arc<Board>,
+    pin: &PagePin,
+) -> Result<PublishedPage, PageStoreError> {
+    let page = at(board, pin).await?;
+    let version = pin.version().as_str();
+    match is_newest(board, pin.name(), version).await? {
+        Newest::Is => {}
+        Newest::Other => reachable(board, pin.name(), version).await?,
+        // Accepted gap: a walk that stopped early cannot decide reachability.
+        Newest::Unreached => {}
+    }
+    Ok(page)
 }

@@ -251,8 +251,9 @@ This file records the notable changes to flare. The format follows
   `board::put::head_moved` leaves behind. The page's first committed
   version names no previous version. Before, every later publish of that
   page answered `Unavailable` until a person deleted the files.
-- `BoardStore::at` answers `NotFound` for a commit that changed a page but
-  that `HEAD` cannot reach, such as one on another branch or one a reset
-  orphaned, so a binding can no longer pin a version that `versions` does
-  not list. `docs/board-store.md` holds flare-board's state tables, crash
+- `save_binding`, `move_binding` and a publish made from a page version
+  refuse a version that `HEAD` cannot reach, such as one on another branch
+  or one a reset orphaned, so a binding can no longer pin a version that
+  `versions` does not list. Reading a version with `at` still reads one
+  commit. `docs/board-store.md` holds flare-board's state tables, crash
   points, invariants and accepted gaps.
