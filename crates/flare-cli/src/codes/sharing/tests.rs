@@ -77,3 +77,9 @@ fn the_repair_after_an_unreadable_write_names_a_flare_command() {
     };
     assert!(names_a_command(&repair, &commands()), "{repair}");
 }
+
+#[test]
+fn a_not_found_refusal_with_no_server_and_no_share_has_no_fields() {
+    let refused = Refused::new(ApiCode::ShareNotFound, None, "");
+    assert!(refused.fields().is_empty(), "{:?}", refused.fields());
+}

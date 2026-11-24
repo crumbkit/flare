@@ -1,0 +1,7 @@
+2026-11-23T09:00:00.000000Z  INFO flare serves this board
+{"_aws":{"Timestamp":1795424400000,"CloudWatchMetrics":[{"Namespace":"Flare","Dimensions":[[]],"Metrics":[{"Name":"PagesViewed","Unit":"Count"}]}]},"PagesViewed":1}
+{"_aws":{"Timestamp":1795424400000,"CloudWatchMetrics":[{"Namespace":"Flare","Dimensions":[[]],"Metrics":[{"Name":"PagesViewed","Unit":"Count"}]}]},"PagesViewed":1}
+{"_aws":{"Timestamp":1795424400000,"CloudWatchMetrics":[{"Namespace":"Flare","Dimensions":[[]],"Metrics":[{"Name":"SignIns","Unit":"Count"}]}]},"SignIns":1}
+2026-11-23T09:00:00.100000Z  INFO served request=1 method=GET route="/up" status=200 ms=0
+{"_aws":{"Timestamp":1795510800000,"CloudWatchMetrics":[{"Namespace":"Flare","Dimensions":[[]],"Metrics":[{"Name":"PagesViewed","Unit":"Count"}]}]},"PagesViewed":1}
+{"_aws":{"Timestamp":1795510800000,"CloudWatchMetrics":[{"Namespace":"Flare","Dimensions":[[]],"Metrics":[{"Name":"SharesCreated","Unit":"Count"}]}]},"SharesCreated":1}

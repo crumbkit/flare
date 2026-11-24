@@ -3,11 +3,13 @@
 //!
 //! The client follows no redirect, so the token never goes to another
 //! origin. A refusal's problem document becomes [`Refused`] with the
-//! server's code; any other answer that is not the expected JSON is
-//! [`SharingFailed::BadAnswer`].
+//! server's code, and the server's own busy, fault and deadline answers
+//! become [`SharingFailed::ServerError`]; any other answer that is not the
+//! expected JSON is [`SharingFailed::BadAnswer`].
 
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use flare_contract::{ApiCode, ProblemDocument};
+use flare_server::{SERVER_BUSY, SERVER_DEADLINE, SERVER_FAULT};
 use reqwest::{Client, Method, StatusCode};
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::Serialize;
@@ -81,7 +83,8 @@ impl Api {
     ///
     /// # Errors
     ///
-    /// Returns [`Refused`] for a problem document,
+    /// Returns [`Refused`] for a problem document of the share API,
+    /// [`SharingFailed::ServerError`] for the server's own failure,
     /// [`SharingFailed::Unreachable`] when the server does not answer, and
     /// [`SharingFailed::BadAnswer`] for any other answer.
     pub(crate) async fn send<T: DeserializeOwned>(
@@ -140,6 +143,15 @@ impl Api {
                 format!("it answered {status} with no problem document"),
             )
         })?;
+        if let Some((answer, next)) = server_answer(&problem.code) {
+            return Err(SharingFailed::ServerError {
+                server: self.origin.clone(),
+                answer,
+                title: problem.title,
+                next,
+            }
+            .into());
+        }
         match ApiCode::from_text(&problem.code) {
             Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
                 .naming(problem.share.as_deref())
@@ -150,6 +162,20 @@ impl Api {
             ))),
         }
     }
+}
+
+/// The server's own failure that `code` names, with what it means for
+/// running the command again, or `None` for any other code. A busy server
+/// answers before the handler runs, so nothing was done. A fault or a
+/// passed deadline may follow a finished write.
+fn server_answer(code: &str) -> Option<(&'static str, NextRun)> {
+    [
+        (SERVER_BUSY, NextRun::Clean),
+        (SERVER_DEADLINE, NextRun::MaybeDone),
+        (SERVER_FAULT, NextRun::MaybeDone),
+    ]
+    .into_iter()
+    .find(|(text, _)| *text == code)
 }
 
 /// What went wrong with a request, without its URL, whose query can hold a

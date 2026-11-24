@@ -7,6 +7,16 @@ use crate::reply::Reply;
 use http::StatusCode;
 use http::header::{ACCEPT, HeaderMap};
 
+/// The code of the answer when no work slot is free, so the handler never
+/// ran.
+pub const SERVER_BUSY: &str = "server::busy";
+/// The code of the answer when a request outlived `Limits::request_time`,
+/// which may follow a finished write.
+pub const SERVER_DEADLINE: &str = "server::deadline";
+/// The code of the answer when a handler panicked, which may follow a
+/// finished write.
+pub const SERVER_FAULT: &str = "server::fault";
+
 /// The refusals and failures, one per code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Code {
@@ -109,9 +119,9 @@ impl Code {
             Self::OidcUnavailable => (S::SERVICE_UNAVAILABLE, "oidc::unavailable"),
             Self::BadReturn => (S::BAD_REQUEST, "oidc::bad_return"),
             Self::HandoverUnknown => (S::FORBIDDEN, "oidc::handover_unknown"),
-            Self::ServerBusy => (S::SERVICE_UNAVAILABLE, "server::busy"),
-            Self::Deadline => (S::SERVICE_UNAVAILABLE, "server::deadline"),
-            Self::Fault => (S::INTERNAL_SERVER_ERROR, "server::fault"),
+            Self::ServerBusy => (S::SERVICE_UNAVAILABLE, SERVER_BUSY),
+            Self::Deadline => (S::SERVICE_UNAVAILABLE, SERVER_DEADLINE),
+            Self::Fault => (S::INTERNAL_SERVER_ERROR, SERVER_FAULT),
         }
     }
 

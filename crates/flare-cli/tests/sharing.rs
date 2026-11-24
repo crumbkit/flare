@@ -180,12 +180,13 @@ fn a_login_whose_keychain_refuses_the_token_gives_its_label_to_the_next_login() 
     api.issue();
     #[expect(clippy::disallowed_methods, reason = "the tests run the built binary")]
     let refused = home
-        .command(&["login", &api.origin])
+        .command(&["login", &api.origin, "--json"])
         .env("FLARE_KEYCHAIN", refusing)
         .env("FLARE_OPENER", home.login_opener(None))
         .output()
         .unwrap();
-    run::Ran::from(refused).assert_failed("flare::keychain::unavailable");
+    let printed = failure(&run::Ran::from(refused), "flare::keychain::unavailable");
+    assert_eq!(printed["fields"], json!({"action": "save"}), "{printed}");
     api.issue();
     home.sharing(&["login", &api.origin]).assert_ok();
     let labels: Vec<Value> = api
@@ -275,7 +276,13 @@ fn a_login_whose_browser_sign_in_fails_gives_a_terminal_recovery_for_flare_login
 
     let ran = home.sharing(&["login", &api.origin, "--json"]);
 
-    ran.assert_failed("flare::login::failed");
+    let printed = failure(&ran, "flare::login::failed");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin}),
+        "{}",
+        ran.all()
+    );
     let recovery = recovery(&ran);
     assert_eq!(recovery["kind"], "terminal", "{}", ran.all());
     assert_eq!(
@@ -292,7 +299,8 @@ fn a_command_with_no_saved_login_hands_the_sign_in_to_a_person_as_a_hint() {
 
     let ran = home.sharing(&["shares", "--json"]);
 
-    ran.assert_failed("flare::login::needed");
+    let printed = failure(&ran, "flare::login::needed");
+    assert_eq!(printed["fields"], json!({"server": null}), "{}", ran.all());
     let recovery = recovery(&ran);
     assert_eq!(recovery["kind"], "hint", "{}", ran.all());
     assert!(
@@ -310,7 +318,13 @@ fn a_saved_login_whose_token_is_gone_gives_a_terminal_recovery_for_flare_login_w
 
     let ran = home.sharing(&["shares", "--json"]);
 
-    ran.assert_failed("flare::login::needed");
+    let printed = failure(&ran, "flare::login::needed");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin}),
+        "{}",
+        ran.all()
+    );
     let recovery = recovery(&ran);
     assert_eq!(recovery["kind"], "terminal", "{}", ran.all());
     assert_eq!(
@@ -474,8 +488,27 @@ fn share_update_keeps_the_servers_refusal_code_for_a_share_the_caller_cannot_pub
         404,
         &problem("flare::shares::not_found", 404, &api.origin),
     );
-    home.sharing(&["share", file.to_str().unwrap(), "--update", FLARE])
-        .assert_failed("flare::shares::not_found");
+    let file = file.to_str().unwrap();
+    let ran = home.sharing(&["share", file, "--update", FLARE, "--json"]);
+    let printed = failure(&ran, "flare::shares::not_found");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "hint", "text": "check the flare id"}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["alternatives"],
+        json!([{"kind": "hint", "text": "ask the flare's owner to share it with you"}]),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin}),
+        "{}",
+        ran.all()
+    );
 }
 
 #[test]
@@ -1543,6 +1576,12 @@ fn a_partly_shared_refusal_names_flare_grant_with_the_share_the_server_named() {
     partly_shared(&api, Some(PARTLY));
     let ran = home.sharing(&["share", file, "--with", "ana@example.org", "--json"]);
     let printed = failure(&ran, "flare::shares::partly_shared");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin, "share": PARTLY}),
+        "{}",
+        ran.all()
+    );
     let call = format!("flare grant {PARTLY} --with <ADDRESS> --re <ID>");
     assert_eq!(
         printed["recovery"],
@@ -1582,6 +1621,12 @@ fn a_partly_shared_refusal_without_a_share_names_flare_grant_with_a_placeholder_
         assert_eq!(
             printed["recovery"],
             json!({"kind": "run", "call": "flare grant <ID> --with <ADDRESS> --re <ID>"}),
+            "{share:?}: {}",
+            ran.all()
+        );
+        assert_eq!(
+            printed["fields"],
+            json!({"server": api.origin}),
             "{share:?}: {}",
             ran.all()
         );
@@ -1760,10 +1805,20 @@ fn a_saved_login_that_is_not_json_is_refused_naming_login_json_in_the_path_field
         ran.all()
     );
     assert!(
-        help_line(&ran)
-            .contains("fix or remove the state file or directory that the problem names"),
+        help_line(&ran).contains("fix the state file or directory that the problem names"),
         "{}",
         ran.all()
+    );
+    let printed = failure(&home.sharing(&args), "flare::state::unusable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "hint", "text": "fix the state file or directory that the problem names"}),
+        "{printed}"
+    );
+    assert_eq!(
+        printed["alternatives"],
+        json!([{"kind": "hint", "text": "remove the state file or directory that the problem names"}]),
+        "{printed}"
     );
 }
 
@@ -1794,4 +1849,135 @@ fn a_labels_file_that_is_not_json_is_refused_naming_labels_json_in_the_path_fiel
     );
     std::fs::remove_file(&labels).unwrap();
     home.sharing(&["login", &api.origin, "--json"]).assert_ok();
+}
+
+/// The problem document that a flare server sends with `code`, one of its
+/// own failures, `status` and `title`, as flare-server's problem.rs writes
+/// it.
+fn server_problem(code: &str, status: u16, title: &str) -> Value {
+    json!({
+        "type": "about:blank",
+        "title": title,
+        "status": status,
+        "code": code,
+    })
+}
+
+/// The server's title of `server::busy`.
+const BUSY: &str = "The server is busy. Try again.";
+/// The server's title of `server::fault`.
+const FAULT: &str = "The server failed while answering. The failure is logged.";
+/// The server's title of `server::deadline`.
+const DEADLINE: &str = "The request took longer than 30 seconds, and the server stopped it. Reload to see whether a save landed.";
+
+#[test]
+fn a_share_the_server_is_too_busy_to_take_fails_with_server_error_and_retries() {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route(
+        "POST",
+        "/api/shares",
+        503,
+        &server_problem("server::busy", 503, BUSY),
+    );
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::network::server_error");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin, "answer": "server::busy"}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(
+        printed["message"],
+        format!("{} could not finish the request: {BUSY}", api.origin),
+        "{}",
+        ran.all()
+    );
+
+    api.route(
+        "POST",
+        "/api/shares",
+        201,
+        &json!({
+            "share": summary(PARTLY, "review"),
+            "granted": [],
+            "responds_to": [],
+        }),
+    );
+    home.sharing(&["share", &file, "--json"]).assert_ok();
+}
+
+#[test]
+fn a_share_or_a_new_version_the_server_failed_or_stopped_tells_the_caller_to_check_flare_shares_first()
+ {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route(
+        "POST",
+        "/api/shares",
+        500,
+        &server_problem("server::fault", 500, FAULT),
+    );
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::network::server_error");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin, "answer": "server::fault"}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+
+    api.route(
+        "POST",
+        &format!("/api/shares/{PARTLY}/versions"),
+        503,
+        &server_problem("server::deadline", 503, DEADLINE),
+    );
+    let ran = home.sharing(&["share", &file, "--update", PARTLY, "--json"]);
+    let printed = failure(&ran, "flare::network::server_error");
+    assert_eq!(
+        printed["fields"],
+        json!({"server": api.origin, "answer": "server::deadline"}),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+}
+
+#[test]
+fn a_listing_the_server_failed_retries_and_a_code_flare_does_not_know_keeps_bad_answer() {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    api.route(
+        "GET",
+        "/api/shares",
+        500,
+        &server_problem("server::fault", 500, FAULT),
+    );
+    let ran = home.sharing(&["shares", "--json"]);
+    let printed = failure(&ran, "flare::network::server_error");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+
+    api.route(
+        "POST",
+        "/api/shares",
+        500,
+        &server_problem("flare::future::thing", 500, "Something new."),
+    );
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::network::bad_answer");
+    assert_eq!(printed["recovery"], server_check(), "{}", ran.all());
 }
