@@ -184,6 +184,21 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- Three failures give the file they name in a field of the JSON failure
+  document, so an agent no longer reads the path out of the message.
+  `flare::board::program_unavailable` gives `program`, the board program
+  flare could not resolve or that did not answer. `flare::state::unusable`
+  gives `path`, the state directory flare could not create.
+  `flare::opener::failed` gives `program`, the opener that did not start,
+  ran past its deadline or exited with an error. Each field is `null` when
+  flare does not hold the path apart from the message. The messages read
+  as before, except that a board program that does not answer now reads
+  "the board program /path: did not answer".
+- `flare::metrics::unreadable` gives the hint "pass a readable log file"
+  and the alternative "pipe the log to flare metrics on standard input" as
+  two recoveries, in place of one hint that joined them with "or". With
+  standard input on a terminal, its message ends "standard input is a
+  terminal".
 - A failure that needs a new sign-in now gives a `terminal` recovery for
   `flare login <server>` with the server filled in, because only a person
   can finish the browser sign-in. This covers `flare::login::needed` with a

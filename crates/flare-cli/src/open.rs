@@ -137,6 +137,7 @@ impl Server {
             .map_err(|_| not_running("the server stopped answering"))?;
         if reply.status() != StatusCode::OK {
             return Err(Failed::OpenerFailed {
+                program: None,
                 problem: format!("the server answered {} for a launch code", reply.status()),
             });
         }
@@ -145,6 +146,7 @@ impl Server {
             .await
             .map_err(|_| not_running("the server stopped answering"))?;
         let codes: Codes = serde_json::from_slice(&body).map_err(|_| Failed::OpenerFailed {
+            program: None,
             problem: "the server's answer names no opener file".to_owned(),
         })?;
         Ok(codes.opener)
@@ -161,6 +163,7 @@ fn record(root: &std::path::Path, env: &Snapshot) -> Result<ServerRecord, Failed
             Err(not_running("server.json is not a flare server file"))
         }
         Err(error) => Err(Failed::StateUnusable {
+            path: None,
             problem: error.to_string(),
         }),
     }
