@@ -262,7 +262,10 @@ This file records the notable changes to flare. The format follows
   their recovery says to check that `flare shares` does not already list
   the share or the version before running the command again. A 502, 503
   or 504 answer with no problem document, which a proxy in front of the
-  server may send after the server made the share, gets the same check. A
+  server may send after the server made the share, gets the same check,
+  and so does the server's own `flare::shares::unavailable` refusal of a
+  share or a version, which it sends when it does not know whether the
+  write happened; `flare shares` keeps the retry for that refusal. A
   connection that was refused sends nothing, so it keeps the retry, any
   other answer that is not a success keeps the server check and retry, and
   other commands keep their recoveries.

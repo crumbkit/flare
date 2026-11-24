@@ -184,15 +184,19 @@ fn bad_answer(next: NextRun) -> Recovery {
 impl Failed {
     /// The same failure for a command that writes a share or a version. A
     /// request that may have reached the server, whose answer flare could
-    /// not read or did not get, may have made the share or the version, so
-    /// its recovery checks `flare shares` before the command runs again.
+    /// not read or did not get, or that the server refused with
+    /// `shares::unavailable` because it does not know the write's outcome,
+    /// may have made the share or the version, so its recovery checks
+    /// `flare shares` before the command runs again.
     pub(crate) fn after_a_write(mut self) -> Self {
-        if let Self::Sharing(
-            SharingFailed::BadAnswer { next, .. } | SharingFailed::Unreachable { next, .. },
-        ) = &mut self
-            && *next == NextRun::MaybeDone
-        {
-            *next = NextRun::CheckShares;
+        match &mut self {
+            Self::Sharing(
+                SharingFailed::BadAnswer { next, .. } | SharingFailed::Unreachable { next, .. },
+            ) if *next == NextRun::MaybeDone => *next = NextRun::CheckShares,
+            Self::Refused(refused) if refused.code == ApiCode::SharesUnavailable => {
+                refused.maybe_written = true;
+            }
+            _ => {}
         }
         self
     }
@@ -235,6 +239,10 @@ pub struct Refused {
     /// The flares of the `flare activity` that was refused, which a
     /// `bad_cursor` recovery names.
     flares: Vec<ShareId>,
+    /// Whether the refused request was a write of a share or a version
+    /// whose outcome the server does not know, which `shares::unavailable`
+    /// says after a write, so the recovery checks `flare shares` first.
+    maybe_written: bool,
 }
 
 impl Refused {
@@ -246,6 +254,7 @@ impl Refused {
             server: server.to_owned(),
             share: None,
             flares: Vec::new(),
+            maybe_written: false,
         }
     }
 
@@ -308,12 +317,16 @@ impl Failure for Refused {
         Code::from_spelling(self.code.text())
     }
 
-    /// The recovery for the code. `partly_shared` and `bad_cursor` take the
-    /// typed call that `Refused::typed_call` builds. Every other code
-    /// takes the API's recovery, where a `run` recovery, which the API uses
-    /// only for `flare login`, becomes the `terminal` sign-in that
+    /// The recovery for the code. A `shares::unavailable` refusal of a
+    /// write checks `flare shares` first. `partly_shared` and `bad_cursor`
+    /// take the typed call that `Refused::typed_call` builds. Every other
+    /// code takes the API's recovery, where a `run` recovery, which the API
+    /// uses only for `flare login`, becomes the `terminal` sign-in that
     /// `sign_in` builds, because only a person can finish it.
     fn recovery(&self) -> Recovery {
+        if self.maybe_written {
+            return check_shares();
+        }
         if let Some(typed) = self.typed_call() {
             return typed;
         }

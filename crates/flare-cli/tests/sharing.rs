@@ -1212,6 +1212,48 @@ fn a_share_or_a_new_version_a_gateway_answers_without_a_problem_document_tells_t
 }
 
 #[test]
+fn a_share_or_a_new_version_whose_stores_did_not_answer_tells_the_caller_to_check_flare_shares_first()
+ {
+    let api = FakeApi::start();
+    let (home, file) = with_file(&api);
+    let refusal = problem("flare::shares::unavailable", 503, &api.origin);
+    api.route("POST", "/api/shares", 503, &refusal);
+    let ran = home.sharing(&["share", &file, "--json"]);
+    let printed = failure(&ran, "flare::shares::unavailable");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+
+    api.route(
+        "POST",
+        &format!("/api/shares/{PARTLY}/versions"),
+        503,
+        &refusal,
+    );
+    let ran = home.sharing(&["share", &file, "--update", PARTLY, "--json"]);
+    let printed = failure(&ran, "flare::shares::unavailable");
+    assert_eq!(printed["recovery"], check_shares(), "{}", ran.all());
+}
+
+#[test]
+fn a_listing_whose_stores_did_not_answer_keeps_retry() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/shares",
+        503,
+        &problem("flare::shares::unavailable", 503, &api.origin),
+    );
+    let ran = home.sharing(&["shares", "--json"]);
+    let printed = failure(&ran, "flare::shares::unavailable");
+    assert_eq!(
+        printed["recovery"],
+        json!({"kind": "retry"}),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
 fn a_share_refused_with_a_client_error_and_no_problem_document_keeps_the_server_check_and_retry() {
     let api = FakeApi::start();
     let (home, file) = with_file(&api);
