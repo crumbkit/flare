@@ -5,7 +5,8 @@
 //! `hosted` section makes `flare serve` serve the hosted site, behind a
 //! TLS proxy, and needs an `oidc` section with `client_secret_file`,
 //! because a host has no Keychain. A `stores` key in the hosted section
-//! adds the share API, which `creators` limits and `names` serves. A
+//! adds the share API, which `creators` limits, `names` serves and
+//! `get_flare` links the reading page's Get Flare link to. A
 //! `log` section with `"metrics": true` turns on the metric lines of
 //! docs/metrics.md; they are off without it. Every object refuses
 //! unknown keys, and a
@@ -128,6 +129,7 @@ struct HostedSection {
     stores: Option<flare_aws::HostedConfig>,
     creators: Option<Value>,
     names: Option<std::collections::BTreeMap<String, String>>,
+    get_flare: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -314,6 +316,7 @@ fn hosted(section: HostedSection, oidc_section: OidcSection) -> Result<Hosted, S
             stores: section.stores,
             creators: section.creators,
             names: section.names,
+            get_flare: section.get_flare,
         },
         anyone,
     )?

@@ -8,9 +8,14 @@
 //! share. Left out, it defaults to that for a `domain` or `emails` rule.
 //! An `anyone` rule admits every verified address, so it needs `creators`
 //! written out, and the operator chooses `"anyone admitted"` on purpose.
+//!
+//! `get_flare` is the https address that the reading page's Get Flare link
+//! opens for a reader who has never shared a flare. Left out, the reading
+//! page shows no link to anyone.
 
 use flare_aws::HostedConfig;
 use flare_core::{CreatorDomain, Creators, Email, NamedRecipients};
+use flare_server::GetFlare;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -30,6 +35,8 @@ pub(crate) struct Sharing {
     /// Google account, can sign in and share: `"anyone admitted"` under an
     /// `anyone` admit rule.
     pub(crate) open_to_anyone: bool,
+    /// The address the reading page's Get Flare link opens, when set.
+    pub(crate) get_flare: Option<GetFlare>,
 }
 
 /// The hosted section's share API keys, as the file gave them.
@@ -40,6 +47,8 @@ pub(crate) struct Keys {
     pub(crate) creators: Option<Value>,
     /// `hosted.names`.
     pub(crate) names: Option<BTreeMap<String, String>>,
+    /// `hosted.get_flare`.
+    pub(crate) get_flare: Option<String>,
 }
 
 /// The share API's settings from the hosted section's keys, for an admit
@@ -53,12 +62,15 @@ pub(crate) fn sharing(keys: Keys, anyone: bool) -> Result<Option<Sharing>, Strin
         stores,
         creators,
         names,
+        get_flare,
     } = keys;
     let Some(stores) = stores else {
         let orphan = if creators.is_some() {
             "hosted.creators"
         } else if names.is_some() {
             "hosted.names"
+        } else if get_flare.is_some() {
+            "hosted.get_flare"
         } else {
             return Ok(None);
         };
@@ -78,11 +90,18 @@ pub(crate) fn sharing(keys: Keys, anyone: bool) -> Result<Option<Sharing>, Strin
     };
     let recipients = recipients_from(names.unwrap_or_default())?;
     let open_to_anyone = anyone && creators == Creators::Everyone;
+    let get_flare = get_flare
+        .map(|text| GetFlare::try_from(text.as_str()))
+        .transpose()
+        .map_err(|_| {
+            "hosted.get_flare must be an https URL with a host, such as the project page that readers go to to get Flare".to_owned()
+        })?;
     Ok(Some(Sharing {
         stores,
         creators,
         recipients,
         open_to_anyone,
+        get_flare,
     }))
 }
 

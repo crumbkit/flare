@@ -85,7 +85,8 @@ The share API lets people share Markdown files with named people from the
   "listen": "127.0.0.1:8080",
   "stores": { "region": "eu-west-1", "table": "flare-shares", "bucket": "flare-files" },
   "creators": ["ana@example.com", "@example.com"],
-  "names": { "ana": "ana@example.com" }
+  "names": { "ana": "ana@example.com" },
+  "get_flare": "https://example.com/flare"
 }
 ```
 
@@ -118,6 +119,14 @@ The share API lets people share Markdown files with named people from the
   to `ana@example.com`. A full address still resolves as itself, and a name
   that is not listed is refused as not an email address. `names` without
   `stores` is refused, and a bad entry is refused naming `hosted.names`.
+- `get_flare` is the address that the reading page's Get Flare link opens,
+  in a new tab, for a reader who has never shared a flare
+  (`docs/reading.md`). It must be an `https` URL with a host and no user
+  name or password; anything else stops `flare serve` with
+  `flare::config::invalid` naming `hosted.get_flare` before it listens.
+  Without `get_flare`, the reading page shows no link to anyone.
+  `get_flare` without `stores` is refused. flare sends nothing to the
+  address and counts no clicks.
 - A person who is not a creator gets 403 `flare::shares::not_a_creator`.
 - A share granted to everyone signed in opens to the people the `admit`
   rule admitted when the grant was made. Under a `domain` rule the grant

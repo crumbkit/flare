@@ -1,8 +1,9 @@
 //! Unit tests of the token check against the admit rule, of the share
-//! and version checks, and of what an admin sees of a team's grant.
+//! and version checks, of what an admin sees of a team's grant, and of the
+//! get flare address a reading page links to.
 
 use super::tokens::{digest, new_secret, token_text};
-use super::{Api, Call, Sharing, TokenCheck};
+use super::{Api, Call, GetFlare, Sharing, TokenCheck};
 use flare_auth_oidc::{Admit, AllowEntry, AllowList, Reach};
 use flare_contract::{ApiCode, Format, VersionRequest};
 use flare_core::memory::MemoryTeamStore;
@@ -295,5 +296,232 @@ async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_in_the_lis
     assert_eq!(
         read_by_owner.with,
         Some(vec!["bob@example.org".to_owned(), "team:design".to_owned()])
+    );
+}
+
+/// A share store that counts `owned_by` reads, and fails them while
+/// `fail_owned` is set. Every other call passes through.
+#[derive(Debug, Default, Clone)]
+struct Counting {
+    inner: std::sync::Arc<MemoryShareStore>,
+    owned_reads: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    fail_owned: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl flare_core::ShareStore for Counting {
+    async fn create(
+        &self,
+        new: flare_core::NewShare,
+    ) -> Result<flare_core::Share, flare_core::ShareStoreError> {
+        self.inner.create(new).await
+    }
+    async fn get(&self, id: &ShareId) -> Result<flare_core::Share, flare_core::ShareStoreError> {
+        self.inner.get(id).await
+    }
+    async fn publish(
+        &self,
+        id: &ShareId,
+        version: flare_core::NewVersion,
+    ) -> Result<flare_core::ShareVersion, flare_core::ShareStoreError> {
+        self.inner.publish(id, version).await
+    }
+    async fn version(
+        &self,
+        id: &ShareId,
+        number: flare_core::ShareVersion,
+    ) -> Result<flare_core::SharedVersion, flare_core::ShareStoreError> {
+        self.inner.version(id, number).await
+    }
+    async fn owned_by(
+        &self,
+        owner: &PrincipalId,
+    ) -> Result<flare_core::Listing<flare_core::Share>, flare_core::ShareStoreError> {
+        use std::sync::atomic::Ordering;
+        self.owned_reads.fetch_add(1, Ordering::SeqCst);
+        if self.fail_owned.load(Ordering::SeqCst) {
+            return Err(flare_core::ShareStoreError::Unavailable);
+        }
+        self.inner.owned_by(owner).await
+    }
+}
+
+const GET_FLARE: &str = "https://example.com/flare";
+
+fn person(address: &str) -> Principal {
+    Principal::with_email(email(address).principal_id(), email(address))
+}
+
+/// Shares a Markdown flare titled `title` as `owner`, granted to `with`,
+/// and returns its id.
+async fn share_as(
+    flares: &Flares<
+        Counting,
+        MemoryGrantStore,
+        MemoryResponseStore,
+        MemoryCommentStore,
+        MemoryCursorStore,
+    >,
+    owner: &str,
+    id: &str,
+    with: &[&str],
+) -> ShareId {
+    let id = ShareId::try_from(id).unwrap();
+    let new = NewFlare::new(
+        id.clone(),
+        ShareTitle::try_from("Plan").unwrap(),
+        ShareContent::Document(DocumentText::try_from("# Plan\n").unwrap()),
+        with.iter().map(|address| email(address)).collect(),
+        Vec::new(),
+    );
+    flares.share(&person(owner), new, NOW).await.unwrap();
+    id
+}
+
+/// A share API where ana shared one flare with bob, its id and the store,
+/// linking to `get_flare` when given.
+async fn badged(
+    get_flare: Option<&str>,
+) -> (
+    Sharing<
+        Counting,
+        MemoryGrantStore,
+        MemoryResponseStore,
+        MemoryCommentStore,
+        MemoryCursorStore,
+        MemoryTokenStore,
+        AddressesOnly,
+    >,
+    ShareId,
+    Counting,
+) {
+    let store = Counting::default();
+    let flares = Flares::new(
+        store.clone(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        MemoryCommentStore::new(),
+        MemoryCursorStore::new(),
+        Creators::Everyone,
+    );
+    let id = share_as(
+        &flares,
+        "ana@example.org",
+        "0123456789abcdef0123456789abcdef",
+        &["bob@example.org"],
+    )
+    .await;
+    let api = Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        AddressesOnly,
+        listing(&["ana@example.org", "bob@example.org"]),
+    );
+    let api = match get_flare {
+        Some(text) => api.with_get_flare(GetFlare::try_from(text).unwrap()),
+        None => api,
+    };
+    (api, id, store)
+}
+
+fn owned_reads(store: &Counting) -> usize {
+    store.owned_reads.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn a_reader_who_has_never_shared_gets_the_get_flare_address() {
+    let (api, id, _) = badged(Some(GET_FLARE)).await;
+    let bob = person("bob@example.org");
+    let reading = api.read(&bob, id.as_str(), None).await.unwrap();
+    assert_eq!(reading.badge.as_deref(), Some(GET_FLARE));
+}
+
+#[tokio::test]
+async fn a_reader_who_owns_a_share_gets_no_get_flare_address() {
+    let (api, id, _) = badged(Some(GET_FLARE)).await;
+    let bob = person("bob@example.org");
+    api.run(
+        &bob,
+        Call::Create(share_request("Mine", Format::Markdown, "# Mine\n")),
+        NOW,
+    )
+    .await
+    .unwrap();
+    let reading = api.read(&bob, id.as_str(), None).await.unwrap();
+    assert_eq!(reading.badge, None);
+}
+
+#[tokio::test]
+async fn the_owner_gets_no_get_flare_address_and_their_shares_are_not_read() {
+    let (api, id, store) = badged(Some(GET_FLARE)).await;
+    let ana = person("ana@example.org");
+    let reading = api.read(&ana, id.as_str(), None).await.unwrap();
+    assert!(reading.own);
+    assert_eq!(reading.badge, None);
+    assert_eq!(owned_reads(&store), 0);
+    // The reader twin: bob's read does list his shares.
+    api.read(&person("bob@example.org"), id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(owned_reads(&store), 1);
+}
+
+#[tokio::test]
+async fn a_site_with_no_get_flare_address_gives_no_reader_one_and_reads_no_shares() {
+    let (api, id, store) = badged(None).await;
+    let reading = api
+        .read(&person("bob@example.org"), id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(reading.badge, None);
+    assert_eq!(owned_reads(&store), 0);
+}
+
+#[tokio::test]
+async fn a_store_that_cannot_list_the_readers_shares_still_gives_the_page_with_no_address() {
+    let (api, id, store) = badged(Some(GET_FLARE)).await;
+    store
+        .fail_owned
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let reading = api
+        .read(&person("bob@example.org"), id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(reading.badge, None);
+    assert_eq!(reading.title, "Plan");
+    store
+        .fail_owned
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let reading = api
+        .read(&person("bob@example.org"), id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(reading.badge.as_deref(), Some(GET_FLARE));
+}
+
+#[test]
+fn a_get_flare_address_must_be_an_https_url_with_a_host() {
+    for refused in [
+        "http://example.com/flare",
+        "/flare",
+        "example.com/flare",
+        "not a url",
+        "https://",
+        "https:///flare",
+        "https://user:secret@example.com/flare",
+        "javascript:alert(1)",
+        "",
+    ] {
+        assert!(GetFlare::try_from(refused).is_err(), "{refused}");
+    }
+    for admitted in [
+        "https://example.com",
+        "https://example.com/flare",
+        "https://example.com/flare?from=page#get",
+    ] {
+        assert!(GetFlare::try_from(admitted).is_ok(), "{admitted}");
+    }
+    assert_eq!(
+        GetFlare::try_from(GET_FLARE).unwrap().as_str(),
+        "https://example.com/flare"
     );
 }

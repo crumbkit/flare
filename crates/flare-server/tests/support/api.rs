@@ -15,7 +15,7 @@ use flare_core::{
     Creators, DocumentText, Email, FlareTeams, Flares, Principal, ShareContent, ShareId, Shares,
     Timestamp,
 };
-use flare_server::Sharing;
+use flare_server::{GetFlare, Sharing};
 use serde_json::{Value, json};
 use url::Url;
 
@@ -51,7 +51,7 @@ impl Api {
     /// The server of [`Api::start`], whose app `extra` finishes after the
     /// share API is added, such as by turning metrics on.
     pub async fn start_with(extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
-        Self::start_full(Admit::Anyone(Reach::Everything), extra).await
+        Self::launch(Admit::Anyone(Reach::Everything), None, extra).await
     }
 
     /// The same server under an admit rule of the domain example.com.
@@ -63,6 +63,21 @@ impl Api {
     /// The server of [`Api::start`] with the share API's admit rule `admit`,
     /// whose app `extra` finishes after the share API is added.
     pub async fn start_full(admit: Admit, extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
+        Self::launch(admit, None, extra).await
+    }
+
+    /// The server of [`Api::start`], whose reading pages link readers who
+    /// have never shared to `get_flare`.
+    pub async fn with_get_flare(get_flare: &str) -> Self {
+        let address = GetFlare::try_from(get_flare).unwrap();
+        Self::launch(Admit::Anyone(Reach::Everything), Some(address), |app| app).await
+    }
+
+    async fn launch(
+        admit: Admit,
+        get_flare: Option<GetFlare>,
+        extra: impl FnOnce(HostedApp) -> HostedApp,
+    ) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
         let shares = FaultyShares {
@@ -99,7 +114,12 @@ impl Api {
             let recipients = FaultyRecipients {
                 fail: switches.recipients.clone(),
             };
-            extra(app.with_sharing(Sharing::new(flares, tokens, recipients, admit)))
+            let sharing = Sharing::new(flares, tokens, recipients, admit);
+            let sharing = match get_flare {
+                Some(address) => sharing.with_get_flare(address),
+                None => sharing,
+            };
+            extra(app.with_sharing(sharing))
         })
         .await;
         Self {

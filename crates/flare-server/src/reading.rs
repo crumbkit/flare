@@ -4,6 +4,11 @@
 //! with whom, the version and the date, the title, and the rendered
 //! Markdown. The page has no Inbox, Shared by me or Search link and no
 //! comment or response count; the changes that build those add them.
+//!
+//! Below the article, the foot says the page was shared with Flare. For a
+//! reader who has never shared a flare on a site that sets a get flare
+//! address, the foot also holds the Get Flare link of the signed badge
+//! mockup (option a), which opens that address in a new tab.
 
 use crate::docs::escape;
 use crate::sharing::Reading;
@@ -80,6 +85,23 @@ fn meta_line(reading: &Reading) -> String {
     )
 }
 
+/// The flame mark of the Get Flare link, as the badge mockup draws it.
+const FLAME: &str = "<svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8.6 0.8c.3 2.2-.7 3.3-1.8 4.5C5.7 6.5 4.5 7.8 4.5 9.9c0 2.2 1.6 3.8 3.5 3.8s3.5-1.5 3.5-3.6c0-1.2-.5-2.1-1-2.9-.3 1-.9 1.5-1.6 1.7.4-2.6.2-5.4-.3-8.1z\"/></svg>";
+
+/// The page's foot: the note, and the Get Flare link when the reading
+/// carries an address.
+fn foot(reading: &Reading) -> String {
+    let link = reading.badge.as_deref().map_or_else(String::new, |address| {
+        format!(
+            "<a class=\"badge\" href=\"{href}\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Get Flare, opens in a new tab\">{FLAME}Get Flare<span class=\"arr\" aria-hidden=\"true\">\u{2197}</span></a>",
+            href = escape(address),
+        )
+    });
+    format!(
+        "<footer class=\"share-foot\"><span class=\"note\">Shared with Flare</span>{link}</footer>\n"
+    )
+}
+
 /// The whole reading page for `reader`. `script` is the entry script's file
 /// name; the page loads it only when the article has code or a diagram.
 pub(crate) fn document(
@@ -96,12 +118,13 @@ pub(crate) fn document(
         _ => String::new(),
     };
     format!(
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{title} - flare</title>\n<link rel=\"stylesheet\" href=\"/flare/style.css\">\n{script}</head>\n<body class=\"flare reading\">\n<header class=\"bar\"><span class=\"brand\">flare</span><span class=\"who\" title=\"{reader}\"><span class=\"visually-hidden\">Signed in as {reader}: </span>{reader_initials}</span></header>\n<main class=\"screen\">\n<article class=\"doc\">\n{meta}<h1>{title}</h1>\n{body}</article>\n</main>\n</body>\n</html>\n",
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>{title} - flare</title>\n<link rel=\"stylesheet\" href=\"/flare/style.css\">\n{script}</head>\n<body class=\"flare reading\">\n<header class=\"bar\"><span class=\"brand\">flare</span><span class=\"who\" title=\"{reader}\"><span class=\"visually-hidden\">Signed in as {reader}: </span>{reader_initials}</span></header>\n<main class=\"screen\">\n<article class=\"doc\">\n{meta}<h1>{title}</h1>\n{body}</article>\n</main>\n{foot}</body>\n</html>\n",
         title = escape(&reading.title),
         reader = escape(reader),
         reader_initials = escape(&initials(reader)),
         meta = meta_line(reading),
         body = article.html().as_str(),
+        foot = foot(reading),
     )
 }
 
