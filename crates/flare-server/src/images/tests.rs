@@ -3,7 +3,7 @@
 mod fixtures;
 
 use super::exif::minimal;
-use super::{Format, Refused, clean};
+use super::{Format, MAX_PIXELS, Refused, clean, within_pixels};
 use fixtures::{
     CAMERA_WORD, COMMENT_WORD, DATE_WORD, GPS_WORD, ICC, IPTC_WORD, MPF_WORD, TEXT_WORD,
     TRAILER_WORD, XMP_WORD, camera_jpeg, chunk, edited_gif, edited_png, edited_webp, holds,
@@ -232,6 +232,133 @@ fn wide_png(width: u32) -> Vec<u8> {
 fn an_image_16385_pixels_wide_is_refused_and_one_16384_wide_is_admitted() {
     assert_eq!(clean(&wide_png(16_385)), Err(Refused::TooManyPixels));
     assert_eq!(clean(&wide_png(16_384)).unwrap().format, Format::Png);
+}
+
+/// The words that the thumbnail and segment fixtures below hold.
+const THUMBNAIL_WORD: &[u8] = b"THUMBS";
+const JFXX_WORD: &[u8] = b"JFXXMARKER";
+const APP14_WORD: &[u8] = b"APP14MARKER";
+const JPG0_WORD: &[u8] = b"JPG0MARKER";
+const GIF_WORD: &[u8] = b"GIFEXTRAWORD";
+
+/// The Adobe APP14 segment a JPEG may keep.
+fn adobe() -> Vec<u8> {
+    segment(0xEE, b"Adobe\0\x64\0\0\0\0\x01")
+}
+
+#[test]
+fn a_jfif_thumbnail_a_jfxx_extension_and_an_app14_that_is_not_adobe_are_removed() {
+    let plain = plain_jpeg();
+    let app0 = 4 + usize::from(u16::from_be_bytes([plain[4], plain[5]]));
+    let jfif = [
+        b"JFIF\0\x01\x02\0\0\x01\0\x01\x02\x01".as_slice(),
+        THUMBNAIL_WORD,
+    ]
+    .concat();
+    let jfxx = [b"JFXX\0\x10".as_slice(), JFXX_WORD].concat();
+    let edited = [
+        &plain[..2],
+        &segment(0xE0, &jfif),
+        &segment(0xE0, &jfxx),
+        &segment(0xEE, APP14_WORD),
+        &adobe(),
+        &plain[app0..],
+    ]
+    .concat();
+    let cleaned = clean(&edited).unwrap();
+    for word in [THUMBNAIL_WORD, JFXX_WORD, APP14_WORD] {
+        assert!(
+            !holds(&cleaned.bytes, word),
+            "{}",
+            String::from_utf8_lossy(word)
+        );
+    }
+    let bare = segment(0xE0, b"JFIF\0\x01\x02\0\0\x01\0\x01\0\0");
+    assert!(holds(&cleaned.bytes, &bare));
+    assert!(holds(&cleaned.bytes, &adobe()));
+    assert_eq!(scan_of(&cleaned.bytes), scan_of(&plain));
+    assert_eq!(
+        pixels(&cleaned.bytes, ImageFormat::Jpeg),
+        pixels(&plain, ImageFormat::Jpeg)
+    );
+}
+
+#[test]
+fn a_jpg0_segment_after_a_scan_is_removed_and_a_table_after_a_scan_stays() {
+    let plain = plain_jpeg();
+    let (body, end) = plain.split_at(plain.len() - 2);
+    let table = segment(0xDD, &[0, 0]);
+    let hidden = [body, &segment(0xF0, JPG0_WORD), &table, end].concat();
+    let cleaned = clean(&hidden).unwrap();
+    assert!(!holds(&cleaned.bytes, JPG0_WORD));
+    assert!(
+        cleaned
+            .bytes
+            .ends_with(&[table.as_slice(), &[0xFF, 0xD9]].concat())
+    );
+}
+
+/// `gif` with a sub-block holding [`GIF_WORD`] added before the
+/// terminator of the extension that starts with `head`.
+fn with_extra_sub_block(gif: &[u8], head: &[u8], length: usize) -> Vec<u8> {
+    let at = gif
+        .windows(head.len())
+        .position(|window| window == head)
+        .unwrap()
+        + length;
+    assert_eq!(gif[at], 0);
+    let extra = [&[u8::try_from(GIF_WORD.len()).unwrap()][..], GIF_WORD].concat();
+    [&gif[..at], &extra, &gif[at..]].concat()
+}
+
+#[test]
+fn extra_sub_blocks_in_a_graphic_control_and_a_looping_extension_are_removed() {
+    let plain = plain_gif();
+    let looping = with_extra_sub_block(&plain, b"\x21\xFF\x0BNETSCAPE2.0", 3 + 11 + 4);
+    let both = with_extra_sub_block(&looping, &[0x21, 0xF9, 0x04], 3 + 4);
+    assert!(holds(&both, GIF_WORD));
+    let cleaned = clean(&both).unwrap();
+    assert_eq!(cleaned.bytes, plain);
+}
+
+/// The plain JPEG with its frame header rewritten as a progressive frame
+/// of `width` by `height` pixels and its scan header as a progressive DC
+/// scan. Its scan data no longer fits that frame, so only a check of the
+/// header can refuse it before a decode allocates for it.
+fn progressive_jpeg(width: u16, height: u16) -> Vec<u8> {
+    let mut bytes = plain_jpeg();
+    let frame = bytes
+        .windows(2)
+        .position(|pair| pair == [0xFF, 0xC0])
+        .unwrap();
+    bytes[frame + 1] = 0xC2;
+    bytes[frame + 5..frame + 7].copy_from_slice(&height.to_be_bytes());
+    bytes[frame + 7..frame + 9].copy_from_slice(&width.to_be_bytes());
+    let scan = bytes
+        .windows(2)
+        .position(|pair| pair == [0xFF, 0xDA])
+        .unwrap();
+    let components = usize::from(bytes[scan + 4]);
+    let spectral = scan + 5 + 2 * components;
+    bytes[spectral + 1] = 0;
+    bytes
+}
+
+#[test]
+fn a_progressive_jpeg_over_40_megapixels_is_refused_from_its_header_before_it_decodes() {
+    assert_eq!(
+        clean(&progressive_jpeg(6_400, 6_400)),
+        Err(Refused::TooManyPixels)
+    );
+}
+
+#[test]
+fn an_image_of_40_million_pixels_is_within_the_limit_and_one_more_pixel_is_not() {
+    assert_eq!(MAX_PIXELS, 40_000_000);
+    assert!(within_pixels(8_000, 5_000));
+    assert!(!within_pixels(8_001, 5_000));
+    assert!(!within_pixels(40_000_001, 1));
+    assert!(within_pixels(16_384, 1));
 }
 
 #[test]

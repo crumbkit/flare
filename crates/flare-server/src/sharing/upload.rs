@@ -1,10 +1,11 @@
 //! A share or a new version sent with its images.
 //!
-//! [`prepare`](prepare::prepare) checks every image before any store
-//! call. The upload then checks the caller's right to create or publish
-//! and the recipients, draws the share id and one random file id per
-//! image, and puts the files one at a time, recording each id before its
-//! put. It then commits the share or the version with the image table,
+//! The upload first checks the caller's right to create or publish and
+//! the recipients, which write nothing, so a caller without the right
+//! never takes the decode slot. [`prepare`](prepare::prepare) then checks
+//! every image before any file is put. The upload draws the share id and
+//! one random file id per image, and puts the files one at a time,
+//! recording each id before its put. It then commits the share or the version with the image table,
 //! unless 5 minutes have passed since the upload started.
 //!
 //! | Outcome | The files it sent |
@@ -174,7 +175,6 @@ where
         cleanup_failed: &mut bool,
     ) -> Answer {
         let (title, text) = check_share(&request)?;
-        let images = prepare(text.as_str(), parts).await?;
         let (with, groups) = self.named(&request.with, false).await?;
         let re = request
             .re
@@ -196,6 +196,7 @@ where
             .may_share(who, &flare(id.clone()))
             .await
             .map_err(flare_error)?;
+        let images = prepare(text.as_str(), parts).await?;
         for _ in 0..DRAWS {
             let mut sent = Vec::new();
             let table = match self.send(&id, &images, &mut sent).await {
@@ -237,9 +238,9 @@ where
     ) -> Answer {
         let id = share_id(id)?;
         let text = check_version(&request)?;
-        let images = prepare(text.as_str(), parts).await?;
         let shares = self.flares.shares();
         shares.may_publish(who, &id).await.map_err(share_error)?;
+        let images = prepare(text.as_str(), parts).await?;
         let mut sent = Vec::new();
         let table = match self.send(&id, &images, &mut sent).await {
             Ok(table) if !late(clock, started) => table,

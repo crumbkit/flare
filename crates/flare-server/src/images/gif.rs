@@ -2,9 +2,11 @@
 //! module.
 //!
 //! The walk keeps the header, the logical screen descriptor, the colour
-//! tables, each image's descriptor and data, graphic control extensions and
-//! the NETSCAPE2.0 looping extension, and drops comment, plain text and
-//! every other application extension, which is where XMP lives. It stops at
+//! tables, each image's descriptor and data, the one 4-byte sub-block of
+//! each graphic control extension and the loop sub-block of the NETSCAPE2.0
+//! looping extension, and drops comment, plain text and every other
+//! application extension, which is where XMP lives, and any further
+//! sub-block of a kept extension. It stops at
 //! the trailer, so nothing after it survives. Each step reads a length the
 //! file gives and checks it against the bytes left.
 
@@ -60,6 +62,30 @@ fn table_size(packed: u8) -> usize {
     }
 }
 
+/// The sub-blocks kept of an extension with `label` whose sub-blocks,
+/// through the terminator, are `blocks`, without the terminator; `None`
+/// when the extension is dropped. A graphic control extension keeps its
+/// one 4-byte sub-block, and NETSCAPE2.0 keeps its identifier and its
+/// 3-byte loop sub-block. Any further sub-block is dropped, and an
+/// extension whose first sub-blocks have another shape is dropped whole.
+fn kept_extension(label: u8, blocks: &[u8]) -> Option<&[u8]> {
+    let (wanted, prefix): (usize, &[u8]) = match label {
+        GRAPHIC_CONTROL => (5, &[4]),
+        APPLICATION => (16, &[11]),
+        _ => return None,
+    };
+    let first = blocks.get(..wanted)?;
+    let shaped = match label {
+        GRAPHIC_CONTROL => first.starts_with(prefix),
+        _ => {
+            first.starts_with(prefix)
+                && first.get(1..12) == Some(NETSCAPE)
+                && first.get(12..14) == Some(&[3, 1])
+        }
+    };
+    shaped.then_some(first)
+}
+
 /// `bytes` with every block but the allowlist's dropped and nothing after
 /// the trailer; `None` when the walk cannot read it.
 pub(super) fn strip(bytes: &[u8]) -> Option<Vec<u8>> {
@@ -89,13 +115,11 @@ pub(super) fn strip(bytes: &[u8]) -> Option<Vec<u8>> {
             }
             EXTENSION => {
                 let label = walk.byte()?;
-                let start = walk.at;
                 let blocks = walk.sub_blocks()?;
-                let looping = label == APPLICATION
-                    && bytes.get(start.checked_add(1)?..start.checked_add(12)?) == Some(NETSCAPE);
-                if label == GRAPHIC_CONTROL || looping {
+                if let Some(first) = kept_extension(label, blocks) {
                     kept.extend_from_slice(&[EXTENSION, label]);
-                    kept.extend_from_slice(blocks);
+                    kept.extend_from_slice(first);
+                    kept.push(0);
                 }
             }
             _ => return None,

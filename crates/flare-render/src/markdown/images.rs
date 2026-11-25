@@ -46,3 +46,32 @@ pub fn image_paths(markdown: &str) -> Vec<String> {
     }
     paths
 }
+
+/// The image sources that `markdown` shows that name no scheme and no
+/// host, as a file in the document's folder would, but that the renderer
+/// does not treat as relative, because they hold whitespace, a control
+/// character or a backslash, such as `<Screenshot 1.png>`. The renderer
+/// shows each as its alternative text, so the `flare` command refuses a
+/// document that shows one rather than share it without that image.
+#[must_use]
+pub fn unsendable_image_paths(markdown: &str) -> Vec<String> {
+    let mut paths: Vec<String> = Vec::new();
+    for event in Parser::new_ext(markdown, super::OPTIONS) {
+        if let Event::Start(Tag::Image { dest_url, .. }) = event
+            && !super::relative(&dest_url)
+            && !dest_url.is_empty()
+            && local(&dest_url)
+            && !paths.iter().any(|path| path.as_str() == dest_url.as_ref())
+        {
+            paths.push(dest_url.to_string());
+        }
+    }
+    paths
+}
+
+/// Whether `target` names no scheme before its first `/`, `?` or `#`, and
+/// no host through a leading `//`, as a path does.
+pub(super) fn local(target: &str) -> bool {
+    let head = target.split(['/', '?', '#']).next().unwrap_or_default();
+    !head.contains(':') && !target.starts_with("//")
+}

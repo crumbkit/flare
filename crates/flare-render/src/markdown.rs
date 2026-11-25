@@ -14,7 +14,7 @@
 mod blocks;
 mod images;
 
-pub use images::{ImageSources, image_paths};
+pub use images::{ImageSources, image_paths, unsendable_image_paths};
 
 use blocks::{captionable, diagram_type, is_caption, top_level_blocks};
 
@@ -124,8 +124,7 @@ fn link_allowed(target: &str) -> bool {
 /// Whether `target` is a relative reference: no scheme before its first
 /// `/`, `?` or `#`, and no leading `//`.
 fn relative(target: &str) -> bool {
-    let head = target.split(['/', '?', '#']).next().unwrap_or_default();
-    plain(target) && !head.contains(':') && !target.starts_with("//")
+    plain(target) && images::local(target)
 }
 
 /// Whether `target` holds no whitespace, control character or backslash,

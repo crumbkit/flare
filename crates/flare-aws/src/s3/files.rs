@@ -262,6 +262,10 @@ impl FileStore for S3FileStore {
     ) -> Result<FilePage, FileStoreError> {
         self.bucket.list(after, limit).await
     }
+
+    fn cursor_at(&self, share: &ShareId) -> Option<FileCursor> {
+        Some(super::list::cursor_at(share))
+    }
 }
 
 /// A delete of one file. A delete is idempotent, so a resend after a lost

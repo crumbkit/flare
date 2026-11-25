@@ -37,6 +37,7 @@ suite!(
     deleting_a_missing_file_succeeds,
     a_list_names_each_file_with_its_store_time,
     a_list_pages_through_every_file,
+    a_list_from_a_share_starts_at_that_share,
 );
 
 #[tokio::test(flavor = "multi_thread")]

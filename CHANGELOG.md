@@ -15,10 +15,11 @@ This file records the notable changes to flare. The format follows
   over 4 MiB, an image over 5 MiB, more than 10 images, an unsafe,
   repeated or unused path, and anything whose first bytes are not PNG,
   JPEG, GIF or WebP, SVG included, with the new `flare::images::*` codes.
-  It strips each image of its metadata, keeping only the pixels, the ICC
-  profile, animation and the EXIF orientation, decodes it under limits of
-  16,384 pixels a side and 256 MiB, and stores it before it writes the
-  version. Each version keeps a table of its images, and
+  It checks the caller's right to create or publish before it reads an
+  image. It strips each image of its metadata, keeping only the pixels,
+  the ICC profile, animation and the EXIF orientation, decodes it under
+  limits of 16,384 pixels a side, 40 million pixels in all and 256 MiB,
+  and stores it before it writes the version. Each version keeps a table of its images, and
   `GET /api/shares/<id>/versions/<n>/files/<file>` serves a file only when
   that table lists it, in a sandbox. The reading page shows each listed
   image and shows any other relative image as its alternative text.
@@ -27,17 +28,22 @@ This file records the notable changes to flare. The format follows
   S3 store deletes with `DeleteObject`, and the stores template grants
   `s3:DeleteObject` on `files/*`.
 - flare-core's `sweep_files` deletes the stored files that no version lists
-  and that are at least 30 minutes old, at most 10,000 in one run.
+  and that are at least 30 minutes old, at most 10,000 in one run. A run
+  starts at a share the caller names and wraps to the start of the list,
+  and `FileStore` gains `cursor_at` for that start.
   `flare files sweep --yes` runs it on the table and the bucket that the
-  config's `hosted.stores` names, and prints how many files it examined
-  and deleted. A deployment runs it on a schedule, such as hourly.
+  config's `hosted.stores` names, starting at a random share, and prints
+  how many files it examined and deleted. A deployment runs it on a schedule, such as hourly.
 - A hosted `flare serve` keeps the images of shares in the bucket that
   `hosted.stores` names.
 - `flare share` and `flare share --update` send the images that a
   Markdown file shows by a relative path, and stop before sending with
-  `flare::images::missing` for a missing image file and
+  `flare::images::missing` for a missing image file,
   `flare::images::outside_folder` for one outside the Markdown file's
-  folder.
+  folder, and the server's own code for more than 10 images, a path the
+  server refuses or one the reading page would not show, an image over
+  5 MiB, and first bytes that are not PNG, JPEG, GIF or WebP. They print
+  the number of images sent.
 - The metric `FilesCleanupFailed` counts each refused upload that could not
   delete a file it had stored.
 - flare-server's `Sharing::with_files` sets the store that images are kept

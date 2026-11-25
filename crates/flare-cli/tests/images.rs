@@ -1,6 +1,7 @@
 //! `flare share` with a Markdown file that shows images: which images it
-//! reads, how it sends them, and the two refusals it makes before any
-//! request. Each refusal has a twin that shows the admitted case.
+//! reads, how it sends them, how many it says it sent, and the refusals it
+//! makes before any request. Each refusal has a twin that shows the
+//! admitted case.
 #![cfg(test)]
 
 #[path = "support/api.rs"]
@@ -91,8 +92,8 @@ fn share_sends_each_image_the_document_shows_as_a_form_part_named_by_its_path() 
         &home,
         "# Notes\n\n![chart](img/chart.png)\n\n![web](https://example.org/x.png)\n\n![again](img/chart.png)\n![photo](photo.jpg)\n",
     );
-    put(&file.with_file_name("img/chart.png"), "CHARTBYTES");
-    put(&file.with_file_name("photo.jpg"), "PHOTOBYTES");
+    put(&file.with_file_name("img/chart.png"), "GIF89aCHARTBYTES");
+    put(&file.with_file_name("photo.jpg"), "GIF89aPHOTOBYTES");
     created(&api);
     home.sharing(&["share", file.to_str().unwrap(), "--json"])
         .assert_ok();
@@ -110,13 +111,13 @@ fn share_sends_each_image_the_document_shows_as_a_form_part_named_by_its_path() 
         parts[2]
     );
     assert!(
-        parts[2].ends_with("\r\n\r\nCHARTBYTES\r\n"),
+        parts[2].ends_with("\r\n\r\nGIF89aCHARTBYTES\r\n"),
         "{:?}",
         parts[2]
     );
     assert!(parts[3].contains("filename=\"photo.jpg\""), "{}", parts[3]);
     assert!(
-        parts[3].ends_with("\r\n\r\nPHOTOBYTES\r\n"),
+        parts[3].ends_with("\r\n\r\nGIF89aPHOTOBYTES\r\n"),
         "{:?}",
         parts[3]
     );
@@ -139,7 +140,7 @@ fn share_update_sends_its_images_to_the_versions_route() {
     let api = FakeApi::start();
     let home = logged_in(&api);
     let file = document(&home, "# Notes\n\n![chart](img/chart.png)\n");
-    put(&file.with_file_name("img/chart.png"), "CHARTBYTES");
+    put(&file.with_file_name("img/chart.png"), "GIF89aCHARTBYTES");
     api.route(
         "POST",
         &format!("/api/shares/{FLARE}/versions"),
@@ -168,7 +169,7 @@ fn an_image_with_no_file_stops_share_and_its_dry_run_before_any_request_and_a_pr
         assert!(ran.all().contains("img/chart.png"), "{}", ran.all());
     }
     assert!(api.requests_to("/api/shares").is_empty());
-    put(&file.with_file_name("img/chart.png"), "CHARTBYTES");
+    put(&file.with_file_name("img/chart.png"), "GIF89aCHARTBYTES");
     created(&api);
     home.sharing(&["share", file.to_str().unwrap()]).assert_ok();
     assert_eq!(api.requests_to("/api/shares").len(), 1);
@@ -179,7 +180,7 @@ fn an_image_outside_the_documents_folder_by_a_parent_path_or_a_link_stops_share_
 {
     let api = FakeApi::start();
     let home = logged_in(&api);
-    put(&home.path().join("secret.png"), "SECRET");
+    put(&home.path().join("secret.png"), "GIF89aSECRET");
     let parent = document(&home, "# Notes\n\n![x](../secret.png)\n");
     home.sharing(&["share", parent.to_str().unwrap()])
         .assert_failed("flare::images::outside_folder");
@@ -192,10 +193,124 @@ fn an_image_outside_the_documents_folder_by_a_parent_path_or_a_link_stops_share_
     home.sharing(&["share", linked.to_str().unwrap()])
         .assert_failed("flare::images::outside_folder");
     assert!(api.requests_to("/api/shares").is_empty());
-    put(&linked.with_file_name("img/inside.png"), "INSIDE");
+    put(&linked.with_file_name("img/inside.png"), "GIF89aINSIDE");
     let inside = document(&home, "# Notes\n\n![x](img/inside.png)\n");
     created(&api);
     home.sharing(&["share", inside.to_str().unwrap()])
         .assert_ok();
-    assert!(!api.requests_to("/api/shares")[0].body.contains("SECRET"));
+    assert!(
+        !api.requests_to("/api/shares")[0]
+            .body
+            .contains("GIF89aSECRET")
+    );
+}
+
+#[test]
+fn share_prints_how_many_images_it_sent_and_a_document_with_none_prints_zero() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let file = document(&home, "# Notes\n\n![a](img/a.png) ![b](b.png)\n");
+    put(&file.with_file_name("img/a.png"), "GIF89aA");
+    put(&file.with_file_name("b.png"), "GIF89aB");
+    created(&api);
+    let ran = home.sharing(&["share", file.to_str().unwrap(), "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(printed["data"]["images"], 2, "{printed}");
+    created(&api);
+    let text = home.sharing(&["share", file.to_str().unwrap()]);
+    text.assert_ok();
+    assert!(text.stdout.contains("IMAGES"), "{}", text.stdout);
+    let dry = home.sharing(&["share", file.to_str().unwrap(), "--dry-run", "--json"]);
+    dry.assert_ok();
+    let checked: Value = serde_json::from_str(dry.stdout.trim()).unwrap();
+    assert_eq!(checked["data"]["images"], 2, "{checked}");
+    let none = document(&home, "# Notes\n");
+    created(&api);
+    let ran = home.sharing(&["share", none.to_str().unwrap(), "--json"]);
+    let printed: Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(printed["data"]["images"], 0, "{printed}");
+}
+
+/// Runs `flare share` on a document that shows `markdown` and asserts it
+/// fails with `code` before any request.
+fn refused_before_any_request(home: &Home, api: &FakeApi, markdown: &str, code: &str) {
+    let file = document(home, markdown);
+    for args in [
+        vec!["share", file.to_str().unwrap()],
+        vec!["share", file.to_str().unwrap(), "--dry-run"],
+    ] {
+        home.sharing(&args).assert_failed(code);
+    }
+    assert!(api.requests_to("/api/shares").is_empty(), "{markdown}");
+}
+
+#[test]
+fn share_refuses_before_any_request_an_image_path_the_server_refuses_and_sends_its_plain_twin() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let folder = home.path().join("docs");
+    put(&folder.join("img/chart.png"), "GIF89aCHART");
+    put(&folder.join("my shot.png"), "GIF89aSHOT");
+    for markdown in [
+        "![x](./img/chart.png)\n",
+        "![x](img/../img/chart.png)\n",
+        "![x](<my shot.png>)\n",
+    ] {
+        refused_before_any_request(&home, &api, markdown, "flare::images::bad_path");
+    }
+    let absolute = format!("![x]({})\n", folder.join("img/chart.png").display());
+    refused_before_any_request(&home, &api, &absolute, "flare::images::bad_path");
+    created(&api);
+    let plain = document(&home, "![x](img/chart.png)\n");
+    home.sharing(&["share", plain.to_str().unwrap()])
+        .assert_ok();
+}
+
+#[test]
+fn share_refuses_before_any_request_more_than_ten_images_and_sends_ten() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let folder = home.path().join("docs");
+    let mut markdown = String::new();
+    for index in 0..11 {
+        put(&folder.join(format!("{index}.png")), "GIF89aIMAGE");
+        markdown.push_str(&format!("![x]({index}.png)\n"));
+    }
+    refused_before_any_request(&home, &api, &markdown, "flare::images::too_many");
+    let ten: String = markdown
+        .lines()
+        .take(10)
+        .map(|line| format!("{line}\n"))
+        .collect();
+    created(&api);
+    home.sharing(&["share", document(&home, &ten).to_str().unwrap()])
+        .assert_ok();
+}
+
+#[test]
+fn share_refuses_before_any_request_an_image_over_5_mib_or_not_an_image_by_its_first_bytes() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let folder = home.path().join("docs");
+    let large = format!("GIF89a{}", "\0".repeat(5 * 1024 * 1024));
+    put(&folder.join("large.gif"), &large);
+    refused_before_any_request(&home, &api, "![x](large.gif)\n", "flare::images::too_large");
+    put(
+        &folder.join("drawing.png"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+    );
+    refused_before_any_request(
+        &home,
+        &api,
+        "![x](drawing.png)\n",
+        "flare::images::format_refused",
+    );
+    put(&folder.join("photo.png"), "GIF89aPHOTO");
+    created(&api);
+    home.sharing(&[
+        "share",
+        document(&home, "![x](photo.png)\n").to_str().unwrap(),
+    ])
+    .assert_ok();
 }

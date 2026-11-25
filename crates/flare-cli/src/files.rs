@@ -6,7 +6,9 @@
 //! config file as `flare serve`, and checks them as `flare serve` does
 //! before it lists a file. One run examines at most [`MAX_SWEPT_FILES`]
 //! files and deletes each one stored at least 30 minutes ago that no
-//! version of its share lists, or whose share does not exist. The
+//! version of its share lists, or whose share does not exist. Each run
+//! starts at a random share and wraps to the start of the list, so runs
+//! over a bucket of more than 10,000 files reach every part of it. The
 //! deployment runs it on a schedule; `flare serve` runs no sweep.
 
 use crate::cli::SweepArgs;
@@ -15,9 +17,10 @@ use crate::config::{self, Site};
 use crate::env::Snapshot;
 use crumbkit::{Document, Row};
 use flare_aws::Stores;
-use flare_core::{MAX_SWEPT_FILES, Timestamp, sweep_files};
+use flare_core::{MAX_SWEPT_FILES, ShareId, Timestamp, sweep_files};
 use schemars::JsonSchema;
 use serde::Serialize;
+use std::hash::{BuildHasher as _, RandomState};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// What `flare files sweep` did.
@@ -33,8 +36,8 @@ pub(crate) struct Swept {
     /// the next run examines them again.
     #[row(column)]
     pub(crate) undecided: usize,
-    /// Whether it stopped at 10,000 files before the end of the list; the
-    /// next run starts from the beginning of the list again.
+    /// Whether it stopped at 10,000 files before it examined every file; the
+    /// next run starts at another random share.
     #[row(column)]
     pub(crate) stopped_early: bool,
 }
@@ -84,6 +87,7 @@ pub(crate) async fn sweep(args: &SweepArgs, env: &Snapshot) -> Result<Swept, Fai
         &stores.files,
         Timestamp::from_secs(now),
         MAX_SWEPT_FILES,
+        &random_share(),
     )
     .await
     .map_err(|_| unavailable("the S3 bucket's files could not be listed".to_owned()))?;
@@ -93,4 +97,19 @@ pub(crate) async fn sweep(args: &SweepArgs, env: &Snapshot) -> Result<Swept, Fai
         undecided: report.undecided,
         stopped_early: report.stopped_early,
     })
+}
+
+/// A share id to start the sweep at, different on each run.
+///
+/// Shortcut: it takes its bits from the standard library's `RandomState`,
+/// whose keys the operating system seeds once per process, so it needs no
+/// random-number crate. The start point only spreads runs across the list
+/// and guards nothing, so it needs no cryptographic quality.
+fn random_share() -> ShareId {
+    let [first, second] = [1_u8, 2].map(|round| RandomState::new().hash_one(round));
+    let mut bytes = [0_u8; 16];
+    let (high, low) = bytes.split_at_mut(8);
+    high.copy_from_slice(&first.to_be_bytes());
+    low.copy_from_slice(&second.to_be_bytes());
+    ShareId::from_random(bytes)
 }

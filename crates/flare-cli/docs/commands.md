@@ -275,6 +275,7 @@ flare share review.md --dry-run --out review.html
 - `version`: The share's latest version; none on a dry run.
 - `granted`: The addresses that now hold a role on it; none after `--update` or a dry run.
 - `responds_to`: The flares it responds to; none after `--update` or a dry run.
+- `images`: The images sent with the document; on a dry run, the images it would send.
 
 Effects: additive, not idempotent, closed-world.
 
@@ -911,7 +912,7 @@ flare files sweep --config /etc/flare/config.json --yes
 - `examined`: The files it read from the bucket's list.
 - `deleted`: The files it deleted, which no version listed.
 - `undecided`: The files it left because the table or the bucket did not answer; the next run examines them again.
-- `stopped_early`: Whether it stopped at 10,000 files before the end of the list; the next run starts from the beginning of the list again.
+- `stopped_early`: Whether it stopped at 10,000 files before it examined every file; the next run starts at another random share.
 
 Effects: destructive, idempotent, closed-world.
 

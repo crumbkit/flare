@@ -1,7 +1,7 @@
 //! Unit tests of the reading page's article.
 
 use super::*;
-use crate::markdown::image_paths;
+use crate::markdown::{image_paths, unsendable_image_paths};
 
 fn article(markdown: &str) -> Result<Article, RenderError> {
     super::article(markdown, &ImageSources::none())
@@ -75,4 +75,14 @@ fn the_image_paths_of_a_document_are_its_relative_sources_in_order_each_once() {
     let markdown = "![a](img/a.png) ![b](https://x.example/b.png) ![c](c.gif)\n\n![a again](img/a.png) ![d](//host/d.png) ![e](data:image/png;base64,AA)\n";
     assert_eq!(image_paths(markdown), ["img/a.png", "c.gif"]);
     assert!(image_paths("No images.\n").is_empty());
+}
+
+#[test]
+fn a_local_looking_image_source_that_is_not_relative_is_listed_as_unsendable_and_others_are_not() {
+    let markdown = "![a](<Screenshot 2026-11-25 at 10.00.00.png>) ![b](img/b.png) ![c](https://x.example/c.png) ![d](data:image/png;base64,AA) ![e](//host/e.png) ![f](<img\\f.png>)\n";
+    assert_eq!(
+        unsendable_image_paths(markdown),
+        ["Screenshot 2026-11-25 at 10.00.00.png", "img\\f.png"]
+    );
+    assert!(unsendable_image_paths("![b](img/b.png)\n").is_empty());
 }

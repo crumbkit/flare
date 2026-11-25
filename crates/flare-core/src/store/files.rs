@@ -149,4 +149,16 @@ pub trait FileStore: Send + Sync {
         after: Option<&FileCursor>,
         limit: usize,
     ) -> impl Future<Output = Result<FilePage, FileStoreError>> + Send;
+
+    /// A cursor from which [`FileStore::list`] names every file stored
+    /// under `share` and under each share whose id sorts after it, and no
+    /// file of a share before it. A sweep starts its walk there.
+    ///
+    /// The default returns `None`: such a store lists only from the start,
+    /// and a sweep over it always begins at the start of the list. The
+    /// stores that flare ships override it.
+    fn cursor_at(&self, share: &ShareId) -> Option<FileCursor> {
+        let _ = share;
+        None
+    }
 }

@@ -10,6 +10,10 @@ use crate::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod start;
+
+pub use start::a_list_from_a_share_starts_at_that_share;
+
 /// How far a store's time may differ from this machine's clock, in
 /// seconds, for a store whose clock is another machine's.
 const SKEW: u64 = 300;

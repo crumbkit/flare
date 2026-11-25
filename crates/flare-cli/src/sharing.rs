@@ -5,16 +5,18 @@
 //! the Keychain. `flare activity` is in `activity.rs`.
 //!
 //! A Markdown file's relative images are read from the file's folder and
-//! sent with it as a form. An image whose file is missing, or whose path
-//! leads outside the folder, through `..` or a link, stops the command
-//! before any request, a dry run included.
+//! sent with it as a form. `images.rs` checks them first, and an image the
+//! server would refuse, or whose file is missing or outside the folder,
+//! stops the command before any request, a dry run included.
 
 mod dry_run;
 mod grants;
+mod images;
 mod shares;
 
 pub(crate) use grants::{grants, revoke};
 
+pub(crate) use images::LocalImage;
 pub(crate) use shares::shares;
 
 use crate::cli::{GrantArgs, ShareArgs, ShowArgs};
@@ -37,66 +39,13 @@ use std::path::Path;
 /// less, and refuses a larger document with `flare::shares::too_large`.
 const MAX_FILE: u64 = 4 * 1024 * 1024;
 
-/// One image a document shows: its path as the Markdown wrote it, and its
-/// bytes.
-pub(crate) struct LocalImage {
-    pub(crate) path: String,
-    pub(crate) bytes: Vec<u8>,
-}
-
-/// The most bytes of one image that `flare share` reads. The server
-/// refuses a larger image with `flare::images::too_large`.
-const MAX_IMAGE: u64 = 5 * 1024 * 1024;
-
-/// The images that the Markdown `content` of `file` shows, read from the
-/// file's folder. HTML carries none.
-fn images(file: &Path, format: Format, content: &str) -> Result<Vec<LocalImage>, Failed> {
-    if format != Format::Markdown {
-        return Ok(Vec::new());
-    }
-    let unreadable = |path: &Path, error: std::io::Error| -> Failed {
-        SharingFailed::FileUnreadable {
-            path: path.display().to_string(),
-            problem: error.to_string(),
-        }
-        .into()
-    };
-    let folder = file
-        .parent()
-        .filter(|folder| !folder.as_os_str().is_empty());
-    let folder = folder.unwrap_or_else(|| Path::new("."));
-    let root = folder
-        .canonicalize()
-        .map_err(|error| unreadable(folder, error))?;
-    let mut images = Vec::new();
-    for path in flare_render::image_paths(content) {
-        let joined = folder.join(&path);
-        let real = match joined.canonicalize() {
-            Ok(real) => real,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Err(SharingFailed::ImageMissing { image: path }.into());
-            }
-            Err(error) => return Err(unreadable(&joined, error)),
-        };
-        if !real.starts_with(&root) {
-            return Err(SharingFailed::ImageOutsideFolder { image: path }.into());
-        }
-        let mut bytes = Vec::new();
-        std::fs::File::open(&real)
-            .and_then(|opened| opened.take(MAX_IMAGE + 1).read_to_end(&mut bytes))
-            .map_err(|error| unreadable(&joined, error))?;
-        images.push(LocalImage { path, bytes });
-    }
-    Ok(images)
-}
-
 /// The images of what `args` sends.
 fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalImage>, Failed> {
     let (format, content) = match outgoing {
         Outgoing::Create(request) => (request.format, &request.content),
         Outgoing::Update(_, request) => (request.format, &request.content),
     };
-    images(&args.file, format, content)
+    images::images(&args.file, format, content)
 }
 
 /// A client of the saved login's server with its token.
@@ -220,7 +169,7 @@ pub(crate) async fn share(
     let outgoing = outgoing(args)?;
     let images = images_of(args, &outgoing)?;
     if dry_run {
-        return dry_run::check(args, outgoing);
+        return dry_run::check(args, outgoing, images.len());
     }
     let api = session(env)?;
     match outgoing {
@@ -236,6 +185,7 @@ pub(crate) async fn share(
                 version: Some(shared.share.version),
                 granted: Some(shared.granted),
                 responds_to: Some(shared.responds_to),
+                images: images.len(),
                 checks: Vec::new(),
             })
         }
@@ -277,6 +227,7 @@ async fn update(
         version: Some(share.version),
         granted: None,
         responds_to: None,
+        images: images.len(),
         checks: Vec::new(),
     })
 }

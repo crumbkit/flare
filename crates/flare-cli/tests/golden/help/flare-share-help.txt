@@ -63,6 +63,7 @@ Columns:
   version      The share's latest version; none on a dry run.
   granted      The addresses that now hold a role on it; none after `--update` or a dry run.
   responds_to  The flares it responds to; none after `--update` or a dry run.
+  images       The images sent with the document; on a dry run, the images it would send.
 
 Effects: additive, not idempotent, closed-world.
 Children: A dry run lists its checks.

@@ -173,7 +173,7 @@ codes! {
         |_| hint("save the image again from the program that made it")),
     NotAnImage => ("flare::images::not_an_image", 422, "An image's file does not decode as the format it starts as.",
         |_| hint("save the image again from the program that made it")),
-    TooManyPixels => ("flare::images::too_many_pixels", 422, "An image is at most 16,384 pixels on a side and decodes in at most 256 MiB.",
+    TooManyPixels => ("flare::images::too_many_pixels", 422, "An image is at most 16,384 pixels on a side and 40 million pixels in all, and decodes in at most 256 MiB.",
         |_| hint("scale the image down and share again")),
     BadBody => ("flare::requests::bad_body", 400, "The request's body is not the JSON this route takes.",
         |_| hint("send the body that schema/flare-api.schema.json describes")),

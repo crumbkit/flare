@@ -4,7 +4,7 @@
 //! img-parts parses the segments up to the first scan and keeps every byte
 //! after the scan header as that segment's data, so this module walks the
 //! scan data itself: it keeps scan bytes, restart markers and the tables
-//! and scan headers of a progressive image, drops APPn and COM segments
+//! and scan headers of a progressive image, drops every other segment
 //! between scans, and cuts the file after the first image's EOI, which
 //! drops an appended MPF image and anything else after it.
 
@@ -24,14 +24,51 @@ fn has_length(marker: u8) -> bool {
     )
 }
 
-/// Whether a segment before the scan is kept.
-fn kept(segment: &JpegSegment) -> bool {
-    match segment.marker() {
-        markers::APP0 | markers::APP14 | markers::DQT | markers::DRI | markers::DNL => true,
-        markers::APP2 => segment.contents().starts_with(ICC_PROFILE),
+/// The prefix of a JFIF APP0 segment.
+const JFIF: &[u8] = b"JFIF\0";
+
+/// The length of a JFIF APP0 segment's fields before its thumbnail size.
+const JFIF_FIELDS: usize = 12;
+
+/// The prefix of an Adobe APP14 segment.
+const ADOBE: &[u8] = b"Adobe";
+
+/// The length of an Adobe APP14 segment's contents.
+const ADOBE_LENGTH: usize = 12;
+
+/// The segment kept in place of one before the scan, or `None` when it is
+/// dropped. A JFIF APP0 is rewritten with a 0 by 0 thumbnail, which drops
+/// any thumbnail it carried; a JFXX APP0 extension and any other APP0 are
+/// dropped. An APP14 is kept only in Adobe's 12-byte form.
+fn kept(segment: JpegSegment) -> Option<JpegSegment> {
+    let contents = segment.contents();
+    let keep = match segment.marker() {
+        markers::APP0 => {
+            let fields = contents
+                .get(..JFIF_FIELDS)
+                .filter(|_| contents.starts_with(JFIF))?;
+            let bare = [fields, &[0, 0]].concat();
+            return Some(JpegSegment::new_with_contents(
+                markers::APP0,
+                Bytes::from(bare),
+            ));
+        }
+        markers::APP14 => contents.starts_with(ADOBE) && contents.len() == ADOBE_LENGTH,
+        markers::DQT | markers::DRI | markers::DNL => true,
+        markers::APP2 => contents.starts_with(ICC_PROFILE),
         marker @ markers::SOF0..=markers::SOF15 => marker != markers::JPG,
         _ => false,
-    }
+    };
+    keep.then_some(segment)
+}
+
+/// Whether a segment between scans is kept: the tables and scan headers a
+/// progressive image needs, which are DHT, DAC, DQT, DRI, DNL and SOS.
+fn kept_between_scans(marker: u8) -> bool {
+    matches!(
+        marker,
+        markers::DHT | markers::DAC | markers::DQT | markers::DRI | markers::DNL | markers::SOS
+    )
 }
 
 /// The scan data after the first scan header, through the first image's
@@ -62,9 +99,7 @@ fn first_image(scan: &[u8]) -> Option<Vec<u8>> {
                 let length = usize::from(u16::from_be_bytes([*length.first()?, *length.get(1)?]));
                 let end = at_mark.checked_add(2)?.checked_add(length)?;
                 let segment = scan.get(at_mark..end)?;
-                let dropped =
-                    (markers::APP0..=markers::APP15).contains(&code) || code == markers::COM;
-                if !dropped {
+                if kept_between_scans(code) {
                     kept.extend_from_slice(segment);
                 }
                 at = end;
@@ -89,7 +124,17 @@ pub(super) fn strip(bytes: &[u8]) -> Option<Vec<u8>> {
     let rebuilt =
         JpegSegment::new_with_entropy(scan.marker(), scan.contents().clone(), Bytes::from(cut));
     *segments.get_mut(scan_at)? = rebuilt;
-    segments.retain(|segment| segment.has_entropy() || kept(segment));
+    let rebuilt: Vec<JpegSegment> = std::mem::take(segments)
+        .into_iter()
+        .filter_map(|segment| {
+            if segment.has_entropy() {
+                Some(segment)
+            } else {
+                kept(segment)
+            }
+        })
+        .collect();
+    *segments = rebuilt;
     jpeg.set_exif(orientation.map(|value| Bytes::from(exif::minimal(value))));
     Some(jpeg.encoder().bytes().to_vec())
 }

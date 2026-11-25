@@ -221,8 +221,10 @@ A share or a version sent with images is a `multipart/form-data` body:
 - Any other part, a second `share` part or an `image` part with no
   filename answers 400 `flare::requests::bad_body`.
 
-The server checks the upload in this order, and writes nothing when a
-check refuses it:
+The server first checks that the caller may create or publish and that
+the recipients resolve, and answers the share API's own refusals. It then
+checks the upload in this order, and writes nothing when a check refuses
+it:
 
 | Check | Refusal |
 | --- | --- |
@@ -235,15 +237,16 @@ check refuses it:
 | The first bytes name PNG, JPEG, GIF or WebP, whatever the filename says; SVG is refused | 422 `flare::images::format_refused` |
 | The container parses | 422 `flare::images::unreadable` |
 | The image decodes as its format | 422 `flare::images::not_an_image` |
-| The image is at most 16,384 pixels a side and decodes within 256 MiB | 422 `flare::images::too_many_pixels` |
-| The caller may create or publish, and the recipients resolve | the share API's own refusals |
+| The image is at most 16,384 pixels a side and 40 million pixels in all, and decodes within 256 MiB | 422 `flare::images::too_many_pixels` |
 
 - The server strips each image before it stores it. It keeps the
   compressed pixels byte for byte, the ICC profile, animation, and a new
   EXIF block that holds only the orientation. It drops every other EXIF
   field, GPS included, XMP, IPTC, comments, text chunks and any bytes after
   the image's end.
-- The server decodes one image at a time.
+- The server decodes one image at a time. One decode of an image at the
+  pixel limit takes up to about 400 MiB, so give `flare serve` at least
+  1 GiB of memory, for example a Lambda function's memory size of 1024 MB.
 - Each version keeps a table of its images: the path, a random file id,
   the media type and the size. The reading page shows a path the table
   lists from the file route, and shows any other relative image as its
@@ -271,9 +274,11 @@ check refuses it:
   version lists and that were stored at least 30 minutes ago. It reads the
   same config file as `flare serve`, takes `--config` as `flare serve`
   does, and needs credentials that may read the table and list, read and
-  delete in the bucket. It examines at most 10,000 files in one run and
-  prints how many it examined, deleted and left undecided, and whether it
-  stopped early. `flare serve` runs no sweep, so the deployment schedules
+  delete in the bucket. It examines at most 10,000 files in one run,
+  starting at a random share and wrapping to the start of the list, so
+  hourly runs reach every file of a larger bucket over time. It prints how
+  many it examined, deleted and left undecided, and whether it stopped
+  before it examined every file. `flare serve` runs no sweep, so the deployment schedules
   this command, for example hourly with a cron job, a systemd timer or a
   scheduled task: `flare files sweep --config /etc/flare/config.json --yes`.
 

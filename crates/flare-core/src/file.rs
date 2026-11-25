@@ -2,9 +2,11 @@
 //! share.
 
 mod images;
+mod kind;
 mod sweep;
 
 pub use images::{ImagePath, MAX_IMAGE_PATH, MAX_IMAGES, VersionImage, VersionImages};
+pub use kind::{ImageKind, SNIFF_BYTES};
 pub use sweep::{MAX_SWEPT_FILES, SWEEP_AGE, SweepReport, sweep_files};
 
 use crate::error::{ParseError, Subject};

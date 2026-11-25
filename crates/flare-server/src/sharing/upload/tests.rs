@@ -152,9 +152,16 @@ fn created(uploaded: &Uploaded) -> ShareId {
 }
 
 async fn sweep(shares: &Shares, files: &Files, minutes: u64) -> SweepReport {
-    sweep_files(shares, files, Timestamp::from_secs(T0 + minutes * 60), 100)
-        .await
-        .unwrap()
+    let first = ShareId::from_random([0; 16]);
+    sweep_files(
+        shares,
+        files,
+        Timestamp::from_secs(T0 + minutes * 60),
+        100,
+        &first,
+    )
+    .await
+    .unwrap()
 }
 
 fn ana() -> PrincipalId {
@@ -235,6 +242,39 @@ async fn a_person_who_may_not_create_is_refused_before_any_file_is_written_and_a
     )
     .await;
     created(&admitted);
+}
+
+/// `upload` with each image's bytes replaced by an SVG, which the image
+/// check refuses.
+fn with_svg(upload: Upload) -> Upload {
+    let svg = Bytes::from_static(b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+    let replaced = |parts: Vec<ImagePart>| -> Vec<ImagePart> {
+        parts
+            .into_iter()
+            .map(|part| ImagePart {
+                path: part.path,
+                bytes: svg.clone(),
+            })
+            .collect()
+    };
+    match upload {
+        Upload::Create(request, parts) => Upload::Create(request, replaced(parts)),
+        Upload::Publish(id, request, parts) => Upload::Publish(id, request, replaced(parts)),
+    }
+}
+
+#[tokio::test]
+async fn the_right_to_create_or_publish_is_checked_before_any_image_is_read() {
+    let (shares, files) = stores();
+    let no_creator = site(&shares, &files, Lapsing(AtomicUsize::new(0)));
+    let refused = run(&no_creator, ANA, with_svg(create(&TWO)), &SystemClock).await;
+    assert_eq!(code(&refused), Some(ApiCode::NotACreator));
+    let site = site(&shares, &files, AllAdmitted);
+    let id = created(&run(&site, ANA, create(&[]), &SystemClock).await);
+    let reader = run(&site, BOB, with_svg(publish(&id, &TWO)), &SystemClock).await;
+    assert_eq!(code(&reader), Some(ApiCode::ShareNotFound));
+    let owner = run(&site, ANA, with_svg(publish(&id, &TWO)), &SystemClock).await;
+    assert_eq!(code(&owner), Some(ApiCode::ImageFormatRefused));
 }
 
 #[tokio::test]

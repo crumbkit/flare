@@ -138,6 +138,7 @@ clauses! {
     DeletingAMissingFileSucceeds => "deleting a file that is not stored succeeds and changes nothing",
     AListNamesEachFileWithItsStoreTime => "a list names each stored file once, under its share, with the time the store stored it",
     AListPagesThroughEveryFile => "a list read in small pages names every stored file once, and a deleted file drops out",
+    AListFromAShareStartsAtThatShare => "a list from the cursor at a share names every file of that share and of the shares after it, and none before",
     ACodeIsUsedOnce => "a login code gives its owner and port once, and a second use is refused",
     AnExpiredCodeIsRefused => "a code used before its expiry works, and one used at or after its expiry is refused",
     AnUnknownCodeIsRefused => "a code that was never issued is refused",

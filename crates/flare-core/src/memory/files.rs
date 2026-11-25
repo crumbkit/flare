@@ -15,7 +15,8 @@ type Key = (ShareId, FileId);
 /// A [`FileStore`] that keeps its files in memory, keyed by share and id,
 /// each with the time it was stored. The time is the system clock's unless
 /// a test sets it with [`MemoryFileStore::set_time`]. A list walks the
-/// files in key order, and its cursor is the last key it named.
+/// files in key order, and its cursor is the last key it named, or a share
+/// with no file id to start at that share.
 #[derive(Default)]
 pub struct MemoryFileStore {
     state: Mutex<BTreeMap<Key, (StoredFile, Timestamp)>>,
@@ -62,10 +63,16 @@ fn cursor_of((share, id): &Key) -> FileCursor {
     FileCursor::new(format!("{}/{}", share.as_str(), id.as_str()))
 }
 
-/// The key a cursor names, or `None` for a cursor this store did not write.
-fn key_of(cursor: &FileCursor) -> Option<Key> {
+/// Where a list from `cursor` starts, or `None` for a cursor this store
+/// did not write. A cursor that names a share and no file id starts at the
+/// share's first file: the all-zero id is the lowest a file can have.
+fn bound_of(cursor: &FileCursor) -> Option<Bound<Key>> {
     let (share, id) = cursor.as_str().split_once('/')?;
-    Some((ShareId::try_from(share).ok()?, FileId::try_from(id).ok()?))
+    let share = ShareId::try_from(share).ok()?;
+    if id.is_empty() {
+        return Some(Bound::Included((share, FileId::from_random([0; 16]))));
+    }
+    Some(Bound::Excluded((share, FileId::try_from(id).ok()?)))
 }
 
 impl FileStore for MemoryFileStore {
@@ -102,7 +109,7 @@ impl FileStore for MemoryFileStore {
     ) -> Result<FilePage, FileStoreError> {
         let limit = limit.clamp(1, MAX_FILE_PAGE);
         let start = match after {
-            Some(cursor) => Bound::Excluded(key_of(cursor).ok_or(FileStoreError::Unavailable)?),
+            Some(cursor) => bound_of(cursor).ok_or(FileStoreError::Unavailable)?,
             None => Bound::Unbounded,
         };
         let files = locked(&self.state).ok_or(FileStoreError::Unavailable)?;
@@ -119,5 +126,9 @@ impl FileStore for MemoryFileStore {
             .map(|((share, id), stored)| ListedFile::new(share.clone(), id.clone(), stored))
             .collect();
         Ok(FilePage::new(listed, next))
+    }
+
+    fn cursor_at(&self, share: &ShareId) -> Option<FileCursor> {
+        Some(FileCursor::new(format!("{}/", share.as_str())))
     }
 }

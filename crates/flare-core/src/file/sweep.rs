@@ -11,7 +11,7 @@
 use crate::file::FileId;
 use crate::share::{ShareId, ShareVersion};
 use crate::store::{
-    FileCursor, FileStore, FileStoreError, MAX_FILE_PAGE, ShareStore, ShareStoreError,
+    FileCursor, FileStore, FileStoreError, ListedFile, MAX_FILE_PAGE, ShareStore, ShareStoreError,
 };
 use crate::time::Timestamp;
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,6 +42,14 @@ pub struct SweepReport {
 /// version of its share lists, or whose share does not exist, examining at
 /// most `limit` files.
 ///
+/// The walk starts at the first file of `start`, or of the next share
+/// after it, runs to the end of the list, and then wraps to the start of
+/// the list and stops at the first file it already examined. A caller that
+/// passes a random share id each run reaches every part of a list longer
+/// than `limit` over enough runs. A store whose
+/// [`cursor_at`](FileStore::cursor_at) gives no cursor is walked once from
+/// its start.
+///
 /// # Errors
 ///
 /// Returns [`FileStoreError::Unavailable`] when the file store cannot list.
@@ -50,48 +58,113 @@ pub async fn sweep_files<S: ShareStore, F: FileStore>(
     files: &F,
     now: Timestamp,
     limit: usize,
+    start: &ShareId,
 ) -> Result<SweepReport, FileStoreError> {
-    let cutoff = now.as_secs().saturating_sub(SWEEP_AGE);
-    let mut report = SweepReport::default();
-    let mut listed: BTreeMap<ShareId, Listed> = BTreeMap::new();
-    let mut after: Option<FileCursor> = None;
-    if limit == 0 {
-        report.stopped_early = true;
-        return Ok(report);
+    let mut sweep = Sweep {
+        shares,
+        files,
+        cutoff: now.as_secs().saturating_sub(SWEEP_AGE),
+        limit,
+        report: SweepReport::default(),
+        listed: BTreeMap::new(),
+        seen: BTreeSet::new(),
+    };
+    let from = files.cursor_at(start);
+    let wraps = from.is_some();
+    let mut ended = sweep.walk(from, Pass::First).await?;
+    if wraps && matches!(ended, Ended::AtEnd) {
+        ended = sweep.walk(None, Pass::Wrapped).await?;
     }
-    loop {
-        let room = limit.saturating_sub(report.examined);
-        let page = files
-            .list(after.as_ref(), room.clamp(1, MAX_FILE_PAGE))
-            .await?;
-        let more_in_page = page.files.len() > room;
-        for file in page.files.iter().take(room) {
-            report.examined += 1;
-            if file.stored().as_secs() > cutoff {
-                continue;
-            }
-            if !listed.contains_key(file.share()) {
-                let read = listed_files(shares, file.share()).await;
-                listed.insert(file.share().clone(), read);
-            }
-            match listed.get(file.share()) {
-                Some(Listed::Files(ids)) if ids.contains(file.id()) => {}
-                Some(Listed::Files(_) | Listed::NoShare) => {
-                    match files.delete(file.share(), file.id()).await {
-                        Ok(()) => report.deleted += 1,
-                        Err(_) => report.undecided += 1,
-                    }
+    sweep.report.stopped_early = matches!(ended, Ended::AtLimit);
+    Ok(sweep.report)
+}
+
+/// The key of one listed file.
+type Key = (ShareId, FileId);
+
+/// Which part of the walk runs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    /// From the start share to the end of the list.
+    First,
+    /// From the start of the list to the first file the first pass named.
+    Wrapped,
+}
+
+/// Why a part of the walk ended.
+enum Ended {
+    /// The list ended, or the wrapped pass reached a file already examined.
+    AtEnd,
+    /// The sweep examined its limit and a file was left.
+    AtLimit,
+}
+
+/// One sweep's stores, limits and progress.
+struct Sweep<'a, S, F> {
+    shares: &'a S,
+    files: &'a F,
+    cutoff: u64,
+    limit: usize,
+    report: SweepReport,
+    listed: BTreeMap<ShareId, Listed>,
+    /// The files the first pass examined, where the wrapped pass stops.
+    seen: BTreeSet<Key>,
+}
+
+impl<S: ShareStore, F: FileStore> Sweep<'_, S, F> {
+    /// Walks the list from `after` until it ends, the limit is reached or,
+    /// on the wrapped pass, a file the first pass examined comes up.
+    async fn walk(
+        &mut self,
+        mut after: Option<FileCursor>,
+        pass: Pass,
+    ) -> Result<Ended, FileStoreError> {
+        loop {
+            let room = self.limit.saturating_sub(self.report.examined);
+            let page = self
+                .files
+                .list(after.as_ref(), room.clamp(1, MAX_FILE_PAGE))
+                .await?;
+            for file in &page.files {
+                let key = (file.share().clone(), file.id().clone());
+                if pass == Pass::Wrapped && self.seen.contains(&key) {
+                    return Ok(Ended::AtEnd);
                 }
-                Some(Listed::Unknown) | None => report.undecided += 1,
+                if self.report.examined >= self.limit {
+                    return Ok(Ended::AtLimit);
+                }
+                if pass == Pass::First {
+                    self.seen.insert(key);
+                }
+                self.examine(file).await;
+            }
+            match page.next {
+                Some(next) => after = Some(next),
+                None => return Ok(Ended::AtEnd),
             }
         }
-        if report.examined >= limit && (more_in_page || page.next.is_some()) {
-            report.stopped_early = true;
-            return Ok(report);
+    }
+
+    /// Examines one file, and deletes it when it is old enough and no
+    /// version of its share lists it.
+    async fn examine(&mut self, file: &ListedFile) {
+        self.report.examined += 1;
+        if file.stored().as_secs() > self.cutoff {
+            return;
         }
-        match page.next {
-            Some(next) => after = Some(next),
-            None => return Ok(report),
+        if !self.listed.contains_key(file.share()) {
+            let read = listed_files(self.shares, file.share()).await;
+            self.listed.insert(file.share().clone(), read);
+        }
+        match self.listed.get(file.share()) {
+            Some(Listed::Files(ids)) if ids.contains(file.id()) => {}
+            Some(Listed::Files(_) | Listed::NoShare) => {
+                match self.files.delete(file.share(), file.id()).await {
+                    Ok(()) => self.report.deleted += 1,
+                    Err(_) => self.report.undecided += 1,
+                }
+            }
+            Some(Listed::Unknown) | None => self.report.undecided += 1,
         }
     }
 }
