@@ -8,9 +8,9 @@
 # Linux jobs run their tests through a testing hook, and the flare-gates
 # suite on a Mac is their macOS check, as the lanes decision says. The
 # default filter of .config/nextest.toml leaves flare-aws, flare-board and
-# flare-cli's hosted_stores test out of a plain test run, so the shared
-# lane's tests step runs neither. The board job builds the board program,
-# and the flare job runs flare-board's tests with it. The hosted job runs
+# flare-cli's serve, pages, metrics and hosted_stores tests out of a plain
+# test run, so the shared lane's tests step runs none of them. The board job
+# builds the board program, and the flare job runs the tests that need it. The hosted job runs
 # flare-aws's tests against a local DynamoDB and a local S3 server, and it
 # runs the hosted_stores test, which starts the built `flare serve` on
 # those stand-ins, without --all-features, because the test must run the
@@ -92,9 +92,10 @@ jobs:
       timeout-minutes: 10
 
   # The steps of flare's lane that the shared lane does not run: the check
-  # that the flare command turns on no `testing` feature, flare-board's tests
-  # against the board program that the board job builds, and each feature of
-  # the libraries built alone.
+  # that the flare command turns on no `testing` feature, the tests of
+  # flare-board and of flare-cli's serve, pages and metrics binaries against
+  # the board program that the board job builds, and each feature of the
+  # libraries built alone.
   flare:
     if: github.event_name != 'schedule'
     needs: board
@@ -144,10 +145,12 @@ jobs:
           path: board-bin
           key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
           fail-on-cache-miss: true
-      # The default filter of .config/nextest.toml leaves flare-board out of
-      # a plain run, because its tests need the board program.
-      - name: flare-board tests
-        run: cargo nextest run --locked -p flare-board --all-features --ignore-default-filter
+      # The default filter of .config/nextest.toml leaves these tests out of
+      # a plain run, because they run the board program.
+      - name: board program tests
+        run: >-
+          cargo nextest run --locked --workspace --all-features --ignore-default-filter
+          -E 'package(flare-board) | binary_id(flare-cli::serve) | binary_id(flare-cli::pages) | binary_id(flare-cli::metrics)'
         env:
           FLARE_TEST_BOARD: ${{ github.workspace }}/board-bin/board
       # cargo-hack is in the install-action tool list above.
