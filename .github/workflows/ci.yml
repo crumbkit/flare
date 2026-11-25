@@ -10,8 +10,8 @@
 # default filter of .config/nextest.toml leaves flare-aws, flare-board and
 # flare-cli's serve, pages, metrics and hosted_stores tests out of a plain
 # test run, so the shared lane's tests step runs none of them. The board job
-# builds the board program, and the flare job runs the tests that need it. The hosted job runs
-# flare-aws's tests against a local DynamoDB and a local S3 server, and it
+# builds the board program, and the flare job runs the tests that need it.
+# The hosted job runs flare-aws's tests against a local DynamoDB and a local S3 server, and it
 # runs the hosted_stores test, which starts the built `flare serve` on
 # those stand-ins, without --all-features, because the test must run the
 # flare command as it ships. The ui job installs, checks and tests the
@@ -154,9 +154,10 @@ jobs:
         env:
           FLARE_TEST_BOARD: ${{ github.workspace }}/board-bin/board
       # cargo-hack is in the install-action tool list above.
-      # With --all-targets, a crate's dev-dependency on itself can turn a
-      # feature on for the library build too, so the libraries are also
-      # checked alone with each feature.
+      # The shared lane's features step builds with --all-targets, where a
+      # crate's dev-dependency on itself can turn a feature on for the
+      # library build too, so the libraries are also checked alone with each
+      # feature.
       - name: library features
         run: cargo hack clippy --locked --workspace --each-feature --lib
 

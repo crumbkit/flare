@@ -7,7 +7,8 @@ sign people in, `flare-board` keeps pages and records in a board,
 `flare-render` renders pages, `flare-server` serves them, and `flare-cli`
 builds the `flare` command. The rules are the Rust standards that
 [rust-standards.toml](rust-standards.toml) adopts. A change is ready when the
-steps of the `lane` and `flare` jobs in
+steps of the shared lane, crumbkit/rust-standards' rust-lane.yml at the
+commit the `lane-commit` decision names, and of the `flare` job in
 [.github/workflows/ci.yml](.github/workflows/ci.yml) pass with
 `CARGO_BUILD_WARNINGS=deny`. Tests that run the board program read its path
 from `FLARE_TEST_BOARD`. flare-aws's tests read stand-in URLs from
@@ -15,7 +16,8 @@ from `FLARE_TEST_BOARD`. flare-aws's tests read stand-in URLs from
 [.config/nextest.toml](.config/nextest.toml) leaves flare-aws, flare-board
 and flare-cli's `serve`, `pages`, `metrics` and `hosted_stores` tests out of
 `cargo nextest run`. A full local
-run sets those variables and passes `--ignore-default-filter`.
+run sets those variables and passes `--ignore-default-filter`, and runs
+hosted_stores on its own without `--all-features`, as the `hosted` job does.
 
 - Write the test first, named as a sentence (BASE-36).
 - Give each new dependency a reason in `Cargo.toml` (BASE-23).

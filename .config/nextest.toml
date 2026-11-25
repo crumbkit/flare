@@ -15,5 +15,6 @@ slow-timeout = { period = "30s", terminate-after = 2 }
 # flare-aws's tests need the DynamoDB and S3
 # stand-ins, and flare-cli's hosted_stores test needs them and a build
 # without the `testing` features, so the hosted job runs both. Those jobs,
-# and a full local run, pass --ignore-default-filter.
+# and a full local run, pass --ignore-default-filter; hosted_stores runs on
+# its own, without --all-features.
 default-filter = "not (package(flare-aws) | package(flare-board) | binary_id(flare-cli::serve) | binary_id(flare-cli::pages) | binary_id(flare-cli::metrics) | binary(hosted_stores))"
