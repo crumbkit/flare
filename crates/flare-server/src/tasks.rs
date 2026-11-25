@@ -5,7 +5,9 @@
 //! aborts what remains and waits for each to end before it returns, so no
 //! task outlives `serve`. A request runs inside its connection's task;
 //! [`caught`] turns a panic in it into an error that the caller answers
-//! with 500, so the connection and the server keep serving.
+//! with 500, so the connection and the server keep serving. [`blocking`]
+//! runs CPU-bound work, an image's strip and decode, on a blocking thread;
+//! that work cannot be aborted, and ends by itself within its own limits.
 
 use std::any::Any;
 use std::future::Future;
@@ -64,6 +66,20 @@ pub(crate) async fn until(deadline: Option<std::time::Instant>) {
         Some(deadline) => tokio::time::sleep_until(TokioInstant::from_std(deadline)).await,
         None => std::future::pending().await,
     }
+}
+
+/// Runs `work` on a blocking thread and waits for it; `None` when the
+/// work panicked. A request dropped while it waits leaves the work to end
+/// by itself.
+pub(crate) async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "this is the task owner; a blocking thread cannot be aborted, so the work bounds itself"
+    )]
+    let handle = tokio::task::spawn_blocking(work);
+    handle.await.ok()
 }
 
 /// Runs `future` for at most `limit`; `None` when the limit passed first.

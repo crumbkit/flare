@@ -166,6 +166,11 @@ Routes:
 - `POST /api/shares/<id>/versions` publishes the next version of a share,
   from a `format` and `content`. Only the owner may, and the answer is the
   share summary with the new `version`.
+- `POST /api/shares` and `POST /api/shares/<id>/versions` also take a
+  `multipart/form-data` body that carries the document's images, as
+  [Images](#images) says.
+- `GET /api/shares/<id>/versions/<n>/files/<file>` serves one image of
+  version `n`.
 - `POST /api/grants/<id>` grants a share to more addresses, to teams as
   `team:<name>`, or to everyone signed in with `everyone: true`.
 - `DELETE /api/grants/<id>` ends the grants it names.
@@ -185,8 +190,8 @@ Routes:
   cursors. `docs/comments.md` gives their life.
 
 - Every `/api/` route except the exchange needs a bearer token, and the
-  comment routes and activity also take the session cookie of a
-  same-origin browser request. A missing,
+  comment routes, activity and the file route also take the session cookie
+  of a same-origin browser request. A missing,
   expired or revoked token answers 401 `flare::tokens::sign_in_needed`.
   Under an `emails` admit rule, so does the token of an owner whom the
   list no longer names. Under a `domain` or `anyone` rule a token works
@@ -204,6 +209,78 @@ Routes:
   last entry's time and its share id. A cursor flare did not write, or one
   of the other scope, answers 400 `flare::shares::bad_cursor`, and two
   `cursor` values answer 400 `flare::requests::bad_query`.
+
+### Images
+
+A share or a version sent with images is a `multipart/form-data` body:
+
+- One part named `share` holds the JSON body that `application/json`
+  would carry.
+- One part named `image` per image has a `filename` that is the path as
+  the Markdown wrote it, such as `img/chart.png`.
+- Any other part, a second `share` part or an `image` part with no
+  filename answers 400 `flare::requests::bad_body`.
+
+The server first checks that the caller may create or publish and that
+the recipients resolve, and answers the share API's own refusals. It then
+checks the upload in this order, and writes nothing when a check refuses
+it:
+
+| Check | Refusal |
+| --- | --- |
+| The body is at most 4 MiB (`Limits::upload_bytes`) | 413 `request::body_too_large` |
+| Each image is at most 5 MiB | 413 `flare::images::too_large` |
+| There are at most 10 images | 422 `flare::images::too_many` |
+| Each path is relative, with no empty, `.` or `..` segment, no backslash, colon or control character, and at most 255 bytes | 422 `flare::images::bad_path` |
+| No path is sent twice | 422 `flare::images::duplicate` |
+| The Markdown shows each path | 422 `flare::images::unused` |
+| The first bytes name PNG, JPEG, GIF or WebP, whatever the filename says; SVG is refused | 422 `flare::images::format_refused` |
+| The container parses | 422 `flare::images::unreadable` |
+| The image decodes as its format | 422 `flare::images::not_an_image` |
+| The image is at most 16,384 pixels a side and 40 million pixels in all, and decodes within 256 MiB | 422 `flare::images::too_many_pixels` |
+
+- The server strips each image before it stores it. It keeps the
+  compressed pixels byte for byte, the ICC profile, animation, and a new
+  EXIF block that holds only the orientation. It drops every other EXIF
+  field, GPS included, XMP, IPTC, comments, text chunks and any bytes after
+  the image's end.
+- The server decodes one image at a time. One decode of an image at the
+  pixel limit takes up to about 400 MiB, so give `flare serve` at least
+  1 GiB of memory, for example a Lambda function's memory size of 1024 MB.
+- Each version keeps a table of its images: the path, a random file id,
+  the media type and the size. The reading page shows a path the table
+  lists from the file route, and shows any other relative image as its
+  alternative text.
+- `GET /api/shares/<id>/versions/<n>/files/<file>` serves a file only to a
+  caller who may open the share, and only when version `n`'s table lists
+  the file. A share the caller cannot open, a missing version, an unlisted
+  file and a missing file all answer the same 404
+  `flare::shares::not_found`.
+- The file route's answer has `X-Content-Type-Options: nosniff`,
+  `Content-Security-Policy: default-src 'none'; sandbox`,
+  `Cache-Control: private, no-store` and `Content-Disposition: inline`.
+- The server stores each file before it writes the share or the version.
+  When the write is refused, or 5 minutes pass before it starts, the
+  server deletes the files it stored before it answers. When the write's
+  outcome is unknown, it deletes nothing.
+- A delete that fails logs one warning with the share id and the file ids,
+  and counts the metric `FilesCleanupFailed`. The answer is the upload's
+  own refusal.
+- A site whose `Sharing` has no file store answers an upload with an
+  image with 503 `flare::shares::unavailable`, and writes nothing.
+- A hosted `flare serve` keeps images in the bucket that `hosted.stores`
+  names, under `files/<share id>/<file id>`.
+- `flare files sweep --yes` deletes the files in that bucket that no
+  version lists and that were stored at least 30 minutes ago. It reads the
+  same config file as `flare serve`, takes `--config` as `flare serve`
+  does, and needs credentials that may read the table and list, read and
+  delete in the bucket. It examines at most 10,000 files in one run,
+  starting at a random share and wrapping to the start of the list, so
+  hourly runs reach every file of a larger bucket over time. It prints how
+  many it examined, deleted and left undecided, and whether it stopped
+  before it examined every file. `flare serve` runs no sweep, so the deployment schedules
+  this command, for example hourly with a cron job, a systemd timer or a
+  scheduled task: `flare files sweep --config /etc/flare/config.json --yes`.
 
 ## The client secret file
 

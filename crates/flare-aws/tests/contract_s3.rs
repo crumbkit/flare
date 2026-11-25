@@ -33,6 +33,11 @@ suite!(
     a_taken_file_id_changes_nothing,
     an_unknown_file_is_not_found,
     the_largest_file_reads_back,
+    a_deleted_file_is_not_found_and_others_stay,
+    deleting_a_missing_file_succeeds,
+    a_list_names_each_file_with_its_store_time,
+    a_list_pages_through_every_file,
+    a_list_from_a_share_starts_at_that_share,
 );
 
 #[tokio::test(flavor = "multi_thread")]

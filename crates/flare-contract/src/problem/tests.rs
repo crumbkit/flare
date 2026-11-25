@@ -14,6 +14,7 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
         "teams",
         "comments",
         "cursors",
+        "images",
     ];
     for code in ApiCode::ALL {
         let parts: Vec<&str> = code.text().split("::").collect();
@@ -134,4 +135,44 @@ fn a_creators_rule_that_cannot_answer_is_a_503_in_the_creators_area_that_asks_fo
     assert_eq!(ApiCode::CreatorsUnavailable.status(), 503);
     let problem = ProblemDocument::new(ApiCode::CreatorsUnavailable, "https://f.example");
     assert!(matches!(problem.recovery, Some(Recovery::Retry)));
+}
+
+#[test]
+fn an_oversized_image_answers_413_every_other_image_refusal_422_and_the_format_refusal_advises_png_over_svg()
+ {
+    let image_codes: Vec<ApiCode> = ApiCode::ALL
+        .iter()
+        .copied()
+        .filter(|code| code.text().starts_with("flare::images::"))
+        .collect();
+    let kinds: Vec<&str> = image_codes
+        .iter()
+        .map(|code| code.text().trim_start_matches("flare::images::"))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "too_large",
+            "too_many",
+            "bad_path",
+            "duplicate",
+            "unused",
+            "format_refused",
+            "unreadable",
+            "not_an_image",
+            "too_many_pixels",
+        ]
+    );
+    for code in image_codes {
+        let expected = if code == ApiCode::ImageTooLarge {
+            413
+        } else {
+            422
+        };
+        assert_eq!(code.status(), expected, "{}", code.text());
+    }
+    let Recovery::Hint { text } = ApiCode::ImageFormatRefused.recovery("https://f.example") else {
+        panic!("the format refusal gives a hint");
+    };
+    assert!(text.contains("PNG") && text.contains("SVG"), "{text}");
 }

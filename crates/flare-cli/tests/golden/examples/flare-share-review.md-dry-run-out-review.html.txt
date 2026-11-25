@@ -1,5 +1,5 @@
-TITLE
-review
+TITLE   IMAGES
+review  0
   the ending .md names Markdown, which the server serves
   the file is at most 4194304 bytes, the most flare share reads
   the title "review" is 1 to 200 bytes with no control character

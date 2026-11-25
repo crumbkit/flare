@@ -1,12 +1,14 @@
 //! The S3 file store and the one bucket it uses.
 //!
 //! [`Bucket`] is the only holder of the S3 client. The bucket holds only
-//! `files/<share id>/<file id>`, and the store never replaces or deletes an
-//! object.
+//! `files/<share id>/<file id>`. The store never replaces an object; it
+//! deletes one only when a failed create or publish cleans up, or when the
+//! sweep finds a file that no version lists.
 
 mod fault;
 mod files;
 mod keys;
+mod list;
 
 pub use files::S3FileStore;
 

@@ -65,6 +65,7 @@ mod shares {
         the_owners_list_holds_only_their_shares_newest_first,
         a_share_is_listed_once_created,
         a_share_always_has_its_first_version,
+        each_version_keeps_its_image_table,
     );
 
     concurrent_suite!(share_store, shares, ShareFixture;

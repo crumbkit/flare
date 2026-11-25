@@ -9,7 +9,7 @@ mod lists;
 use super::error::ShareError;
 use super::{Decision, ShareAction, Standing, Step, decide_actor};
 use crate::auth::Principal;
-use crate::file::{FileId, StoredFile};
+use crate::file::{FileId, StoredFile, VersionImages};
 use crate::grant::Role;
 use crate::name::PrincipalId;
 use crate::share::{
@@ -287,22 +287,92 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             .await?)
     }
 
-    /// Reads a file of a share that the caller may read.
+    /// Creates a share as [`Shares::create`] does, whose version 1 shows
+    /// the images in `images`. The caller has stored each file under `id`
+    /// before it calls this.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`Shares::create`].
+    pub async fn create_with_images(
+        &self,
+        who: &Principal,
+        id: ShareId,
+        title: ShareTitle,
+        content: ShareContent,
+        images: VersionImages,
+        at: Timestamp,
+    ) -> Result<Share, ShareError> {
+        let owner = actor(who)?;
+        let new = NewShare::new(id, owner, title, content, at).with_images(images);
+        Ok(self.shares.create(new).await?)
+    }
+
+    /// Checks that the caller may publish a new version of a share, which
+    /// only its owner may, and writes nothing. A caller that stores files
+    /// for the version checks this before the first one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusals of [`Shares::publish`] that come before its
+    /// write.
+    pub async fn may_publish(&self, who: &Principal, id: &ShareId) -> Result<(), ShareError> {
+        let actor = actor(who)?;
+        self.admit(&actor, id, ShareAction::Publish).await?;
+        Ok(())
+    }
+
+    /// Publishes a version as [`Shares::publish`] does, showing the images
+    /// in `images`. The caller has stored each file under `id` before it
+    /// calls this.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`Shares::publish`].
+    pub async fn publish_with_images(
+        &self,
+        who: &Principal,
+        id: &ShareId,
+        content: ShareContent,
+        images: VersionImages,
+        at: Timestamp,
+    ) -> Result<ShareVersion, ShareError> {
+        let actor = actor(who)?;
+        self.admit(&actor, id, ShareAction::Publish).await?;
+        let version = NewVersion::new(content, actor, at).with_images(images);
+        Ok(self.shares.publish(id, version).await?)
+    }
+
+    /// Reads a file that version `number` of a share lists in its image
+    /// table, for a caller who may read the share. A file stored under the
+    /// share that the version does not list is never read, so a file that a
+    /// failed create or publish left behind is never served.
     ///
     /// # Errors
     ///
     /// Returns [`ShareError::NotFound`] for a missing share, a caller with
-    /// no standing in it and a file the share does not hold,
-    /// [`ShareError::NoVerifiedEmail`] and [`ShareError::Unavailable`].
+    /// no standing in it, a missing version, a file the version does not
+    /// list and a listed file the store does not hold, so the answers
+    /// cannot be told apart; [`ShareError::NoVerifiedEmail`] and
+    /// [`ShareError::Unavailable`].
     pub async fn file<F: FileStore>(
         &self,
         who: &Principal,
         files: &F,
         id: &ShareId,
+        number: ShareVersion,
         file: &FileId,
     ) -> Result<StoredFile, ShareError> {
-        let actor = actor(who)?;
-        self.admit(&actor, id, ShareAction::Read).await?;
+        let opened = self
+            .open(who, id, Some(number))
+            .await
+            .map_err(|error| match error {
+                ShareError::VersionNotFound => ShareError::NotFound,
+                other => other,
+            })?;
+        if !opened.version.images().names(file) {
+            return Err(ShareError::NotFound);
+        }
         Ok(files.get(id, file).await?)
     }
 }

@@ -10,7 +10,7 @@ use flare_core::{
     ShareStore, Teams, TokenStore,
 };
 
-impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K>
+impl<S, G, R, C, U, T, X, M, K, F> Sharing<S, G, R, C, U, T, X, M, K, F>
 where
     S: ShareStore,
     G: GrantStore,

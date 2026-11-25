@@ -1,12 +1,28 @@
 //! Files that a share's pages show, such as images, each stored under one
 //! share.
 
+mod images;
+mod kind;
+mod sweep;
+
+pub use images::{ImagePath, MAX_IMAGE_PATH, MAX_IMAGES, VersionImage, VersionImages};
+pub use kind::{ImageKind, SNIFF_BYTES};
+pub use sweep::{MAX_SWEPT_FILES, SWEEP_AGE, SweepReport, sweep_files};
+
 use crate::error::{ParseError, Subject};
 use crate::share::{ShareId, check_hex_id, hex_id};
 use std::fmt;
 
 /// The largest file, in bytes: 10 MiB.
 pub const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
+
+/// The most bytes of one share or version sent with its images as a
+/// `multipart/form-data` body: 4 MiB, because Lambda behind API Gateway
+/// receives at most about 4.5 MiB. The server's `Limits::upload_bytes`
+/// defaults to it and answers a larger body with 413
+/// `request::body_too_large`, and `flare share` refuses a larger body
+/// before it sends one.
+pub const MAX_UPLOAD_BYTES: usize = 4 * 1024 * 1024;
 
 /// The longest media type, in bytes.
 const MAX_MEDIA_TYPE: usize = 100;

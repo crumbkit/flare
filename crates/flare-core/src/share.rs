@@ -4,9 +4,11 @@
 //! This module holds the validated values. [`records`] holds what a store
 //! keeps and returns.
 
+mod listing;
 mod records;
 
-pub use records::{Listing, NewShare, NewVersion, Share, SharedVersion};
+pub use listing::Listing;
+pub use records::{NewShare, NewVersion, Share, SharedVersion};
 
 use crate::error::{ParseError, Subject};
 use std::fmt;

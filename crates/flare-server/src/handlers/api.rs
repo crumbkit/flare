@@ -17,7 +17,7 @@ use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
-use crate::sharing::{Api, Call, LoginRedirect, Refusal, Scope, TokenCheck, bearer_of, list_key};
+use crate::sharing::{Api, Call, Refusal, Scope, TokenCheck, bearer_of, list_key};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument, ShareCursor};
 use flare_core::{Credential, ListKey, PageStore, Principal, RecordStore, Timestamp};
@@ -26,8 +26,13 @@ use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::time::UNIX_EPOCH;
 
+mod file;
+mod login;
+mod multipart;
 mod query;
+mod upload;
 
+use login::cli_login;
 use query::{every, flag, number, version};
 
 /// The share API's routes.
@@ -42,6 +47,8 @@ pub(crate) enum ApiRoute {
     OpenShare,
     /// `POST /api/shares/{id}/versions`.
     PublishVersion,
+    /// `GET /api/shares/{id}/versions/{n}/files/{file}`.
+    ShareFile,
     /// `POST /api/grants/{id}`.
     Grant,
     /// `GET /api/grants/{id}`.
@@ -87,9 +94,6 @@ pub(crate) enum ApiRoute {
 /// The most entries a share list holds, and its default.
 const MAX_LIST: usize = 500;
 const DEFAULT_LIST: usize = 50;
-
-/// The shortest and longest state that `flare login` sends.
-const STATE_CHARS: std::ops::RangeInclusive<usize> = 16..=128;
 
 /// The problem document of `refusal` as a reply.
 fn refused(refusal: Refusal, origin: &str) -> Reply {
@@ -138,7 +142,7 @@ fn list_after(uri: &http::Uri, scope: Scope) -> Result<Option<ListKey>, Refusal>
 }
 
 /// Reads and parses a JSON body.
-async fn body_of<T, P, R, S, K>(
+pub(super) async fn body_of<T, P, R, S, K>(
     ctx: &Ctx<'_, P, R, S, K>,
     body: Incoming,
 ) -> Result<Result<T, Refusal>, Problem>
@@ -261,18 +265,30 @@ where
             Ok(request) => api.exchange(request, now).await,
             Err(refusal) => Err(refusal),
         },
+        ApiRoute::ShareFile => {
+            let served = match caller(ctx, api, credential.as_ref(), now).await {
+                Ok(who) => file::serve(api, &who, name).await,
+                Err(refusal) => Err(refusal),
+            };
+            return Ok(served.unwrap_or_else(|refusal| refused(refusal, origin)));
+        }
         _ => match caller(ctx, api, credential.as_ref(), now).await {
             Err(refusal) => Err(refusal),
-            Ok(who) => match call(ctx, route, name, body).await? {
-                Ok(call) => {
-                    let answer = api.run(&who, call, now).await;
-                    if route == ApiRoute::CreateShare && answer.is_ok() {
-                        ctx.shared.count(Event::ShareCreated);
+            Ok(who) => {
+                let answer = match upload::boundary_of(ctx, route) {
+                    Some(boundary) => {
+                        upload::run(ctx, api, &who, (route, name), &boundary, body, now).await?
                     }
-                    answer
+                    None => match call(ctx, route, name, body).await? {
+                        Ok(call) => api.run(&who, call, now).await,
+                        Err(refusal) => Err(refusal),
+                    },
+                };
+                if route == ApiRoute::CreateShare && answer.is_ok() {
+                    ctx.shared.count(Event::ShareCreated);
                 }
-                Err(refusal) => Err(refusal),
-            },
+                answer
+            }
         },
     };
     Ok(match answer {
@@ -373,54 +389,8 @@ where
         ApiRoute::SaveCursor => body_of(ctx, body)
             .await?
             .map(|request| Call::SaveCursor(name.to_owned(), request)),
-        ApiRoute::Exchange | ApiRoute::CliLogin => Err(ApiCode::BadQuery.into()),
-    })
-}
-
-/// `GET /cli/login?port=<n>&state=<s>`: a signed-in browser gets a 303 to
-/// the CLI's loopback listener with a login code; a browser with no
-/// session is sent to sign in and comes back here.
-async fn cli_login<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
-    api: &dyn Api,
-    credential: Option<&Credential>,
-    now: Timestamp,
-) -> Result<Reply, Refusal>
-where
-    P: PageStore,
-    R: RecordStore,
-    S: Schemas,
-    K: OidcClock,
-{
-    let port = ctx
-        .query("port")
-        .and_then(|text| text.parse::<u16>().ok())
-        .filter(|port| *port != 0)
-        .ok_or(ApiCode::BadQuery)?;
-    let state = ctx
-        .query("state")
-        .filter(|state| {
-            STATE_CHARS.contains(&state.len())
-                && state
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-        })
-        .ok_or(ApiCode::BadQuery)?;
-    let signed_in = match credential {
-        Some(credential @ Credential::Session(_)) => {
-            ctx.shared.site.authenticate(credential).await.ok()
+        ApiRoute::Exchange | ApiRoute::CliLogin | ApiRoute::ShareFile => {
+            Err(ApiCode::BadQuery.into())
         }
-        _ => None,
-    };
-    let Some(email) = signed_in.and_then(|admitted| admitted.principal.email().cloned()) else {
-        let back = format!("/cli/login?port={port}&state={state}");
-        let encoded: String = form_urlencoded::byte_serialize(back.as_bytes()).collect();
-        return Ok(Reply::see_other(format!(
-            "/auth/oidc/start?return_to={encoded}"
-        )));
-    };
-    let code = api.issue_code(&email, port, now).await?;
-    Ok(Reply::see_other(
-        LoginRedirect::new(port, state, code).location(),
-    ))
+    })
 }

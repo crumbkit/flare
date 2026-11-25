@@ -7,7 +7,9 @@
 //! type. `run.rs` holds the generic implementation, `read.rs` the reading
 //! page's read and its get flare address, `convert.rs` turns
 //! flare-core's values and refusals into the contract's, and `tokens.rs`
-//! mints and reads tokens and login codes.
+//! mints and reads tokens and login codes. `upload.rs` runs a share or a
+//! version sent with its images, and `files.rs` holds the file store a
+//! site without one uses and the file route's read.
 //!
 //! [`check_share`] and [`check_version`] are the checks that a create and a
 //! new version apply to their body before any store call. The `flare share
@@ -22,19 +24,24 @@
 mod activity;
 mod comments;
 mod convert;
+mod files;
 mod grants;
 mod list;
 mod read;
 mod run;
 mod teams;
 mod tokens;
+mod upload;
 
 pub(crate) use convert::list_key;
+pub use files::NoFiles;
 pub use read::{GetFlare, NotGetFlare};
 pub(crate) use tokens::{LoginRedirect, bearer_of};
+pub(crate) use upload::{ImagePart, Upload, Uploaded};
 
 use convert::content_error;
 
+use crate::clock::Clock;
 use flare_auth_oidc::Admit;
 use flare_contract::{
     ApiCode, CommentEdit, ExchangeRequest, Format, GrantRequest, MembersRequest, NamedCursor,
@@ -42,7 +49,7 @@ use flare_contract::{
 };
 use flare_core::{
     Admission, AllAdmitted, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal,
-    ShareTitle, ShareVersion, Timestamp,
+    ShareTitle, ShareVersion, StoredFile, Timestamp,
 };
 use secrecy::SecretString;
 use std::fmt;
@@ -56,8 +63,9 @@ pub(crate) type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// creators rule, the token store, the directory that resolves `--with`
 /// identifiers, the admit rule that every token's owner must still pass,
 /// and the get flare address that [`Sharing::with_get_flare`] sets.
-pub struct Sharing<S, G, R, C, U, T, X, M = NoTeams, K = AllAdmitted> {
+pub struct Sharing<S, G, R, C, U, T, X, M = NoTeams, K = AllAdmitted, F = NoFiles> {
     flares: Flares<S, G, R, C, U, M, K>,
+    files: F,
     tokens: T,
     recipients: X,
     admit: Admit,
@@ -92,6 +100,7 @@ impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K> {
     ) -> Self {
         Self {
             flares: flares.admitting(admission(&admit)),
+            files: NoFiles,
             tokens,
             recipients,
             admit,
@@ -100,7 +109,7 @@ impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K> {
     }
 }
 
-impl<S, G, R, C, U, T, X, M, K> fmt::Debug for Sharing<S, G, R, C, U, T, X, M, K> {
+impl<S, G, R, C, U, T, X, M, K, F> fmt::Debug for Sharing<S, G, R, C, U, T, X, M, K, F> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.debug_struct("Sharing").finish_non_exhaustive()
     }
@@ -294,6 +303,8 @@ pub(crate) struct Reading {
     pub(crate) published: u64,
     /// The version's Markdown.
     pub(crate) markdown: String,
+    /// Where the page loads each image the version lists.
+    pub(crate) images: flare_render::ImageSources,
     /// The get flare address the page's foot links to, for a reader who
     /// has never shared a flare on a site that sets one.
     pub(crate) badge: Option<String>,
@@ -342,6 +353,27 @@ pub(crate) trait Api: Send + Sync {
         id: &'a str,
         version: Option<&'a str>,
     ) -> Boxed<'a, Result<Reading, ReadRefusal>>;
+
+    /// Runs one upload, a share or a version sent with its images, of an
+    /// authenticated caller. The upload refuses to commit once 5 minutes
+    /// have passed on `clock` since it started.
+    fn upload<'a>(
+        &'a self,
+        who: &'a Principal,
+        upload: Upload,
+        now: Timestamp,
+        clock: &'a dyn Clock,
+    ) -> Boxed<'a, Uploaded>;
+
+    /// File `file` of version `version` of share `id`, when the caller may
+    /// open that version and its image table lists the file.
+    fn file<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: &'a str,
+        file: &'a str,
+    ) -> Boxed<'a, Result<StoredFile, ReadRefusal>>;
 }
 
 #[cfg(test)]

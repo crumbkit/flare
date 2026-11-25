@@ -5,9 +5,21 @@
 
 use super::{Clause, RunTogether, Violation, ensure, fixture, unexpected};
 use crate::{
-    FileBytes, FileId, FileStore, FileStoreError, MAX_FILE_BYTES, MediaType, NewFile, ShareId,
-    StoredFile,
+    FileBytes, FileCursor, FileId, FileStore, FileStoreError, ListedFile, MAX_FILE_BYTES,
+    MAX_FILE_PAGE, MediaType, NewFile, ShareId, StoredFile, Timestamp,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
+
+mod start;
+
+pub use start::a_list_from_a_share_starts_at_that_share;
+
+/// How far a store's time may differ from this machine's clock, in
+/// seconds, for a store whose clock is another machine's.
+const SKEW: u64 = 300;
+
+/// The most pages the paging clause reads before it gives up.
+const MAX_PAGES: usize = 64;
 
 /// How many pairs of puts the concurrency clause runs.
 const ROUNDS: u8 = 8;
@@ -204,5 +216,177 @@ pub async fn the_largest_file_reads_back<F: FileStore>(
                 read.map(|file| file.bytes().as_bytes().len())
             )
         },
+    )
+}
+
+/// This machine's time, for the clauses that check a store's time.
+fn wall() -> Timestamp {
+    Timestamp::from_secs(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs()),
+    )
+}
+
+/// Every file the store lists, read in pages of `limit`.
+async fn every_listed<F: FileStore>(store: &F, limit: usize) -> Result<Vec<ListedFile>, Violation> {
+    let mut listed = Vec::new();
+    let mut after: Option<FileCursor> = None;
+    for _ in 0..MAX_PAGES {
+        let page = unexpected(store.list(after.as_ref(), limit).await)?;
+        if page.files.len() > limit {
+            return Err(Violation::new(
+                Clause::AListPagesThroughEveryFile,
+                format!("a page of limit {limit} held {} files", page.files.len()),
+            ));
+        }
+        listed.extend(page.files);
+        match page.next {
+            Some(next) => after = Some(next),
+            None => return Ok(listed),
+        }
+    }
+    Err(Violation::new(
+        Clause::AListPagesThroughEveryFile,
+        format!("the list did not end within {MAX_PAGES} pages"),
+    ))
+}
+
+/// A deleted file is not found, and the other files of its share still
+/// read back.
+///
+/// # Errors
+///
+/// Returns [`Clause::ADeletedFileIsNotFoundAndOthersStay`] otherwise.
+pub async fn a_deleted_file_is_not_found_and_others_stay<F: FileStore>(
+    store: &F,
+    contract_fixture: &FileFixture,
+) -> Result<(), Violation> {
+    let gone = FileId::from_random([7; 16]);
+    let kept = FileId::from_random([8; 16]);
+    unexpected(store.put(contract_fixture.file(&gone)).await)?;
+    unexpected(store.put(contract_fixture.file(&kept)).await)?;
+    let deleted = store.delete(&contract_fixture.share, &gone).await;
+    let read = store.get(&contract_fixture.share, &gone).await;
+    let other = store.get(&contract_fixture.share, &kept).await;
+    ensure(
+        deleted == Ok(())
+            && read == Err(FileStoreError::NotFound)
+            && other == Ok(StoredFile::from(contract_fixture.file(&kept))),
+        Clause::ADeletedFileIsNotFoundAndOthersStay,
+        || {
+            format!(
+                "the delete answered {deleted:?}; the file reads as {read:?}; the other as {other:?}"
+            )
+        },
+    )
+}
+
+/// Deleting a file that is not stored succeeds, and deleting a file under
+/// another share leaves it.
+///
+/// # Errors
+///
+/// Returns [`Clause::DeletingAMissingFileSucceeds`] otherwise.
+pub async fn deleting_a_missing_file_succeeds<F: FileStore>(
+    store: &F,
+    contract_fixture: &FileFixture,
+) -> Result<(), Violation> {
+    let id = FileId::from_random([9; 16]);
+    let missing = store.delete(&contract_fixture.share, &id).await;
+    unexpected(store.put(contract_fixture.file(&id)).await)?;
+    let elsewhere = store.delete(&contract_fixture.other_share, &id).await;
+    let read = store.get(&contract_fixture.share, &id).await;
+    let twice = match store.delete(&contract_fixture.share, &id).await {
+        Ok(()) => store.delete(&contract_fixture.share, &id).await,
+        failed => failed,
+    };
+    ensure(
+        missing == Ok(()) && elsewhere == Ok(()) && read.is_ok() && twice == Ok(()),
+        Clause::DeletingAMissingFileSucceeds,
+        || {
+            format!(
+                "a missing delete answered {missing:?}, one under another share {elsewhere:?} leaving {read:?}, and a repeated delete {twice:?}"
+            )
+        },
+    )
+}
+
+/// A list names each stored file once, under its share, with the time the
+/// store stored it.
+///
+/// # Errors
+///
+/// Returns [`Clause::AListNamesEachFileWithItsStoreTime`] otherwise.
+pub async fn a_list_names_each_file_with_its_store_time<F: FileStore>(
+    store: &F,
+    contract_fixture: &FileFixture,
+) -> Result<(), Violation> {
+    let before = wall().as_secs().saturating_sub(SKEW);
+    let one = FileId::from_random([10; 16]);
+    let two = FileId::from_random([11; 16]);
+    unexpected(store.put(contract_fixture.file(&one)).await)?;
+    let other = NewFile::new(
+        contract_fixture.other_share.clone(),
+        two.clone(),
+        contract_fixture.png.clone(),
+        contract_fixture.bytes.clone(),
+    );
+    unexpected(store.put(other).await)?;
+    let after = wall().as_secs().saturating_add(SKEW);
+    let listed = every_listed(store, MAX_FILE_PAGE).await?;
+    let found = |share: &ShareId, id: &FileId| {
+        listed
+            .iter()
+            .filter(|file| file.share() == share && file.id() == id)
+            .count()
+    };
+    let timely = listed
+        .iter()
+        .all(|file| (before..=after).contains(&file.stored().as_secs()));
+    ensure(
+        found(&contract_fixture.share, &one) == 1
+            && found(&contract_fixture.other_share, &two) == 1
+            && found(&contract_fixture.share, &two) == 0
+            && listed.len() == 2
+            && timely,
+        Clause::AListNamesEachFileWithItsStoreTime,
+        || format!("the list holds {listed:?}"),
+    )
+}
+
+/// A list read two files at a time names every stored file once, and a
+/// deleted file drops out of the next walk.
+///
+/// # Errors
+///
+/// Returns [`Clause::AListPagesThroughEveryFile`] otherwise.
+pub async fn a_list_pages_through_every_file<F: FileStore>(
+    store: &F,
+    contract_fixture: &FileFixture,
+) -> Result<(), Violation> {
+    let ids: Vec<FileId> = (0x20..0x25_u8)
+        .map(|byte| FileId::from_random([byte; 16]))
+        .collect();
+    for id in &ids {
+        unexpected(store.put(contract_fixture.file(id)).await)?;
+    }
+    let first = every_listed(store, 2).await?;
+    let gone = ids
+        .first()
+        .cloned()
+        .unwrap_or_else(|| FileId::from_random([0; 16]));
+    unexpected(store.delete(&contract_fixture.share, &gone).await)?;
+    let second = every_listed(store, 2).await?;
+    let once = |listed: &[ListedFile], id: &FileId| {
+        listed.iter().filter(|file| file.id() == id).count() == 1
+    };
+    ensure(
+        first.len() == ids.len()
+            && ids.iter().all(|id| once(&first, id))
+            && second.len() == ids.len() - 1
+            && !second.iter().any(|file| file.id() == &gone),
+        Clause::AListPagesThroughEveryFile,
+        || format!("the first walk named {first:?}; after a delete, {second:?}"),
     )
 }

@@ -1,4 +1,5 @@
-use super::{Found, Need, ROUTES, Sites, find};
+use super::{Found, Handler, Need, ROUTES, Sites, find};
+use crate::handlers::ApiRoute;
 use crate::site::SiteKind;
 use flare_core::Access;
 use http::Method;
@@ -174,7 +175,7 @@ fn the_publish_route_takes_one_segment_for_the_id_and_only_post() {
 }
 
 #[test]
-fn only_the_comment_routes_and_activity_take_the_session_cookie() {
+fn only_the_comment_routes_activity_and_the_file_route_take_the_session_cookie() {
     let mut taking: Vec<(String, &str)> = ROUTES
         .iter()
         .filter(|route| route.credential == Need::TokenOrCookie)
@@ -187,8 +188,46 @@ fn only_the_comment_routes_and_activity_take_the_session_cookie() {
             ("DELETE".to_owned(), "/api/comments/<name>"),
             ("GET".to_owned(), "/api/activity"),
             ("GET".to_owned(), "/api/comments"),
+            (
+                "GET".to_owned(),
+                "/api/shares/<name>/versions/<n>/files/<file>"
+            ),
             ("PATCH".to_owned(), "/api/comments/<name>"),
             ("POST".to_owned(), "/api/comments"),
         ]
     );
+}
+
+#[test]
+fn a_file_path_finds_the_file_route_and_names_the_rest_of_the_path_and_a_share_path_still_finds_the_share()
+ {
+    let file = "/api/shares/abc/versions/2/files/def";
+    let found = find(&Method::GET, file, SiteKind::Hosted);
+    assert!(
+        matches!(found, Found::Route(route, "abc/versions/2/files/def") if route.handler == Handler::Api(ApiRoute::ShareFile) && route.credential == Need::TokenOrCookie),
+        "{found:?}"
+    );
+    assert!(matches!(
+        find(&Method::GET, "/api/shares/abc", SiteKind::Hosted),
+        Found::Route(route, "abc") if route.handler == Handler::Api(ApiRoute::OpenShare)
+    ));
+    for other in [
+        "/api/shares/abc/versions/2/files",
+        "/api/shares/abc/versions/2/files/def/more",
+        "/api/shares/abc/versions//files/def",
+        "/api/shares/abc/version/2/files/def",
+    ] {
+        assert!(
+            !matches!(find(&Method::GET, other, SiteKind::Hosted), Found::Route(route, _) if route.handler == Handler::Api(ApiRoute::ShareFile)),
+            "{other}"
+        );
+    }
+    assert!(matches!(
+        find(&Method::POST, file, SiteKind::Hosted),
+        Found::MethodNotAllowed
+    ));
+    assert!(matches!(
+        find(&Method::GET, file, SiteKind::Local),
+        Found::Nothing
+    ));
 }

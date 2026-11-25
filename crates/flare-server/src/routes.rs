@@ -86,6 +86,8 @@ pub(crate) struct Route {
     /// The method.
     pub(crate) method: Method,
     /// The path, or with `<name>` the prefix before the one name segment.
+    /// Several `<…>` segments take one non-empty segment each and name the
+    /// path from the first; such a pattern precedes a `<name>` that takes it.
     pub(crate) pattern: &'static str,
     /// The credential it needs.
     pub(crate) credential: Need,
@@ -121,7 +123,7 @@ const TOKEN: (Need, Option<Access>) = (Need::Token, None);
 const BROWSER: (Need, Option<Access>) = (Need::TokenOrCookie, None);
 
 /// The table.
-pub(crate) static ROUTES: [Route; 40] = [
+pub(crate) static ROUTES: [Route; 41] = [
     route(Method::GET, "/up", OPEN, Handler::Up, Sites::Both),
     route(Method::GET, "/ready", OPEN, Handler::Ready, Sites::Local),
     route(Method::GET, "/launch", OPEN, Handler::Launch, Sites::Local),
@@ -243,6 +245,13 @@ pub(crate) static ROUTES: [Route; 40] = [
         "/api/shares",
         TOKEN,
         Handler::Api(ApiRoute::ListShares),
+        Sites::Hosted,
+    ),
+    route(
+        Method::GET,
+        "/api/shares/<name>/versions/<n>/files/<file>",
+        BROWSER,
+        Handler::Api(ApiRoute::ShareFile),
         Sites::Hosted,
     ),
     route(

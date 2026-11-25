@@ -114,7 +114,7 @@
             {
               "Sid": "FilesObjects",
               "Effect": "Allow",
-              "Action": ["s3:GetObject", "s3:PutObject"],
+              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
               "Resource": { "Fn::Sub": "${FilesBucket.Arn}/files/*" }
             },
             {

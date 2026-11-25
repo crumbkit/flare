@@ -1,7 +1,7 @@
 //! The arguments and help of `flare login`, `logout`, `share`, `show`,
 //! `grant`, `revoke`, `grants`, `shares` and `activity`.
 
-use crate::documents::{ACTIVITY, GRANT, GRANTS, REVOKE, SHARES};
+use crate::documents::{ACTIVITY, GRANT, GRANTS, REVOKE, SHARE, SHARES};
 use clap::Args;
 use crumbkit::help::{Effects, Example, Leaf};
 use crumbkit::{DryRun, Page, Yes};
@@ -144,6 +144,29 @@ pub(crate) struct GrantsArgs {
     #[arg(value_name = "ID")]
     pub(crate) id: String,
 }
+
+/// The help of `flare share`.
+pub(super) const SHARE_LEAF: Leaf = Leaf::new(&["share"])
+        .examples(&[
+            Example::new(
+                &["review.md", "--with", "ana@example.org,jo@example.org"],
+                "Share review.md with two people",
+            ).needs(&["server"]),
+            Example::new(
+                &["answer.md", "--re", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Share answer.md as a response to a flare",
+            ).needs(&["server"]),
+            Example::new(
+                &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
+                "Publish review.md as the next version of a share you own",
+            ).needs(&["server"]),
+            Example::new(
+                &["review.md", "--dry-run", "--out", "review.html"],
+                "Check review.md as the server would and write its HTML to review.html, sharing nothing",
+            ),
+        ])
+        .effects(Effects::additive())
+        .document(SHARE);
 
 /// The help of `flare grant`.
 pub(super) const GRANT_LEAF: Leaf = Leaf::new(&["grant"])

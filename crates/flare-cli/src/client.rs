@@ -5,9 +5,11 @@
 //! origin. A refusal's problem document becomes [`Refused`] with the
 //! server's code, and the server's own busy, fault and deadline answers
 //! become [`SharingFailed::ServerError`]; any other answer that is not the
-//! expected JSON is [`SharingFailed::BadAnswer`].
+//! expected JSON is [`SharingFailed::BadAnswer`]. A share sent with its
+//! images goes as a `multipart/form-data` body that [`form`] writes.
 
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
+use crate::sharing::LocalImage;
 use flare_contract::{ApiCode, ProblemDocument};
 use flare_server::{SERVER_BUSY, SERVER_DEADLINE, SERVER_FAULT};
 use reqwest::{Client, Method, StatusCode};
@@ -93,21 +95,59 @@ impl Api {
         target: &str,
         body: Option<&impl Serialize>,
     ) -> Result<Option<T>, Failed> {
-        let mut request = self
+        let mut request = self.request(method, target);
+        if let Some(body) = body {
+            request = request
+                .header("content-type", "application/json")
+                .body(json(body)?);
+        }
+        self.answer(request).await
+    }
+
+    /// Sends `method` to `target` as a `multipart/form-data` body with one
+    /// `share` part that holds `share` as JSON and one `image` part per
+    /// image, named by its path, and reads the JSON answer.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failures of [`Api::send`].
+    pub(crate) async fn send_form<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        target: &str,
+        share: &impl Serialize,
+        images: &[LocalImage],
+    ) -> Result<Option<T>, Failed> {
+        let share = json(share)?;
+        let boundary = boundary(&share, images);
+        let body = form(&boundary, &share, images);
+        let request = self
+            .request(method, target)
+            .header(
+                "content-type",
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(body);
+        self.answer(request).await
+    }
+
+    /// A request of `method` to `target` with the bearer token.
+    fn request(&self, method: Method, target: &str) -> reqwest::RequestBuilder {
+        let request = self
             .client
             .request(method, format!("{}{target}", self.origin))
             .header("accept", "application/json");
-        if let Some(token) = &self.token {
-            request = request.bearer_auth(token.expose_secret());
+        match &self.token {
+            Some(token) => request.bearer_auth(token.expose_secret()),
+            None => request,
         }
-        if let Some(body) = body {
-            let bytes = serde_json::to_vec(body).map_err(|error| Failed::System {
-                problem: format!("the request could not be written: {error}"),
-            })?;
-            request = request
-                .header("content-type", "application/json")
-                .body(bytes);
-        }
+    }
+
+    /// Sends `request` and reads its JSON answer.
+    async fn answer<T: DeserializeOwned>(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<Option<T>, Failed> {
         let reply = request.send().await.map_err(|error| {
             Failed::from(SharingFailed::Unreachable {
                 server: self.origin.clone(),
@@ -164,6 +204,50 @@ impl Api {
     }
 }
 
+/// `body` as JSON bytes.
+fn json(body: &impl Serialize) -> Result<Vec<u8>, Failed> {
+    serde_json::to_vec(body).map_err(|error| Failed::System {
+        problem: format!("the request could not be written: {error}"),
+    })
+}
+
+/// A form boundary that appears in no part: `flare-form-` and the first
+/// number that gives one.
+pub(crate) fn boundary(share: &[u8], images: &[LocalImage]) -> String {
+    let appears = |boundary: &str| {
+        let needle = boundary.as_bytes();
+        std::iter::once(share)
+            .chain(images.iter().map(|image| image.bytes.as_slice()))
+            .any(|part| part.windows(needle.len()).any(|window| window == needle))
+    };
+    (0_u64..)
+        .map(|number| format!("flare-form-{number:016x}"))
+        .find(|boundary| !appears(boundary))
+        .unwrap_or_default()
+}
+
+/// The form body of `share` and `images` with `boundary`. A filename
+/// escapes a quote and a backslash with a backslash.
+pub(crate) fn form(boundary: &str, share: &[u8], images: &[LocalImage]) -> Vec<u8> {
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"share\"\r\nContent-Type: application/json\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(share);
+    for image in images {
+        let name = image.path.replace('\\', "\\\\").replace('"', "\\\"");
+        body.extend_from_slice(
+            format!(
+                "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(&image.bytes);
+    }
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    body
+}
+
 /// The server's own failure that `code` names, with what it means for
 /// running the command again, or `None` for any other code. A busy server
 /// answers before the handler runs, so nothing was done. A fault or a
@@ -189,3 +273,6 @@ fn without_url(error: &reqwest::Error) -> String {
         "the request failed".to_owned()
     }
 }
+
+#[cfg(test)]
+mod tests;

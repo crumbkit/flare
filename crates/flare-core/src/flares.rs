@@ -43,6 +43,7 @@ pub use team_life::{MAX_SWEPT, TeamDeletion};
 
 use crate::auth::Principal;
 use crate::email::Email;
+use crate::file::VersionImages;
 use crate::response::NewLink;
 use crate::share::{Share, ShareContent, ShareId, ShareTitle};
 use crate::sharing::{ShareError, Shares};
@@ -65,6 +66,7 @@ pub struct NewFlare {
     with: Vec<Email>,
     groups: Vec<Group>,
     re: Vec<ShareId>,
+    images: VersionImages,
 }
 
 impl NewFlare {
@@ -85,7 +87,16 @@ impl NewFlare {
             with: once_each(with),
             groups: Vec::new(),
             re: once_each(re),
+            images: VersionImages::none(),
         }
+    }
+
+    /// The same flare, whose version 1 shows `images`. The caller has
+    /// stored each file under the flare's id first.
+    #[must_use]
+    pub fn with_images(mut self, images: VersionImages) -> Self {
+        self.images = images;
+        self
     }
 
     /// The same flare, also granted to each team or to everyone in
@@ -272,6 +283,24 @@ impl<
         }
     }
 
+    /// Runs every check of [`Flares::share`] that comes before its first
+    /// write, and writes nothing. A caller that stores files for the flare
+    /// runs it before the first one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusals that [`Flares::share`] gives before any write.
+    pub async fn may_share(&self, who: &Principal, flare: &NewFlare) -> Result<(), FlareError> {
+        self.creator(who).await?;
+        for group in &flare.groups {
+            self.shares
+                .check_group(who, group)
+                .await
+                .map_err(FlareError::Share)?;
+        }
+        self.openable(who, &flare.re).await.map(|_| ())
+    }
+
     /// Creates a share owned by the caller, grants Reader to each recipient
     /// and records each `--re` flare as one it responds to.
     ///
@@ -300,7 +329,7 @@ impl<
         let flares = self.openable(who, &flare.re).await?;
         let share = self
             .shares
-            .create(who, flare.id, flare.title, flare.content, at)
+            .create_with_images(who, flare.id, flare.title, flare.content, flare.images, at)
             .await
             .map_err(FlareError::Share)?;
         let partly = |granted, cause| FlareError::PartlyShared {

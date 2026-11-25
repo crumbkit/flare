@@ -166,16 +166,28 @@ pub(crate) async fn read_body<P, R, S, K: OidcClock>(
     ctx: &Ctx<'_, P, R, S, K>,
     body: Incoming,
 ) -> Result<Bytes, Problem> {
-    let limits = &ctx.shared.limits;
-    let collected = tasks::within(
-        limits.read_time,
-        Limited::new(body, limits.body_bytes).collect(),
+    read_limited(
+        ctx,
+        body,
+        (ctx.shared.limits.body_bytes, Code::BodyTooLarge),
     )
     .await
-    .ok_or(Code::Slow)?;
+}
+
+/// Reads a request body of at most `most` bytes, as [`read_body`] does,
+/// and answers a larger one with `too_large`.
+pub(crate) async fn read_limited<P, R, S, K: OidcClock>(
+    ctx: &Ctx<'_, P, R, S, K>,
+    body: Incoming,
+    (most, too_large): (usize, Code),
+) -> Result<Bytes, Problem> {
+    let limits = &ctx.shared.limits;
+    let collected = tasks::within(limits.read_time, Limited::new(body, most).collect())
+        .await
+        .ok_or(Code::Slow)?;
     match collected {
         Ok(collected) => Ok(collected.to_bytes()),
-        Err(error) if error.is::<LengthLimitError>() => Err(Code::BodyTooLarge.into()),
+        Err(error) if error.is::<LengthLimitError>() => Err(too_large.into()),
         Err(_) => Err(Code::BadBody.into()),
     }
 }

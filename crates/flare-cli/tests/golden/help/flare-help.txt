@@ -25,6 +25,7 @@ Verbs
 
 Commands
   teams           Manage teams
+  files           Manage a hosted site's image files
   commands        Explore flare's commands
   schemas         Explore the JSON documents that flare prints
   skills          Manage flare's agent skill

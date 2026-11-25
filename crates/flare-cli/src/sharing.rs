@@ -3,17 +3,24 @@
 //! server's share API. `flare share --dry-run` is the exception:
 //! `dry_run.rs` checks and renders the file and reads neither the login nor
 //! the Keychain. `flare activity` is in `activity.rs`.
+//!
+//! A Markdown file's relative images are read from the file's folder and
+//! sent with it as a form. `images.rs` checks them first, and an image the
+//! server would refuse, or whose file is missing or outside the folder,
+//! stops the command before any request, a dry run included.
 
 mod dry_run;
 mod grants;
+mod images;
 mod shares;
 
 pub(crate) use grants::{grants, revoke};
 
+pub(crate) use images::LocalImage;
 pub(crate) use shares::shares;
 
 use crate::cli::{GrantArgs, ShareArgs, ShowArgs};
-use crate::client::Api;
+use crate::client::{self, Api};
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use crate::documents::{ShareOut, SharedOut, Shown};
 use crate::env::Snapshot;
@@ -23,7 +30,7 @@ use flare_contract::{
     ApiCode, Format, GrantRequest, OpenedShare, Role, ShareRequest, ShareSummary, Shared,
     VersionRequest,
 };
-use flare_core::ShareId;
+use flare_core::{MAX_UPLOAD_BYTES, ShareId};
 use reqwest::Method;
 use std::io::Read as _;
 use std::path::Path;
@@ -31,6 +38,54 @@ use std::path::Path;
 /// The largest file `flare share` reads, in bytes. The server takes far
 /// less, and refuses a larger document with `flare::shares::too_large`.
 const MAX_FILE: u64 = 4 * 1024 * 1024;
+
+/// The images of what `args` sends, refused when the form that carries
+/// them would be larger than the server reads.
+fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalImage>, Failed> {
+    let (format, content) = match outgoing {
+        Outgoing::Create(request) => (request.format, &request.content),
+        Outgoing::Update(_, request) => (request.format, &request.content),
+    };
+    let images = images::images(&args.file, format, content)?;
+    fits(outgoing, &images)?;
+    Ok(images)
+}
+
+/// Refuses `images` when the form that sends them with `outgoing` is
+/// larger than [`MAX_UPLOAD_BYTES`], the most the server reads, naming an
+/// image that alone passes it, or else the largest image. No images go
+/// as JSON, which this does not bound.
+fn fits(outgoing: &Outgoing, images: &[LocalImage]) -> Result<(), Failed> {
+    let Some(largest) = images.iter().max_by_key(|image| image.bytes.len()) else {
+        return Ok(());
+    };
+    let limit = format!("{} MiB", MAX_UPLOAD_BYTES / (1024 * 1024));
+    if largest.bytes.len() > MAX_UPLOAD_BYTES {
+        return Err(SharingFailed::ImageOverUpload {
+            image: largest.path.clone(),
+            bytes: largest.bytes.len(),
+            limit,
+        }
+        .into());
+    }
+    let share = match outgoing {
+        Outgoing::Create(request) => serde_json::to_vec(request),
+        Outgoing::Update(_, request) => serde_json::to_vec(request),
+    }
+    .map_err(|error| Failed::System {
+        problem: format!("the request could not be written: {error}"),
+    })?;
+    let bytes = client::form(&client::boundary(&share, images), &share, images).len();
+    if bytes > MAX_UPLOAD_BYTES {
+        return Err(SharingFailed::UploadTooLarge {
+            image: largest.path.clone(),
+            bytes,
+            limit,
+        }
+        .into());
+    }
+    Ok(())
+}
 
 /// A client of the saved login's server with its token.
 ///
@@ -151,15 +206,15 @@ pub(crate) async fn share(
     env: &Snapshot,
 ) -> Result<ShareOut, Failed> {
     let outgoing = outgoing(args)?;
+    let images = images_of(args, &outgoing)?;
     if dry_run {
-        return dry_run::check(args, outgoing);
+        return dry_run::check(args, outgoing, images.len());
     }
     let api = session(env)?;
     match outgoing {
-        Outgoing::Update(id, request) => update(&api, &id, request).await,
+        Outgoing::Update(id, request) => update(&api, &id, request, &images).await,
         Outgoing::Create(request) => {
-            let shared: Shared = api
-                .send(Method::POST, "/api/shares", Some(&request))
+            let shared: Shared = sent(&api, "/api/shares", &request, &images)
                 .await
                 .and_then(|answer| body(&api, answer))
                 .map_err(Failed::after_a_write)?;
@@ -169,19 +224,39 @@ pub(crate) async fn share(
                 version: Some(shared.share.version),
                 granted: Some(shared.granted),
                 responds_to: Some(shared.responds_to),
+                images: images.len(),
                 checks: Vec::new(),
             })
         }
     }
 }
 
+/// Posts `request` to `target`: as JSON when there are no images, and as
+/// a form with them otherwise.
+async fn sent<T: serde::de::DeserializeOwned>(
+    api: &Api,
+    target: &str,
+    request: &impl serde::Serialize,
+    images: &[LocalImage],
+) -> Result<Option<T>, Failed> {
+    if images.is_empty() {
+        api.send(Method::POST, target, Some(request)).await
+    } else {
+        api.send_form(Method::POST, target, request, images).await
+    }
+}
+
 /// Publishes `request` as the next version of the share `id`. The server
 /// answers with the share's summary, whose version is the new number.
-async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<ShareOut, Failed> {
+async fn update(
+    api: &Api,
+    id: &str,
+    request: VersionRequest,
+    images: &[LocalImage],
+) -> Result<ShareOut, Failed> {
     let id = share_id(api, id)?;
     let target = format!("/api/shares/{}/versions", id.as_str());
-    let share: ShareSummary = api
-        .send(Method::POST, &target, Some(&request))
+    let share: ShareSummary = sent(api, &target, &request, images)
         .await
         .and_then(|answer| body(api, answer))
         .map_err(Failed::after_a_write)?;
@@ -191,6 +266,7 @@ async fn update(api: &Api, id: &str, request: VersionRequest) -> Result<ShareOut
         version: Some(share.version),
         granted: None,
         responds_to: None,
+        images: images.len(),
         checks: Vec::new(),
     })
 }

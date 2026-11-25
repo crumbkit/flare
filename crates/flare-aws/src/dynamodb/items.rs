@@ -13,9 +13,11 @@ use flare_core::{
 use std::collections::HashMap;
 
 mod audience;
+mod images;
 mod names;
 
 use audience::{read_audience, with_audience};
+use images::{read_images, with_images};
 pub(crate) use names::{ItemKind, attr};
 
 /// One item as DynamoDB holds it.
@@ -195,7 +197,7 @@ pub(crate) fn version_item(version: &SharedVersion) -> Option<Item> {
         ShareContent::Document(text) => (ShareKind::Document, text.as_str()),
         _ => return None,
     };
-    Some(keyed(
+    let item = keyed(
         &Key::version(version.share(), version.number()),
         [
             (attr::KIND, text(kind_name(kind)?)),
@@ -203,7 +205,8 @@ pub(crate) fn version_item(version: &SharedVersion) -> Option<Item> {
             (attr::PUBLISHED_BY, text(version.published_by().as_str())),
             (attr::CREATED, number(version.created().as_secs())),
         ],
-    ))
+    );
+    Some(with_images(item, version.images()))
 }
 
 /// The version `number` of share `id` that its item holds.
@@ -225,7 +228,8 @@ pub(crate) fn version_from(
         content,
         read_principal(item, attr::PUBLISHED_BY, kind)?,
         read_time(item, kind)?,
-    ))
+    )
+    .with_images(read_images(item)?))
 }
 
 /// A share's entry in its owner's list, or `None` for a kind of share this

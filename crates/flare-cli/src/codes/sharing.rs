@@ -6,17 +6,18 @@
 
 mod calls;
 mod next_run;
+mod refused;
 
 pub(crate) use calls::{activity_call, shares_call};
 pub use next_run::NextRun;
+pub use refused::Refused;
 
 use super::Failed;
 use super::sign_in::sign_in;
-use crumbkit::{Call, Code, Failure, Field, Recovery, Then};
-use flare_contract::{ApiCode, Recovery as ApiRecovery};
+use crumbkit::{Code, Failure, Recovery};
+use flare_contract::ApiCode;
 use flare_core::ShareId;
-use next_run::{bad_answer, check_shares, retry};
-use std::fmt;
+use next_run::{bad_answer, retry};
 
 /// No login is saved, or the Keychain holds no token for it.
 pub const LOGIN_NEEDED: Code<'static> = Code::from_spelling("flare::login::needed");
@@ -39,6 +40,14 @@ pub const FILES_UNREADABLE: Code<'static> = Code::from_spelling("flare::files::u
 pub const FILES_UNWRITABLE: Code<'static> = Code::from_spelling("flare::files::unwritable");
 /// The file to share is neither Markdown nor HTML.
 pub const FILES_UNKNOWN_FORMAT: Code<'static> = Code::from_spelling("flare::files::unknown_format");
+/// An image the document shows is not in its folder.
+pub const IMAGES_MISSING: Code<'static> = Code::from_spelling("flare::images::missing");
+/// An image the document shows is outside the document's folder.
+pub const IMAGES_OUTSIDE_FOLDER: Code<'static> =
+    Code::from_spelling("flare::images::outside_folder");
+/// A document with its images makes a body larger than the server reads.
+pub const IMAGES_BODY_TOO_LARGE: Code<'static> =
+    Code::from_spelling("flare::images::body_too_large");
 
 /// Why a sharing command failed before or after the server answered.
 #[derive(Debug, thiserror::Error, Failure)]
@@ -177,6 +186,64 @@ pub enum SharingFailed {
         /// The file.
         path: String,
     },
+    /// An image the document shows is not where its path points.
+    #[error("the document shows the image {image}, and no file is there")]
+    #[failure(
+        code = IMAGES_MISSING,
+        hint = "put the image at that path, relative to the document's folder, or take it out of the document",
+        field(image = image)
+    )]
+    ImageMissing {
+        /// The image's path as the Markdown wrote it.
+        image: String,
+    },
+    /// An image the document shows is outside the document's folder.
+    #[error("the document shows the image {image}, which is outside the document's folder")]
+    #[failure(
+        code = IMAGES_OUTSIDE_FOLDER,
+        hint = "copy the image into the document's folder and show it by a path inside that folder",
+        field(image = image)
+    )]
+    ImageOutsideFolder {
+        /// The image's path as the Markdown wrote it.
+        image: String,
+    },
+    /// One image is larger than the whole body the server reads for a
+    /// document with its images.
+    #[error(
+        "the image {image} is {bytes} bytes, and the server reads at most {limit} for a document with its images"
+    )]
+    #[failure(
+        code = IMAGES_BODY_TOO_LARGE,
+        hint = "make the image smaller, such as by saving a screenshot as JPEG, and share again",
+        field(image = image)
+    )]
+    ImageOverUpload {
+        /// The image's path as the Markdown wrote it.
+        image: String,
+        /// The image's length in bytes.
+        bytes: usize,
+        /// The limit, such as `4 MiB`.
+        limit: String,
+    },
+    /// The document with its images makes a body larger than the server
+    /// reads.
+    #[error(
+        "the document with its images is {bytes} bytes, more than the {limit} the server reads; its largest image is {image}"
+    )]
+    #[failure(
+        code = IMAGES_BODY_TOO_LARGE,
+        hint = "make the images smaller, such as by saving screenshots as JPEG, or show fewer in one document",
+        field(image = image)
+    )]
+    UploadTooLarge {
+        /// The largest image's path as the Markdown wrote it.
+        image: String,
+        /// The body's length in bytes.
+        bytes: usize,
+        /// The limit, such as `4 MiB`.
+        limit: String,
+    },
 }
 
 impl Failed {
@@ -201,155 +268,6 @@ impl Failed {
 
 fn for_server(server: Option<&str>) -> String {
     server.map_or_else(String::new, |server| format!(" for {server}"))
-}
-
-/// A refusal of the share API, with the server's code and its detail.
-#[derive(Debug)]
-pub struct Refused {
-    code: ApiCode,
-    detail: Option<String>,
-    server: String,
-    /// The share that a partly finished share created, when the server
-    /// named one that parses as a share id.
-    share: Option<ShareId>,
-    /// The flares of the `flare activity` that was refused, which a
-    /// `bad_cursor` recovery names.
-    flares: Vec<ShareId>,
-    /// Whether the `flare shares` that was refused listed the shares
-    /// granted to the caller, which a `shares::bad_cursor` recovery names.
-    with_me: bool,
-    /// Whether the refused request was a write of a share or a version
-    /// whose outcome the server does not know, which `shares::unavailable`
-    /// says after a write, so the recovery checks `flare shares` first.
-    maybe_written: bool,
-    /// The same command with the key it sent, when the refused request was
-    /// a keyed write, such as a comment, that `comments::unavailable` says
-    /// may have happened.
-    again: Option<Box<Call>>,
-}
-
-impl Refused {
-    /// The refusal `code` from `server`, with the server's `detail`.
-    pub(crate) fn new(code: ApiCode, detail: Option<String>, server: &str) -> Self {
-        Self {
-            code,
-            detail,
-            server: server.to_owned(),
-            share: None,
-            flares: Vec::new(),
-            with_me: false,
-            maybe_written: false,
-            again: None,
-        }
-    }
-
-    /// The same refusal of a `flare activity` that asked about `flares`.
-    pub(crate) fn for_flares(mut self, flares: &[ShareId]) -> Self {
-        self.flares = flares.to_vec();
-        self
-    }
-
-    /// The same refusal of a `flare shares` that listed the shares granted
-    /// to the caller when `with_me` holds.
-    pub(crate) fn for_shares(mut self, with_me: bool) -> Self {
-        self.with_me = with_me;
-        self
-    }
-
-    /// The same refusal naming the share that the problem document's
-    /// `share` field names. A value that is not a share id is dropped, and
-    /// the recovery then names the share with a placeholder.
-    pub(crate) fn naming(mut self, share: Option<&str>) -> Self {
-        self.share = share.and_then(|text| ShareId::try_from(text).ok());
-        self
-    }
-}
-
-impl Refused {
-    /// The server's code.
-    pub(crate) fn api_code(&self) -> ApiCode {
-        self.code
-    }
-}
-
-impl fmt::Display for Refused {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.code.title())?;
-        match &self.detail {
-            Some(detail) => write!(formatter, ": {detail}"),
-            None => Ok(()),
-        }
-    }
-}
-
-impl std::error::Error for Refused {}
-
-impl Failure for Refused {
-    fn code(&self) -> Code<'_> {
-        Code::from_spelling(self.code.text())
-    }
-
-    /// The recovery for the code. A `shares::unavailable` refusal of a
-    /// write checks `flare shares` first, and a `comments::unavailable`
-    /// refusal of a keyed write repeats the command with its key. `partly_shared` and `bad_cursor`
-    /// take the typed call that `Refused::typed_call` builds. `not_found`
-    /// takes the first of the API hint's two repairs, and
-    /// `Refused::alternatives` gives the second. Every other
-    /// code takes the API's recovery, where a `run` recovery, which the API
-    /// uses only for `flare login`, becomes the `terminal` sign-in that
-    /// `sign_in` builds, because only a person can finish it.
-    fn recovery(&self) -> Recovery {
-        if self.maybe_written {
-            return check_shares();
-        }
-        if let Some(again) = &self.again {
-            return Recovery::Run(Call::clone(again));
-        }
-        if let Some(typed) = self.typed_call() {
-            return typed;
-        }
-        if self.code == ApiCode::ShareNotFound {
-            return Recovery::hint("check the flare id");
-        }
-        match self.code.recovery(&self.server) {
-            ApiRecovery::Run { .. } => sign_in(Some(&self.server)),
-            ApiRecovery::Retry => Recovery::Retry,
-            ApiRecovery::Hint { text } => Recovery::hint(text),
-        }
-    }
-
-    /// The server, which a dry run has none of, and the share a partly
-    /// finished share created, when the server named one.
-    fn fields(&self) -> Vec<Field<'_>> {
-        let server = (!self.server.is_empty()).then(|| Field::new("server", self.server.as_str()));
-        let share = self
-            .share
-            .as_ref()
-            .map(|share| Field::new("share", share.as_str()));
-        server.into_iter().chain(share).collect()
-    }
-
-    /// A bad cursor can also be replaced by the cursor that the last `flare
-    /// activity` or `flare shares` printed, a flare that is not found can
-    /// be shared with the caller by its owner, and a missing team can be
-    /// solved by asking the team's owner to add the caller.
-    fn alternatives(&self) -> Vec<Recovery> {
-        match self.code {
-            ApiCode::BadCursor => vec![Recovery::after(
-                "find the cursor that the last flare activity printed",
-                Then::Run(activity_call(&self.flares).arg("since")),
-            )],
-            ApiCode::ShareNotFound => {
-                vec![Recovery::hint("ask the flare's owner to share it with you")]
-            }
-            ApiCode::SharesBadCursor => vec![Recovery::after(
-                "find the cursor that the last flare shares printed",
-                Then::Run(shares_call(self.with_me).arg("cursor")),
-            )],
-            ApiCode::TeamNotFound => vec![Recovery::hint("ask the team's owner to add you")],
-            _ => Vec::new(),
-        }
-    }
 }
 
 /// The number of the share API's codes.

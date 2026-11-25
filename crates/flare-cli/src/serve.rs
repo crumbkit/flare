@@ -9,7 +9,7 @@
 //! reads the client secret from the configured file, writes no server file
 //! and has no idle exit. When the hosted section names its stores, it checks
 //! the DynamoDB table and the S3 bucket before it binds and serves the share
-//! API from them.
+//! API from them, with the images of shares kept in the bucket.
 
 use crate::board;
 use crate::cli::ServeArgs;
@@ -30,7 +30,7 @@ use flare_auth_oidc::{
 use flare_aws::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
     DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
-    Stores,
+    S3FileStore, Stores,
 };
 use flare_board::BoardStore;
 use flare_core::{FlareTeams, Flares, NamedRecipients};
@@ -310,10 +310,12 @@ type HostedSharing = Sharing<
     NamedRecipients,
     FlareTeams<DynamoTeamStore>,
     HostedCreators,
+    S3FileStore,
 >;
 
 /// The share API on the configured table and bucket, which it checks
-/// first, accepting a token only while `admit` admits its owner.
+/// first, keeping images in the bucket and accepting a token only while
+/// `admit` admits its owner.
 async fn share_api(
     config: SharingConfig,
     stores: Stores,
@@ -334,7 +336,8 @@ async fn share_api(
         config.creators,
     )
     .with_teams(FlareTeams::new(stores.teams));
-    let api = Sharing::new(flares, stores.tokens, config.recipients, admit);
+    let api =
+        Sharing::new(flares, stores.tokens, config.recipients, admit).with_files(stores.files);
     Ok(match config.get_flare {
         Some(address) => api.with_get_flare(address),
         None => api,

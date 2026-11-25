@@ -26,7 +26,11 @@ const PREVIEW_NAME: &str = "share";
 ///
 /// Returns the refusal the server would send, with its code, or the
 /// failure to render or to write the HTML.
-pub(super) fn check(args: &ShareArgs, outgoing: Outgoing) -> Result<ShareOut, Failed> {
+pub(super) fn check(
+    args: &ShareArgs,
+    outgoing: Outgoing,
+    images: usize,
+) -> Result<ShareOut, Failed> {
     let ending = args
         .file
         .extension()
@@ -71,6 +75,14 @@ pub(super) fn check(args: &ShareArgs, outgoing: Outgoing) -> Result<ShareOut, Fa
         "the content is {} bytes of text with no NUL, within the {MAX_DOCUMENT} a share holds",
         content.as_str().len()
     ));
+    if images > 0 {
+        checks.push(format!(
+            "the {images} images are in the file's folder, each a plain relative path, at most 5 MiB and a PNG, JPEG, GIF or WebP file by its first bytes"
+        ));
+        checks.push(
+            "not checked: whether each image decodes, which only the server checks".to_owned(),
+        );
+    }
     let html = render(content.as_str())?;
     checks.push(format!(
         "rendered to {} bytes of HTML with flare-render",
@@ -91,6 +103,7 @@ pub(super) fn check(args: &ShareArgs, outgoing: Outgoing) -> Result<ShareOut, Fa
         version: None,
         granted: None,
         responds_to: None,
+        images,
         checks,
     })
 }

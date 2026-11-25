@@ -1,6 +1,7 @@
 //! `flare`'s command-line grammar and tool record.
 
 pub(crate) mod comments;
+mod files;
 mod schemas;
 mod sharing;
 mod skills;
@@ -9,6 +10,7 @@ mod teams;
 pub(crate) use comments::{
     CommentArgs, CommentDeleteArgs, CommentEditArgs, CommentsArgs, ReplyArgs,
 };
+pub(crate) use files::{FilesVerb, SweepArgs};
 pub(crate) use schemas::SchemasCommand;
 pub(crate) use skills::{FlareSkills, SKILL};
 
@@ -18,7 +20,7 @@ pub(crate) use sharing::{
 };
 pub(crate) use teams::{ListTeamsArgs, TeamsVerb};
 
-use crate::documents::{BIND, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHARE, SHOW};
+use crate::documents::{BIND, LOGIN, LOGOUT, METRICS, OPEN, PUBLISH, SERVE, SHOW};
 use clap::{Args, Parser, Subcommand};
 use crumbkit::commands::{COMMANDS_LIST, CommandsList};
 use crumbkit::help::{Effects, Example, Help, Leaf};
@@ -60,6 +62,15 @@ pub(crate) enum Verb {
     /// Revoke and delete this computer's token
     Logout(LogoutArgs),
     /// Share a Markdown file
+    ///
+    /// Each image that the Markdown shows by a relative path, such as
+    /// img/chart.png, is uploaded with the file: at most 10 images, each a
+    /// PNG, JPEG, GIF or WebP file of at most 5 MiB, and at most 4 MiB with
+    /// the file in all, or it fails with flare::images::body_too_large. The
+    /// server removes each image's metadata, its GPS position included, and
+    /// keeps its orientation and colour profile. An image file that does
+    /// not exist fails with flare::images::missing, and one outside the
+    /// Markdown file's folder fails with flare::images::outside_folder.
     Share(ShareArgs),
     /// Show one version of a share you can open, or its latest
     Show(ShowArgs),
@@ -93,6 +104,12 @@ pub(crate) enum Verb {
     CommentEdit(CommentEditArgs),
     /// Delete a comment or reply you wrote
     CommentDelete(CommentDeleteArgs),
+    /// Manage a hosted site's image files
+    Files {
+        /// What to do with the files.
+        #[command(subcommand)]
+        command: FilesVerb,
+    },
     /// Count the metric lines in a flare server's log, by day
     ///
     /// The counts come from the metric lines that flare serve writes on
@@ -298,27 +315,7 @@ pub const TOOL: Tool = Tool::new()
         ).needs(&["server"])])
         .effects(Effects::destructive())
         .document(LOGOUT),
-    Leaf::new(&["share"])
-        .examples(&[
-            Example::new(
-                &["review.md", "--with", "ana@example.org,jo@example.org"],
-                "Share review.md with two people",
-            ).needs(&["server"]),
-            Example::new(
-                &["answer.md", "--re", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
-                "Share answer.md as a response to a flare",
-            ).needs(&["server"]),
-            Example::new(
-                &["review.md", "--update", "3f9c0a17e2b44d6f8a1c5b7e9d20f4a6"],
-                "Publish review.md as the next version of a share you own",
-            ).needs(&["server"]),
-            Example::new(
-                &["review.md", "--dry-run", "--out", "review.html"],
-                "Check review.md as the server would and write its HTML to review.html, sharing nothing",
-            ),
-        ])
-        .effects(Effects::additive())
-        .document(SHARE),
+    sharing::SHARE_LEAF,
     Leaf::new(&["show"])
         .examples(&[
             Example::new(
@@ -359,6 +356,7 @@ pub const TOOL: Tool = Tool::new()
         ])
         .effects(Effects::read_only())
         .document(METRICS),
+    files::SWEEP_LEAF,
                 Leaf::new(&["commands", "list"])
                     .examples(&[
                         Example::new(&[], "List every command"),

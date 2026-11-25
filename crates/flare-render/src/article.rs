@@ -2,7 +2,7 @@
 //! the page's scripts have to do.
 
 use crate::html::Html;
-use crate::markdown;
+use crate::markdown::{self, ImageSources};
 use crate::render::{MAX_OUTPUT_BYTES, RenderError};
 
 /// A Markdown document rendered into the HTML of an `<article>`'s content.
@@ -39,7 +39,9 @@ impl Article {
     }
 }
 
-/// Renders `markdown` for the reading page.
+/// Renders `markdown` for the reading page. A relative image that
+/// `images` lists shows from the URL it gives, and any other image shows
+/// as its alternative text.
 ///
 /// A fenced `mermaid` block whose first word is an allowed diagram type
 /// becomes a figure holding its escaped source, every other code block
@@ -49,8 +51,8 @@ impl Article {
 /// # Errors
 ///
 /// Returns [`RenderError::TooLarge`] when the HTML is over 4 MiB.
-pub fn article(markdown: &str) -> Result<Article, RenderError> {
-    let rendered = markdown::render(markdown);
+pub fn article(markdown: &str, images: &ImageSources) -> Result<Article, RenderError> {
+    let rendered = markdown::render_with(markdown, Some(images));
     if rendered.html.len() > MAX_OUTPUT_BYTES {
         return Err(RenderError::TooLarge {
             max: MAX_OUTPUT_BYTES,

@@ -103,3 +103,31 @@ fn the_debug_output_of_a_file_gives_its_length_and_not_its_bytes() {
         assert!(debug.contains("17 bytes"), "{debug}");
     }
 }
+
+#[test]
+fn the_first_bytes_name_png_jpeg_gif_and_webp_and_nothing_else() {
+    use super::ImageKind;
+    assert_eq!(
+        ImageKind::sniff(b"\x89PNG\r\n\x1a\nrest"),
+        Some(ImageKind::Png)
+    );
+    assert_eq!(
+        ImageKind::sniff(&[0xFF, 0xD8, 0xFF, 0xE0]),
+        Some(ImageKind::Jpeg)
+    );
+    assert_eq!(ImageKind::sniff(b"GIF87a"), Some(ImageKind::Gif));
+    assert_eq!(ImageKind::sniff(b"GIF89a"), Some(ImageKind::Gif));
+    assert_eq!(
+        ImageKind::sniff(b"RIFF\0\0\0\0WEBPVP8 "),
+        Some(ImageKind::WebP)
+    );
+    for refused in [
+        b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>".as_slice(),
+        b"",
+        b"RIFF\0\0\0\0WAVE",
+        b"\x89PNG",
+        b"GIF90a",
+    ] {
+        assert_eq!(ImageKind::sniff(refused), None, "{refused:?}");
+    }
+}

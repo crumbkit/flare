@@ -40,6 +40,7 @@ pub use check::{Flaw, FlawKind, TemplateFlaws, check_page};
 pub use conflict::conflict_view;
 pub use form::{FormError, FormTarget, LocalPath, LocalPathError, Notice, edit_form};
 pub use html::{Html, stylesheet};
+pub use markdown::{ImageSources, image_paths, unsendable_image_paths};
 pub use post::{Edit, FormPost, PostError};
 pub use render::{PageDocument, RenderError, render_page};
 pub use schema::{FieldKind, NumberRange, Schema, SchemaError};

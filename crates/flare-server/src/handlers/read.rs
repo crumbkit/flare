@@ -46,7 +46,8 @@ where
             ));
         }
     };
-    let article = flare_render::article(&reading.markdown).map_err(|_| Code::CannotRender)?;
+    let article = flare_render::article(&reading.markdown, &reading.images)
+        .map_err(|_| Code::CannotRender)?;
     let reader = admitted.principal.email().map_or_else(
         || admitted.principal.id().as_str().to_owned(),
         |email| email.as_str().to_owned(),

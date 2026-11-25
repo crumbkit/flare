@@ -3,9 +3,9 @@
 //! Each flaw breaks one clause and keeps every other rule.
 
 use flare_core::{
-    FileId, FileStore, FileStoreError, Listing, MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewFile,
-    NewShare, NewVersion, PrincipalId, Share, ShareId, ShareStore, ShareStoreError, ShareVersion,
-    SharedVersion, StoredFile,
+    FileCursor, FileId, FilePage, FileStore, FileStoreError, ListedFile, Listing,
+    MAX_SHARES_PER_OWNER, MAX_VERSIONS, NewFile, NewShare, NewVersion, PrincipalId, Share, ShareId,
+    ShareStore, ShareStoreError, ShareVersion, SharedVersion, StoredFile, Timestamp,
 };
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -174,6 +174,10 @@ pub(crate) enum FileFlaw {
     IgnoresTheShare,
     /// `put` with a taken id replaces the first file.
     OverwritesATakenId,
+    /// `delete` answers success and keeps the file.
+    KeepsADeletedFile,
+    /// `list` repeats its first page for ever, so a walk never ends.
+    RepeatsTheFirstPage,
 }
 
 /// A file store with one [`FileFlaw`].
@@ -214,5 +218,41 @@ impl FileStore for FlawedFiles {
             .cloned()
             .map(StoredFile::from)
             .ok_or(FileStoreError::NotFound)
+    }
+
+    async fn delete(&self, share: &ShareId, id: &FileId) -> Result<(), FileStoreError> {
+        if self.flaw != FileFlaw::KeepsADeletedFile {
+            self.files.lock().unwrap().remove(&self.key(share, id));
+        }
+        Ok(())
+    }
+
+    async fn list(
+        &self,
+        after: Option<&FileCursor>,
+        limit: usize,
+    ) -> Result<FilePage, FileStoreError> {
+        let files = self.files.lock().unwrap();
+        let skip = match after {
+            Some(cursor) if self.flaw != FileFlaw::RepeatsTheFirstPage => {
+                cursor.as_str().parse::<usize>().unwrap()
+            }
+            _ => 0,
+        };
+        let page: Vec<ListedFile> = files
+            .values()
+            .skip(skip)
+            .take(limit)
+            .map(|file| {
+                ListedFile::new(
+                    file.share().clone(),
+                    file.id().clone(),
+                    Timestamp::from_secs(0),
+                )
+            })
+            .collect();
+        let end = skip + page.len();
+        let next = (end < files.len()).then(|| FileCursor::new(end.to_string()));
+        Ok(FilePage::new(page, next))
     }
 }

@@ -18,7 +18,7 @@ mod tokens;
 
 pub use comments::{Added, CommentStore, CommentStoreError, CursorStore};
 pub use errors::{MoveError, PageStoreError, ReadError, Rejection, WriteError};
-pub use files::{FileStore, FileStoreError};
+pub use files::{FileCursor, FilePage, FileStore, FileStoreError, ListedFile, MAX_FILE_PAGE};
 pub use fill_types::FillTypes;
 pub use grants::{GrantStore, GrantStoreError};
 pub use list_key::{ListKey, ListPage};
