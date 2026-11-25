@@ -12,7 +12,7 @@ This file records the notable changes to flare. The format follows
   takes `POST /api/shares` and `POST /api/shares/<id>/versions` as a
   `multipart/form-data` body with one `share` part and one `image` part per
   image, named by its path in the Markdown. The server refuses an upload
-  over 4 MiB, an image over 5 MiB, more than 10 images, an unsafe,
+  over 4 MiB with a 413 whose title names 4 MiB, an image over 5 MiB, more than 10 images, an unsafe,
   repeated or unused path, and anything whose first bytes are not PNG,
   JPEG, GIF or WebP, SVG included, with the new `flare::images::*` codes.
   It checks the caller's right to create or publish before it reads an
@@ -40,7 +40,9 @@ This file records the notable changes to flare. The format follows
   Markdown file shows by a relative path, and stop before sending with
   `flare::images::missing` for a missing image file,
   `flare::images::outside_folder` for one outside the Markdown file's
-  folder, and the server's own code for more than 10 images, a path the
+  folder, `flare::images::body_too_large`, naming the 4 MiB limit and the
+  image, when the document with its images is over 4 MiB, and the server's
+  own code for more than 10 images, a path the
   server refuses or one the reading page would not show, an image over
   5 MiB, and first bytes that are not PNG, JPEG, GIF or WebP. They print
   the number of images sent.

@@ -8,7 +8,7 @@ use super::super::edit::read_limited;
 use super::ApiRoute;
 use super::multipart::{self, Part};
 use crate::metrics::Event;
-use crate::problem::Problem;
+use crate::problem::{Code, Problem};
 use crate::sharing::{Answer, Api, ImagePart, Refusal, Upload};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::ApiCode;
@@ -88,7 +88,8 @@ pub(super) async fn run<P, R, S, K: OidcClock>(
     body: Incoming,
     now: Timestamp,
 ) -> Result<Answer, Problem> {
-    let bytes = read_limited(ctx, body, ctx.shared.limits.upload_bytes).await?;
+    let limit = (ctx.shared.limits.upload_bytes, Code::UploadTooLarge);
+    let bytes = read_limited(ctx, body, limit).await?;
     let Some(parts) = multipart::parse(&bytes, boundary) else {
         return Ok(Err(bad_form("the body is not a form this server reads")));
     };

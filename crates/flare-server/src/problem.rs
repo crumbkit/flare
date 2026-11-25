@@ -31,6 +31,7 @@ pub(crate) enum Code {
     Framed,
     HeadersTooLarge,
     BodyTooLarge,
+    UploadTooLarge,
     Slow,
     BadBody,
     UnsupportedType,
@@ -91,7 +92,9 @@ impl Code {
                 S::REQUEST_HEADER_FIELDS_TOO_LARGE,
                 "request::headers_too_large",
             ),
-            Self::BodyTooLarge => (S::PAYLOAD_TOO_LARGE, "request::body_too_large"),
+            Self::BodyTooLarge | Self::UploadTooLarge => {
+                (S::PAYLOAD_TOO_LARGE, "request::body_too_large")
+            }
             Self::Slow => (S::REQUEST_TIMEOUT, "request::slow"),
             Self::BadBody => (S::BAD_REQUEST, "request::bad_body"),
             Self::UnsupportedType => (S::UNSUPPORTED_MEDIA_TYPE, "request::unsupported_type"),
@@ -147,6 +150,9 @@ impl Code {
             Self::Framed => "A frame asked for this with your sign-in. Open it in its own tab.",
             Self::HeadersTooLarge => "The request's headers are larger than 32 KiB.",
             Self::BodyTooLarge => "The request's body is larger than 1 MiB.",
+            Self::UploadTooLarge => {
+                "The request's body, a document with its images, is larger than 4 MiB."
+            }
             Self::Slow => "The request's body did not arrive in time.",
             Self::BadBody => "The request's body could not be read.",
             Self::UnsupportedType => "A form post must be application/x-www-form-urlencoded.",

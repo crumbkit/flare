@@ -51,8 +51,8 @@ pub use email::Email;
 pub use error::{ParseError, Subject};
 pub use file::{
     FileBytes, FileId, ImageKind, ImagePath, MAX_FILE_BYTES, MAX_IMAGE_PATH, MAX_IMAGES,
-    MAX_SWEPT_FILES, MediaType, NewFile, SNIFF_BYTES, SWEEP_AGE, StoredFile, SweepReport,
-    VersionImage, VersionImages, sweep_files,
+    MAX_SWEPT_FILES, MAX_UPLOAD_BYTES, MediaType, NewFile, SNIFF_BYTES, SWEEP_AGE, StoredFile,
+    SweepReport, VersionImage, VersionImages, sweep_files,
 };
 pub use flares::{
     ActivityItem, ActivityPage, AddressesOnly, AllAdmitted, CommentActivity, CommentDraft,

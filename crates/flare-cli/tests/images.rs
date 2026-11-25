@@ -314,3 +314,56 @@ fn share_refuses_before_any_request_an_image_over_5_mib_or_not_an_image_by_its_f
     ])
     .assert_ok();
 }
+
+/// A GIF of `bytes` bytes in all.
+fn gif_of(bytes: usize) -> String {
+    format!("GIF89a{}", "\0".repeat(bytes - 6))
+}
+
+#[test]
+fn share_refuses_before_any_request_an_image_over_the_upload_limit_naming_the_limit_and_the_file() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let folder = home.path().join("docs");
+    let limit = flare_core::MAX_UPLOAD_BYTES;
+    put(&folder.join("shot.gif"), &gif_of(limit + limit / 8));
+    let file = document(&home, "![x](shot.gif)\n");
+    for args in [
+        vec!["share", file.to_str().unwrap()],
+        vec!["share", file.to_str().unwrap(), "--dry-run"],
+    ] {
+        let ran = home.sharing(&args);
+        ran.assert_failed("flare::images::body_too_large");
+        assert!(ran.all().contains("shot.gif"), "{}", ran.all());
+        assert!(ran.all().contains("4 MiB"), "{}", ran.all());
+    }
+    assert!(api.requests_to("/api/shares").is_empty());
+}
+
+#[test]
+fn share_refuses_before_any_request_images_that_together_pass_the_upload_limit_and_sends_smaller_ones()
+ {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let folder = home.path().join("docs");
+    let limit = flare_core::MAX_UPLOAD_BYTES;
+    put(&folder.join("a.gif"), &gif_of(limit / 2));
+    put(&folder.join("b.gif"), &gif_of(limit / 2 + 1024));
+    let file = document(&home, "![a](a.gif)\n![b](b.gif)\n");
+    for args in [
+        vec!["share", file.to_str().unwrap()],
+        vec!["share", file.to_str().unwrap(), "--dry-run"],
+    ] {
+        let ran = home.sharing(&args);
+        ran.assert_failed("flare::images::body_too_large");
+        assert!(ran.all().contains("b.gif"), "{}", ran.all());
+        assert!(ran.all().contains("4 MiB"), "{}", ran.all());
+    }
+    assert!(api.requests_to("/api/shares").is_empty());
+    put(&folder.join("a.gif"), &gif_of(limit / 3));
+    put(&folder.join("b.gif"), &gif_of(limit / 3));
+    created(&api);
+    home.sharing(&["share", file.to_str().unwrap()]).assert_ok();
+    let sent = &api.requests_to("/api/shares")[0];
+    assert!(sent.body.len() <= limit, "{}", sent.body.len());
+}

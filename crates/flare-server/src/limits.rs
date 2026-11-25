@@ -19,8 +19,8 @@ pub struct Limits {
     /// The most bytes of a share or version sent with its images as
     /// `multipart/form-data`. A larger body answers 413
     /// `request::body_too_large`, read through `http_body_util::Limited`
-    /// before any parsing. Each image is also at most 5 MiB. The default
-    /// is 4 MiB.
+    /// before any parsing, whose title names 4 MiB. Each image is also at
+    /// most 5 MiB. The default is [`flare_core::MAX_UPLOAD_BYTES`], 4 MiB.
     pub upload_bytes: usize,
     /// How long the server waits for a request's header block, and then
     /// for its body. A slower body answers 408 `request::slow`; a slower
@@ -93,7 +93,7 @@ impl Default for Limits {
         Self {
             header_bytes: 32 * 1024,
             body_bytes: 1024 * 1024,
-            upload_bytes: 4 * 1024 * 1024,
+            upload_bytes: flare_core::MAX_UPLOAD_BYTES,
             read_time: Duration::from_secs(10),
             connections: 64,
             in_work: 16,

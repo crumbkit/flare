@@ -45,6 +45,9 @@ pub const IMAGES_MISSING: Code<'static> = Code::from_spelling("flare::images::mi
 /// An image the document shows is outside the document's folder.
 pub const IMAGES_OUTSIDE_FOLDER: Code<'static> =
     Code::from_spelling("flare::images::outside_folder");
+/// A document with its images makes a body larger than the server reads.
+pub const IMAGES_BODY_TOO_LARGE: Code<'static> =
+    Code::from_spelling("flare::images::body_too_large");
 
 /// Why a sharing command failed before or after the server answered.
 #[derive(Debug, thiserror::Error, Failure)]
@@ -204,6 +207,42 @@ pub enum SharingFailed {
     ImageOutsideFolder {
         /// The image's path as the Markdown wrote it.
         image: String,
+    },
+    /// One image is larger than the whole body the server reads for a
+    /// document with its images.
+    #[error(
+        "the image {image} is {bytes} bytes, and the server reads at most {limit} for a document with its images"
+    )]
+    #[failure(
+        code = IMAGES_BODY_TOO_LARGE,
+        hint = "make the image smaller, such as by saving a screenshot as JPEG, and share again",
+        field(image = image)
+    )]
+    ImageOverUpload {
+        /// The image's path as the Markdown wrote it.
+        image: String,
+        /// The image's length in bytes.
+        bytes: usize,
+        /// The limit, such as `4 MiB`.
+        limit: String,
+    },
+    /// The document with its images makes a body larger than the server
+    /// reads.
+    #[error(
+        "the document with its images is {bytes} bytes, more than the {limit} the server reads; its largest image is {image}"
+    )]
+    #[failure(
+        code = IMAGES_BODY_TOO_LARGE,
+        hint = "make the images smaller, such as by saving screenshots as JPEG, or show fewer in one document",
+        field(image = image)
+    )]
+    UploadTooLarge {
+        /// The largest image's path as the Markdown wrote it.
+        image: String,
+        /// The body's length in bytes.
+        bytes: usize,
+        /// The limit, such as `4 MiB`.
+        limit: String,
     },
 }
 

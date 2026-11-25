@@ -20,7 +20,7 @@ pub(crate) use images::LocalImage;
 pub(crate) use shares::shares;
 
 use crate::cli::{GrantArgs, ShareArgs, ShowArgs};
-use crate::client::Api;
+use crate::client::{self, Api};
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use crate::documents::{ShareOut, SharedOut, Shown};
 use crate::env::Snapshot;
@@ -30,7 +30,7 @@ use flare_contract::{
     ApiCode, Format, GrantRequest, OpenedShare, Role, ShareRequest, ShareSummary, Shared,
     VersionRequest,
 };
-use flare_core::ShareId;
+use flare_core::{MAX_UPLOAD_BYTES, ShareId};
 use reqwest::Method;
 use std::io::Read as _;
 use std::path::Path;
@@ -39,13 +39,52 @@ use std::path::Path;
 /// less, and refuses a larger document with `flare::shares::too_large`.
 const MAX_FILE: u64 = 4 * 1024 * 1024;
 
-/// The images of what `args` sends.
+/// The images of what `args` sends, refused when the form that carries
+/// them would be larger than the server reads.
 fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalImage>, Failed> {
     let (format, content) = match outgoing {
         Outgoing::Create(request) => (request.format, &request.content),
         Outgoing::Update(_, request) => (request.format, &request.content),
     };
-    images::images(&args.file, format, content)
+    let images = images::images(&args.file, format, content)?;
+    fits(outgoing, &images)?;
+    Ok(images)
+}
+
+/// Refuses `images` when the form that sends them with `outgoing` is
+/// larger than [`MAX_UPLOAD_BYTES`], the most the server reads, naming an
+/// image that alone passes it, or else the largest image. No images go
+/// as JSON, which this does not bound.
+fn fits(outgoing: &Outgoing, images: &[LocalImage]) -> Result<(), Failed> {
+    let Some(largest) = images.iter().max_by_key(|image| image.bytes.len()) else {
+        return Ok(());
+    };
+    let limit = format!("{} MiB", MAX_UPLOAD_BYTES / (1024 * 1024));
+    if largest.bytes.len() > MAX_UPLOAD_BYTES {
+        return Err(SharingFailed::ImageOverUpload {
+            image: largest.path.clone(),
+            bytes: largest.bytes.len(),
+            limit,
+        }
+        .into());
+    }
+    let share = match outgoing {
+        Outgoing::Create(request) => serde_json::to_vec(request),
+        Outgoing::Update(_, request) => serde_json::to_vec(request),
+    }
+    .map_err(|error| Failed::System {
+        problem: format!("the request could not be written: {error}"),
+    })?;
+    let bytes = client::form(&client::boundary(&share, images), &share, images).len();
+    if bytes > MAX_UPLOAD_BYTES {
+        return Err(SharingFailed::UploadTooLarge {
+            image: largest.path.clone(),
+            bytes,
+            limit,
+        }
+        .into());
+    }
+    Ok(())
 }
 
 /// A client of the saved login's server with its token.

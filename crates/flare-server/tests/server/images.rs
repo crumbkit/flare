@@ -133,13 +133,17 @@ async fn an_svg_named_as_a_png_is_refused_with_its_code_and_writes_no_share() {
 }
 
 #[tokio::test]
-async fn a_form_over_4_mib_is_refused_as_too_large_and_one_under_it_is_read() {
+async fn a_form_over_4_mib_is_refused_as_too_large_naming_4_mib_and_one_under_it_is_read() {
     let api = Api::start().await;
     let token = api.token_for("alice").await;
     let mut padded = png(8);
-    padded.resize(4 * 1024 * 1024, 0);
+    padded.resize(flare_core::MAX_UPLOAD_BYTES, 0);
     let reply = upload(&api, &token, form(DOC, &[("img/chart.png", &padded)])).await;
     assert_eq!(reply.status, 413, "{}", reply.body);
+    assert_eq!(reply.code().as_deref(), Some("request::body_too_large"));
+    let limit = format!("larger than {} MiB", flare_core::MAX_UPLOAD_BYTES >> 20);
+    assert!(reply.body.contains(&limit), "{}", reply.body);
+    assert!(!reply.body.contains("1 MiB"), "{}", reply.body);
     padded.truncate(3 * 1024 * 1024);
     let reply = upload(&api, &token, form(DOC, &[("img/chart.png", &padded)])).await;
     assert_eq!(reply.status, 201, "{}", reply.body);

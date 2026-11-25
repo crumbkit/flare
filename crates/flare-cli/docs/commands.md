@@ -228,7 +228,7 @@ Effects: destructive, not idempotent, closed-world.
 
 Share a Markdown file
 
-Each image that the Markdown shows by a relative path, such as img/chart.png, is uploaded with the file: at most 10 images, each a PNG, JPEG, GIF or WebP file of at most 5 MiB. The server removes each image's metadata, its GPS position included, and keeps its orientation and colour profile. An image file that does not exist fails with flare::images::missing, and one outside the Markdown file's folder fails with flare::images::outside\_folder.
+Each image that the Markdown shows by a relative path, such as img/chart.png, is uploaded with the file: at most 10 images, each a PNG, JPEG, GIF or WebP file of at most 5 MiB, and at most 4 MiB with the file in all, or it fails with flare::images::body\_too\_large. The server removes each image's metadata, its GPS position included, and keeps its orientation and colour profile. An image file that does not exist fails with flare::images::missing, and one outside the Markdown file's folder fails with flare::images::outside\_folder.
 
 ### Arguments
 
