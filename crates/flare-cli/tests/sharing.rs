@@ -239,7 +239,7 @@ fn share_sends_the_file_with_each_recipient_and_flare_and_the_saved_token() {
     assert_eq!(
         sent.json(),
         json!({
-            "title": "review",
+            "title": "Review",
             "format": "markdown",
             "content": "# Review\n",
             "with": ["ana@example.org", "jo@example.org", "mei@example.org"],
@@ -1053,7 +1053,7 @@ fn a_dry_run_with_no_login_checks_the_file_prints_the_checks_and_sends_nothing()
     let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
     assert_eq!(printed["dry_run"], true, "{}", ran.all());
     let data = &printed["data"];
-    assert_eq!(data["title"], "review");
+    assert_eq!(data["title"], "Review");
     assert!(data["id"].is_null(), "{}", ran.all());
     assert!(data["version"].is_null(), "{}", ran.all());
     let checks = data["checks"].to_string();

@@ -104,7 +104,7 @@ fn share_sends_each_image_the_document_shows_as_a_form_part_named_by_its_path() 
     assert!(parts[1].contains("name=\"share\""));
     let share: Value =
         serde_json::from_str(parts[1].split("\r\n\r\n").nth(1).unwrap().trim_end()).unwrap();
-    assert_eq!(share["title"], "notes");
+    assert_eq!(share["title"], "Notes");
     assert!(
         parts[2].contains("filename=\"img/chart.png\""),
         "{}",

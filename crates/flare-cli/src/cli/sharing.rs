@@ -36,7 +36,7 @@ pub(crate) struct ShareArgs {
     /// The file to share: .md for Markdown
     #[arg(value_name = "FILE")]
     pub(crate) file: PathBuf,
-    /// The title; without it, the file name without its ending
+    /// The title; without it, a Markdown file's first level-one heading, else the file name without its ending
     #[arg(long, value_name = "TITLE")]
     pub(crate) title: Option<String>,
     /// Readers, comma-separated: addresses, team:<name>, everyone

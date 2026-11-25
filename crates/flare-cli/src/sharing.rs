@@ -180,11 +180,10 @@ fn outgoing(args: &ShareArgs) -> Result<Outgoing, Failed> {
             VersionRequest { format, content },
         ));
     }
-    let title = args.title.clone().unwrap_or_else(|| {
-        args.file
-            .file_stem()
-            .map_or_else(String::new, |stem| stem.to_string_lossy().into_owned())
-    });
+    let title = args
+        .title
+        .clone()
+        .unwrap_or_else(|| title_of(&args.file, format, &content));
     Ok(Outgoing::Create(ShareRequest {
         title,
         format,
@@ -192,6 +191,20 @@ fn outgoing(args: &ShareArgs) -> Result<Outgoing, Failed> {
         with: args.with.clone(),
         re: args.re.clone(),
     }))
+}
+
+/// The title of a new share given no `--title`: the text of a Markdown
+/// file's first level-one heading, or else the file name without its
+/// ending. An HTML file always takes its file name.
+fn title_of(path: &Path, format: Format, content: &str) -> String {
+    let heading = match format {
+        Format::Markdown => flare_render::first_heading(content),
+        Format::Html => None,
+    };
+    heading.unwrap_or_else(|| {
+        path.file_stem()
+            .map_or_else(String::new, |stem| stem.to_string_lossy().into_owned())
+    })
 }
 
 /// Runs `flare share`. A dry run checks and renders the file, and reads

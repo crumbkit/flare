@@ -16,6 +16,8 @@
 //! - [`conflict_view`] draws a conflict and the form that saves the edit
 //!   onto the newer record.
 //! - [`article`] renders a Markdown share for the reading page.
+//! - [`first_heading`] finds the plain text of a Markdown document's first
+//!   level-one heading, which `flare share` uses as a title.
 //! - [`stylesheet`] is the stylesheet that the markup's class names use.
 
 mod apply;
@@ -24,6 +26,7 @@ mod body;
 mod check;
 mod conflict;
 mod form;
+mod heading;
 mod html;
 mod markdown;
 mod post;
@@ -39,6 +42,7 @@ pub use article::{Article, article};
 pub use check::{Flaw, FlawKind, TemplateFlaws, check_page};
 pub use conflict::conflict_view;
 pub use form::{FormError, FormTarget, LocalPath, LocalPathError, Notice, edit_form};
+pub use heading::first_heading;
 pub use html::{Html, stylesheet};
 pub use markdown::{ImageSources, image_paths, unsendable_image_paths};
 pub use post::{Edit, FormPost, PostError};
