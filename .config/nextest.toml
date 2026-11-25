@@ -9,3 +9,10 @@ retries = 0
 # past 60 seconds is stopped and fails, so a test that never finishes is
 # named in the output long before CI's 10-minute job timeout.
 slow-timeout = { period = "30s", terminate-after = 2 }
+# A plain run leaves out the tests that need what the shared lane does not
+# provide. flare-board's tests run the board program, which the flare job
+# passes in FLARE_TEST_BOARD. flare-aws's tests need the DynamoDB and S3
+# stand-ins, and flare-cli's hosted_stores test needs them and a build
+# without the `testing` features, so the hosted job runs both. Those jobs,
+# and a full local run, pass --ignore-default-filter.
+default-filter = "not (package(flare-aws) | package(flare-board) | binary(hosted_stores))"

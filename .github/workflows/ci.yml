@@ -1,19 +1,22 @@
 # The pull-request lane and the scheduled advisory check of flare. The
-# `lanes` decision in rust-standards.toml records both (BASE-25). The lane has
-# no macOS job: the one macOS-only path, flare-auth-oidc's KeychainSecret,
-# runs /usr/bin/security, and its tests run a fake program on Linux.
+# `lanes` decision in rust-standards.toml records both (BASE-25). The lane
+# job calls the Rust standards' shared lane, and the flare, hosted, reading
+# and ui jobs run the steps that flare adds to it. The lane has no macOS
+# job: the one macOS-only path, flare-auth-oidc's KeychainSecret, runs
+# /usr/bin/security, and its tests run a fake program on Linux.
 # flare-auth-loopback's POSIX file checks behave differently on macOS; the
-# Linux job runs their tests through a testing hook, and the flare-gates
+# Linux jobs run their tests through a testing hook, and the flare-gates
 # suite on a Mac is their macOS check, as the lanes decision says. The
-# board job builds the board program that flare-board's tests run. The
-# hosted job runs flare-aws's tests against a local DynamoDB and a local
-# S3 server, so the lane leaves flare-aws out of its tests. It also runs
-# flare-cli's hosted_stores test, which starts the built `flare serve` on
-# those stand-ins, without --all-features, so the lane skips that test: its
-# --all-features build turns on the `testing` features, and the test must
-# run the flare command as it ships. The ui job
-# installs, checks and tests the TypeScript workspace in ui/. The scheduled
-# advisories job checks the Rust and the npm dependencies.
+# default filter of .config/nextest.toml leaves flare-aws, flare-board and
+# flare-cli's hosted_stores test out of a plain test run, so the shared
+# lane's tests step runs neither. The board job builds the board program,
+# and the flare job runs flare-board's tests with it. The hosted job runs
+# flare-aws's tests against a local DynamoDB and a local S3 server, and it
+# runs the hosted_stores test, which starts the built `flare serve` on
+# those stand-ins, without --all-features, because the test must run the
+# flare command as it ships. The ui job installs, checks and tests the
+# TypeScript workspace in ui/. The scheduled advisories job checks the Rust
+# and the npm dependencies.
 name: CI
 
 on:
@@ -72,11 +75,30 @@ jobs:
           mkdir -p ../board-bin
           cp target/release/board ../board-bin/board
 
+  # The pull-request lane of the Rust standards, from the shared workflow at
+  # the commit that the `lane-commit` decision in rust-standards.toml names.
+  # Its check is `lane / lane`. flare adopts the library profile, so the lane
+  # also runs its rustdoc and features steps (LIB-2, LIB-5). Its tests step
+  # runs the default filter of .config/nextest.toml, which leaves out the
+  # tests that the flare and hosted jobs run.
   lane:
+    if: github.event_name != 'schedule'
+    permissions:
+      contents: read # The shared lane's actions/checkout reads the repository.
+    uses: crumbkit/rust-standards/.github/workflows/rust-lane.yml@5ba71ff31c5f5d8e69b34d04bb65bd0177f7ebeb
+    with:
+      library: true
+      # The pull-request lane's time budget (BASE-25).
+      timeout-minutes: 10
+
+  # The steps of flare's lane that the shared lane does not run: the check
+  # that the flare command turns on no `testing` feature, flare-board's tests
+  # against the board program that the board job builds, and each feature of
+  # the libraries built alone.
+  flare:
     if: github.event_name != 'schedule'
     needs: board
     runs-on: ubuntu-latest
-    # The pull-request lane's time budget (BASE-25).
     timeout-minutes: 10
     permissions:
       contents: read # actions/checkout reads the repository.
@@ -91,22 +113,12 @@ jobs:
       # tool binaries that install-action downloads on every run.
       - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: cargo-nextest@0.9.140,cargo-deny@0.20.2,cargo-shear@1.14.0,zizmor@1.30.1,cargo-hack@0.6.45
+          tool: cargo-nextest@0.9.140,cargo-hack@0.6.45
           fallback: none
-      # The steps that read only the source run first, so a pull request
-      # that fails one of them fails in seconds.
-      - name: format
-        run: cargo fmt --check
-      - name: workflows
-        run: zizmor .
       # Only a run on main saves the cache.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: deny
-        run: cargo deny --locked check bans licenses sources
-      - name: shear
-        run: cargo shear
       # The `testing` features expose switches such as an http issuer and
       # PublicOrigin::loopback_http. This step fails when the flare
       # command's own dependency tree turns one on for any flare crate,
@@ -127,33 +139,18 @@ jobs:
             1) ;;
             *) echo "grep could not read the dependency tree" >&2; exit 1 ;;
           esac
-      - name: clippy
-        run: cargo clippy --locked --workspace --all-targets --all-features
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: board-bin
           key: board-${{ runner.os }}-e4ee3333b2223f3cdc2e1da23d10f9175870bc08
           fail-on-cache-miss: true
-      # flare-aws's tests need the stand-ins that the hosted job starts, and
-      # flare-cli's hosted_stores test needs them and a build without
-      # --all-features, so the hosted job runs both.
-      - name: tests
-        run: >-
-          cargo nextest run --locked --workspace --all-features --exclude flare-aws
-          -E 'not binary(hosted_stores)'
+      # The default filter of .config/nextest.toml leaves flare-board out of
+      # a plain run, because its tests need the board program.
+      - name: flare-board tests
+        run: cargo nextest run --locked -p flare-board --all-features --ignore-default-filter
         env:
           FLARE_TEST_BOARD: ${{ github.workspace }}/board-bin/board
-      - name: doctests
-        run: cargo test --locked --doc --workspace --all-features
-      - name: rustdoc
-        run: cargo doc --locked --workspace --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
-      # flare-core, flare-auth-oidc and flare-auth-loopback are libraries,
-      # so LIB-5 applies.
       # cargo-hack is in the install-action tool list above.
-      - name: features
-        run: cargo hack clippy --locked --workspace --each-feature --all-targets
       # With --all-targets, a crate's dev-dependency on itself can turn a
       # feature on for the library build too, so the libraries are also
       # checked alone with each feature.
@@ -246,7 +243,7 @@ jobs:
 
   # The ui job runs the TypeScript lane of the workspace in ui/: install,
   # lint, typecheck, knip and test, as ui/typescript-standards.toml's lanes
-  # decision records. The lane job's `zizmor .` already checks this file.
+  # decision records. The lane job's workflows step already checks this file.
   ui:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
@@ -336,8 +333,10 @@ jobs:
           }
           ready "$FLARE_TEST_DYNAMODB" 400
           ready "$FLARE_TEST_S3" 403
+      # The default filter of .config/nextest.toml leaves out flare-aws and
+      # hosted_stores, so both runs here ignore it.
       - name: tests
-        run: cargo nextest run --locked -p flare-aws --all-features
+        run: cargo nextest run --locked -p flare-aws --all-features --ignore-default-filter
       # The hosted_stores test starts the built `flare serve`, so its build
       # must hold no `testing` feature of a flare crate. This step fails when
       # the tree the test builds, dev-dependencies included, turns one on,
@@ -360,7 +359,7 @@ jobs:
       # The test sets the AWS endpoint variables and SSL_CERT_FILE on the
       # flare children itself.
       - name: flare serve on the stand-ins
-        run: cargo nextest run --locked -p flare-cli --test hosted_stores
+        run: cargo nextest run --locked -p flare-cli --test hosted_stores --ignore-default-filter
 
   advisories:
     if: github.event_name != 'pull_request'
