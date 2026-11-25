@@ -65,7 +65,7 @@ pub(crate) fn render(markdown: &str) -> Rendered {
 }
 
 /// The parser options every rendering uses.
-const OPTIONS: Options = Options::ENABLE_TABLES
+pub(crate) const OPTIONS: Options = Options::ENABLE_TABLES
     .union(Options::ENABLE_STRIKETHROUGH)
     .union(Options::ENABLE_TASKLISTS);
 

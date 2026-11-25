@@ -53,6 +53,12 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- `flare share` without `--title` titles a new flare with the plain text
+  of the Markdown file's first level-one heading, written `# Title` or as a
+  Setext heading, and uses the file name only when the file has no
+  level-one heading or the first one has no text. A heading over 200 bytes
+  is cut at a character boundary within 200 bytes. An HTML file and
+  `flare share --update` keep their titles as before.
 - Who may share, respond and create a team is now a rule each app that
   adopts flare supplies, through flare-core's new `Creators` trait. Its
   one method, `may_create`, is async and can fail with

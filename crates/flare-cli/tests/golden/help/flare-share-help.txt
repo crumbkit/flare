@@ -10,7 +10,7 @@ Arguments:
 
 Options:
       --title <TITLE>
-          The title; without it, the file name without its ending
+          The title; without it, a Markdown file's first level-one heading, else the file name without its ending
 
       --with <WHO>
           Readers, comma-separated: addresses, team:<name>, everyone
