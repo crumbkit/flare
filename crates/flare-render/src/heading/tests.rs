@@ -71,6 +71,14 @@ fn the_title_leaves_out_image_alternative_text() {
 }
 
 #[test]
+fn the_title_leaves_out_inline_html_tags_and_keeps_the_text_between_them() {
+    assert_eq!(
+        first_heading("# <span>Plan</span>\n").as_deref(),
+        Some("Plan")
+    );
+}
+
+#[test]
 fn runs_of_whitespace_become_one_space_and_the_ends_are_trimmed() {
     assert_eq!(
         first_heading("#   Wide \t  gaps   here  \n").as_deref(),

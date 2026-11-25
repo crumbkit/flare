@@ -12,9 +12,10 @@ use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 /// line inside a code block or an HTML block is not a heading, and a
 /// Setext heading (a line over `===`) is one. The text keeps the words of
 /// emphasis, code spans and links without their markup, and leaves out
-/// image alternative text and inline HTML. Each run of whitespace becomes
-/// one space, other control characters are removed, and the ends are
-/// trimmed. A text over [`MAX_TITLE`] bytes is cut at the last character
+/// image alternative text. Inline HTML tags are left out and the text
+/// between them is kept, so `# <span>Plan</span>` gives `Plan`. Each run
+/// of whitespace becomes one space, other control characters are removed,
+/// and the ends are trimmed. A text over [`MAX_TITLE`] bytes is cut at the last character
 /// boundary at or below it, so the server accepts it as a title.
 #[must_use]
 pub fn first_heading(markdown: &str) -> Option<String> {
@@ -67,14 +68,7 @@ fn plain(text: &str) -> String {
 /// `text` cut at the last character boundary at or below [`MAX_TITLE`]
 /// bytes, with any space the cut leaves at the end trimmed.
 fn cut(text: &str) -> &str {
-    if text.len() <= MAX_TITLE {
-        return text;
-    }
-    let end = (0..=MAX_TITLE)
-        .rev()
-        .find(|&index| text.is_char_boundary(index))
-        .unwrap_or(0);
-    text[..end].trim_end()
+    text[..text.floor_char_boundary(MAX_TITLE)].trim_end()
 }
 
 #[cfg(test)]
