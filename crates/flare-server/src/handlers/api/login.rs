@@ -5,7 +5,7 @@ use super::super::Ctx;
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::sharing::{Api, LoginRedirect, Refusal};
-use crate::sign_in::{HostedSignIn, Unsigned};
+use crate::sign_in::{HostedRefusal, HostedSignIn, Unsigned};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::ApiCode;
 use flare_core::{Credential, PageStore, RecordStore, Timestamp};
@@ -16,7 +16,8 @@ const STATE_CHARS: std::ops::RangeInclusive<usize> = 16..=128;
 /// `GET /cli/login?port=<n>&state=<s>`: a signed-in browser gets a 303 to
 /// the CLI's loopback listener with a login code; a browser with no
 /// session is sent to sign in and comes back here, or, behind a proxy, is
-/// sent to the proxy's sign-in address.
+/// sent to the proxy's sign-in address. A credential the sign-in refuses
+/// for another reason gets the page answer: 401, 403 or 503.
 pub(super) async fn cli_login<P, R, S, K, H>(
     ctx: &Ctx<'_, P, R, S, K, H>,
     api: &dyn Api,
@@ -44,9 +45,16 @@ where
                     .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
         })
         .ok_or(ApiCode::BadQuery)?;
+    // A cookie that names no one goes to sign in. Any other refusal gets the
+    // answer a page gets, so the person sees why and is not sent round to
+    // the sign-in again.
     let signed_in = match credential {
         Some(credential @ Credential::Session(_)) => {
-            ctx.shared.site.authenticate(credential).await.ok()
+            match ctx.shared.site.sign_in(credential).await {
+                Ok(admitted) => Some(admitted),
+                Err(HostedRefusal::SignInNeeded) => None,
+                Err(refusal) => return Ok(ctx.refused(refusal).reply(ctx.headers)),
+            }
         }
         _ => None,
     };

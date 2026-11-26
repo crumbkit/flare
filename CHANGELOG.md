@@ -18,7 +18,9 @@ This file records the notable changes to flare. The format follows
   redirect, a person the rule refuses gets 403 `auth::not_admitted` with
   the optional sign-out link, and `flare serve` exits with
   `flare::proxy::keys_unavailable` when it cannot fetch the key set. flare
-  reads no unsigned identity header. docs/sign-in.md describes it.
+  reads no unsigned identity header. While the key set address is down,
+  the keys flare holds keep verifying tokens. docs/sign-in.md describes
+  it.
 - flare-server's `Site::Hosted` holds any `HostedSignIn`, which names the
   credential's cookie, what a request with no credential gets and where
   sign-out goes. `OidcAuthenticator` is the default, and flare-auth-oidc's
@@ -27,8 +29,9 @@ This file records the notable changes to flare. The format follows
   command. The share commands then run the command once, send the first
   line of its output as the bearer and save nothing. Its failures are
   `flare::login::token_command_failed`, `token_command_timeout` and
-  `token_command_output`. `flare logout` with a token command revokes
-  nothing, and its document gains `revoked`.
+  `token_command_output`. `flare logout` with a token command and no saved
+  login revokes nothing, and its document gains `revoked`, which says
+  whether a token was revoked.
 
 - A share or a new version can carry its document's images. The share API
   takes `POST /api/shares` and `POST /api/shares/<id>/versions` as a

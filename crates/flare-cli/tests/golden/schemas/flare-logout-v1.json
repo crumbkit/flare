@@ -30,7 +30,7 @@
           "type": "string"
         },
         "revoked": {
-          "description": "Whether a saved token was revoked and deleted. It is false when the\nconfig names a token command, which leaves no token to revoke.",
+          "description": "Whether a saved token was revoked and deleted. It is false when no\ntoken was saved, as with a token command and no earlier login.",
           "type": "boolean"
         },
         "server": {

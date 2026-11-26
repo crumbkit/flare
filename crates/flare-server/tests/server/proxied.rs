@@ -191,3 +191,42 @@ async fn cli_login_without_a_cookie_sends_the_browser_to_the_proxys_sign_in() {
     assert_eq!(reply.status, 303, "{}", reply.body);
     assert_eq!(reply.header("location"), Some(SIGN_IN));
 }
+
+#[tokio::test]
+async fn cli_login_with_a_refused_or_unadmitted_cookie_answers_like_a_page_and_does_not_redirect() {
+    let site = Proxied::start().await;
+    let other = site.fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("aud".into(), json!("another-app"));
+    });
+    let stranger = site.fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("email".into(), json!("eve@example.com"));
+    });
+    let path = format!("/cli/login?port={CLI_PORT}&state={STATE}");
+    for (token, status, expected) in [
+        (other, 401, "auth::proxy_refused"),
+        (stranger, 403, "auth::not_admitted"),
+    ] {
+        let reply = site
+            .get(&path)
+            .cookie(&Proxied::cookie(&token))
+            .send()
+            .await;
+        assert_eq!(reply.status, status, "{}", reply.body);
+        assert_eq!(code(&reply).as_deref(), Some(expected));
+        assert!(reply.header("location").is_none());
+    }
+    // The admitted twin: the proxy's valid cookie gets the redirect to the
+    // CLI's loopback listener.
+    let token = site.fake.token(Sign::Rs256);
+    let reply = site
+        .get(&path)
+        .cookie(&Proxied::cookie(&token))
+        .send()
+        .await;
+    assert_eq!(reply.status, 303, "{}", reply.body);
+    let location = reply.header("location").unwrap_or_default();
+    assert!(
+        location.starts_with(&format!("http://127.0.0.1:{CLI_PORT}/")),
+        "{location}"
+    );
+}

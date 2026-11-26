@@ -77,9 +77,14 @@ fn start() -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(1_800_000_000)
 }
 
-/// A cache that holds the key `old`, fetched at [`start`].
+/// A cache that holds the key `old`, fetched at [`start`], and keeps its
+/// held keys when a fetch fails, as the proxy sign-in's does.
 fn cache() -> KeyCache {
-    KeyCache::new(KeySet::parse(&key_set(&["old"])).unwrap(), start())
+    let rule = KeyRule {
+        keeps_held_keys: true,
+        ..KeyRule::OIDC
+    };
+    KeyCache::under(KeySet::parse(&key_set(&["old"])).unwrap(), start(), rule)
 }
 
 /// Polls `sign_in` once and says whether it is still waiting.
@@ -116,10 +121,11 @@ async fn a_sign_in_that_waits_for_a_failed_fetch_gets_its_failure_and_fetches_no
         (Ok(br#"{"keys":[]}"#.to_vec()), KeyError::Unusable),
     ];
     for (answer, failure) in failures {
-        // A new key id, and the key set held for over one hour.
-        for (kid, now) in [("new", start()), ("old", stale)] {
+        // A new key id gets the failure, and a key id in the key set held
+        // for over one hour keeps its held key.
+        for (kid, now, found) in [("new", start(), Some(failure)), ("old", stale, None)] {
             let (first, second, fetches) = two_sign_ins(kid, now, answer.clone()).await;
-            assert_eq!((first, second), (Some(failure), Some(failure)), "{kid}");
+            assert_eq!((first, second), (found, found), "{kid}");
             assert_eq!(fetches, 1, "{kid}");
         }
     }
@@ -166,8 +172,9 @@ async fn after_a_failed_fetch_the_next_unknown_key_id_waits_out_the_refresh_inte
     let down = Endpoint::answering(Err(ReplyError::Unreachable));
     let failed = cache.key_with("new", start(), || down.fetch()).await;
     assert_eq!(failed.err(), Some(KeyError::Unavailable));
+    // Within the interval the last fetch's failure stands, with no fetch.
     let later = cache.key_with("new", start(), || down.fetch()).await;
-    assert_eq!(later.err(), Some(KeyError::Unknown));
+    assert_eq!(later.err(), Some(KeyError::Unavailable));
     assert_eq!(down.fetches.get(), 1);
     // The admitted twin: once the interval has passed, the next sign-in
     // fetches again.
@@ -176,5 +183,41 @@ async fn after_a_failed_fetch_the_next_unknown_key_id_waits_out_the_refresh_inte
         .key_with("new", start() + REFRESH_INTERVAL, || endpoint.fetch())
         .await;
     assert_eq!(found.err(), None);
+    assert_eq!(endpoint.fetches.get(), 1);
+}
+
+#[tokio::test]
+async fn a_held_set_over_an_hour_old_serves_its_keys_while_fetches_fail_and_fetches_once_a_minute()
+{
+    let cache = cache();
+    let stale = start() + KEY_SET_LIFETIME;
+    let down = Endpoint::answering(Err(ReplyError::Unreachable));
+    for second in 0..3 {
+        let now = stale + Duration::from_secs(second);
+        let found = cache.key_with("old", now, || down.fetch()).await;
+        assert_eq!(found.err(), None, "second {second}");
+    }
+    assert_eq!(down.fetches.get(), 1);
+    let found = cache
+        .key_with("old", stale + REFRESH_INTERVAL, || down.fetch())
+        .await;
+    assert_eq!(found.err(), None);
+    assert_eq!(down.fetches.get(), 2);
+    // The admitted twin: a fetch that succeeds replaces the set.
+    let endpoint = Endpoint::answering(Ok(key_set(&["new"])));
+    let later = stale + REFRESH_INTERVAL + REFRESH_INTERVAL;
+    let replaced = cache.key_with("old", later, || endpoint.fetch()).await;
+    assert_eq!(replaced.err(), Some(KeyError::Unknown));
+    assert_eq!(endpoint.fetches.get(), 1);
+}
+
+#[tokio::test]
+async fn after_a_successful_fetch_without_the_key_id_the_next_lookup_is_unknown_without_a_fetch() {
+    let cache = cache();
+    let endpoint = Endpoint::answering(Ok(key_set(&["old"])));
+    let first = cache.key_with("new", start(), || endpoint.fetch()).await;
+    assert_eq!(first.err(), Some(KeyError::Unknown));
+    let second = cache.key_with("new", start(), || endpoint.fetch()).await;
+    assert_eq!(second.err(), Some(KeyError::Unknown));
     assert_eq!(endpoint.fetches.get(), 1);
 }

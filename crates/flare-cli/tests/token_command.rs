@@ -28,7 +28,7 @@ pub mod loopback_scratch;
 )]
 pub mod run;
 
-use api::{FakeApi, Fakes as _, problem};
+use api::{FakeApi, Fakes as _, TOKEN_ID, problem};
 use run::Home;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -229,4 +229,42 @@ fn logout_with_a_token_command_revokes_nothing_and_says_so() {
     let printed: Value = serde_json::from_str(ran.stdout.trim()).unwrap();
     assert_eq!(printed["data"]["revoked"], json!(false), "{printed}");
     assert!(api.requests().is_empty());
+}
+
+#[test]
+fn logout_with_a_token_command_still_revokes_a_login_saved_earlier() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    api.issue();
+    home.sharing(&["login", &api.origin]).assert_ok();
+    let body = format!("printf '%s\\n' '{PROXY_TOKEN}'\n");
+    let helper = home.script("sso-token", &body);
+    let client = json!({ "server": api.origin, "token_command": [helper.display().to_string()] });
+    home.write_config(&json!({ "client": client }).to_string());
+    let target = format!("/api/tokens/{TOKEN_ID}");
+    api.route("DELETE", &target, 204, &Value::Null);
+    let ran = home.sharing(&["logout", "--yes", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(printed["data"]["revoked"], json!(true), "{printed}");
+    assert_eq!(api.requests_to(&target).len(), 1);
+    assert_eq!(home.keychain_item(), None);
+    assert!(!home.state().join("flare").join("login.json").exists());
+}
+
+#[test]
+fn logout_of_a_saved_login_whose_token_is_gone_from_the_keychain_says_nothing_was_revoked() {
+    let api = FakeApi::start();
+    let home = Home::new();
+    api.issue();
+    home.sharing(&["login", &api.origin]).assert_ok();
+    std::fs::remove_file(home.path().join("keychain-item")).unwrap();
+    let ran = home.sharing(&["logout", "--yes", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(ran.stdout.trim()).unwrap();
+    assert_eq!(printed["data"]["revoked"], json!(false), "{printed}");
+    assert!(
+        api.requests_to(&format!("/api/tokens/{TOKEN_ID}"))
+            .is_empty()
+    );
 }

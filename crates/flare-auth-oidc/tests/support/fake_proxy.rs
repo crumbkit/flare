@@ -63,6 +63,10 @@ pub enum Sign {
     UnpublishedKey,
     /// RS256 with the published key, and one byte of the signature changed.
     BadSignature,
+    /// ES256 with the published P-256 key, under the RSA key's id.
+    Es256NamingTheRsaKey,
+    /// RS256 with the published RSA key, under the P-256 key's id.
+    Rs256NamingTheEcKey,
 }
 
 /// What the key set endpoint replies.
@@ -215,6 +219,8 @@ impl FakeProxy {
             Sign::AlgNone => ("none", RSA_KID),
             Sign::Hs256WithPublicKey => ("HS256", RSA_KID),
             Sign::UnpublishedKey => ("RS256", "unpublished-1"),
+            Sign::Es256NamingTheRsaKey => ("ES256", RSA_KID),
+            Sign::Rs256NamingTheEcKey => ("RS256", EC_KID),
         };
         let header = json!({ "alg": alg, "kid": kid, "typ": "JWT" });
         let signed = format!(
@@ -225,7 +231,7 @@ impl FakeProxy {
         let random = SystemRandom::new();
         let signature = self.with(|state| match sign {
             Sign::AlgNone => Vec::new(),
-            Sign::Es256 => state
+            Sign::Es256 | Sign::Es256NamingTheRsaKey => state
                 .ec
                 .sign(&random, signed.as_bytes())
                 .expect("a signature")
@@ -241,6 +247,7 @@ impl FakeProxy {
                 let other = KeyPair::generate(KeySize::Rsa2048).expect("an RSA key");
                 rsa_sign(&other, &signed)
             }
+            Sign::Rs256NamingTheEcKey => rsa_sign(&state.rsa, &signed),
             Sign::Rs256 | Sign::BadSignature => {
                 let mut signature = rsa_sign(&state.rsa, &signed);
                 if sign == Sign::BadSignature {

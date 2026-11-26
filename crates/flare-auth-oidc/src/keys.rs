@@ -45,6 +45,12 @@ pub(crate) struct KeyRule {
     pub(crate) es256: bool,
     /// The most keys a set may hold, usable or not, or `None` for no limit.
     pub(crate) max_keys: Option<usize>,
+    /// Whether the held keys keep answering after a fetch fails, with
+    /// stale fetches at most once every 60 seconds, and an unknown key id
+    /// gets that failure until the next fetch. The proxy sign-in reads keys
+    /// on every request, so it keeps them; the OpenID Connect sign-in reads
+    /// them only at a callback and refuses that sign-in instead.
+    pub(crate) keeps_held_keys: bool,
 }
 
 impl KeyRule {
@@ -53,6 +59,7 @@ impl KeyRule {
         rs256: true,
         es256: false,
         max_keys: None,
+        keeps_held_keys: false,
     };
 
     /// The decoding key of `key`, when this rule admits it. A key is usable
@@ -138,12 +145,17 @@ struct Cached {
 }
 
 impl Cached {
-    /// The key for `kid` after the last completed fetch: that fetch's
-    /// failure, or the key from the set it cached.
-    fn outcome(&self, kid: &str) -> Result<DecodingKey, KeyError> {
-        match self.failure {
-            Some(failure) => Err(failure),
-            None => self.keys.0.get(kid).cloned().ok_or(KeyError::Unknown),
+    /// The key for `kid` after the last completed fetch. Under a rule that
+    /// keeps held keys, a held key answers even when that fetch failed, so
+    /// an outage of the key set address keeps the keys flare has. Otherwise
+    /// a failed fetch answers its failure, and a successful one an unknown
+    /// key.
+    fn outcome(&self, kid: &str, rule: KeyRule) -> Result<DecodingKey, KeyError> {
+        match (self.keys.0.get(kid), self.failure) {
+            (Some(_), Some(failure)) if !rule.keeps_held_keys => Err(failure),
+            (Some(key), _) => Ok(key.clone()),
+            (None, Some(failure)) => Err(failure),
+            (None, None) => Err(KeyError::Unknown),
         }
     }
 }
@@ -172,7 +184,8 @@ enum Lookup {
     /// had completed when the cache was read.
     Refresh(u64),
     /// The key id is unknown, and the last fetch was under 60 seconds ago.
-    Unknown,
+    /// It holds that fetch's failure, or `None` when it succeeded.
+    Unknown(Option<KeyError>),
 }
 
 impl KeyCache {
@@ -205,22 +218,24 @@ impl KeyCache {
     fn look_up(&self, kid: &str, now: SystemTime) -> Lookup {
         let cached = self.lock();
         let stale = has_passed(cached.fetched, KEY_SET_LIFETIME, now);
+        let may_fetch = cached
+            .last_attempt
+            .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now));
+        let keeps = self.rule.keeps_held_keys;
         match cached.keys.0.get(kid) {
             Some(key) if !stale => Lookup::Found(key.clone()),
-            _ if stale => Lookup::Refresh(cached.completed),
-            _ if cached
-                .last_attempt
-                .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now)) =>
-            {
-                Lookup::Refresh(cached.completed)
-            }
-            _ => Lookup::Unknown,
+            Some(key) if keeps && !may_fetch => Lookup::Found(key.clone()),
+            Some(_) => Lookup::Refresh(cached.completed),
+            None if may_fetch => Lookup::Refresh(cached.completed),
+            None if keeps => Lookup::Unknown(cached.failure),
+            None => Lookup::Unknown(None),
         }
     }
 
     /// The key for `kid`. A key set older than one hour is fetched again
     /// first. An unknown `kid` causes one fetch, at most once every 60
-    /// seconds.
+    /// seconds. [`KeyRule::keeps_held_keys`] says what a failed fetch
+    /// leaves.
     pub(crate) async fn key_for(
         &self,
         kid: &str,
@@ -243,7 +258,7 @@ impl KeyCache {
     {
         let seen = match self.look_up(kid, now) {
             Lookup::Found(key) => return Ok(key),
-            Lookup::Unknown => return Err(KeyError::Unknown),
+            Lookup::Unknown(failure) => return Err(failure.unwrap_or(KeyError::Unknown)),
             Lookup::Refresh(completed) => completed,
         };
         let _refreshing = self.refreshing.lock().await;
@@ -252,7 +267,7 @@ impl KeyCache {
             if cached.completed != seen {
                 // Another sign-in's fetch completed while this one waited,
                 // so this one takes that fetch's outcome.
-                return cached.outcome(kid);
+                return cached.outcome(kid, self.rule);
             }
         }
         let fetched = match fetch().await {
@@ -272,7 +287,7 @@ impl KeyCache {
             }
             Err(failure) => cached.failure = Some(failure),
         }
-        cached.outcome(kid)
+        cached.outcome(kid, self.rule)
     }
 }
 

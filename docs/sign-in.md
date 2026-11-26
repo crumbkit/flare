@@ -18,6 +18,8 @@ both.
   `X-Forwarded-User` or `Remote-User`. A proxy that only sets such headers
   cannot be used, because anything that reaches `hosted.listen` could set
   them.
+- The proxy must not add an `Authorization` header to page requests. flare
+  answers a page request that carries one with 401 `auth::bad_credential`.
 
 ## The config
 
@@ -82,14 +84,17 @@ flare accepts a token only when every check passes, in this order:
 
 ## The key set
 
-- `flare serve` fetches the key set before it binds. When it cannot, or the
-  set holds no RS256 or ES256 key, it exits with
-  `flare::proxy::keys_unavailable`, which names `proxy.jwks_url`.
-- flare keeps at most 20 keys and refetches the set after one hour.
-- A token whose `kid` is not in the kept set makes flare fetch the set
-  again, at most once a minute. A key that is still missing is refused.
-- When a refetch fails, flare keeps the keys it has. A token that needs a
-  key flare cannot fetch gets 503 `auth::unavailable`.
+- `flare serve` fetches the key set before it binds. When it cannot, when
+  the set holds no RS256 or ES256 key, or when it holds more than 20 keys,
+  usable or not, it exits with `flare::proxy::keys_unavailable`, which
+  names `proxy.jwks_url`.
+- flare fetches the set again after one hour, and at most once a minute.
+- A token whose `kid` is not in the held set makes flare fetch the set
+  again. A key that is still missing gets 401 `auth::proxy_refused`.
+- When a fetch fails, or returns a set that flare would refuse at start,
+  flare keeps the keys it holds, and tokens signed by them keep working.
+  A token whose `kid` is not held gets 503 `auth::unavailable` until a
+  fetch succeeds.
 
 ## The share API
 
@@ -129,8 +134,9 @@ helper is named in the `client` section of flare's config file,
 - The command keeps the token in memory for one command. It never writes the
   token to a file, the Keychain or a log, and it reads neither the Keychain
   nor `login.json`.
-- `flare logout` revokes nothing and sends no request. Its `revoked` field is
-  false.
+- `flare logout` revokes nothing and sends no request, and its `revoked`
+  field is false, unless a login saved earlier with `flare login` exists.
+  It then revokes that login's token as usual.
 
 | Code | When |
 | --- | --- |

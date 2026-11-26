@@ -140,9 +140,70 @@ async fn an_unknown_key_whose_refetch_fails_leaves_the_proxy_unavailable() {
         .await;
     assert_eq!(answer, Err(AuthError::Unavailable));
     // The failed fetch counts against the one-a-minute limit, so the next
-    // unknown key is refused without a fetch.
+    // unknown key fetches nothing and is still unavailable, because the
+    // last fetch failed.
+    let before = fake.fetches();
     let refused = check(&proxy, &fake.token(Sign::UnpublishedKey)).await;
-    assert_eq!(refused, Err(ProxyRefusal::UnknownKey));
+    assert_eq!(refused, Err(ProxyRefusal::KeysUnavailable));
+    assert_eq!(fake.fetches(), before);
+}
+
+/// A token that every check accepts once `clock` has moved on by `ahead`
+/// seconds from now.
+fn token_ahead(fake: &FakeProxy, sign: Sign, ahead: u64) -> String {
+    let now = fake_proxy::now_seconds() + ahead;
+    fake.token_with(sign, |claims| {
+        claims.insert("iat".into(), serde_json::json!(now));
+        claims.insert("exp".into(), serde_json::json!(now + 300));
+    })
+}
+
+#[tokio::test]
+async fn a_key_set_over_an_hour_old_keeps_its_keys_while_its_address_is_down_and_fetches_once_a_minute()
+ {
+    let fake = FakeProxy::start().await;
+    let (proxy, clock) = fake.connect().await;
+    fake.keys_reply(KeysReply::Down);
+    let hour = 60 * 60 + 1;
+    clock.advance(Duration::from_secs(hour));
+    let before = fake.fetches();
+    for _ in 0..3 {
+        let token = token_ahead(&fake, Sign::Rs256, hour);
+        assert!(
+            check(&proxy, &token).await.is_ok(),
+            "the held key still verifies"
+        );
+    }
+    assert_eq!(fake.fetches(), before + 1, "one fetch for three requests");
+    clock.advance(Duration::from_secs(61));
+    let token = token_ahead(&fake, Sign::Rs256, hour + 61);
+    assert!(check(&proxy, &token).await.is_ok());
+    assert_eq!(
+        fake.fetches(),
+        before + 2,
+        "a minute later it fetches again"
+    );
+    // The admitted twin: once the address answers, the next fetch replaces
+    // the set, and an unpublished key is refused.
+    fake.keys_reply(KeysReply::Normal);
+    fake.unpublish(fake_proxy::RSA_KID);
+    clock.advance(Duration::from_secs(61));
+    let token = token_ahead(&fake, Sign::Rs256, hour + 122);
+    assert_eq!(check(&proxy, &token).await, Err(ProxyRefusal::UnknownKey));
+}
+
+#[tokio::test]
+async fn a_header_algorithm_of_another_family_than_its_key_is_refused_and_a_matching_one_accepted()
+{
+    let fake = FakeProxy::start().await;
+    let (proxy, _clock) = fake.connect().await;
+    for sign in [Sign::Es256NamingTheRsaKey, Sign::Rs256NamingTheEcKey] {
+        let refused = check(&proxy, &fake.token(sign)).await;
+        assert_eq!(refused, Err(ProxyRefusal::Algorithm), "{sign:?}");
+    }
+    for sign in [Sign::Es256, Sign::Rs256] {
+        assert!(check(&proxy, &fake.token(sign)).await.is_ok(), "{sign:?}");
+    }
 }
 
 #[tokio::test]

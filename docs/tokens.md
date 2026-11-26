@@ -71,7 +71,8 @@ command its token from that program instead, and saves nothing;
   until it expires or its owner revokes it.
 - `flare logout --yes` revokes the token, deletes the Keychain item and
   forgets `login.json`. A token the server no longer knows still counts as
-  logged out. With a token command it revokes nothing, sends no request
+  logged out. `revoked` is false when the Keychain held no token. With a
+  token command and no saved login it revokes nothing, sends no request
   and prints `revoked: false`.
 
 ## Crash points

@@ -62,6 +62,7 @@ impl ProxyAlgorithms {
             rs256: self.rs256,
             es256: self.es256,
             max_keys: Some(MAX_KEYS),
+            keeps_held_keys: true,
         }
     }
 }

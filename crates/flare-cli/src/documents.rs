@@ -132,8 +132,8 @@ pub(crate) struct LoggedOut {
     /// revoked.
     #[row(column)]
     pub(crate) label: String,
-    /// Whether a saved token was revoked and deleted. It is false when the
-    /// config names a token command, which leaves no token to revoke.
+    /// Whether a saved token was revoked and deleted. It is false when no
+    /// token was saved, as with a token command and no earlier login.
     #[row(column)]
     pub(crate) revoked: bool,
 }
