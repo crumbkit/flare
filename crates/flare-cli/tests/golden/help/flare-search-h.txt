@@ -6,6 +6,7 @@ Arguments:
   <QUERY>  The search, such as 'budget -type:html' or 'from:me "review notes"'. It may start with a minus, as in '-from:me'
 
 Options:
+      --everyone   Also search the shares open to everyone signed in
       --limit <N>  Print at most this many rows, up to 500 [default: 50]
       --all        Print every row
   -h, --help       Print help (see more with '--help')
@@ -13,6 +14,7 @@ Options:
 Examples:
   flare search 'budget -type:html'
   flare search 'from:ana@example.org,me "review notes"' --limit 20
+  flare search budget --everyone
 
 Effects: read-only, closed-world.
 Global flags: --json, --fields <FIELD>, --full, --no-input. `flare search --help` describes them.

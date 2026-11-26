@@ -109,8 +109,8 @@ pub(crate) enum Verb {
     /// Search the shares you can open, newest first
     ///
     /// A search reads the shares you own and those granted to you directly
-    /// or through a team. It does not search shares open to everyone
-    /// signed in.
+    /// or through a team. It searches the shares open to everyone signed
+    /// in only with --everyone.
     ///
     /// A word or a "quoted phrase" matches inside a title, in any case.
     /// type:markdown or type:html filters by kind, and from:me, from: an

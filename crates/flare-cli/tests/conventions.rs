@@ -41,8 +41,8 @@ const EXAMPLES: Examples<'_> = Examples::new(env!("CARGO_BIN_EXE_flare"), "tests
 /// every path but `flare skills print`.
 const PATHS: PathBudgets<'_> = PathBudgets::new("tests/golden/examples").nodes(&[Budget::new(
     "skills print",
-    9_000,
-    "It prints the 6,270-byte skill.",
+    9_500,
+    "It prints the 6,406-byte skill.",
 )]);
 
 /// The budgets of flare's `-h` pages: crumbkit's default for every page

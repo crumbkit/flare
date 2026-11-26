@@ -187,3 +187,45 @@ async fn the_fields_route_lists_type_with_its_values_and_from() {
     assert_eq!(fields["fields"][1]["name"], "from");
     assert_eq!(fields["fields"][1]["kind"], "person");
 }
+
+/// A site that admits example.com where alice shared one flare with bob
+/// and one with everyone signed in, and bob's token.
+async fn open_to_everyone() -> (Api, String) {
+    let api = Api::start_with_domain().await;
+    let alice = api.token_for("alice").await;
+    let bob = api.token_for("bob").await;
+    api.share(&alice, "Budget for bob", &["bob@example.com"], &[])
+        .await;
+    api.hosted.time.advance(Duration::from_secs(1));
+    api.share(&alice, "Budget for everyone", &["everyone"], &[])
+        .await;
+    (api, bob)
+}
+
+#[tokio::test]
+async fn a_search_leaves_out_a_share_open_to_everyone_unless_given_everyone() {
+    let (api, bob) = open_to_everyone().await;
+    let (status, plain) = api.read("GET", "/api/search?q=budget", Some(&bob)).await;
+    assert_eq!(status, 200, "{plain}");
+    assert_eq!(titles(&plain), ["Budget for bob"]);
+    let (status, all) = api
+        .read("GET", "/api/search?q=budget&everyone=true", Some(&bob))
+        .await;
+    assert_eq!(status, 200, "{all}");
+    assert_eq!(titles(&all), ["Budget for everyone", "Budget for bob"]);
+    let (status, off) = api
+        .read("GET", "/api/search?q=budget&everyone=false", Some(&bob))
+        .await;
+    assert_eq!(status, 200, "{off}");
+    assert_eq!(titles(&off), ["Budget for bob"]);
+}
+
+#[tokio::test]
+async fn a_search_whose_everyone_is_not_true_or_false_answers_400() {
+    let (api, bob) = open_to_everyone().await;
+    let (status, problem) = api
+        .read("GET", "/api/search?q=budget&everyone=yes", Some(&bob))
+        .await;
+    assert_eq!(status, 400, "{problem}");
+    assert_eq!(code(&problem), "flare::requests::bad_query");
+}

@@ -4,9 +4,11 @@
 //! The candidates are the caller's own shares and the shares granted to the
 //! caller, read through [`Shares::mine`](crate::Shares::mine) and
 //! [`Shares::shared_with_me`](crate::Shares::shared_with_me), the same
-//! calls `flare shares` uses. A share the caller cannot open is never a
-//! candidate, so no query text can widen what the caller sees, and a minus
-//! part only narrows the candidates.
+//! calls `flare shares` uses. The shares open to everyone signed in are
+//! candidates only when the search asks for them, as
+//! `flare shares --with-me --everyone` lists them. A share the caller
+//! cannot open is never a candidate, so no query text can widen what the
+//! caller sees, and a minus part only narrows the candidates.
 
 use super::{Flares, RecipientError, Recipients};
 use crate::auth::Principal;
@@ -22,11 +24,6 @@ use std::cmp::Reverse;
 
 /// The most hits one search answers.
 pub const MAX_HITS: usize = 500;
-
-/// Whether a search reads shares open to everyone signed in. It does not:
-/// it reads direct and team grants, as `flare shares --with-me` does by
-/// default.
-const INCLUDE_EVERYONE_GRANTS: bool = false;
 
 /// One share a search found, with what the caller is to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,7 +172,9 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C, U, T: Teams, K>
     /// The shares `who` can open that match every part of `query`, newest
     /// first and then by id, at most `limit` and at most [`MAX_HITS`]. A
     /// `limit` of 0 answers one. `recipients` resolves each `from:` value
-    /// other than `me`.
+    /// other than `me`. With `everyone`, the shares open to everyone whose
+    /// audience covers the caller are searched too; without it, only the
+    /// caller's own shares and those granted directly or through a team.
     ///
     /// # Errors
     ///
@@ -188,13 +187,14 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C, U, T: Teams, K>
         who: &Principal,
         query: &Query,
         recipients: &X,
+        everyone: bool,
         limit: usize,
     ) -> Result<Found, SearchError> {
         let clauses = compile(who, query, recipients).await?;
         let mine = self.shares.mine(who).await.map_err(SearchError::Share)?;
         let granted_to_me = self
             .shares
-            .shared_with_me(who, INCLUDE_EVERYONE_GRANTS)
+            .shared_with_me(who, everyone)
             .await
             .map_err(SearchError::Share)?;
         let partial = mine.truncated() || granted_to_me.truncated();

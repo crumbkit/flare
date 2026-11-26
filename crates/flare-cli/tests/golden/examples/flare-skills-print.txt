@@ -98,6 +98,8 @@ server. Never look for, print or copy the token.
   that call as given to read the next page; do not build the `--cursor`
   argument yourself. `flare shares --all` follows the cursor itself and
   lists every share.
+- `flare search '<query>'` finds the shares you can open by title. Add
+  `--everyone` to include the shares open to everyone signed in.
 
 ## Follow responses
 

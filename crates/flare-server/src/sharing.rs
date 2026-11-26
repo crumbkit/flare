@@ -178,8 +178,13 @@ pub(crate) enum Call {
     SaveCursor(String, NamedCursor),
     /// `DELETE /api/tokens/{id}`.
     Revoke(String),
-    /// `GET /api/search`, with its query text and the most results.
-    Search { text: String, limit: usize },
+    /// `GET /api/search`, with its query text, the most results and
+    /// whether to search the shares open to everyone signed in.
+    Search {
+        text: String,
+        limit: usize,
+        everyone: bool,
+    },
     /// `GET /api/search/fields`.
     SearchFields,
 }
