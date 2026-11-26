@@ -10,7 +10,7 @@
 //! sort in position order.
 
 use flare_core::{
-    CommentId, CommentKey, CursorName, Digest, Email, Group, KeyId, Position, PrincipalId, Reader,
+    CommentId, CommentKey, CursorName, Digest, Group, KeyId, Person, Position, PrincipalId, Reader,
     ShareId, ShareVersion, Timestamp, TokenId, TokenLabel,
 };
 
@@ -106,6 +106,12 @@ impl Key {
         Self::new(format!("CODE#{}", digest.to_hex()), "CODE")
     }
 
+    /// The table's one identity marker, which records the identifier kind
+    /// the table was first written under.
+    pub(crate) fn identity() -> Self {
+        Self::new("IDENTITY".to_owned(), "IDENTITY")
+    }
+
     /// A token, by its id.
     pub(crate) fn token(id: &TokenId) -> Self {
         Self::new(format!("TOKEN#{}", id.as_str()), "TOKEN")
@@ -113,7 +119,7 @@ impl Key {
 
     /// The slot that names an owner's latest token with one label. The
     /// label is the sort key's variable last part.
-    pub(crate) fn label_slot(owner: &Email, label: &TokenLabel) -> Self {
+    pub(crate) fn label_slot(owner: &Person, label: &TokenLabel) -> Self {
         Self::new(
             format!("LABELS#{}", owner.as_str()),
             format!("L#{}", label.as_str()),

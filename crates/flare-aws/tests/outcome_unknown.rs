@@ -20,18 +20,18 @@ pub mod stand_in;
 use flare_aws::{Fault, HostedConfig, Stores};
 use flare_core::{
     Digest, DocumentText, Email, FileBytes, FileId, FileStore, FileStoreError, GrantStore,
-    LoginCode, MediaType, NewFile, NewLink, NewToken, Position, Principal, ResponseStore,
+    LoginCode, MediaType, NewFile, NewLink, NewToken, Person, Position, Principal, ResponseStore,
     ResponseStoreError, Role, ShareContent, ShareError, ShareId, ShareStore, ShareStoreError,
     ShareTitle, ShareVersion, Shares, Timestamp, TokenId, TokenLabel, TokenStore, TokenStoreError,
     UsedCode,
 };
 use stand_in::{endpoints, fresh_config, s3_client};
 
-fn person(address: &str) -> (Principal, Email) {
+fn person(address: &str) -> (Principal, Person) {
     let email = Email::try_from(address).unwrap();
     (
         Principal::with_email(email.principal_id(), email.clone()),
-        email,
+        Person::Email(email),
     )
 }
 
@@ -302,7 +302,7 @@ async fn a_lost_revoke_by_an_admin_whose_role_ends_meanwhile_does_not_answer_suc
     assert_eq!(reader.grants.get(&id, &bob.principal_id()).await, Ok(None));
 }
 
-fn login_code(owner: &Email, byte: u8) -> LoginCode {
+fn login_code(owner: &Person, byte: u8) -> LoginCode {
     LoginCode::new(
         Digest::from_bytes([byte; 32]),
         owner.clone(),
@@ -311,7 +311,7 @@ fn login_code(owner: &Email, byte: u8) -> LoginCode {
     )
 }
 
-fn new_token(owner: &Email, byte: u8, at: u64) -> NewToken {
+fn new_token(owner: &Person, byte: u8, at: u64) -> NewToken {
     NewToken::new(
         TokenId::from_random([byte; 16]),
         Digest::from_bytes([byte; 32]),

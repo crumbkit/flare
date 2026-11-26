@@ -1,7 +1,9 @@
 //! The items of browser sessions, and the transactions that write them.
 //!
-//! A session item, under `SESS#<digest>`, holds the person, their verified
-//! address, when the session was created and when it expires, and the
+//! A session item, under `SESS#<digest>`, holds the principal's id, their
+//! verified address, the person they signed in as when that is not the
+//! address (a username), when the session was created and when it expires,
+//! and the
 //! expiry again in the attribute that the table's TTL reads. A link item,
 //! under `SESSOF#<person>`, sorts by the session's expiry, so a query of a
 //! person's links lists their live sessions from the earliest to expire. A
@@ -17,7 +19,7 @@ use crate::dynamodb::items::{
 use crate::dynamodb::keys::{Key, link_of};
 use crate::dynamodb::transact::{ABSENT, ItemRole, Transaction, key_map, names, put, values};
 use aws_sdk_dynamodb::types::{AttributeValue, Delete, Put, TransactWriteItem, Update};
-use flare_core::{Digest, Email, Principal, PrincipalId, Timestamp};
+use flare_core::{Digest, Email, Person, Principal, PrincipalId, Timestamp};
 
 /// A session as the table holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,17 +40,29 @@ pub(crate) struct Ended {
 /// The guard's `rev` as it was read, or `None` for a person with none.
 pub(crate) type GuardRead = Option<String>;
 
+/// The principal a session item holds. An item with no `person`, which
+/// every item written under the email kind and every item from before
+/// usernames is, takes its person from `email`.
 fn read_principal(item: &Item, kind: ItemKind) -> Result<Principal, Malformed> {
     let id = PrincipalId::try_from(read_text(item, attr::PRINCIPAL, kind)?)
         .map_err(|_| Malformed(kind))?;
-    match item.get(attr::EMAIL) {
-        None => Ok(Principal::new(id)),
-        Some(_) => {
-            let email = Email::try_from(read_text(item, attr::EMAIL, kind)?)
-                .map_err(|_| Malformed(kind))?;
-            Ok(Principal::with_email(id, email))
-        }
-    }
+    let email = match item.get(attr::EMAIL) {
+        None => None,
+        Some(_) => Some(
+            Email::try_from(read_text(item, attr::EMAIL, kind)?).map_err(|_| Malformed(kind))?,
+        ),
+    };
+    let person = match item.get(attr::PERSON) {
+        None => None,
+        Some(_) => Some(
+            Person::try_from(read_text(item, attr::PERSON, kind)?).map_err(|_| Malformed(kind))?,
+        ),
+    };
+    Ok(match (person, email) {
+        (Some(person), email) => Principal::with_person(id, person, email),
+        (None, Some(email)) => Principal::with_email(id, email),
+        (None, None) => Principal::new(id),
+    })
 }
 
 /// A session's item.
@@ -69,6 +83,13 @@ pub(crate) fn session_item(
     );
     if let Some(email) = principal.email() {
         item.insert(attr::EMAIL.to_owned(), text(email.as_str()));
+    }
+    // A person who is their verified address is read back from `email`, so
+    // only a person who is not, such as a username, is written.
+    if let Some(person) = principal.person()
+        && person.as_email() != principal.email()
+    {
+        item.insert(attr::PERSON.to_owned(), text(person.as_str()));
     }
     item
 }

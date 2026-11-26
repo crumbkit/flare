@@ -82,7 +82,13 @@ async fn a_failing_call_logs_its_operation_and_code_and_no_personal_data() {
         .await;
     assert_eq!(created, Err(ShareError::Unavailable));
     let granted = shares
-        .grant(&who, &id, &grantee, Role::Reader, Timestamp::from_secs(2))
+        .grant(
+            &who,
+            &id,
+            &flare_core::Person::Email(grantee.clone()),
+            Role::Reader,
+            Timestamp::from_secs(2),
+        )
         .await;
     assert_eq!(granted, Err(ShareError::Unavailable));
 

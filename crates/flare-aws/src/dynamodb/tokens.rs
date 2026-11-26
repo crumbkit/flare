@@ -16,7 +16,7 @@ use crate::dynamodb::retry::{Attempt, Final, Sent, Settled, Token, run};
 use crate::dynamodb::settle::malformed;
 use crate::dynamodb::transact::{ItemRole, Transaction};
 use flare_core::{
-    Digest, Email, LoginCode, NewToken, StoredToken, Timestamp, TokenId, TokenStore,
+    Digest, LoginCode, NewToken, Person, StoredToken, Timestamp, TokenId, TokenStore,
     TokenStoreError, UsedCode,
 };
 use items::{HeldCode, SlotRead, code_from, slot_token, token_from};
@@ -264,7 +264,7 @@ impl Attempt for CreateOp<'_> {
 struct RevokeOp<'a> {
     table: &'a Table,
     id: &'a TokenId,
-    owner: &'a Email,
+    owner: &'a Person,
     at: Timestamp,
 }
 
@@ -343,7 +343,7 @@ impl TokenStore for DynamoTokenStore {
     async fn revoke(
         &self,
         id: &TokenId,
-        owner: &Email,
+        owner: &Person,
         at: Timestamp,
     ) -> Result<(), TokenStoreError> {
         let op = RevokeOp {

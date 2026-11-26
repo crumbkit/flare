@@ -1,7 +1,7 @@
 //! The keys of teams and their member pairs.
 
 use super::Key;
-use flare_core::{Email, TeamName};
+use flare_core::{Person, TeamName};
 
 /// The sort key prefix of a member under a team's partition.
 pub(crate) const MEMBER_PREFIX: &str = "M#";
@@ -18,7 +18,7 @@ impl Key {
 
     /// The two items of one member pair: the member under the team, and
     /// the team under the member.
-    pub(crate) fn member_pair(team: &TeamName, member: &Email) -> (Self, Self) {
+    pub(crate) fn member_pair(team: &TeamName, member: &Person) -> (Self, Self) {
         (
             Self::new(
                 team_partition(team),
@@ -38,13 +38,13 @@ pub(crate) fn team_partition(team: &TeamName) -> String {
 }
 
 /// The partition of a person's teams.
-pub(crate) fn member_partition(member: &Email) -> String {
+pub(crate) fn member_partition(member: &Person) -> String {
     format!("MEMBER#{}", member.as_str())
 }
 
 /// The member of a member entry's sort key, or `None` for any other.
-pub(crate) fn member_of(sort_key: &str) -> Option<Email> {
-    Email::try_from(sort_key.strip_prefix(MEMBER_PREFIX)?).ok()
+pub(crate) fn member_of(sort_key: &str) -> Option<Person> {
+    Person::try_from(sort_key.strip_prefix(MEMBER_PREFIX)?).ok()
 }
 
 /// The team of a person's team entry's sort key, or `None` for any other.

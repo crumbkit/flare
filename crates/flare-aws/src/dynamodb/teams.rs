@@ -2,8 +2,8 @@
 //!
 //! A team is one item, `TEAM#<name>` `META`, with its owner, creation
 //! time, state and member count. A member is a pair of items written and
-//! deleted in one transaction: `TEAM#<name>` `M#<email>`, which lists a
-//! team's members, and `MEMBER#<email>` `T#<name>`, which lists a person's
+//! deleted in one transaction: `TEAM#<name>` `M#<person>`, which lists a
+//! team's members, and `MEMBER#<person>` `T#<name>`, which lists a person's
 //! teams. A create puts the team's item only if absent, so a name in use
 //! is refused. A deleting team keeps its item until its last member pair
 //! is gone, and `forget` then deletes the item, which frees the name. An
@@ -22,7 +22,7 @@ use crate::dynamodb::keys::{
 use crate::dynamodb::retry::{Attempt, Final, Sent, Settled, Token, run};
 use crate::dynamodb::settle::malformed;
 use crate::dynamodb::transact::{ItemRole, Transaction};
-use flare_core::{Email, MAX_MEMBERS, Team, TeamName, TeamState, TeamStore, TeamStoreError};
+use flare_core::{MAX_MEMBERS, Person, Team, TeamName, TeamState, TeamStore, TeamStoreError};
 
 /// The most entries a person's team list reads. The service refuses a
 /// person a team beyond 32, and this bound leaves room for teams that a
@@ -56,7 +56,7 @@ async fn read_team(table: &Table, name: &TeamName) -> Result<Option<Team>, TeamS
 }
 
 /// Whether the pair of `member` in `team` is present.
-async fn has_pair(table: &Table, team: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+async fn has_pair(table: &Table, team: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
     let (in_team, _) = Key::member_pair(team, member);
     table
         .get(&in_team, ItemKind::Member)
@@ -105,11 +105,11 @@ fn settled<T>(read: Result<bool, TeamStoreError>, done: T) -> Settled<T> {
 #[derive(Debug)]
 enum Op<'a> {
     Create(&'a Team),
-    Add(&'a TeamName, &'a Email),
-    Remove(&'a TeamName, &'a Email),
+    Add(&'a TeamName, &'a Person),
+    Remove(&'a TeamName, &'a Person),
     MarkDeleting(&'a TeamName),
     Forget(&'a TeamName),
-    Transfer(&'a TeamName, &'a Email, &'a Email),
+    Transfer(&'a TeamName, &'a Person, &'a Person),
 }
 
 /// One write with the table it goes to.
@@ -239,11 +239,11 @@ impl TeamStore for DynamoTeamStore {
         read_team(&self.table, name).await
     }
 
-    async fn add(&self, name: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+    async fn add(&self, name: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
         self.write(Op::Add(name, member)).await
     }
 
-    async fn remove(&self, name: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+    async fn remove(&self, name: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
         self.write(Op::Remove(name, member)).await
     }
 
@@ -258,13 +258,13 @@ impl TeamStore for DynamoTeamStore {
     async fn transfer(
         &self,
         name: &TeamName,
-        from: &Email,
-        to: &Email,
+        from: &Person,
+        to: &Person,
     ) -> Result<(), TeamStoreError> {
         self.write(Op::Transfer(name, from, to)).await.map(|_| ())
     }
 
-    async fn members(&self, name: &TeamName) -> Result<Vec<Email>, TeamStoreError> {
+    async fn members(&self, name: &TeamName) -> Result<Vec<Person>, TeamStoreError> {
         // One item more than a team may hold shows a count gone wrong.
         let items = self
             .table
@@ -287,7 +287,7 @@ impl TeamStore for DynamoTeamStore {
             })
     }
 
-    async fn teams_of(&self, member: &Email) -> Result<Vec<TeamName>, TeamStoreError> {
+    async fn teams_of(&self, member: &Person) -> Result<Vec<TeamName>, TeamStoreError> {
         let items = self
             .table
             .query(
