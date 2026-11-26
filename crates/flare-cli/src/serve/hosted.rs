@@ -1,7 +1,9 @@
 //! The hosted site of `flare serve`: it checks the share API's stores and
-//! the identifier kind their table records, connects the sign-in, and only
-//! then binds the listen address.
+//! the identifier kind their table records, reads the teams document that
+//! `hosted.teams` names, connects the sign-in, and only then binds the
+//! listen address.
 
+use super::teams::{HostedTeams, hosted_teams};
 use super::{Persisted, Signals, Stop, bind_failed, connect, serve};
 use crate::codes::{Failed, HeldPort};
 use crate::config::{Hosted, HostedCreators, Secret, Sharing as SharingConfig, SignIn};
@@ -10,10 +12,10 @@ use crate::log;
 use flare_auth_oidc::{Admit, OidcAuthenticator, ProxyAuthenticator, ProxyConfig};
 use flare_aws::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore, DynamoShareStore,
-    DynamoTeamStore, DynamoTokenStore, IdentityError, S3FileStore, Stores,
+    DynamoTokenStore, IdentityError, S3FileStore, Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{FlareTeams, Flares, IdentityKind, NamedRecipients};
+use flare_core::{Flares, IdentityKind, NamedRecipients};
 use flare_server::{App, HostedSignIn, Limits, Listeners, Metrics, PublicOrigin, Sharing, Site};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -38,6 +40,10 @@ pub(super) async fn hosted(
         Some(config) => Some(checked(Stores::connect(&config.stores).await, kind).await?),
         None => None,
     };
+    let teams = match (&sharing, &stores) {
+        (Some(config), Some(stores)) => Some(hosted_teams(&config.teams, stores, kind).await?),
+        _ => None,
+    };
     let persisted = stores.as_ref().map(|stores| Persisted {
         sessions: stores.sessions.clone(),
         keys: stores.keys.clone(),
@@ -54,8 +60,10 @@ pub(super) async fn hosted(
             "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
         );
     }
-    let sharing = match (sharing, stores) {
-        (Some(config), Some(stores)) => Some(share_api(*config, stores, admit, kind)),
+    let sharing = match (sharing, stores, teams) {
+        (Some(config), Some(stores), Some(teams)) => {
+            Some(share_api(*config, stores, teams, admit, kind))
+        }
         _ => None,
     };
     let start = Start {
@@ -159,17 +167,18 @@ type HostedSharing = Sharing<
     DynamoCursorStore,
     DynamoTokenStore,
     NamedRecipients,
-    FlareTeams<DynamoTeamStore>,
+    HostedTeams,
     HostedCreators,
     S3FileStore,
 >;
 
 /// The share API on the checked table and bucket, naming people of
-/// `kind`, keeping images in the bucket and accepting a token only while
-/// `admit` admits its owner.
+/// `kind`, reading its teams from `teams`, keeping images in the bucket and
+/// accepting a token only while `admit` admits its owner.
 fn share_api(
     config: SharingConfig,
     stores: Stores,
+    teams: HostedTeams,
     admit: Admit,
     kind: IdentityKind,
 ) -> HostedSharing {
@@ -181,7 +190,7 @@ fn share_api(
         stores.cursors,
         config.creators,
     )
-    .with_teams(FlareTeams::new(stores.teams))
+    .with_teams(teams)
     .with_identity(kind);
     let api = Sharing::new(flares, stores.tokens, config.recipients, admit)
         .with_everyone_signed_in(config.everyone_signed_in)

@@ -105,5 +105,7 @@ mod reading;
 mod search;
 #[path = "server/teams.rs"]
 mod teams;
+#[path = "server/teams_directory.rs"]
+mod teams_directory;
 #[path = "server/versions.rs"]
 mod versions;

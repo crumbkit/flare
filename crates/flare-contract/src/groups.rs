@@ -113,19 +113,39 @@ pub enum TeamRole {
     Member,
 }
 
+/// Who keeps a team.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TeamManagedBy {
+    /// flare keeps the team, and its owner changes it. A summary from a
+    /// server that predates this field means this.
+    #[default]
+    Flare,
+    /// The deployment's directory keeps the team. It has no owner, and
+    /// flare cannot change it.
+    Directory,
+}
+
 /// One team as a list or a reply shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TeamSummary {
     /// The team's name.
     pub name: String,
-    /// The owner's address.
-    pub owner: String,
-    /// What the caller is to the team.
+    /// The owner's identifier. A team that the deployment's directory
+    /// keeps has none, and the field is left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// Who keeps the team: `flare` or `directory`.
+    #[serde(default)]
+    pub managed_by: TeamManagedBy,
+    /// What the caller is to the team. A directory team has only members.
     pub role: TeamRole,
     /// How many members the team has, its owner included.
     pub members: u32,
-    /// When the team was created, in RFC 3339 UTC.
-    pub created: String,
+    /// When flare created the team, in RFC 3339 UTC. A directory team has
+    /// none, and the field is left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
 }
 
 /// `GET /api/teams`: the teams the caller belongs to.

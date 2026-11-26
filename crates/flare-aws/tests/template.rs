@@ -160,7 +160,7 @@ fn the_bucket_policy_denies_requests_without_tls_and_puts_without_if_none_match(
 fn the_managed_policy_allows_exactly_the_actions_the_stores_call() {
     let policy = resource("FlareStoresPolicy")["Properties"].clone();
     let statements = policy["PolicyDocument"]["Statement"].as_array().unwrap();
-    assert_eq!(statements.len(), 3);
+    assert_eq!(statements.len(), 4);
     assert!(
         statements
             .iter()
@@ -193,6 +193,14 @@ fn the_managed_policy_allows_exactly_the_actions_the_stores_call() {
     assert_eq!(
         objects["Resource"],
         json!({"Fn::Sub": "${FilesBucket.Arn}/files/*"})
+    );
+    let teams = statement(&policy, "TeamsDocument");
+    // A deployment that takes its teams from a document in the bucket
+    // reads it under teams/, and flare never writes there.
+    assert_eq!(teams["Action"], json!(["s3:GetObject"]));
+    assert_eq!(
+        teams["Resource"],
+        json!({"Fn::Sub": "${FilesBucket.Arn}/teams/*"})
     );
     let bucket = statement(&policy, "FilesBucket");
     assert_eq!(bucket["Action"], json!(["s3:ListBucket"]));

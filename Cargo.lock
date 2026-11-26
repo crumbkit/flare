@@ -1171,6 +1171,8 @@ dependencies = [
  "flare-query",
  "proptest",
  "secrecy",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

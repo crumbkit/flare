@@ -1,4 +1,4 @@
-use super::{HostedCreators, Problem, Secret, SignIn, Site, parse};
+use super::{HostedCreators, Problem, Secret, SignIn, Site, TeamsSource, parse};
 
 const DOMAIN: &str = r#"{"oidc":{"issuer":"https://accounts.google.com","client_id":"abc.apps.googleusercontent.com","admit":{"domain":"example.com","reach":"everything"}}}"#;
 
@@ -471,5 +471,55 @@ fn a_get_flare_address_that_is_not_an_https_url_with_a_host_is_refused_naming_th
 fn a_get_flare_address_without_stores_is_refused_naming_hosted_stores() {
     let message = invalid(&hosted_with(r#""get_flare":"https://example.com/flare""#));
     assert!(message.contains("hosted.get_flare"), "{message}");
+    assert!(message.contains("hosted.stores"), "{message}");
+}
+
+/// The teams source of the hosted config with `extra` beside its stores.
+fn teams_of(extra: &str) -> TeamsSource {
+    let text = hosted_with(&format!("{STORES}{extra}"));
+    let Site::Hosted(hosted) = parse(&text).unwrap().site else {
+        panic!("a hosted config");
+    };
+    hosted.sharing.expect("the share API").teams
+}
+
+#[test]
+fn teams_left_out_or_stored_keep_flares_own_teams() {
+    assert_eq!(teams_of(""), TeamsSource::Stored);
+    assert_eq!(teams_of(r#","teams":"stored""#), TeamsSource::Stored);
+}
+
+#[test]
+fn a_teams_file_or_object_reads_the_deployments_teams_document() {
+    assert_eq!(
+        teams_of(r#","teams":{"file":"/etc/flare/teams.json"}"#),
+        TeamsSource::File(std::path::PathBuf::from("/etc/flare/teams.json"))
+    );
+    assert_eq!(
+        teams_of(r#","teams":{"object":"teams/directory.json"}"#),
+        TeamsSource::Object(flare_aws::TeamsObjectKey::try_from("teams/directory.json").unwrap())
+    );
+}
+
+#[test]
+fn a_teams_value_of_another_shape_is_refused_naming_hosted_teams() {
+    for value in [
+        r#""directory""#,
+        "true",
+        r#"{"file":"teams.json"}"#,
+        r#"{"object":"files/teams.json"}"#,
+        r#"{"object":"teams/"}"#,
+        r#"{"file":"/etc/flare/teams.json","object":"teams/directory.json"}"#,
+        r#"{"url":"https://example.com/teams.json"}"#,
+        "{}",
+    ] {
+        let message = invalid(&hosted_with(&format!(r#"{STORES},"teams":{value}"#)));
+        assert!(message.contains("hosted.teams"), "{value}: {message}");
+    }
+}
+
+#[test]
+fn teams_without_stores_are_refused_naming_hosted_stores() {
+    let message = invalid(&hosted_with(r#""teams":{"file":"/etc/flare/teams.json"}"#));
     assert!(message.contains("hosted.stores"), "{message}");
 }

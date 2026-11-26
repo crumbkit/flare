@@ -10,7 +10,7 @@ use crate::dynamodb::{
     DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
     Faults, Table,
 };
-use crate::s3::{Bucket, S3Client, S3FileStore};
+use crate::s3::{Bucket, S3Client, S3FileStore, S3TeamsDocument, TeamsObjectKey};
 use aws_sdk_dynamodb::types::{KeyType, ScalarAttributeType};
 use std::time::Duration;
 
@@ -120,6 +120,13 @@ impl Stores {
             table,
             bucket,
         }
+    }
+
+    /// The teams document at `key` in the bucket, which the deployment's
+    /// sync job writes and flare only reads.
+    #[must_use]
+    pub fn teams_document(&self, key: TeamsObjectKey) -> S3TeamsDocument {
+        S3TeamsDocument::new(self.bucket.clone(), key)
     }
 
     /// Records `kind` in the table's identity marker when the table has

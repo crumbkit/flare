@@ -10,7 +10,7 @@ use flare_contract::{
 };
 use flare_core::{
     CommentStore, Creators, CursorStore, GrantStore, Principal, Recipients, ResponseStore,
-    ShareStore, Team, TeamName, Teams, Timestamp, TokenStore,
+    ShareStore, TeamName, TeamView, Teams, TeamsError, Timestamp, TokenStore,
 };
 
 /// The team that `text` names; a malformed name is a missing team.
@@ -48,7 +48,7 @@ where
             .create_team(who, name, now)
             .await
             .map_err(teams_error)?;
-        json(201, &team_summary(&team, owner))
+        json(201, &team_summary(&TeamView::from(team), owner))
     }
 
     pub(super) async fn list_teams(&self, who: &Principal) -> Answer {
@@ -116,6 +116,9 @@ where
         let person = self.caller(who)?;
         let name = team_name(name)?;
         let teams = self.flares.shares().teams();
+        if !teams.manages() {
+            return Err(teams_error(TeamsError::ManagedElsewhere).into());
+        }
         // The team is read first, so a caller who cannot see it learns
         // nothing about the person named.
         teams.show(person, &name).await.map_err(teams_error)?;
@@ -128,7 +131,7 @@ where
             .transfer(person, &name, &to)
             .await
             .map_err(teams_error)?;
-        json(200, &team_summary(&team, person))
+        json(200, &team_summary(&TeamView::from(team), person))
     }
 
     /// Adds the people the request names, when `add`, or removes them.
@@ -142,6 +145,9 @@ where
         let person = self.caller(who)?;
         let name = team_name(name)?;
         let teams = self.flares.shares().teams();
+        if !teams.manages() {
+            return Err(teams_error(TeamsError::ManagedElsewhere).into());
+        }
         // The team is read first, so a caller who cannot see it learns
         // nothing about the people named, and a member who leaves still
         // gets the team's summary.
@@ -163,13 +169,7 @@ where
             }
         }
         let count = teams.members(&name).await.map_err(teams_error)?.len();
-        let team = Team::new(
-            before.name().clone(),
-            before.owner().clone(),
-            before.created(),
-            before.state(),
-            count,
-        );
+        let team = before.with_members(count);
         json(
             200,
             &MembersChanged {

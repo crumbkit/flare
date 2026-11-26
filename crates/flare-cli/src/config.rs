@@ -12,7 +12,7 @@
 //! `get_flare` links the reading page's Get Flare link to.
 //! `identity` says whether people are named by email or by username, and
 //! `everyone_signed_in` lets an everyone grant under an `anyone` rule open
-//! to every signed-in person. A
+//! to every signed-in person, and `teams` says where the teams come from. A
 //! `log` section with `"metrics": true` turns on the metric lines of
 //! docs/metrics.md; they are off without it. Every object refuses
 //! unknown keys, and a
@@ -38,6 +38,7 @@ mod proxy;
 mod reach;
 mod sharing;
 mod sign_in;
+mod teams;
 #[cfg(test)]
 mod tests;
 
@@ -46,6 +47,7 @@ pub(crate) use client::{Client, TokenCommand};
 use proxy::ProxySection;
 pub(crate) use sharing::{HostedCreators, Sharing};
 pub(crate) use sign_in::SignIn;
+pub(crate) use teams::TeamsSource;
 
 /// The local site's only redirect URI: the sign-in host's callback.
 const REDIRECT: &str = "http://localhost:8740/auth/oidc/callback";
@@ -145,6 +147,7 @@ struct HostedSection {
     get_flare: Option<String>,
     identity: Option<Value>,
     everyone_signed_in: Option<bool>,
+    teams: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -317,6 +320,7 @@ fn hosted(section: HostedSection, sign_in: HostedSignIn) -> Result<Hosted, Strin
             names: section.names,
             get_flare: section.get_flare,
             everyone_signed_in: section.everyone_signed_in,
+            teams: section.teams,
         },
         anyone,
         identity.kind(),

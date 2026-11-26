@@ -10,18 +10,21 @@ pub(crate) struct TeamRow {
     /// The team's name.
     #[row(column)]
     pub(crate) name: String,
-    /// The owner's address.
+    /// The owner's identifier; none for a team that your organisation's directory keeps.
     #[row(column)]
-    pub(crate) owner: String,
+    pub(crate) owner: Option<String>,
+    /// Who keeps the team: `flare`, or `directory` for a team that your organisation's directory keeps and flare cannot change.
+    #[row(column)]
+    pub(crate) managed_by: String,
     /// What you are to the team: `owner` or `member`.
     #[row(column)]
     pub(crate) role: String,
     /// How many members the team has, its owner included.
     #[row(column)]
     pub(crate) members: u32,
-    /// When the team was created, in RFC 3339 UTC.
+    /// When flare created the team, in RFC 3339 UTC; none for a directory team.
     #[row(long)]
-    pub(crate) created: String,
+    pub(crate) created: Option<String>,
 }
 
 /// The document of `flare teams create`.
@@ -80,7 +83,7 @@ pub(crate) struct MemberRow {
     /// The member's address.
     #[row(column)]
     pub(crate) member: String,
-    /// `owner` for the team's owner, else `member`.
+    /// `owner` for the team's owner, else `member`; every member of a directory team is `member`.
     #[row(column)]
     pub(crate) role: String,
 }

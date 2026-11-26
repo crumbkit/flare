@@ -118,6 +118,12 @@
               "Resource": { "Fn::Sub": "${FilesBucket.Arn}/files/*" }
             },
             {
+              "Sid": "TeamsDocument",
+              "Effect": "Allow",
+              "Action": ["s3:GetObject"],
+              "Resource": { "Fn::Sub": "${FilesBucket.Arn}/teams/*" }
+            },
+            {
               "Sid": "FilesBucket",
               "Effect": "Allow",
               "Action": ["s3:ListBucket"],

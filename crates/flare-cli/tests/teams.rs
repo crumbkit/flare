@@ -363,3 +363,113 @@ fn a_missing_team_recovers_by_listing_teams_and_offers_asking_the_owner_as_the_a
     );
     assert!(text.contains("ask the team's owner to add you"), "{text}");
 }
+
+fn directory_team() -> Value {
+    json!({
+        "name": "design",
+        "managed_by": "directory",
+        "role": "member",
+        "members": 2,
+    })
+}
+
+#[test]
+fn teams_list_prints_a_directory_team_with_managed_by_and_no_owner() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/teams",
+        200,
+        &json!({"items": [team(2), directory_team()]}),
+    );
+    let ran = home.sharing(&["teams", "list", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    let rows = printed["data"]["items"]
+        .as_array()
+        .unwrap_or_else(|| printed["data"].as_array().unwrap());
+    let directory = rows
+        .iter()
+        .find(|row| row["name"] == "design" && row["managed_by"] == "directory");
+    let directory = directory.unwrap_or_else(|| panic!("{}", ran.all()));
+    assert!(
+        directory.get("owner").is_none_or(Value::is_null),
+        "{}",
+        ran.all()
+    );
+    assert!(
+        directory.get("created").is_none_or(Value::is_null),
+        "{}",
+        ran.all()
+    );
+    assert_eq!(directory["role"], "member");
+    assert!(
+        rows.iter()
+            .any(|row| row["managed_by"] == "flare" && row["owner"] == "ana@example.org"),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn teams_list_says_in_text_that_the_directory_manages_a_team_with_no_owner() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/teams",
+        200,
+        &json!({"items": [directory_team()]}),
+    );
+    let ran = home.sharing(&["teams", "list"]);
+    ran.assert_ok();
+    assert!(ran.stdout.contains("directory"), "{}", ran.all());
+    assert!(
+        ran.all().contains("managed by your directory"),
+        "{}",
+        ran.all()
+    );
+}
+
+#[test]
+fn teams_show_of_a_directory_team_names_every_member_a_member() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "GET",
+        "/api/teams/design",
+        200,
+        &json!({"team": directory_team(), "members": ["ana@example.org", "jo@example.org"]}),
+    );
+    let ran = home.sharing(&["teams", "show", "design", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    let text = printed.to_string();
+    assert!(!text.contains("\"owner\""), "{text}");
+    assert!(text.contains("jo@example.org"), "{text}");
+}
+
+#[test]
+fn a_change_to_teams_managed_elsewhere_names_the_directory_and_no_command() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route(
+        "POST",
+        "/api/teams/design/members",
+        403,
+        &problem("flare::teams::managed_elsewhere", 403, &api.origin),
+    );
+    let ran = home.sharing(&[
+        "teams",
+        "add",
+        "design",
+        "--with",
+        "jo@example.org",
+        "--json",
+    ]);
+    ran.assert_failed("flare::teams::managed_elsewhere");
+    let text = ran.all();
+    assert!(text.contains("directory"), "{text}");
+    assert!(!text.contains(r#""kind":"run""#), "{text}");
+}

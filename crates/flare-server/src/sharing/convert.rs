@@ -4,12 +4,13 @@
 use super::{BodyRefused, Refusal};
 use flare_contract::{
     ActivityItem as WireItem, ApiCode, FlareRef, Format, GrantEntry, GrantState, GranteeKind,
-    ListScope, Role as WireRole, ShareCursor, ShareSummary, TeamRole, TeamSummary, utc,
+    ListScope, Role as WireRole, ShareCursor, ShareSummary, TeamManagedBy, TeamRole, TeamSummary,
+    utc,
 };
 use flare_core::{
-    ActivityItem, FlareError, Group, IdentityKind, ListKey, ListedGrant, ParseError, Person,
-    RecipientError, ResponseActivity, Role, Share, ShareError, ShareId, Standing, Team, TeamsError,
-    Timestamp,
+    ActivityItem, FlareError, Group, IdentityKind, ListKey, ListedGrant, ManagedBy, ParseError,
+    Person, RecipientError, ResponseActivity, Role, Share, ShareError, ShareId, Standing, TeamView,
+    TeamsError, Timestamp,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -179,18 +180,28 @@ pub(super) fn teams_error(error: TeamsError) -> ApiCode {
     }
 }
 
-/// The summary of `team` for the caller `caller`.
-pub(super) fn team_summary(team: &Team, caller: &Person) -> TeamSummary {
+/// The summary of `team` for the caller `caller`. A directory team has no
+/// owner and no creation time, and its members are all `member`.
+pub(super) fn team_summary(team: &TeamView, caller: &Person) -> TeamSummary {
+    let (owner, created, managed_by) = match team.managed_by() {
+        ManagedBy::Flare { owner, created } => (
+            Some(owner),
+            Some(utc(created.as_secs())),
+            TeamManagedBy::Flare,
+        ),
+        ManagedBy::Directory => (None, None, TeamManagedBy::Directory),
+    };
     TeamSummary {
         name: team.name().as_str().to_owned(),
-        owner: team.owner().as_str().to_owned(),
-        role: if team.owner() == caller {
+        owner: owner.map(|owner| owner.as_str().to_owned()),
+        managed_by,
+        role: if owner == Some(caller) {
             TeamRole::Owner
         } else {
             TeamRole::Member
         },
         members: u32::try_from(team.members()).unwrap_or(u32::MAX),
-        created: utc(team.created().as_secs()),
+        created,
     }
 }
 

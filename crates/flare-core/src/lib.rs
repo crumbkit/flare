@@ -15,8 +15,9 @@
 //! [`Flares`] wraps it with the creators rule and the response links that
 //! `--re` writes, and reads the responses to a flare since a cursor.
 //! [`TokenStore`] keeps the digests of CLI tokens and login codes.
-//! [`Teams`] reads the teams a share can be granted to, and [`FlareTeams`]
-//! keeps them in a [`TeamStore`].
+//! [`Teams`] reads the teams a share can be granted to, [`FlareTeams`]
+//! keeps them in a [`TeamStore`], and [`DocumentTeams`] reads them, read
+//! only, from a teams document that the deployment writes.
 
 mod auth;
 mod binding;
@@ -93,8 +94,10 @@ pub use store::{
     WriteError,
 };
 pub use teams::{
-    Admission, Audience, FlareTeams, Group, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED,
-    MailDomain, NoTeams, Team, TeamName, TeamState, TeamStore, TeamStoreError, Teams, TeamsError,
+    Admission, Audience, DOCUMENT_MAX_AGE, DocumentRefused, DocumentTeams, DocumentUnreadable,
+    FlareTeams, Group, MAX_DIRECTORY_MEMBERS, MAX_DIRECTORY_TEAMS, MAX_DOCUMENT_BYTES, MAX_MEMBERS,
+    MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, MailDomain, ManagedBy, NoTeams, Team, TeamName, TeamState,
+    TeamStore, TeamStoreError, TeamView, Teams, TeamsDocument, TeamsError,
 };
 pub use time::Timestamp;
 pub use token::{

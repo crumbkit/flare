@@ -456,13 +456,14 @@ flare teams create design
 ### Columns
 
 - `name`: The team's name.
-- `owner`: The owner's address.
+- `owner`: The owner's identifier; none for a team that your organisation's directory keeps.
+- `managed_by`: Who keeps the team: `flare`, or `directory` for a team that your organisation's directory keeps and flare cannot change.
 - `role`: What you are to the team: `owner` or `member`.
 - `members`: How many members the team has, its owner included.
 
 ### Columns that `--long` adds
 
-- `created`: When the team was created, in RFC 3339 UTC.
+- `created`: When flare created the team, in RFC 3339 UTC; none for a directory team.
 
 Effects: additive, idempotent, closed-world.
 
@@ -537,13 +538,14 @@ flare teams list
 ### Columns
 
 - `name`: The team's name.
-- `owner`: The owner's address.
+- `owner`: The owner's identifier; none for a team that your organisation's directory keeps.
+- `managed_by`: Who keeps the team: `flare`, or `directory` for a team that your organisation's directory keeps and flare cannot change.
 - `role`: What you are to the team: `owner` or `member`.
 - `members`: How many members the team has, its owner included.
 
 ### Columns that `--long` adds
 
-- `created`: When the team was created, in RFC 3339 UTC.
+- `created`: When flare created the team, in RFC 3339 UTC; none for a directory team.
 
 Effects: read-only, closed-world.
 
@@ -567,7 +569,7 @@ flare teams show design
 
 - `team`: The team's name.
 - `member`: The member's address.
-- `role`: `owner` for the team's owner, else `member`.
+- `role`: `owner` for the team's owner, else `member`; every member of a directory team is `member`.
 
 Effects: read-only, closed-world.
 
@@ -592,13 +594,14 @@ flare teams transfer design --to jo@example.org --yes
 ### Columns
 
 - `name`: The team's name.
-- `owner`: The owner's address.
+- `owner`: The owner's identifier; none for a team that your organisation's directory keeps.
+- `managed_by`: Who keeps the team: `flare`, or `directory` for a team that your organisation's directory keeps and flare cannot change.
 - `role`: What you are to the team: `owner` or `member`.
 - `members`: How many members the team has, its owner included.
 
 ### Columns that `--long` adds
 
-- `created`: When the team was created, in RFC 3339 UTC.
+- `created`: When flare created the team, in RFC 3339 UTC; none for a directory team.
 
 Effects: destructive, idempotent, closed-world.
 

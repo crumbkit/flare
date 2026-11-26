@@ -36,12 +36,13 @@ Examples:
           Hand the team design to its member jo@example.org
 
 Columns:
-  name     The team's name.
-  owner    The owner's address.
-  role     What you are to the team: `owner` or `member`.
-  members  How many members the team has, its owner included.
+  name        The team's name.
+  owner       The owner's identifier; none for a team that your organisation's directory keeps.
+  managed_by  Who keeps the team: `flare`, or `directory` for a team that your organisation's directory keeps and flare cannot change.
+  role        What you are to the team: `owner` or `member`.
+  members     How many members the team has, its owner included.
 
 Columns that --long adds:
-  created  When the team was created, in RFC 3339 UTC.
+  created  When flare created the team, in RFC 3339 UTC; none for a directory team.
 
 Effects: destructive, idempotent, closed-world.

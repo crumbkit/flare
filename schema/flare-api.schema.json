@@ -1354,6 +1354,21 @@
       ],
       "type": "object"
     },
+    "TeamManagedBy": {
+      "description": "Who keeps a team.",
+      "oneOf": [
+        {
+          "const": "flare",
+          "description": "flare keeps the team, and its owner changes it. A summary from a\nserver that predates this field means this.",
+          "type": "string"
+        },
+        {
+          "const": "directory",
+          "description": "The deployment's directory keeps the team. It has no owner, and\nflare cannot change it.",
+          "type": "string"
+        }
+      ]
+    },
     "TeamRequest": {
       "additionalProperties": false,
       "description": "`POST /api/teams`: a new team.",
@@ -1408,8 +1423,16 @@
       "description": "One team as a list or a reply shows it.",
       "properties": {
         "created": {
-          "description": "When the team was created, in RFC 3339 UTC.",
-          "type": "string"
+          "description": "When flare created the team, in RFC 3339 UTC. A directory team has\nnone, and the field is left out.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "managed_by": {
+          "$ref": "#/$defs/TeamManagedBy",
+          "default": "flare",
+          "description": "Who keeps the team: `flare` or `directory`."
         },
         "members": {
           "description": "How many members the team has, its owner included.",
@@ -1422,20 +1445,21 @@
           "type": "string"
         },
         "owner": {
-          "description": "The owner's address.",
-          "type": "string"
+          "description": "The owner's identifier. A team that the deployment's directory\nkeeps has none, and the field is left out.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "role": {
           "$ref": "#/$defs/TeamRole",
-          "description": "What the caller is to the team."
+          "description": "What the caller is to the team. A directory team has only members."
         }
       },
       "required": [
         "name",
-        "owner",
         "role",
-        "members",
-        "created"
+        "members"
       ],
       "type": "object"
     },

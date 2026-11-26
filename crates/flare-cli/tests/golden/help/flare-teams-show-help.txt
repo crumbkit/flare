@@ -29,6 +29,6 @@ Examples:
 Columns:
   team    The team's name.
   member  The member's address.
-  role    `owner` for the team's owner, else `member`.
+  role    `owner` for the team's owner, else `member`; every member of a directory team is `member`.
 
 Effects: read-only, closed-world.

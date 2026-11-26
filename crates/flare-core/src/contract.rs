@@ -33,6 +33,7 @@ pub mod sealing_keys;
 pub mod session_store;
 pub mod share_store;
 pub mod team_store;
+pub mod teams;
 pub mod token_store;
 
 pub use executor::{RunTogether, Threads, block_on};
@@ -164,6 +165,11 @@ clauses! {
     AFullTeamRefusesAMember => "a team with the member limit refuses another member and writes nothing",
     AnInactiveTeamRefusesAMember => "a deleted or missing team refuses a member and writes nothing",
     ADeletingTeamKeepsItsOwner => "a deleting team reads back deleting with its owner, and marking it again changes nothing",
+    TeamsOfAndMembersAgree => "each team that a person's teams name lists the person among its members, and each member of a team names the team among their teams",
+    ExistsHoldsForEveryTeamOfAPerson => "every team that the fixture puts a person in exists",
+    ListGivesTheCallersTeams => "a list gives the caller's active teams in name order, each with its member count, and nothing to a person in no team",
+    ShowKeepsTheVisibilityRule => "a show gives a team's members, in identifier order, to a member, and not found to anyone else and for a missing team",
+    AnUnmanagedSourceChangesNothing => "a source that flare does not manage answers managed elsewhere to every change and its teams stay as they were",
     AForgottenTeamFreesItsName => "forgetting a deleting team with no members removes it and frees its name, and an active team or one with members is not forgotten",
     ATransferNeedsTheOwnerAndAMember => "a transfer makes a member the owner of an active team, and is refused from a non-owner, to a non-member or on a deleting team",
     AGroupGrantKeepsItsAudience => "a group grant reads back with the audience it was written with, in the share's list and in the group's list",

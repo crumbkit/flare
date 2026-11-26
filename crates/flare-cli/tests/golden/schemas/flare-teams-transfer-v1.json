@@ -26,7 +26,14 @@
       "type": "object",
       "properties": {
         "created": {
-          "description": "When the team was created, in RFC 3339 UTC.",
+          "description": "When flare created the team, in RFC 3339 UTC; none for a directory team.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "managed_by": {
+          "description": "Who keeps the team: `flare`, or `directory` for a team that your organisation's directory keeps and flare cannot change.",
           "type": "string"
         },
         "members": {
@@ -40,8 +47,11 @@
           "type": "string"
         },
         "owner": {
-          "description": "The owner's address.",
-          "type": "string"
+          "description": "The owner's identifier; none for a team that your organisation's directory keeps.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "role": {
           "description": "What you are to the team: `owner` or `member`.",
@@ -51,6 +61,7 @@
       "required": [
         "name",
         "owner",
+        "managed_by",
         "role",
         "members"
       ]

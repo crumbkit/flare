@@ -11,8 +11,8 @@ use flare_core::memory::{
 use flare_core::{
     Admission, AllAdmitted, DocumentText, Grant, GrantRevoke, GrantStore, GrantStoreError,
     GrantWrite, Group, ListKey, Listing, MAX_SWEPT, MailDomain, NewFlare, Person, Position,
-    Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Team, TeamName, Teams,
-    TeamsError, Timestamp,
+    Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Team, TeamName,
+    TeamView, Teams, TeamsError, Timestamp,
 };
 use flare_core::{FlareTeams, Flares};
 use std::sync::Arc;
@@ -151,11 +151,11 @@ impl Teams for Racing {
         &self,
         actor: &Person,
         name: &TeamName,
-    ) -> Result<(Team, Vec<Person>), TeamsError> {
+    ) -> Result<(TeamView, Vec<Person>), TeamsError> {
         self.inner.show(actor, name).await
     }
 
-    async fn list(&self, actor: &Person) -> Result<Vec<Team>, TeamsError> {
+    async fn list(&self, actor: &Person) -> Result<Vec<TeamView>, TeamsError> {
         self.inner.list(actor).await
     }
 }
@@ -441,10 +441,10 @@ fn a_transfer_to_a_person_who_owns_the_most_teams_is_refused() {
     let teams = flares.shares().teams();
     let refused = block_on(teams.transfer(&email("alice"), &team("design"), &email("bob")));
     assert_eq!(refused, Err(TeamsError::TooManyOwned));
-    let kept: Team = block_on(teams.show(&email("alice"), &team("design")))
+    let kept: TeamView = block_on(teams.show(&email("alice"), &team("design")))
         .unwrap()
         .0;
-    assert_eq!(kept.owner(), &email("alice"));
+    assert_eq!(kept.owner(), Some(&email("alice")));
 }
 
 #[test]

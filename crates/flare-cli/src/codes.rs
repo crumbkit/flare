@@ -25,7 +25,7 @@ pub use spelled::{
     METRICS_UNREADABLE, OIDC_PROVIDER_UNAVAILABLE, OIDC_SECRET_UNAVAILABLE, OPENER_FAILED,
     PAGES_INVALID, PAGES_NOT_FOUND, PAGES_TEMPLATE_FLAWS, PAGES_UNKNOWN_FORMAT, PAGES_UNREADABLE,
     PROXY_KEYS_UNAVAILABLE, SERVER_ALREADY_RUNNING, SERVER_NOT_RUNNING, SERVER_PORT_IN_USE,
-    STATE_UNUSABLE, STORES_UNAVAILABLE, SYSTEM_UNAVAILABLE,
+    STATE_UNUSABLE, STORES_UNAVAILABLE, SYSTEM_UNAVAILABLE, TEAMS_DOCUMENT_REFUSED,
 };
 
 /// Why a `flare` command failed.
@@ -336,6 +336,17 @@ pub enum Failed {
         recorded: String,
         /// The kind `hosted.identity` names.
         configured: String,
+    },
+    /// The teams document that `hosted.teams` names could not be read or
+    /// was refused, so `flare serve` binds nothing.
+    #[error("{problem}")]
+    #[failure(
+        code = TEAMS_DOCUMENT_REFUSED,
+        hint = "fix the teams document that hosted.teams names, or the sync job that writes it"
+    )]
+    TeamsDocumentRefused {
+        /// Why, naming hosted.teams and never a member.
+        problem: String,
     },
     /// A log that `flare metrics` was given could not be read.
     #[error("{path} could not be read: {problem}")]
