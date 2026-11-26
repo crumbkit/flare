@@ -109,6 +109,7 @@ pub(super) fn flare_error(error: FlareError) -> Refusal {
                 share_error(cause).title()
             )),
             share: Some(share.as_str().to_owned()),
+            errors: Vec::new(),
         },
         FlareError::Share(error) => share_error(error).into(),
         FlareError::CommentNotFound => ApiCode::CommentNotFound.into(),
@@ -129,6 +130,7 @@ pub(super) fn recipient_error(error: RecipientError, identifier: &str) -> Refusa
             code: ApiCode::NotAnAddress,
             detail: Some(format!("{identifier} is not an email address")),
             share: None,
+            errors: Vec::new(),
         },
         _ => ApiCode::RecipientsUnavailable.into(),
     }
@@ -220,7 +222,7 @@ pub(super) fn grant_entry(listed: &ListedGrant) -> GrantEntry {
 
 /// The key after which a list continues, from a share cursor. A share id
 /// that `ShareId` refuses is a cursor flare did not write.
-pub(crate) fn list_key(cursor: ShareCursor) -> Result<ListKey, Refusal> {
+pub(super) fn list_key(cursor: ShareCursor) -> Result<ListKey, Refusal> {
     let share = ShareId::try_from(cursor.share_hex().as_str())
         .map_err(|_| Refusal::from(ApiCode::SharesBadCursor))?;
     Ok(ListKey::new(Timestamp::from_secs(cursor.seconds()), share))

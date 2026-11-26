@@ -17,6 +17,8 @@ flare-auth-loopback.workspace = true
 flare-auth-oidc.workspace = true
 flare-board.workspace = true
 flare-core.workspace = true
+# Parses the text of `GET /api/search` before any store is read.
+flare-query.workspace = true
 flare-render.workspace = true
 http.workspace = true
 http-body-util.workspace = true

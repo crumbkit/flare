@@ -82,6 +82,8 @@ mod pages;
 mod process;
 #[path = "server/reading.rs"]
 mod reading;
+#[path = "server/search.rs"]
+mod search;
 #[path = "server/teams.rs"]
 mod teams;
 #[path = "server/versions.rs"]

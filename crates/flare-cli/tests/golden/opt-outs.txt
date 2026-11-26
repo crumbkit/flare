@@ -1,8 +1,12 @@
-flare has 3 opt-outs from the conventions and sets 2 budgets.
+flare has 4 opt-outs from the conventions and sets 2 budgets.
 
 listings/show-ids: flare show
   Reason: flare show prints the whole Markdown of one version, up to 256 KiB, and --version names a version of one share, so it takes one id
   Cost: An agent runs the command once for each id.
+
+exit-codes/shared-exit: flare search
+  Reason: the query is the command line's one argument, so a query with an error is a refused command line, and exit code 2 keeps that meaning
+  Cost: The exit code has two meanings, so an agent must read the failure's code to learn which one applies.
 
 suite/skip: Check::Recoveries
   Reason: The recovery of server::not_running is `flare serve`, which does not exit, the other recoveries need a scratch board, and the sharing commands' recoveries need a flare server; tests/open.rs, tests/serve.rs and tests/sharing.rs assert each failure and the command its recovery names.
@@ -13,18 +17,18 @@ suite/skip: Check::Twins
   Cost: No test checks this check's rules anywhere in the tool, so a change that breaks one of them passes unnoticed and an agent meets the broken convention.
 
 help-budget/root: flare
-  Budget: 1900 bytes, where the default is 1500 bytes.
-  Reason: The root lists 19 verbs, five of them the comment commands, and 6 groups, and each needs a line.
-  Cost: Each read of the page can cost 400 bytes more than the default, about 100 tokens.
+  Budget: 2000 bytes, where the default is 1500 bytes.
+  Reason: The root lists 20 verbs, five of them the comment commands, and 6 groups, and each needs a line.
+  Cost: Each read of the page can cost 500 bytes more than the default, about 125 tokens.
 
 path-budget/command: flare skills print
   Budget: 9000 bytes, where the default is 8000 bytes.
   Reason: It prints the 6,270-byte skill.
   Cost: An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens.
 
-flare has 44 declarations.
+flare has 46 declarations.
 
-root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare metrics
+root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare search, flare metrics
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
   Reason: each command names what a person does with the board flare serves, the server flare shares through or the log a flare server writes
 
@@ -149,6 +153,12 @@ example-precondition: flare comment-edit 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --body
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare search 'budget -type:html'
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare search 'from:ana@example.org,me "review notes"' --limit 20
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare files sweep --config /etc/flare/config.json --yes

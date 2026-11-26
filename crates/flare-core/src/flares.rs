@@ -29,6 +29,7 @@ mod groups;
 mod index;
 mod owners;
 mod people;
+mod search;
 mod team_life;
 
 pub use activity::{ActivityItem, ActivityPage, CommentActivity, MAX_EXAMINED, ResponseActivity};
@@ -39,6 +40,7 @@ pub use people::{
     AddressesOnly, AllAdmitted, CreatorDomain, CreatorList, Creators, CreatorsError,
     NamedRecipients, RecipientError, Recipients,
 };
+pub use search::{Found, MAX_HITS, SearchError, SearchHit};
 pub use team_life::{MAX_SWEPT, TeamDeletion};
 
 use crate::auth::Principal;

@@ -27,6 +27,7 @@ Serve a board's pages and bindings on this machine, open them in a browser, publ
 - [`flare reply`](#flare-reply): Reply to a comment
 - [`flare comment-edit`](#flare-comment-edit): Edit a comment or reply you wrote
 - [`flare comment-delete`](#flare-comment-delete): Delete a comment or reply you wrote
+- [`flare search`](#flare-search): Search the shares you can open, newest first
 - [`flare files`](#flare-files): Manage a hosted site's image files
 - [`flare metrics`](#flare-metrics): Count the metric lines in a flare server's log, by day
 - [`flare commands`](#flare-commands): Explore flare's commands
@@ -879,6 +880,49 @@ flare comment-delete 8d1f0c2a9b7e4c53a6f20e1d4b9c7a85 --yes
 - `body`: Its text; absent once deleted.
 
 Effects: destructive, not idempotent, closed-world.
+
+## `flare search`
+
+Search the shares you can open, newest first
+
+A search reads the shares you own and those granted to you directly or through a team. It does not search shares open to everyone signed in.
+
+A word or a "quoted phrase" matches inside a title, in any case. type:markdown or type:html filters by kind, and from:me, from: an address or from: a name this server knows filters by who shared it. A comma means any of, as in from:ana,me, a leading minus leaves a part out, and a space means every part must match. docs/search.md in the flare repository has more examples.
+
+### Arguments
+
+- `<QUERY>`: The search, such as 'budget -type:html' or 'from:me "review notes"'. It may start with a minus, as in '-from:me'. Required.
+- `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
+- `--all`: Print every row
+
+### Examples
+
+List the shares you can open whose title holds budget, leaving out HTML shares.
+
+```sh
+flare search 'budget -type:html'
+```
+
+List the 20 newest shares from ana or you whose title holds review notes.
+
+```sh
+flare search 'from:ana@example.org,me "review notes"' --limit 20
+```
+
+### Columns
+
+- `id`: The share's id.
+- `title`: The share's title.
+- `owner`: The owner's identifier.
+- `role`: The caller's role: `owner`, `admin` or `reader`.
+- `version`: The latest version.
+- `created`: When it was created, in RFC 3339 UTC.
+
+Effects: read-only, closed-world.
+
+### Exit codes
+
+- `2`: The search has an error, so it did not run.
 
 ## `flare files`
 

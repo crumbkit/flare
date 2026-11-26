@@ -22,6 +22,8 @@ standards = { version = "draft", commit = "117f4a8ad1a66ff7bceb15f9b3ebcb4055075
 # flare-contract is a library that holds the share API's request, response
 # and problem types and generates their JSON Schema, so the base and
 # library profiles cover it.
+# flare-query is a library that parses and prints flare's search syntax
+# with no I/O, so the base and library profiles cover it.
 profiles = ["base", "library", "child-process", "durable-state", "service", "cli"]
 
 [[binding]]

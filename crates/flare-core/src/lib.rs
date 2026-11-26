@@ -60,6 +60,7 @@ pub use flares::{
     MAX_EXAMINED, MAX_FLARES, MAX_SWEPT, NamedRecipients, NewFlare, Posted, RecipientError,
     Recipients, ResponseActivity, Revoked, TeamDeletion,
 };
+pub use flares::{Found, MAX_HITS, SearchError, SearchHit};
 pub use grant::{Grant, GrantRevoke, GrantWrite, Granter, MAX_GRANTS, Revoker, Role};
 pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotName};
 pub use page::{

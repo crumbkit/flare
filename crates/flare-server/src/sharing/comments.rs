@@ -27,6 +27,7 @@ fn invalid(detail: impl ToString) -> Refusal {
         code: ApiCode::CommentInvalid,
         detail: Some(detail.to_string()),
         share: None,
+        errors: Vec::new(),
     }
 }
 

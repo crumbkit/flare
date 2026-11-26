@@ -16,6 +16,7 @@ fn nobody() -> Refusal {
         code: ApiCode::BadBody,
         detail: Some("name a person or a team in with, or set everyone".to_owned()),
         share: None,
+        errors: Vec::new(),
     }
 }
 

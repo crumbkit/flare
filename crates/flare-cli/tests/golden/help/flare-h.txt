@@ -21,6 +21,7 @@ Verbs
   reply           Reply to a comment
   comment-edit    Edit a comment or reply you wrote
   comment-delete  Delete a comment or reply you wrote
+  search          Search the shares you can open, newest first
   metrics         Count the metric lines in a flare server's log, by day
 
 Commands

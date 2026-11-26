@@ -3,6 +3,7 @@
 
 use super::calls::{activity_call, shares_call};
 use super::next_run::check_shares;
+use crate::codes::search::Searched;
 use crate::codes::sign_in::sign_in;
 use crumbkit::{Call, Code, Failure, Field, Recovery, Then};
 use flare_contract::{ApiCode, Recovery as ApiRecovery};
@@ -32,6 +33,8 @@ pub struct Refused {
     /// a keyed write, such as a comment, that `comments::unavailable` says
     /// may have happened.
     pub(super) again: Option<Box<Call>>,
+    /// The query and errors of a search that did not run.
+    pub(in crate::codes) searched: Box<Searched>,
 }
 
 impl Refused {
@@ -46,6 +49,7 @@ impl Refused {
             with_me: false,
             maybe_written: false,
             again: None,
+            searched: Box::default(),
         }
     }
 
@@ -95,6 +99,10 @@ impl Failure for Refused {
         Code::from_spelling(self.code.text())
     }
 
+    fn causes(&self) -> Vec<String> {
+        self.searched.causes()
+    }
+
     /// The recovery for the code. A `shares::unavailable` refusal of a
     /// write checks `flare shares` first, and a `comments::unavailable`
     /// refusal of a keyed write repeats the command with its key. `partly_shared` and `bad_cursor`
@@ -132,7 +140,11 @@ impl Failure for Refused {
             .share
             .as_ref()
             .map(|share| Field::new("share", share.as_str()));
-        server.into_iter().chain(share).collect()
+        server
+            .into_iter()
+            .chain(share)
+            .chain(self.searched.fields())
+            .collect()
     }
 
     /// A bad cursor can also be replaced by the cursor that the last `flare

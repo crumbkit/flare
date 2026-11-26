@@ -29,13 +29,15 @@ mod grants;
 mod list;
 mod read;
 mod run;
+mod search;
 mod teams;
 mod tokens;
 mod upload;
 
-pub(crate) use convert::list_key;
 pub use files::NoFiles;
+pub(crate) use list::list_after;
 pub use read::{GetFlare, NotGetFlare};
+pub(crate) use search::search_call;
 pub(crate) use tokens::{LoginRedirect, bearer_of};
 pub(crate) use upload::{ImagePart, Upload, Uploaded};
 
@@ -176,6 +178,10 @@ pub(crate) enum Call {
     SaveCursor(String, NamedCursor),
     /// `DELETE /api/tokens/{id}`.
     Revoke(String),
+    /// `GET /api/search`, with its query text and the most results.
+    Search { text: String, limit: usize },
+    /// `GET /api/search/fields`.
+    SearchFields,
 }
 
 /// A refusal of the share API: its code, and what the document adds.
@@ -184,6 +190,8 @@ pub(crate) struct Refusal {
     pub(crate) code: ApiCode,
     pub(crate) detail: Option<String>,
     pub(crate) share: Option<String>,
+    /// Each error of a search that did not run.
+    pub(crate) errors: Vec<flare_contract::SearchError>,
 }
 
 /// Why a share's body fails the checks of [`check_share`] or
@@ -202,6 +210,7 @@ impl From<BodyRefused> for Refusal {
             code: refused.code,
             detail: refused.detail,
             share: None,
+            errors: Vec::new(),
         }
     }
 }
@@ -250,6 +259,7 @@ impl From<ApiCode> for Refusal {
             code,
             detail: None,
             share: None,
+            errors: Vec::new(),
         }
     }
 }

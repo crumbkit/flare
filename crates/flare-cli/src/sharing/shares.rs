@@ -17,7 +17,7 @@ use std::cmp::Reverse;
 const MAX_SHARES: usize = 500;
 
 /// The row of one share.
-fn row(share: flare_contract::ShareSummary) -> ShareRow {
+pub(crate) fn row(share: flare_contract::ShareSummary) -> ShareRow {
     ShareRow {
         id: share.id,
         title: share.title,

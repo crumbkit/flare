@@ -36,6 +36,7 @@ fn bad_form(detail: &str) -> Refusal {
         code: ApiCode::BadBody,
         detail: Some(detail.to_owned()),
         share: None,
+        errors: Vec::new(),
     }
 }
 
@@ -49,6 +50,7 @@ fn json_of<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, Refusal> {
             error.column()
         )),
         share: None,
+        errors: Vec::new(),
     })
 }
 

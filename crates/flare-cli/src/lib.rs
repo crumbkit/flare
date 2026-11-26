@@ -9,8 +9,8 @@
 //! once into a snapshot, and each command builds flare-board's store,
 //! flare-auth-loopback's state and flare-auth-oidc's authenticator and
 //! calls flare-server. `login`, `logout`, `share`, `show`, `grant`,
-//! `shares`, `activity`, `comments`, `comment`, `reply`, `comment-edit` and
-//! `comment-delete` call a flare server's share API with the token that
+//! `shares`, `activity`, `comments`, `comment`, `reply`, `comment-edit`,
+//! `comment-delete` and `search` call a flare server's share API with the token that
 //! `login` keeps in the Keychain; `share --dry-run` calls no server.
 //! `metrics` totals the metric lines of a server's log. `files sweep`
 //! deletes the image files that no version lists from a hosted site's
@@ -38,6 +38,7 @@ mod open;
 mod opener;
 mod pages;
 mod publish;
+mod search;
 mod serve;
 mod sharing;
 mod teams;
@@ -163,6 +164,10 @@ pub fn run(interrupted: impl Fn()) -> ExitCode {
             }
             let result = block_on(false, files::sweep(&args, &env));
             crumbkit::finish(run, files::FILES_SWEEP, result)
+        }
+        Verb::Search(args) => {
+            let result = block_on(false, search::search(&args, &env));
+            crumbkit::finish(run, search::SEARCH, result)
         }
         Verb::Metrics(args) => {
             let result = metrics::run(&args);

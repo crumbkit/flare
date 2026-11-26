@@ -10,6 +10,7 @@ mod cursor;
 mod groups;
 mod problem;
 pub mod schema;
+mod search;
 mod time;
 mod wire;
 
@@ -19,6 +20,10 @@ pub use groups::{
     Revoked, TeamDeleted, TeamList, TeamRequest, TeamRole, TeamShown, TeamSummary, TransferRequest,
 };
 pub use problem::{ApiCode, ProblemDocument, Recovery};
+pub use search::{
+    FieldKind, SearchAnswer, SearchError, SearchField, SearchFields, SearchPart, SearchSpan,
+    SearchValue,
+};
 pub use time::utc;
 pub use wire::{
     ActivityItem, ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread,

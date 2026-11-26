@@ -1,0 +1,21 @@
+[package]
+name = "flare-query"
+description = "Parses and prints flare's search syntax: words, quoted phrases, type: and from: filters, comma lists and a leading minus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The parsed parts and errors read and write the JSON of the shared case
+# file and of the search API's `parsed` field.
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
