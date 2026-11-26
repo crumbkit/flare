@@ -25,6 +25,16 @@ pub const LOGIN_NEEDED: Code<'static> = Code::from_spelling("flare::login::neede
 pub const LOGIN_FAILED: Code<'static> = Code::from_spelling("flare::login::failed");
 /// The server is not an `https` origin or a loopback `http` origin.
 pub const LOGIN_INVALID_SERVER: Code<'static> = Code::from_spelling("flare::login::invalid_server");
+/// The config's token command did not start or exited with a status other
+/// than 0.
+pub const LOGIN_TOKEN_COMMAND_FAILED: Code<'static> =
+    Code::from_spelling("flare::login::token_command_failed");
+/// The config's token command ran past its deadline.
+pub const LOGIN_TOKEN_COMMAND_TIMEOUT: Code<'static> =
+    Code::from_spelling("flare::login::token_command_timeout");
+/// The config's token command printed no token on its first line.
+pub const LOGIN_TOKEN_COMMAND_OUTPUT: Code<'static> =
+    Code::from_spelling("flare::login::token_command_output");
 /// The Keychain could not save, read or delete the token.
 pub const KEYCHAIN_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::keychain::unavailable");
 /// The server did not answer.
@@ -88,6 +98,48 @@ pub enum SharingFailed {
         server: String,
         /// What is wrong with it.
         problem: String,
+    },
+    /// The config's token command did not start or exited with a status
+    /// other than 0.
+    #[error("the token command {program} {problem}")]
+    #[failure(
+        code = LOGIN_TOKEN_COMMAND_FAILED,
+        hint = "run the token command yourself to see why it fails, or fix client.token_command in flare's config file",
+        field(program = program)
+    )]
+    TokenCommandFailed {
+        /// The program that client.token_command names.
+        program: String,
+        /// What went wrong, such as `exited with status 3`.
+        problem: String,
+    },
+    /// The config's token command ran past its deadline and was stopped.
+    #[error("the token command {program} ran past its {seconds} seconds and was stopped")]
+    #[failure(
+        code = LOGIN_TOKEN_COMMAND_TIMEOUT,
+        recovery = Recovery::Retry,
+        field(program = program),
+        alternative = Recovery::hint("raise client.token_deadline_seconds in flare's config file, up to 120")
+    )]
+    TokenCommandTimeout {
+        /// The program that client.token_command names.
+        program: String,
+        /// The deadline in seconds.
+        seconds: u64,
+    },
+    /// The config's token command printed no token on its first line. The
+    /// output is never shown, because it may hold a token.
+    #[error("the token command {program} printed {problem}")]
+    #[failure(
+        code = LOGIN_TOKEN_COMMAND_OUTPUT,
+        hint = "make the token command print the token alone on the first line of its standard output",
+        field(program = program)
+    )]
+    TokenCommandOutput {
+        /// The program that client.token_command names.
+        program: String,
+        /// What is wrong with the output, never the output itself.
+        problem: &'static str,
     },
     /// The Keychain could not save, read or delete the token.
     #[error("the Keychain could not {action} the flare token: {problem}")]

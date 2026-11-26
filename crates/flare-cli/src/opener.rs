@@ -1,6 +1,6 @@
 //! Starts the program that opens a file or a URL in the browser. This is
-//! one of the command's two process modules (PROC-1); the other is
-//! `keychain.rs`.
+//! one of the command's three process modules (PROC-1); the others are
+//! `keychain.rs` and `token_command.rs`.
 //!
 //! PROC-2's five items:
 //!
@@ -60,7 +60,7 @@ pub(crate) fn open(target: impl AsRef<OsStr>, env: &Snapshot) -> Result<(), Fail
     let program = program(env).ok_or_else(|| failed(None, "no xdg-open on PATH".to_owned()))?;
     #[expect(
         clippy::disallowed_methods,
-        reason = "opener.rs is one of the flare command's two process modules (PROC-1)"
+        reason = "opener.rs is one of the flare command's three process modules (PROC-1)"
     )]
     let mut command = Command::new(&program);
     command.arg(target);

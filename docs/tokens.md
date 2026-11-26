@@ -3,7 +3,9 @@
 `flare login <server>` signs a person in to a hosted flare in the browser and
 gives the command a token. The command sends the token as a bearer header on
 every share API request. This page gives the life of a login code and of a
-token.
+token. A config whose `client` section names a token command gives the
+command its token from that program instead, and saves nothing;
+[sign-in.md](sign-in.md) describes it.
 
 ## How a login runs
 
@@ -69,7 +71,9 @@ token.
   until it expires or its owner revokes it.
 - `flare logout --yes` revokes the token, deletes the Keychain item and
   forgets `login.json`. A token the server no longer knows still counts as
-  logged out.
+  logged out. `revoked` is false when the Keychain held no token. With a
+  token command and no saved login it revokes nothing, sends no request
+  and prints `revoked: false`.
 
 ## Crash points
 

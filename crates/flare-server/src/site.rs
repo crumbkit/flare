@@ -7,14 +7,21 @@
 //! and whether the server writes a server file and exits when idle.
 
 use crate::auth::{Admitted, Gate, Side};
+use crate::sign_in::{HostedRefusal, HostedSignIn};
 use flare_auth_loopback::StateDir;
 use flare_auth_oidc::{Clock as OidcClock, OidcAuthenticator, SystemClock as OidcSystemClock};
-use flare_core::{Access, AuthError, Authenticator, Credential, Decision, Resource};
+use flare_core::{Access, AuthError, Credential, Decision, Resource};
 use std::fmt;
 use url::Url;
 
-/// Which site a server is, chosen once when it starts.
-pub enum Site<K: OidcClock = OidcSystemClock> {
+/// Which site a server is, chosen once when it starts. `H` is the hosted
+/// site's sign-in: flare's own OpenID Connect sign-in by default, the
+/// proxy sign-in, or an embedding app's own [`HostedSignIn`].
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a server holds one site for its whole life, so the size of the larger variant costs nothing"
+)]
+pub enum Site<K: OidcClock = OidcSystemClock, H: HostedSignIn<K> = OidcAuthenticator<K>> {
     /// The server on a person's own machine: the launch host on a loopback
     /// address, with the loopback authenticator and, when configured, the
     /// OpenID Connect one, a server file and openers in `state`, and an
@@ -26,13 +33,14 @@ pub enum Site<K: OidcClock = OidcSystemClock> {
         state: StateDir,
     },
     /// The server behind a TLS-terminating proxy: one plain-HTTP listener
-    /// that serves `origin` only, signs people in with `oidc` alone, sets
-    /// only `__Host-` cookies, writes no file and never exits by itself.
+    /// that serves `origin` only, signs people in with `sign_in` alone,
+    /// reads only the cookie it names, writes no file and never exits by
+    /// itself.
     Hosted {
         /// The one origin the site serves.
         origin: PublicOrigin,
-        /// The OpenID Connect authenticator.
-        oidc: OidcAuthenticator<K>,
+        /// The sign-in.
+        sign_in: H,
     },
 }
 
@@ -43,7 +51,7 @@ pub(crate) enum SiteKind {
     Hosted,
 }
 
-impl<K: OidcClock> Site<K> {
+impl<K: OidcClock, H: HostedSignIn<K>> Site<K, H> {
     pub(crate) fn kind(&self) -> SiteKind {
         match self {
             Self::Local { .. } => SiteKind::Local,
@@ -67,11 +75,20 @@ impl<K: OidcClock> Site<K> {
         }
     }
 
-    /// The OpenID Connect authenticator, when the site has one.
+    /// The OpenID Connect authenticator, when the site has one: the gate's
+    /// on the local site, and the hosted sign-in when it is flare's own.
     pub(crate) fn oidc(&self) -> Option<&OidcAuthenticator<K>> {
         match self {
             Self::Local { gate, .. } => gate.oidc(),
-            Self::Hosted { oidc, .. } => Some(oidc),
+            Self::Hosted { sign_in, .. } => sign_in.oidc(),
+        }
+    }
+
+    /// The hosted site's sign-in.
+    pub(crate) fn hosted_sign_in(&self) -> Option<&H> {
+        match self {
+            Self::Local { .. } => None,
+            Self::Hosted { sign_in, .. } => Some(sign_in),
         }
     }
 
@@ -83,20 +100,38 @@ impl<K: OidcClock> Site<K> {
         }
     }
 
-    /// Asks the site's authenticators who `credential` names: the gate on
-    /// the local site, and the OpenID Connect authenticator alone on the
-    /// hosted site.
+    /// Asks the site's authenticators who `credential` names, and why they
+    /// refused it: the gate on the local site, where every rejection needs
+    /// a sign-in, and the sign-in alone on the hosted site.
+    pub(crate) async fn sign_in(&self, credential: &Credential) -> Result<Admitted, HostedRefusal> {
+        match self {
+            Self::Local { gate, .. } => {
+                gate.authenticate(credential)
+                    .await
+                    .map_err(|error| match error {
+                        AuthError::Unavailable => HostedRefusal::Unavailable,
+                        _ => HostedRefusal::SignInNeeded,
+                    })
+            }
+            Self::Hosted { sign_in, .. } => Ok(Admitted {
+                principal: sign_in.sign_in(credential).await?,
+                by: Side::Hosted,
+            }),
+        }
+    }
+
+    /// [`Site::sign_in`] with each refusal but an unavailable sign-in as
+    /// [`AuthError::Rejected`].
     pub(crate) async fn authenticate(
         &self,
         credential: &Credential,
     ) -> Result<Admitted, AuthError> {
-        match self {
-            Self::Local { gate, .. } => gate.authenticate(credential).await,
-            Self::Hosted { oidc, .. } => Ok(Admitted {
-                principal: oidc.authenticate(credential).await?,
-                by: Side::Oidc,
-            }),
-        }
+        self.sign_in(credential)
+            .await
+            .map_err(|refusal| match refusal {
+                HostedRefusal::Unavailable => AuthError::Unavailable,
+                _ => AuthError::Rejected,
+            })
     }
 
     /// Asks the side that admitted the request.
@@ -108,25 +143,27 @@ impl<K: OidcClock> Site<K> {
     ) -> Result<Decision, AuthError> {
         match (self, admitted.by) {
             (Self::Local { gate, .. }, _) => gate.authorize(admitted, access, resource).await,
-            (Self::Hosted { oidc, .. }, Side::Oidc) => {
-                oidc.authorize(&admitted.principal, access, resource).await
+            (Self::Hosted { sign_in, .. }, Side::Hosted) => {
+                sign_in
+                    .authorize(&admitted.principal, access, resource)
+                    .await
             }
             (Self::Hosted { .. }, _) => Err(AuthError::Rejected),
         }
     }
 }
 
-impl<K: OidcClock> fmt::Debug for Site<K> {
+impl<K: OidcClock, H: HostedSignIn<K>> fmt::Debug for Site<K, H> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Local { gate, .. } => formatter
                 .debug_struct("Local")
                 .field("gate", gate)
                 .finish_non_exhaustive(),
-            Self::Hosted { origin, oidc } => formatter
+            Self::Hosted { origin, sign_in } => formatter
                 .debug_struct("Hosted")
                 .field("origin", origin)
-                .field("oidc", oidc)
+                .field("sign_in", sign_in)
                 .finish(),
         }
     }

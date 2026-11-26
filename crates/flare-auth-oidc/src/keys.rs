@@ -1,5 +1,7 @@
 //! The provider's key set: which keys are usable, and the cache that holds
-//! the last checked set.
+//! the last checked set. The OpenID Connect sign-in keeps RSA keys for
+//! RS256; the proxy sign-in also keeps P-256 keys for ES256, as its
+//! [`KeyRule`] says.
 
 use crate::clock::has_passed;
 use crate::provider::{Provider, ReplyError};
@@ -11,6 +13,9 @@ use std::time::{Duration, SystemTime};
 
 /// How long a fetched key set is used before it is fetched again.
 const KEY_SET_LIFETIME: Duration = Duration::from_secs(60 * 60);
+/// How long a held key keeps answering after the last successful fetch,
+/// under a rule that keeps held keys while fetches fail.
+const HELD_KEYS_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
 /// The shortest time between two fetches for an unknown key id.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -24,11 +29,68 @@ struct Jwk {
     kid: Option<String>,
     n: Option<String>,
     e: Option<String>,
+    crv: Option<String>,
+    x: Option<String>,
+    y: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct Jwks {
     keys: Vec<Jwk>,
+}
+
+/// Which keys of a key set are usable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KeyRule {
+    /// RSA keys, for RS256.
+    pub(crate) rs256: bool,
+    /// P-256 keys, for ES256.
+    pub(crate) es256: bool,
+    /// The most keys a set may hold, usable or not, or `None` for no limit.
+    pub(crate) max_keys: Option<usize>,
+    /// Whether the held keys keep answering after a fetch fails, for up to
+    /// a day after the last successful fetch, with stale fetches at most
+    /// once every 60 seconds and a held key answering at once while another
+    /// lookup fetches. An unknown key id gets that failure until the next
+    /// fetch. The proxy sign-in reads keys
+    /// on every request, so it keeps them; the OpenID Connect sign-in reads
+    /// them only at a callback and refuses that sign-in instead.
+    pub(crate) keeps_held_keys: bool,
+}
+
+impl KeyRule {
+    /// The OpenID Connect sign-in's rule: RSA keys for RS256, any number.
+    pub(crate) const OIDC: Self = Self {
+        rs256: true,
+        es256: false,
+        max_keys: None,
+        keeps_held_keys: false,
+    };
+
+    /// The decoding key of `key`, when this rule admits it. A key is usable
+    /// when its `use` is absent or `sig`, it has a key id, and it is an RSA
+    /// key whose `alg` is absent or RS256, or a P-256 key whose `alg` is
+    /// absent or ES256, as the rule allows.
+    fn admit(self, key: Jwk) -> Option<(String, DecodingKey)> {
+        if key.usage.as_deref().is_some_and(|usage| usage != "sig") {
+            return None;
+        }
+        let alg = key.alg.as_deref();
+        let decoding = match key.kty.as_deref() {
+            Some("RSA") if self.rs256 && alg.is_none_or(|alg| alg == "RS256") => {
+                DecodingKey::from_rsa_components(&key.n?, &key.e?).ok()?
+            }
+            Some("EC")
+                if self.es256
+                    && key.crv.as_deref() == Some("P-256")
+                    && alg.is_none_or(|alg| alg == "ES256") =>
+            {
+                DecodingKey::from_ec_components(&key.x?, &key.y?).ok()?
+            }
+            _ => return None,
+        };
+        Some((key.kid?, decoding))
+    }
 }
 
 /// The usable keys of a key set, by key id. It always holds at least one
@@ -41,17 +103,21 @@ impl KeySet {
     /// `sig`, whose `alg` is absent or RS256, and which has a key id.
     /// Returns `None` when no key is usable.
     pub(crate) fn parse(body: &[u8]) -> Option<Self> {
+        Self::parse_under(body, KeyRule::OIDC)
+    }
+
+    /// Reads a key set and keeps the keys that `rule` admits. Returns
+    /// `None` when no key is usable or the set holds more keys than the
+    /// rule allows.
+    pub(crate) fn parse_under(body: &[u8], rule: KeyRule) -> Option<Self> {
         let jwks: Jwks = serde_json::from_slice(body).ok()?;
+        if rule.max_keys.is_some_and(|max| jwks.keys.len() > max) {
+            return None;
+        }
         let keys: HashMap<String, DecodingKey> = jwks
             .keys
             .into_iter()
-            .filter(|key| key.kty.as_deref() == Some("RSA"))
-            .filter(|key| key.usage.as_deref().is_none_or(|usage| usage == "sig"))
-            .filter(|key| key.alg.as_deref().is_none_or(|alg| alg == "RS256"))
-            .filter_map(|key| {
-                let decoding = DecodingKey::from_rsa_components(&key.n?, &key.e?).ok()?;
-                Some((key.kid?, decoding))
-            })
+            .filter_map(|key| rule.admit(key))
             .collect();
         (!keys.is_empty()).then_some(Self(keys))
     }
@@ -84,13 +150,24 @@ struct Cached {
 }
 
 impl Cached {
-    /// The key for `kid` after the last completed fetch: that fetch's
-    /// failure, or the key from the set it cached.
-    fn outcome(&self, kid: &str) -> Result<DecodingKey, KeyError> {
-        match self.failure {
-            Some(failure) => Err(failure),
-            None => self.keys.0.get(kid).cloned().ok_or(KeyError::Unknown),
+    /// The key for `kid` after the last completed fetch. Under a rule that
+    /// keeps held keys, a held key answers even when that fetch failed, for
+    /// up to a day after the last successful fetch, so an outage of the key
+    /// set address keeps the keys flare has. Otherwise a failed fetch
+    /// answers its failure, and a successful one an unknown key.
+    fn outcome(&self, kid: &str, rule: KeyRule, now: SystemTime) -> Result<DecodingKey, KeyError> {
+        match (self.keys.0.get(kid), self.failure) {
+            (Some(key), None) => Ok(key.clone()),
+            (Some(key), Some(_)) if self.holds(rule, now) => Ok(key.clone()),
+            (_, Some(failure)) => Err(failure),
+            (None, None) => Err(KeyError::Unknown),
         }
+    }
+
+    /// Whether the held keys still answer at `now` while fetches fail: under
+    /// a rule that keeps them, until a day after the last successful fetch.
+    fn holds(&self, rule: KeyRule, now: SystemTime) -> bool {
+        rule.keeps_held_keys && !has_passed(self.fetched, HELD_KEYS_LIFETIME, now)
     }
 }
 
@@ -103,10 +180,13 @@ impl Cached {
 /// the same failure. It starts no fetch of its own, so sign-ins that arrive
 /// together cost one fetch and one request deadline, whether the provider
 /// answers or not. When the fetching sign-in is dropped before its fetch
-/// completes, the next waiter fetches in its place.
+/// completes, the next waiter fetches in its place. Under a rule that keeps
+/// held keys, a lookup of a held key id does not wait: it answers with the
+/// held key.
 pub(crate) struct KeyCache {
     cached: Mutex<Cached>,
     refreshing: tokio::sync::Mutex<()>,
+    rule: KeyRule,
 }
 
 /// What a lookup in the cache found.
@@ -114,15 +194,24 @@ enum Lookup {
     /// The key, in a set under one hour old.
     Found(DecodingKey),
     /// The cache must fetch the set again first. It holds how many fetches
-    /// had completed when the cache was read.
-    Refresh(u64),
+    /// had completed when the cache was read, and the held key that answers
+    /// at once when another lookup is already fetching, if any.
+    Refresh(u64, Option<DecodingKey>),
     /// The key id is unknown, and the last fetch was under 60 seconds ago.
-    Unknown,
+    /// It holds that fetch's failure, or `None` when it succeeded.
+    Unknown(Option<KeyError>),
 }
 
 impl KeyCache {
-    /// A cache holding `keys`, fetched at `now`.
+    /// A cache holding `keys`, fetched at `now`, that keeps the keys of a
+    /// later fetch under [`KeyRule::OIDC`].
     pub(crate) fn new(keys: KeySet, now: SystemTime) -> Self {
+        Self::under(keys, now, KeyRule::OIDC)
+    }
+
+    /// A cache holding `keys`, fetched at `now`, that keeps the keys of a
+    /// later fetch under `rule`.
+    pub(crate) fn under(keys: KeySet, now: SystemTime, rule: KeyRule) -> Self {
         Self {
             cached: Mutex::new(Cached {
                 keys,
@@ -132,6 +221,7 @@ impl KeyCache {
                 failure: None,
             }),
             refreshing: tokio::sync::Mutex::new(()),
+            rule,
         }
     }
 
@@ -142,22 +232,30 @@ impl KeyCache {
     fn look_up(&self, kid: &str, now: SystemTime) -> Lookup {
         let cached = self.lock();
         let stale = has_passed(cached.fetched, KEY_SET_LIFETIME, now);
+        let may_fetch = cached
+            .last_attempt
+            .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now));
+        let keeps = self.rule.keeps_held_keys;
+        let holds = cached.holds(self.rule, now);
+        let completed = cached.completed;
         match cached.keys.0.get(kid) {
             Some(key) if !stale => Lookup::Found(key.clone()),
-            _ if stale => Lookup::Refresh(cached.completed),
-            _ if cached
-                .last_attempt
-                .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now)) =>
-            {
-                Lookup::Refresh(cached.completed)
-            }
-            _ => Lookup::Unknown,
+            Some(key) if holds && !may_fetch => Lookup::Found(key.clone()),
+            Some(key) if holds => Lookup::Refresh(completed, Some(key.clone())),
+            Some(_) if keeps && !may_fetch => Lookup::Unknown(cached.failure),
+            Some(_) => Lookup::Refresh(completed, None),
+            // The OpenID Connect rule fetches a stale set for any key id.
+            None if stale && !keeps => Lookup::Refresh(completed, None),
+            None if may_fetch => Lookup::Refresh(completed, None),
+            None if keeps => Lookup::Unknown(cached.failure),
+            None => Lookup::Unknown(None),
         }
     }
 
     /// The key for `kid`. A key set older than one hour is fetched again
     /// first. An unknown `kid` causes one fetch, at most once every 60
-    /// seconds.
+    /// seconds. [`KeyRule::keeps_held_keys`] says what a failed fetch
+    /// leaves.
     pub(crate) async fn key_for(
         &self,
         kid: &str,
@@ -168,8 +266,8 @@ impl KeyCache {
     }
 
     /// [`KeyCache::key_for`], with `fetch` in place of the provider's key
-    /// set endpoint.
-    async fn key_with<F>(
+    /// set endpoint, as the proxy sign-in fetches its configured address.
+    pub(crate) async fn key_with<F>(
         &self,
         kid: &str,
         now: SystemTime,
@@ -178,22 +276,30 @@ impl KeyCache {
     where
         F: Future<Output = Result<Vec<u8>, ReplyError>>,
     {
-        let seen = match self.look_up(kid, now) {
+        let (seen, held) = match self.look_up(kid, now) {
             Lookup::Found(key) => return Ok(key),
-            Lookup::Unknown => return Err(KeyError::Unknown),
-            Lookup::Refresh(completed) => completed,
+            Lookup::Unknown(failure) => return Err(failure.unwrap_or(KeyError::Unknown)),
+            Lookup::Refresh(completed, held) => (completed, held),
         };
-        let _refreshing = self.refreshing.lock().await;
+        // A held key answers at once while another lookup fetches, so a key
+        // set address that hangs does not stall every request.
+        let _refreshing = match held {
+            Some(key) => match self.refreshing.try_lock() {
+                Ok(guard) => guard,
+                Err(_) => return Ok(key),
+            },
+            None => self.refreshing.lock().await,
+        };
         {
             let cached = self.lock();
             if cached.completed != seen {
                 // Another sign-in's fetch completed while this one waited,
                 // so this one takes that fetch's outcome.
-                return cached.outcome(kid);
+                return cached.outcome(kid, self.rule, now);
             }
         }
         let fetched = match fetch().await {
-            Ok(body) => KeySet::parse(&body).ok_or(KeyError::Unusable),
+            Ok(body) => KeySet::parse_under(&body, self.rule).ok_or(KeyError::Unusable),
             Err(_) => Err(KeyError::Unavailable),
         };
         // The outcome is stored before `_refreshing` is released, so each
@@ -209,7 +315,7 @@ impl KeyCache {
             }
             Err(failure) => cached.failure = Some(failure),
         }
-        cached.outcome(kid)
+        cached.outcome(kid, self.rule, now)
     }
 }
 

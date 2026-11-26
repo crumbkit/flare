@@ -11,13 +11,14 @@ use crate::reading;
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::sharing::ReadRefusal;
+use crate::sign_in::HostedSignIn;
 use flare_auth_oidc::Clock as OidcClock;
 use flare_core::{PageStore, RecordStore};
 use http::StatusCode;
 
 /// The reading page of share `id`.
-pub(crate) async fn page<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn page<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     admitted: &Admitted,
     id: &str,
 ) -> Result<Reply, Problem>
@@ -26,6 +27,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let api = ctx.shared.sharing.as_deref().ok_or(Code::NotFound)?;
     let version = ctx.query("version");

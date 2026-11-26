@@ -188,15 +188,28 @@ async fn send_exchange(
         })
 }
 
-/// Runs `flare logout`: revokes the token on the server, then deletes it
-/// from the Keychain and forgets the login. A token that the server no
-/// longer knows counts as revoked.
+/// Runs `flare logout`: revokes the saved login's token on the server,
+/// then deletes it from the Keychain and forgets the login. A token that
+/// the server no longer knows counts as revoked. A config whose `client`
+/// section names a token command saves no token, so with no saved login
+/// it revokes nothing and sends no request; a login saved before is still
+/// revoked. `revoked` says whether a token was revoked.
 ///
 /// # Errors
 ///
 /// Returns the failure that stopped it.
 pub(crate) async fn logout(env: &Snapshot) -> Result<LoggedOut, Failed> {
-    let saved = saved::required(env)?;
+    let Some(saved) = saved::load(env)? else {
+        if let Some(client) = crate::config::load(None, env)?.client {
+            return Ok(LoggedOut {
+                server: client.server,
+                label: String::new(),
+                revoked: false,
+            });
+        }
+        return Err(SharingFailed::LoginNeeded { server: None }.into());
+    };
+    let mut revoked = false;
     if let Some(token) = keychain::read(env, &saved.server)? {
         let api = Api::new(&saved.server, Some(token))?;
         let target = format!("/api/tokens/{}", saved.token_id);
@@ -213,10 +226,12 @@ pub(crate) async fn logout(env: &Snapshot) -> Result<LoggedOut, Failed> {
             Err(other) => return Err(other),
         }
         keychain::delete(env, &saved.server)?;
+        revoked = true;
     }
     saved::forget(env)?;
     Ok(LoggedOut {
         server: saved.server,
         label: saved.label,
+        revoked,
     })
 }

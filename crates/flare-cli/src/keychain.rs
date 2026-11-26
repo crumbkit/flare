@@ -1,7 +1,7 @@
 //! Saves, reads and deletes the CLI token in the macOS Keychain. This is
-//! one of the command's two process modules (PROC-1); the other is
-//! `opener.rs`. It is one of the modules that read the token (BASE-24), to
-//! write it to the program's standard input.
+//! one of the command's three process modules (PROC-1); the others are
+//! `opener.rs` and `token_command.rs`. It is one of the modules that read
+//! the token (BASE-24), to write it to the program's standard input.
 //!
 //! The token is the generic password of the service `flare-cli` and the
 //! account that is the server's origin, so each server has its own item.
@@ -73,7 +73,7 @@ struct Ran {
 /// `capture` is set, its standard output kept.
 #[expect(
     clippy::disallowed_methods,
-    reason = "PROC-1: keychain.rs is one of the flare command's two process modules"
+    reason = "PROC-1: keychain.rs is one of the flare command's three process modules"
 )]
 fn run(
     env: &Snapshot,

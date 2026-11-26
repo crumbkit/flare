@@ -37,6 +37,8 @@ pub(crate) enum Code {
     UnsupportedType,
     SignInNeeded,
     BadCredential,
+    ProxyRefused,
+    NotAdmitted,
     Denied,
     AuthUnavailable,
     NeedsSession,
@@ -100,6 +102,8 @@ impl Code {
             Self::UnsupportedType => (S::UNSUPPORTED_MEDIA_TYPE, "request::unsupported_type"),
             Self::SignInNeeded => (S::UNAUTHORIZED, "auth::sign_in_needed"),
             Self::BadCredential => (S::UNAUTHORIZED, "auth::bad_credential"),
+            Self::ProxyRefused => (S::UNAUTHORIZED, "auth::proxy_refused"),
+            Self::NotAdmitted => (S::FORBIDDEN, "auth::not_admitted"),
             Self::Denied => (S::FORBIDDEN, "auth::denied"),
             Self::AuthUnavailable => (S::SERVICE_UNAVAILABLE, "auth::unavailable"),
             Self::NeedsSession => (S::FORBIDDEN, "forms::needs_session"),
@@ -158,6 +162,10 @@ impl Code {
             Self::UnsupportedType => "A form post must be application/x-www-form-urlencoded.",
             Self::SignInNeeded => "Sign in to see this.",
             Self::BadCredential => "The request's credential is malformed or repeated.",
+            Self::ProxyRefused => {
+                "The sign-in in front of this site sent a token that this site refused. The operator's log names the check."
+            }
+            Self::NotAdmitted => "You are signed in, and this site does not admit your account.",
             Self::Denied => "You are signed in, and this is not yours to reach.",
             Self::AuthUnavailable => "The server cannot check your sign-in now.",
             Self::NeedsSession => {
@@ -230,6 +238,12 @@ pub(crate) enum Help {
     SignIn(Option<String>),
     /// How to sign in on the hosted site: a link to this start URL.
     HostedSignIn(String),
+    /// How to sign in behind a single sign-on proxy: a link to its sign-in
+    /// address, when configured.
+    ProxySignIn(Option<String>),
+    /// How to sign in as another account: a link to the sign-out address,
+    /// when configured.
+    SignOut(Option<String>),
     /// A link back to this local path.
     Back(String),
     /// A link that asks for this local path again.
@@ -288,6 +302,22 @@ impl Problem {
                     "<span><a href=\"{}\">Sign in with Google</a></span>",
                     docs::escape(start)
                 ));
+            }
+            Help::ProxySignIn(at) => {
+                if let Some(at) = at {
+                    main.push_str(&format!(
+                        "<span><a href=\"{}\">Sign in</a></span>",
+                        docs::escape(at)
+                    ));
+                }
+            }
+            Help::SignOut(out) => {
+                if let Some(out) = out {
+                    main.push_str(&format!(
+                        "<span><a href=\"{}\">Sign out, then sign in with another account</a></span>",
+                        docs::escape(out)
+                    ));
+                }
             }
             Help::Retry(path) => {
                 main.push_str(&format!(

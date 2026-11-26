@@ -128,9 +128,14 @@ pub(crate) struct LoggedOut {
     /// The server's origin.
     #[row(column)]
     pub(crate) server: String,
-    /// The label of the revoked token.
+    /// The label of the revoked token, which is empty when nothing was
+    /// revoked.
     #[row(column)]
     pub(crate) label: String,
+    /// Whether a saved token was revoked and deleted. It is false when no
+    /// token was saved, as with a token command and no earlier login.
+    #[row(column)]
+    pub(crate) revoked: bool,
 }
 
 /// The document of `flare logout`.
@@ -138,7 +143,7 @@ pub(crate) const LOGOUT: Document<LoggedOut> = Document::new(
     "flare",
     "logout",
     1,
-    "The server and the label of the token that was revoked and deleted.",
+    "The server and the label of the token that was revoked and deleted, and whether one was.",
 );
 
 /// One share in `flare shares`.

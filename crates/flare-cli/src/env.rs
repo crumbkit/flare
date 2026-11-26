@@ -46,6 +46,14 @@ impl Snapshot {
             .filter(|value| !value.is_empty())
     }
 
+    /// Every variable, for a program that the person configured and that
+    /// runs as they would run it.
+    pub(crate) fn vars(&self) -> impl Iterator<Item = (&OsStr, &OsStr)> {
+        self.vars
+            .iter()
+            .map(|(name, value)| (name.as_os_str(), value.as_os_str()))
+    }
+
     /// The working directory, when the process could read it.
     pub(crate) fn current_dir(&self) -> Option<&PathBuf> {
         self.current_dir.as_ref()

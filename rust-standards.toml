@@ -61,7 +61,7 @@ checks = [
   "clippy disallowed_methods and disallowed_types (clippy.toml)",
   "the open tests in crates/flare-cli/tests/serve.rs, which run a recording script in place of the opener (PROC-2)",
 ]
-note = "Opening the opener file, or the server's /cli/login URL, in the browser is one of the flare command's two process operations: /usr/bin/open on macOS, xdg-open elsewhere, or FLARE_OPENER. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline (PROC-3)."
+note = "Opening the opener file, or the server's /cli/login URL, in the browser is one of the flare command's three process operations: /usr/bin/open on macOS, xdg-open elsewhere, or FLARE_OPENER. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline (PROC-3)."
 
 [[binding]]
 rule = "PROC-1"
@@ -70,7 +70,16 @@ checks = [
   "clippy disallowed_methods and disallowed_types (clippy.toml)",
   "the login and logout tests in crates/flare-cli/tests/sharing.rs, which run a recording script in place of /usr/bin/security (PROC-2)",
 ]
-note = "Saving, reading and deleting the CLI token through /usr/bin/security, or FLARE_KEYCHAIN, is the flare command's other process operation. A save writes the token to the program's standard input, never to its command line. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline or the output limit (PROC-3)."
+note = "Saving, reading and deleting the CLI token through /usr/bin/security, or FLARE_KEYCHAIN, is another of the flare command's process operations. A save writes the token to the program's standard input, never to its command line. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline or the output limit (PROC-3)."
+
+[[binding]]
+rule = "PROC-1"
+owners = ["crates/flare-cli/src/token_command.rs"]
+checks = [
+  "clippy disallowed_methods and disallowed_types (clippy.toml)",
+  "the token command tests in crates/flare-cli/tests/token_command.rs, which run small scripts in place of a sign-in helper (PROC-2)",
+]
+note = "Running the token command that the config's client section names is the flare command's third process operation. The share commands run it once before their first request and send the first line of its standard output as the bearer. Its module documentation states PROC-2's five items, and crumbkit-process stops the program's process group at the deadline or the 16 KiB output limit (PROC-3)."
 
 [[binding]]
 rule = "PROC-1"

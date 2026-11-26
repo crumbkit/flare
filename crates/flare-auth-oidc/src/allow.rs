@@ -165,6 +165,16 @@ impl WorkspaceDomain {
     fn is_named_by(&self, hd: &Value) -> bool {
         matches!(hd, Value::String(hd) if hd.eq_ignore_ascii_case(&self.0))
     }
+
+    /// Whether `email` is an address of this domain: the part after its
+    /// `@` equals the domain. No subdomain, parent domain or suffix
+    /// matches.
+    fn owns(&self, email: &Email) -> bool {
+        email
+            .as_str()
+            .rsplit_once('@')
+            .is_some_and(|(_, domain)| domain.eq_ignore_ascii_case(&self.0))
+    }
 }
 
 impl fmt::Debug for WorkspaceDomain {
@@ -271,6 +281,40 @@ impl Admit {
         match self {
             Self::Emails(allow) => allow.by_email(email).is_some(),
             Self::Domain(_) | Self::Anyone(_) => true,
+        }
+    }
+
+    /// The principal of an address that a proxy's signed token names,
+    /// judged from the address alone, because such a token has no `hd`
+    /// claim. Under [`Admit::Emails`] it is the list entry's principal,
+    /// under [`Admit::Domain`] the address of an address whose domain is the
+    /// rule's, and under [`Admit::Anyone`] the address. `None` when the rule
+    /// does not admit the address.
+    pub(crate) fn principal_of_address(&self, email: Email) -> Option<Principal> {
+        let id = match self {
+            Self::Emails(allow) => allow.by_email(&email)?.principal().clone(),
+            Self::Domain(rule) if rule.domain.owns(&email) => email.principal_id(),
+            Self::Domain(_) => return None,
+            Self::Anyone(_) => email.principal_id(),
+        };
+        Some(Principal::with_email(id, email))
+    }
+
+    /// Whether a principal that [`Admit::principal_of_address`] gave
+    /// reaches `resource`: the list entry's reach, or the rule's reach for
+    /// an address the rule still admits.
+    pub(crate) fn address_reaches(&self, principal: &Principal, resource: &Resource) -> bool {
+        match self {
+            Self::Emails(allow) => allow
+                .by_principal(principal.id())
+                .is_some_and(|entry| entry.reach().reaches(resource)),
+            Self::Domain(rule) => {
+                principal
+                    .email()
+                    .is_some_and(|email| rule.domain.owns(email))
+                    && rule.reach.reaches(resource)
+            }
+            Self::Anyone(reach) => reach.reaches(resource),
         }
     }
 

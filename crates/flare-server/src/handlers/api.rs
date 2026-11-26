@@ -17,21 +17,24 @@ use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
-use crate::sharing::{Api, Call, Refusal, Scope, TokenCheck, bearer_of, list_after, search_call};
+use crate::sharing::{Api, Call, Refusal, Scope, list_after, search_call};
+use crate::sign_in::HostedSignIn;
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::{ApiCode, ExchangeRequest, ProblemDocument};
-use flare_core::{Credential, PageStore, Principal, RecordStore, Timestamp};
+use flare_core::{Credential, PageStore, RecordStore, Timestamp};
 use http::StatusCode;
 use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use std::time::UNIX_EPOCH;
 
+mod caller;
 mod file;
 mod login;
 mod multipart;
 mod query;
 mod upload;
 
+use caller::caller;
 use login::cli_login;
 use query::{every, flag, number, version};
 
@@ -115,7 +118,7 @@ fn refused(refusal: Refusal, origin: &str) -> Reply {
 }
 
 /// The server's wall-clock time as a [`Timestamp`].
-fn timestamp<P, R, S, K: OidcClock>(ctx: &Ctx<'_, P, R, S, K>) -> Timestamp {
+fn timestamp<P, R, S, K: OidcClock, H: HostedSignIn<K>>(ctx: &Ctx<'_, P, R, S, K, H>) -> Timestamp {
     let seconds = ctx
         .shared
         .clock
@@ -126,13 +129,14 @@ fn timestamp<P, R, S, K: OidcClock>(ctx: &Ctx<'_, P, R, S, K>) -> Timestamp {
 }
 
 /// Reads and parses a JSON body.
-pub(super) async fn body_of<T, P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(super) async fn body_of<T, P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     body: Incoming,
 ) -> Result<Result<T, Refusal>, Problem>
 where
     T: DeserializeOwned,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let bytes = read_body(ctx, body).await?;
     Ok(serde_json::from_slice(&bytes).map_err(|error| Refusal {
@@ -143,46 +147,10 @@ where
     }))
 }
 
-/// The caller that the request's bearer token or, on a route that takes
-/// one, session cookie proves. A cookie's person must still pass the admit
-/// rule, as a token's owner does.
-async fn caller<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
-    api: &dyn Api,
-    credential: Option<&Credential>,
-    now: Timestamp,
-) -> Result<Principal, Refusal>
-where
-    P: PageStore,
-    R: RecordStore,
-    S: Schemas,
-    K: OidcClock,
-{
-    let credential = credential.ok_or(ApiCode::SignInNeeded)?;
-    if matches!(credential, Credential::Session(_)) {
-        // `hosted::check` passes a cookie only to the routes that take one.
-        return match ctx.shared.site.authenticate(credential).await {
-            Ok(admitted) if api.admits(&admitted.principal) => Ok(admitted.principal),
-            Ok(_) | Err(flare_core::AuthError::Rejected) => Err(ApiCode::SignInNeeded.into()),
-            Err(_) => Err(ApiCode::TokensUnavailable.into()),
-        };
-    }
-    let token = bearer_of(credential).ok_or(ApiCode::SignInNeeded)?;
-    match api.authenticate(token, now).await {
-        TokenCheck::Principal(principal) => Ok(principal),
-        TokenCheck::Refused(code) => Err(code.into()),
-        TokenCheck::NotOurs => match ctx.shared.site.authenticate(credential).await {
-            Ok(admitted) => Ok(admitted.principal),
-            Err(flare_core::AuthError::Rejected) => Err(ApiCode::SignInNeeded.into()),
-            Err(_) => Err(ApiCode::TokensUnavailable.into()),
-        },
-    }
-}
-
 /// Answers one route of the share API, and counts its token event from
 /// the final answer's status.
-pub(crate) async fn handle<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn handle<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     route: ApiRoute,
     name: &str,
     credential: Option<Credential>,
@@ -193,6 +161,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let Some(api) = ctx.shared.sharing.as_deref() else {
         return Err(Code::NotFound.into());
@@ -220,8 +189,8 @@ fn token_event(route: ApiRoute, status: StatusCode) -> Option<Event> {
 }
 
 /// The answer of one route of the share API from `api`.
-async fn answer<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+async fn answer<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     api: &dyn Api,
     route: ApiRoute,
     name: &str,
@@ -233,6 +202,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let origin = ctx
         .shared
@@ -246,7 +216,7 @@ where
                 .await
                 .unwrap_or_else(|refusal| refused(refusal, origin)));
         }
-        ApiRoute::Exchange => match body_of::<ExchangeRequest, _, _, _, _>(ctx, body).await? {
+        ApiRoute::Exchange => match body_of::<ExchangeRequest, _, _, _, _, _>(ctx, body).await? {
             Ok(request) => api.exchange(request, now).await,
             Err(refusal) => Err(refusal),
         },
@@ -289,8 +259,8 @@ where
 }
 
 /// Parses an authenticated route's request.
-async fn call<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+async fn call<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     route: ApiRoute,
     name: &str,
     body: Incoming,
@@ -300,6 +270,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     Ok(match route {
         ApiRoute::CreateShare => body_of(ctx, body).await?.map(Call::Create),

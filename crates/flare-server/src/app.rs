@@ -10,11 +10,12 @@ use crate::metrics::{Event, Metrics, StatusClass};
 use crate::problem::{Code, Problem};
 use crate::schemas::Schemas;
 use crate::sharing::{Api, Sharing};
+use crate::sign_in::HostedSignIn;
 use crate::site::{Site, SiteKind};
 use crate::tasks;
 use bytes_alias::Body;
 use flare_auth_loopback::StateError;
-use flare_auth_oidc::{Clock as OidcClock, SystemClock as OidcSystemClock};
+use flare_auth_oidc::{Clock as OidcClock, OidcAuthenticator, SystemClock as OidcSystemClock};
 use flare_core::{
     CommentStore, Creators, CursorStore, FileStore, GrantStore, Recipients, ResponseStore,
     ShareStore, Teams, TokenStore,
@@ -53,12 +54,14 @@ pub(crate) enum Kind {
 /// [`Limits::token_calls`] before it takes its in-work slot.
 const CALLBACK: &str = "/auth/oidc/callback";
 
-/// Everything a request needs. Clones share it.
-pub struct App<P, R, S, K: OidcClock = OidcSystemClock> {
-    shared: Arc<Shared<P, R, S, K>>,
+/// Everything a request needs. Clones share it. `H` is the hosted site's
+/// sign-in, flare's own OpenID Connect sign-in unless the site holds
+/// another.
+pub struct App<P, R, S, K: OidcClock = OidcSystemClock, H: HostedSignIn<K> = OidcAuthenticator<K>> {
+    shared: Arc<Shared<P, R, S, K, H>>,
 }
 
-impl<P, R, S, K: OidcClock> Clone for App<P, R, S, K> {
+impl<P, R, S, K: OidcClock, H: HostedSignIn<K>> Clone for App<P, R, S, K, H> {
     fn clone(&self) -> Self {
         Self {
             shared: Arc::clone(&self.shared),
@@ -67,11 +70,11 @@ impl<P, R, S, K: OidcClock> Clone for App<P, R, S, K> {
 }
 
 /// The state behind an [`App`].
-pub(crate) struct Shared<P, R, S, K: OidcClock> {
+pub(crate) struct Shared<P, R, S, K: OidcClock, H: HostedSignIn<K>> {
     pub(crate) pages: P,
     pub(crate) records: R,
     pub(crate) schemas: S,
-    pub(crate) site: Site<K>,
+    pub(crate) site: Site<K, H>,
     pub(crate) limits: Limits,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) forms: Forms,
@@ -88,17 +91,18 @@ pub(crate) struct Shared<P, R, S, K: OidcClock> {
     next_request: AtomicU64,
 }
 
-impl<P, R, S, K> App<P, R, S, K>
+impl<P, R, S, K, H> App<P, R, S, K, H>
 where
     P: PageStore + 'static,
     R: RecordStore + 'static,
     S: Schemas + 'static,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     /// An app over the page store `pages`, the record store `records` and
     /// the schemas `schemas`, serving `site` and keeping to `limits`.
     #[must_use]
-    pub fn new(pages: P, records: R, schemas: S, site: Site<K>, limits: Limits) -> Self {
+    pub fn new(pages: P, records: R, schemas: S, site: Site<K, H>, limits: Limits) -> Self {
         let oidc_origin = OnceLock::new();
         if let Some(origin) = site.origin() {
             let _ = oidc_origin.set(origin.as_str().to_owned());
@@ -329,7 +333,7 @@ where
     }
 }
 
-impl<P, R, S, K: OidcClock> Shared<P, R, S, K> {
+impl<P, R, S, K: OidcClock, H: HostedSignIn<K>> Shared<P, R, S, K, H> {
     /// Writes the metric line of `event`, when metrics are on.
     pub(crate) fn count(&self, event: Event) {
         self.metrics.record(event, self.clock.wall());
@@ -359,7 +363,7 @@ impl<P, R, S, K: OidcClock> Shared<P, R, S, K> {
 /// when the callback answers.
 type CallbackSlot<'a> = (SemaphorePermit<'a>, SemaphorePermit<'a>);
 
-impl<P, R, S, K: OidcClock> fmt::Debug for App<P, R, S, K> {
+impl<P, R, S, K: OidcClock, H: HostedSignIn<K>> fmt::Debug for App<P, R, S, K, H> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("App")

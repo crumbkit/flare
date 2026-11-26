@@ -118,7 +118,7 @@ impl Hosted {
             schemas(),
             Site::Hosted {
                 origin: public,
-                oidc,
+                sign_in: oidc,
             },
             limits.unwrap_or_default(),
         );

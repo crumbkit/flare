@@ -1,9 +1,10 @@
 # Running flare on a host
 
 `flare serve` serves a board's pages as a hosted site when its config has a
-`hosted` section. People sign in with Google and read the pages that the
-config's `admit` rule lets them reach. This page says what the operator sets
-up around it.
+`hosted` section. People sign in with Google, or through a single sign-on
+proxy in front of the site, and read the pages that the config's `admit`
+rule lets them reach. This page says what the operator sets up around it,
+and [sign-in.md](sign-in.md) describes the proxy sign-in.
 
 ## What the hosted site serves
 
@@ -15,7 +16,8 @@ up around it.
   [reading.md](reading.md) describes the page.
 - `/flare/assets/<file>`, the reading page's script files, with a cache of
   one year.
-- `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in.
+- `/auth/oidc/start` and `/auth/oidc/callback`, the Google sign-in. A site
+  that signs people in through a proxy answers 404 on them.
 - The share API, when the config has `hosted.stores`. The share API
   section below lists its routes.
 - Every other path answers 404, including bindings and forms, which only
@@ -71,6 +73,8 @@ up around it.
   when the config leaves it out. The counts hold no person, token or
   share, and no route of the site serves them.
   [metrics.md](metrics.md) lists the metrics.
+- A hosted config takes exactly one of the `oidc` section and a `proxy`
+  section. [sign-in.md](sign-in.md) describes the `proxy` section.
 - A config error exits with `flare::config::invalid` and names the key.
 
 ## The share API
@@ -410,7 +414,9 @@ is the only limit on sign-in requests:
 
 ## The domain name
 
-- flare sets only `__Host-` cookies, which are bound to its exact host.
+- flare sets only `__Host-` cookies, which are bound to its exact host. A
+  site that signs people in through a proxy reads the proxy's cookie, whose
+  scope the proxy sets.
 - Serve flare on a name whose parent domain has no untrusted subdomains.
   A sibling host can set many cookies on the parent domain and push every
   request past the header size limit.

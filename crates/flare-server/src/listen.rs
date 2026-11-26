@@ -3,6 +3,7 @@
 
 use crate::app::{App, Kind};
 use crate::schemas::Schemas;
+use crate::sign_in::HostedSignIn;
 use crate::tasks::{self, Tasks};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_core::{PageStore, RecordStore};
@@ -153,9 +154,9 @@ impl Listeners {
     /// Returns [`ServeError::State`] when the server file cannot be written,
     /// before any request is served, and [`ServeError::Listener`] when a
     /// socket cannot join the runtime.
-    pub async fn serve<P, R, S, K>(
+    pub async fn serve<P, R, S, K, H>(
         self,
-        app: App<P, R, S, K>,
+        app: App<P, R, S, K, H>,
         shutdown: impl Future<Output = ()>,
     ) -> Result<Stopped, ServeError>
     where
@@ -163,6 +164,7 @@ impl Listeners {
         R: RecordStore + 'static,
         S: Schemas + 'static,
         K: OidcClock,
+        H: HostedSignIn<K>,
     {
         let oidc_port = self.oidc_port;
         let primary_kind = self.primary_kind;

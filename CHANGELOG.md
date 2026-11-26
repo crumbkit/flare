@@ -8,6 +8,31 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A hosted site can sign people in through the single sign-on proxy in
+  front of it. A `proxy` section in place of the `oidc` section names the
+  proxy's issuer, flare's audience, the key set address, the cookie, the
+  algorithms (RS256, ES256 or both), the identity claim and the admit rule.
+  flare accepts the proxy's signed token as that cookie and as a bearer on
+  the share API, and checks its signature, issuer, audience, times, address
+  and admit rule. A refused token gets 401 `auth::proxy_refused` with no
+  redirect, a person the rule refuses gets 403 `auth::not_admitted` with
+  the optional sign-out link, and `flare serve` exits with
+  `flare::proxy::keys_unavailable` when it cannot fetch the key set. flare
+  reads no unsigned identity header. While the key set address is down,
+  the keys flare holds keep verifying tokens for up to 24 hours after the
+  last successful fetch. docs/sign-in.md describes it.
+- flare-server's `Site::Hosted` holds any `HostedSignIn`, which names the
+  credential's cookie, what a request with no credential gets and where
+  sign-out goes. `OidcAuthenticator` is the default, and flare-auth-oidc's
+  new `ProxyAuthenticator` implements it too.
+- A `client` section in flare's config file names a server and a token
+  command. The share commands then run the command once, send the first
+  line of its output as the bearer and save nothing. Its failures are
+  `flare::login::token_command_failed`, `token_command_timeout` and
+  `token_command_output`. `flare logout` with a token command and no saved
+  login revokes nothing, and its document gains `revoked`, which says
+  whether a token was revoked.
+
 - A share or a new version can carry its document's images. The share API
   takes `POST /api/shares` and `POST /api/shares/<id>/versions` as a
   `multipart/form-data` body with one `share` part and one `image` part per
@@ -53,6 +78,8 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- flare-server's `Site::Hosted` names its sign-in `sign_in`, which was
+  `oidc`, and a hosted site's caller is `Side::Hosted`.
 - `flare share` without `--title` titles a new flare with the plain text
   of the Markdown file's first level-one heading, written `# Title` or as a
   Setext heading, and uses the file name only when the file has no

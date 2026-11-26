@@ -3,8 +3,11 @@
 //!
 //! A missing file means the local site with loopback sign-in only. A
 //! `hosted` section makes `flare serve` serve the hosted site, behind a
-//! TLS proxy, and needs an `oidc` section with `client_secret_file`,
-//! because a host has no Keychain. A `stores` key in the hosted section
+//! TLS proxy, and needs exactly one of an `oidc` section with
+//! `client_secret_file`, because a host has no Keychain, and a `proxy`
+//! section, which trusts the signed token of a single sign-on proxy in
+//! front of the site. A `client` section names the server that the share
+//! commands call and the token command that gives them its token. A `stores` key in the hosted section
 //! adds the share API, which `creators` limits, `names` serves and
 //! `get_flare` links the reading page's Get Flare link to. A
 //! `log` section with `"metrics": true` turns on the metric lines of
@@ -16,11 +19,7 @@
 
 use crate::codes::Failed;
 use crate::env::Snapshot;
-use flare_auth_oidc::{
-    Admit, AllowEntry, AllowList, ClientId, DomainRule, Email, IssuerUrl, OidcConfig, RedirectUri,
-    WorkspaceDomain,
-};
-use flare_core::PrincipalId;
+use flare_auth_oidc::{Admit, ClientId, IssuerUrl, OidcConfig, ProxyConfig, RedirectUri};
 use flare_server::PublicOrigin;
 use serde::Deserialize;
 use serde_json::Value;
@@ -28,12 +27,17 @@ use std::io::Read as _;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+mod admit;
+mod client;
+mod proxy;
 mod reach;
 mod sharing;
 #[cfg(test)]
 mod tests;
 
-use reach::{ReachSection, reach};
+use admit::{AdmitSection, admit};
+pub(crate) use client::{Client, TokenCommand};
+use proxy::ProxySection;
 pub(crate) use sharing::{HostedCreators, Sharing};
 
 /// The local site's only redirect URI: the sign-in host's callback.
@@ -49,6 +53,9 @@ pub(crate) struct Config {
     pub(crate) site: Site,
     /// Whether the server writes a metric line for each counted event.
     pub(crate) metrics: bool,
+    /// The share commands' server and token command, when the file has a
+    /// `client` section.
+    pub(crate) client: Option<Client>,
 }
 
 /// Which site the config asks for.
@@ -90,13 +97,34 @@ pub(crate) struct Hosted {
     /// The address the plain-HTTP listener binds, which only the proxy
     /// reaches.
     pub(crate) listen: SocketAddr,
-    /// The OpenID Connect settings, whose redirect URI is
-    /// `<origin>/auth/oidc/callback`.
-    pub(crate) oidc: OidcConfig,
-    /// The file that holds the client secret.
-    pub(crate) secret_file: PathBuf,
+    /// How the site signs people in.
+    pub(crate) sign_in: SignIn,
     /// The share API's settings, when the section names its stores.
     pub(crate) sharing: Option<Box<Sharing>>,
+}
+
+/// How the hosted site signs people in: exactly one of the two.
+#[derive(Debug)]
+pub(crate) enum SignIn {
+    /// flare's own OpenID Connect sign-in.
+    Oidc {
+        /// The settings, whose redirect URI is `<origin>/auth/oidc/callback`.
+        config: OidcConfig,
+        /// The file that holds the client secret.
+        secret_file: PathBuf,
+    },
+    /// The signed token of a single sign-on proxy in front of the site.
+    Proxy(ProxyConfig),
+}
+
+impl SignIn {
+    /// Who the sign-in admits, which the share API's tokens follow too.
+    pub(crate) fn admit(&self) -> &Admit {
+        match self {
+            Self::Oidc { config, .. } => config.admit(),
+            Self::Proxy(config) => config.admit(),
+        }
+    }
 }
 
 /// Why a config's text was refused.
@@ -111,6 +139,8 @@ pub(crate) enum Problem {
 struct File {
     hosted: Option<HostedSection>,
     oidc: Option<OidcSection>,
+    proxy: Option<ProxySection>,
+    client: Option<client::ClientSection>,
     log: Option<LogSection>,
 }
 
@@ -139,42 +169,6 @@ struct OidcSection {
     client_id: String,
     client_secret_file: Option<String>,
     admit: AdmitSection,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum AdmitSection {
-    Emails(EmailsSection),
-    Domain(DomainSection),
-    Anyone(AnyoneSection),
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AnyoneSection {
-    anyone: bool,
-    reach: ReachSection,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EmailsSection {
-    emails: Vec<EmailSection>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct EmailSection {
-    email: String,
-    principal: String,
-    reach: ReachSection,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DomainSection {
-    domain: String,
-    reach: ReachSection,
 }
 
 /// The config file's path: `given`, else under `XDG_CONFIG_HOME`, else
@@ -206,6 +200,7 @@ pub(crate) fn load(given: Option<&Path>, env: &Snapshot) -> Result<Config, Faile
     let local = || Config {
         site: Site::Local { oidc: None },
         metrics: false,
+        client: None,
     };
     let Some(path) = self::path(given, env) else {
         return Ok(local());
@@ -256,20 +251,44 @@ pub(crate) fn parse(text: &str) -> Result<Config, Problem> {
     }
     let file: File = serde_json::from_value(value).map_err(|error| invalid(&error.to_string()))?;
     let metrics = file.log.is_some_and(|log| log.metrics);
-    let site = match (file.hosted, file.oidc) {
-        (None, oidc) => Site::Local {
+    let client = file
+        .client
+        .map(client::client)
+        .transpose()
+        .map_err(Problem::Invalid)?;
+    let site = match (file.hosted, file.oidc, file.proxy) {
+        (None, oidc, None) => Site::Local {
             oidc: oidc.map(local_oidc).transpose().map_err(Problem::Invalid)?,
         },
-        (Some(hosted), Some(oidc)) => {
-            Site::Hosted(self::hosted(hosted, oidc).map_err(Problem::Invalid)?)
-        }
-        (Some(_), None) => {
+        (None, _, Some(_)) => {
             return Err(invalid(
-                "a hosted section needs an oidc section, because the hosted site signs people in only with OpenID Connect",
+                "a proxy section needs a hosted section, because only the hosted site signs people in through a proxy",
             ));
         }
+        (Some(hosted), Some(oidc), None) => {
+            Site::Hosted(self::hosted(hosted, HostedSignIn::Oidc(oidc)).map_err(Problem::Invalid)?)
+        }
+        (Some(hosted), None, Some(proxy)) => Site::Hosted(
+            self::hosted(hosted, HostedSignIn::Proxy(proxy)).map_err(Problem::Invalid)?,
+        ),
+        (Some(_), oidc, _) => {
+            let what = if oidc.is_some() { "both" } else { "neither" };
+            return Err(invalid(&format!(
+                "a hosted section takes exactly one of oidc and proxy, and this file has {what}"
+            )));
+        }
     };
-    Ok(Config { site, metrics })
+    Ok(Config {
+        site,
+        metrics,
+        client,
+    })
+}
+
+/// The sign-in section that a hosted section came with.
+enum HostedSignIn {
+    Oidc(OidcSection),
+    Proxy(ProxySection),
 }
 
 /// The secret file's path: absolute, or a refusal that names the key.
@@ -294,23 +313,17 @@ fn local_oidc(section: OidcSection) -> Result<LocalOidc, String> {
     })
 }
 
-fn hosted(section: HostedSection, oidc_section: OidcSection) -> Result<Hosted, String> {
+fn hosted(section: HostedSection, sign_in: HostedSignIn) -> Result<Hosted, String> {
     let origin = PublicOrigin::try_from(section.origin.as_str())
         .map_err(|error| format!("hosted.origin is not valid: {error}"))?;
     let listen = section.listen.parse::<SocketAddr>().map_err(|_| {
         "hosted.listen must be an IP address and a port, such as 0.0.0.0:8080 or [::]:8080"
             .to_owned()
     })?;
-    let secret_file = match &oidc_section.client_secret_file {
-        Some(text) => secret_file(text)?,
-        None => {
-            return Err(
-                "a hosted section needs oidc.client_secret_file, the absolute path of the file that holds the client secret, because a host has no Keychain"
-                    .to_owned(),
-            );
-        }
+    let anyone = match &sign_in {
+        HostedSignIn::Oidc(oidc) => oidc.admit.is_anyone(),
+        HostedSignIn::Proxy(proxy) => proxy.admits_anyone(),
     };
-    let anyone = matches!(oidc_section.admit, AdmitSection::Anyone(_));
     let sharing = sharing::sharing(
         sharing::Keys {
             stores: section.stores,
@@ -321,14 +334,35 @@ fn hosted(section: HostedSection, oidc_section: OidcSection) -> Result<Hosted, S
         anyone,
     )?
     .map(Box::new);
-    let redirect =
-        RedirectUri::try_from(origin.redirect_uri().as_str()).map_err(|error| error.to_string())?;
+    let sign_in = match sign_in {
+        HostedSignIn::Oidc(oidc_section) => hosted_oidc(&origin, oidc_section)?,
+        HostedSignIn::Proxy(proxy) => SignIn::Proxy(proxy::proxy(proxy)?),
+    };
     Ok(Hosted {
-        oidc: oidc(oidc_section, redirect)?,
         origin,
         listen,
-        secret_file,
+        sign_in,
         sharing,
+    })
+}
+
+/// The hosted site's OpenID Connect sign-in, which reads its client secret
+/// from a file.
+fn hosted_oidc(origin: &PublicOrigin, section: OidcSection) -> Result<SignIn, String> {
+    let secret_file = match &section.client_secret_file {
+        Some(text) => secret_file(text)?,
+        None => {
+            return Err(
+                "a hosted section needs oidc.client_secret_file, the absolute path of the file that holds the client secret, because a host has no Keychain"
+                    .to_owned(),
+            );
+        }
+    };
+    let redirect =
+        RedirectUri::try_from(origin.redirect_uri().as_str()).map_err(|error| error.to_string())?;
+    Ok(SignIn::Oidc {
+        config: oidc(section, redirect)?,
+        secret_file,
     })
 }
 
@@ -347,30 +381,6 @@ fn oidc(section: OidcSection, redirect: RedirectUri) -> Result<OidcConfig, Strin
     let issuer = IssuerUrl::try_from(section.issuer.as_str()).map_err(|error| error.to_string())?;
     let client =
         ClientId::try_from(section.client_id.as_str()).map_err(|error| error.to_string())?;
-    let admit = match section.admit {
-        AdmitSection::Emails(list) => {
-            let mut entries = Vec::new();
-            for entry in list.emails {
-                let email =
-                    Email::try_from(entry.email.as_str()).map_err(|error| error.to_string())?;
-                let principal = PrincipalId::try_from(entry.principal.as_str())
-                    .map_err(|error| format!("a principal is not valid: {error}"))?;
-                entries.push(AllowEntry::new(email, principal, reach(entry.reach)?));
-            }
-            Admit::Emails(AllowList::new(entries).map_err(|error| error.to_string())?)
-        }
-        AdmitSection::Domain(rule) => {
-            let domain = WorkspaceDomain::try_from(rule.domain.as_str())
-                .map_err(|error| error.to_string())?;
-            Admit::Domain(DomainRule::new(domain, reach(rule.reach)?))
-        }
-        AdmitSection::Anyone(rule) if rule.anyone => Admit::Anyone(reach(rule.reach)?),
-        AdmitSection::Anyone(_) => {
-            return Err(
-                "oidc.admit.anyone must be true; to admit fewer people, list emails or a domain"
-                    .to_owned(),
-            );
-        }
-    };
+    let admit = admit(section.admit, "oidc")?;
     Ok(OidcConfig::new(issuer, client, redirect, admit))
 }

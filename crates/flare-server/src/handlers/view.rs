@@ -11,6 +11,7 @@ use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::secret;
+use crate::sign_in::HostedSignIn;
 use flare_auth_oidc::Clock as OidcClock;
 use flare_core::{
     Access, Binding, BindingName, Credential, Page, PageName, PageStore, PublishedPage, ReadError,
@@ -20,8 +21,8 @@ use flare_render::{FormTarget, LocalPath, Notice, Schema, edit_form, render_page
 use http::StatusCode;
 
 /// `GET /pages/<name>`: the page rendered from its samples.
-pub(crate) async fn page<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn page<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     admitted: &Admitted,
     access: Access,
     name: &str,
@@ -31,6 +32,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let name = PageName::try_from(name).map_err(|_| Code::BadName)?;
     ctx.allow(admitted, access, &Resource::Page(name.clone()))
@@ -63,8 +65,8 @@ pub(crate) struct Bound {
 
 /// Reads binding `name`, its page at the pin and its records, asking
 /// `authorize` for `access` on the binding and on each record.
-pub(crate) async fn bound<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn bound<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     admitted: &Admitted,
     name: &BindingName,
     access: Access,
@@ -74,6 +76,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     ctx.allow(admitted, access, &Resource::Binding(name.clone()))
         .await?;
@@ -125,8 +128,8 @@ pub(crate) fn binding_band(bound: &Bound) -> Band<'_> {
 /// `GET /b/<name>`: the page rendered from the binding's records, and an
 /// edit form for each slot with editable fields when the request has a
 /// session.
-pub(crate) async fn binding<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn binding<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     (admitted, access): (&Admitted, Access),
     credential: Option<&Credential>,
     name: &str,
@@ -136,6 +139,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let name = BindingName::try_from(name).map_err(|_| Code::BadName)?;
     let bound = bound(ctx, admitted, &name, access).await?;
@@ -188,8 +192,8 @@ pub(crate) fn editable<'p>(page: &'p Page, name: &SlotName) -> Option<&'p Slot> 
 }
 
 /// The schema of `slot`'s record type, parsed.
-pub(crate) async fn schema<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn schema<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     slot: &Slot,
 ) -> Result<Schema, String>
 where
@@ -197,6 +201,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let text = ctx
         .shared
@@ -209,8 +214,8 @@ where
 
 /// A new token for `binding`'s `slot` filled by `record`, tied to the
 /// session and to `blob`.
-pub(crate) fn target<P, R, S, K: OidcClock>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) fn target<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     binding: &Binding,
     slot: &Slot,
     record: &Record,
@@ -235,8 +240,8 @@ pub(crate) fn target<P, R, S, K: OidcClock>(
 }
 
 /// Draws the edit form for `record` in `slot` with a new token.
-async fn draw<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+async fn draw<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     binding: &Binding,
     slot: &Slot,
     record: &Record,
@@ -249,6 +254,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let schema = schema(ctx, slot).await?;
     let target = target(ctx, binding, slot, record, session, blob)?;

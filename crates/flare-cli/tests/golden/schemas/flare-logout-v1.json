@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/logout/v1",
-  "description": "The server and the label of the token that was revoked and deleted.",
+  "description": "The server and the label of the token that was revoked and deleted, and whether one was.",
   "type": "object",
   "properties": {
     "data": {
@@ -26,8 +26,12 @@
       "type": "object",
       "properties": {
         "label": {
-          "description": "The label of the revoked token.",
+          "description": "The label of the revoked token, which is empty when nothing was\nrevoked.",
           "type": "string"
+        },
+        "revoked": {
+          "description": "Whether a saved token was revoked and deleted. It is false when no\ntoken was saved, as with a token command and no earlier login.",
+          "type": "boolean"
         },
         "server": {
           "description": "The server's origin.",
@@ -36,7 +40,8 @@
       },
       "required": [
         "server",
-        "label"
+        "label",
+        "revoked"
       ]
     }
   }

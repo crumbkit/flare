@@ -7,7 +7,9 @@
 //!    equal to the public origin and exactly one `Sec-Fetch-Site:
 //!    same-origin`, or 403 `request::origin`.
 //! 3. No Authorization header, and at most one cookie pair named exactly
-//!    `__Host-flare_session` whose value is a token, or 401
+//!    as the site's sign-in names its cookie (`__Host-flare_session` for
+//!    flare's own OpenID Connect sign-in, the configured cookie for the
+//!    proxy sign-in) whose value is a token, or 401
 //!    `auth::bad_credential`. Every other cookie pair is skipped, even one
 //!    that is not ASCII, so a cookie set by a sibling domain cannot lock a
 //!    browser out.
@@ -21,13 +23,13 @@
 //! routes and `/api/activity`, when the request has no Authorization
 //! header, read the session cookie as `page_request` says.
 //!
-//! The checks read no `X-Forwarded-*` or `Forwarded` header and take no
-//! peer address: behind a proxy every peer is the proxy.
+//! The checks read no `X-Forwarded-*` or `Forwarded` header, no
+//! `Remote-User` or other unsigned identity header, and take no peer
+//! address: behind a proxy every peer is the proxy.
 
 use crate::cookies::{Cookie, cookie};
 use crate::problem::Code;
 use crate::routes::{self, Found, Need};
-use crate::secret::HOSTED_SESSION_COOKIE;
 use crate::site::{PublicOrigin, SiteKind};
 use flare_core::Credential;
 use http::header::{AUTHORIZATION, CONTENT_TYPE, HOST, HeaderName, ORIGIN};
@@ -44,10 +46,11 @@ fn one<'h>(headers: &'h HeaderMap, name: &HeaderName) -> Option<&'h [u8]> {
     }
 }
 
-/// Runs the three checks and returns the session credential, if the
-/// request carries one.
+/// Runs the three checks and returns the credential in the cookie named
+/// `session`, if the request carries one.
 pub(crate) fn check(
     origin: &PublicOrigin,
+    session: &str,
     method: &Method,
     path: &str,
     headers: &HeaderMap,
@@ -59,7 +62,7 @@ pub(crate) fn check(
         if headers.contains_key(AUTHORIZATION) || !takes_cookie(method, path) {
             return bearer(headers);
         }
-        return page_request(origin, method, headers);
+        return page_request(origin, session, method, headers);
     }
     if method != Method::GET && method != Method::HEAD {
         let same_origin = one(headers, &ORIGIN) == Some(origin.as_str().as_bytes());
@@ -71,7 +74,7 @@ pub(crate) fn check(
     if headers.contains_key(AUTHORIZATION) {
         return Err(Code::BadCredential);
     }
-    match cookie(headers, HOSTED_SESSION_COOKIE) {
+    match cookie(headers, session) {
         Cookie::Absent => Ok(None),
         Cookie::One(value) => Ok(Some(Credential::session(value))),
         Cookie::Bad => Err(Code::BadCredential),
@@ -94,10 +97,11 @@ fn takes_cookie(method: &Method, path: &str) -> bool {
 /// cannot send; otherwise it is refused as `request::origin`.
 fn page_request(
     origin: &PublicOrigin,
+    session: &str,
     method: &Method,
     headers: &HeaderMap,
 ) -> Result<Option<Credential>, Code> {
-    let value = match cookie(headers, HOSTED_SESSION_COOKIE) {
+    let value = match cookie(headers, session) {
         Cookie::Absent => return Ok(None),
         Cookie::One(value) => value,
         Cookie::Bad => return Err(Code::BadCredential),
