@@ -1,5 +1,7 @@
 //! The provider's key set: which keys are usable, and the cache that holds
-//! the last checked set.
+//! the last checked set. The OpenID Connect sign-in keeps RSA keys for
+//! RS256; the proxy sign-in also keeps P-256 keys for ES256, as its
+//! [`KeyRule`] says.
 
 use crate::clock::has_passed;
 use crate::provider::{Provider, ReplyError};
@@ -24,11 +26,59 @@ struct Jwk {
     kid: Option<String>,
     n: Option<String>,
     e: Option<String>,
+    crv: Option<String>,
+    x: Option<String>,
+    y: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct Jwks {
     keys: Vec<Jwk>,
+}
+
+/// Which keys of a key set are usable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KeyRule {
+    /// RSA keys, for RS256.
+    pub(crate) rs256: bool,
+    /// P-256 keys, for ES256.
+    pub(crate) es256: bool,
+    /// The most keys a set may hold, usable or not, or `None` for no limit.
+    pub(crate) max_keys: Option<usize>,
+}
+
+impl KeyRule {
+    /// The OpenID Connect sign-in's rule: RSA keys for RS256, any number.
+    pub(crate) const OIDC: Self = Self {
+        rs256: true,
+        es256: false,
+        max_keys: None,
+    };
+
+    /// The decoding key of `key`, when this rule admits it. A key is usable
+    /// when its `use` is absent or `sig`, it has a key id, and it is an RSA
+    /// key whose `alg` is absent or RS256, or a P-256 key whose `alg` is
+    /// absent or ES256, as the rule allows.
+    fn admit(self, key: Jwk) -> Option<(String, DecodingKey)> {
+        if key.usage.as_deref().is_some_and(|usage| usage != "sig") {
+            return None;
+        }
+        let alg = key.alg.as_deref();
+        let decoding = match key.kty.as_deref() {
+            Some("RSA") if self.rs256 && alg.is_none_or(|alg| alg == "RS256") => {
+                DecodingKey::from_rsa_components(&key.n?, &key.e?).ok()?
+            }
+            Some("EC")
+                if self.es256
+                    && key.crv.as_deref() == Some("P-256")
+                    && alg.is_none_or(|alg| alg == "ES256") =>
+            {
+                DecodingKey::from_ec_components(&key.x?, &key.y?).ok()?
+            }
+            _ => return None,
+        };
+        Some((key.kid?, decoding))
+    }
 }
 
 /// The usable keys of a key set, by key id. It always holds at least one
@@ -41,17 +91,21 @@ impl KeySet {
     /// `sig`, whose `alg` is absent or RS256, and which has a key id.
     /// Returns `None` when no key is usable.
     pub(crate) fn parse(body: &[u8]) -> Option<Self> {
+        Self::parse_under(body, KeyRule::OIDC)
+    }
+
+    /// Reads a key set and keeps the keys that `rule` admits. Returns
+    /// `None` when no key is usable or the set holds more keys than the
+    /// rule allows.
+    pub(crate) fn parse_under(body: &[u8], rule: KeyRule) -> Option<Self> {
         let jwks: Jwks = serde_json::from_slice(body).ok()?;
+        if rule.max_keys.is_some_and(|max| jwks.keys.len() > max) {
+            return None;
+        }
         let keys: HashMap<String, DecodingKey> = jwks
             .keys
             .into_iter()
-            .filter(|key| key.kty.as_deref() == Some("RSA"))
-            .filter(|key| key.usage.as_deref().is_none_or(|usage| usage == "sig"))
-            .filter(|key| key.alg.as_deref().is_none_or(|alg| alg == "RS256"))
-            .filter_map(|key| {
-                let decoding = DecodingKey::from_rsa_components(&key.n?, &key.e?).ok()?;
-                Some((key.kid?, decoding))
-            })
+            .filter_map(|key| rule.admit(key))
             .collect();
         (!keys.is_empty()).then_some(Self(keys))
     }
@@ -107,6 +161,7 @@ impl Cached {
 pub(crate) struct KeyCache {
     cached: Mutex<Cached>,
     refreshing: tokio::sync::Mutex<()>,
+    rule: KeyRule,
 }
 
 /// What a lookup in the cache found.
@@ -121,8 +176,15 @@ enum Lookup {
 }
 
 impl KeyCache {
-    /// A cache holding `keys`, fetched at `now`.
+    /// A cache holding `keys`, fetched at `now`, that keeps the keys of a
+    /// later fetch under [`KeyRule::OIDC`].
     pub(crate) fn new(keys: KeySet, now: SystemTime) -> Self {
+        Self::under(keys, now, KeyRule::OIDC)
+    }
+
+    /// A cache holding `keys`, fetched at `now`, that keeps the keys of a
+    /// later fetch under `rule`.
+    pub(crate) fn under(keys: KeySet, now: SystemTime, rule: KeyRule) -> Self {
         Self {
             cached: Mutex::new(Cached {
                 keys,
@@ -132,6 +194,7 @@ impl KeyCache {
                 failure: None,
             }),
             refreshing: tokio::sync::Mutex::new(()),
+            rule,
         }
     }
 
@@ -168,8 +231,8 @@ impl KeyCache {
     }
 
     /// [`KeyCache::key_for`], with `fetch` in place of the provider's key
-    /// set endpoint.
-    async fn key_with<F>(
+    /// set endpoint, as the proxy sign-in fetches its configured address.
+    pub(crate) async fn key_with<F>(
         &self,
         kid: &str,
         now: SystemTime,
@@ -193,7 +256,7 @@ impl KeyCache {
             }
         }
         let fetched = match fetch().await {
-            Ok(body) => KeySet::parse(&body).ok_or(KeyError::Unusable),
+            Ok(body) => KeySet::parse_under(&body, self.rule).ok_or(KeyError::Unusable),
             Err(_) => Err(KeyError::Unavailable),
         };
         // The outcome is stored before `_refreshing` is released, so each

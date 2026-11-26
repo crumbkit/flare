@@ -11,7 +11,12 @@
 //! configured [`Admit`] rule and creates a session. The crate holds no HTTP
 //! routes, cookies or pages; the server that hosts it does.
 //!
-//! The crate accepts only ID tokens signed with RS256, asks for no refresh
+//! [`ProxyAuthenticator`] is the second way in: it trusts the token that a
+//! single sign-on proxy in front of flare signs and sets as a cookie, and
+//! the same token as a bearer, with the checks of "Proxy token checks"
+//! below. It creates no session.
+//!
+//! The OpenID Connect sign-in accepts only ID tokens signed with RS256, asks for no refresh
 //! token and stores no ID token or access token. Sessions and the keys
 //! that seal pending sign-ins live in two stores that the caller passes to
 //! [`OidcAuthenticator::connect_stored`]. [`OidcAuthenticator::connect`]
@@ -54,6 +59,36 @@
 //! verified email in lower case, which shares are decided by. Under
 //! [`Admit::Emails`] the principal id is the entry's, which may differ
 //! from the email.
+//!
+//! # Proxy token checks, in order
+//!
+//! 1. The token is at most 8 KiB, or [`ProxyRefusal::TooLong`] before
+//!    anything is decoded.
+//! 2. The header's `alg` is one that [`ProxyAlgorithms`] lists, RS256,
+//!    ES256 or both. Any other value, `none` and every HMAC algorithm
+//!    included, is refused before a key is looked up.
+//! 3. The header's `kid` names a key in the cached key set, fetched from
+//!    the configured https address. For an unknown `kid` the set is
+//!    fetched again, at most once every 60 seconds, as for the provider's
+//!    key set.
+//! 4. The key's family matches the algorithm, and the signature verifies
+//!    with that key under that algorithm alone.
+//! 5. `iss` equals the configured issuer exactly, and `aud`, a string or a
+//!    list, contains the configured audience, so a token for another
+//!    application behind the same proxy is refused.
+//! 6. `exp` is present and has not passed, and `nbf` and `iat`, when
+//!    present, are not in the future, each with 60 seconds of leeway.
+//! 7. The identity claim, `email` unless [`IdentityClaim`] names another,
+//!    holds an email address, and `email_verified`, when present, is the
+//!    JSON boolean `true`.
+//! 8. The admit rule admits the address. Under [`Admit::Domain`] the
+//!    address's own domain is compared with the rule's, exactly and
+//!    without regard to ASCII letter case, because a proxy's token has no
+//!    `hd` claim.
+//!
+//! The proxy's key set keeps RSA keys for RS256 and P-256 keys for ES256,
+//! as the configured algorithms allow, and a set of more than 20 keys is
+//! unusable. Its states are those of the provider's key set below.
 //!
 //! # Admitting a Google Workspace domain
 //!
@@ -202,6 +237,7 @@ mod flow;
 mod keychain;
 mod keys;
 mod provider;
+mod proxy;
 mod refusal;
 mod seal;
 mod secret;
@@ -220,6 +256,13 @@ pub use file_secret::FileSecret;
 pub use flare_core::Email;
 pub use flow::{KeptState, ReturnTo, SignInStart};
 pub use keychain::KeychainSecret;
-pub use refusal::{ConnectError, MetadataFault, SecretError, SignInRefusal, TokenFault};
+pub use proxy::{
+    Audience, CookieName, IdentityClaim, KeySetUrl, ProxyAlgorithm, ProxyAlgorithms,
+    ProxyAuthenticator, ProxyConfig, ProxyConfigError, ProxyIssuer, ProxyLink,
+};
+pub use refusal::{
+    ConnectError, MetadataFault, ProxyConnectError, ProxyRefusal, SecretError, SignInRefusal,
+    TokenFault,
+};
 pub use secret::{ClientSecretSource, FixedSecret};
 pub use session::SignedIn;

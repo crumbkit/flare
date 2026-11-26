@@ -219,3 +219,98 @@ impl SignInRefusal {
         )
     }
 }
+
+/// Why [`ProxyAuthenticator::connect`](crate::ProxyAuthenticator::connect)
+/// failed. No authenticator exists afterwards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum ProxyConnectError {
+    /// The key set could not be fetched in time, answered with a status
+    /// other than 2xx, or was over 64 KiB.
+    #[error("the proxy's key set could not be fetched")]
+    Unreachable,
+    /// The key set holds no key that the configured algorithms use, or
+    /// more than 20 keys.
+    #[error(
+        "the proxy's key set holds no usable key for the configured algorithms, or more than 20 keys"
+    )]
+    Unusable,
+}
+
+/// Which check refused a proxy's token. No value carries the token or a
+/// claim's value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum ProxyRefusal {
+    /// The token is over 8 KiB, so nothing was decoded.
+    #[error("the proxy's token is longer than 8 KiB")]
+    TooLong,
+    /// The token is not three base64url parts of JSON of the expected
+    /// shape, or a time claim is not a whole number of seconds.
+    #[error("the proxy's token is malformed")]
+    Malformed,
+    /// The header's `alg` is not one the config lists, `none` and every
+    /// HMAC algorithm included, or names a key of another family.
+    #[error("the proxy's token is signed with an algorithm the config does not list")]
+    Algorithm,
+    /// The header names no key in the key set, fetched again or not.
+    #[error("the proxy's token names a key that its key set does not publish")]
+    UnknownKey,
+    /// The signature does not verify.
+    #[error("the proxy's token's signature does not verify")]
+    Signature,
+    /// `iss` differs from the configured issuer.
+    #[error("the proxy's token names another issuer")]
+    Issuer,
+    /// `aud` does not contain the configured audience.
+    #[error("the proxy's token is meant for another application")]
+    Audience,
+    /// `exp` passed more than 60 seconds ago.
+    #[error("the proxy's token has expired")]
+    Expired,
+    /// `nbf` or `iat` is more than 60 seconds ahead.
+    #[error("the proxy's token is not valid yet")]
+    NotYetValid,
+    /// The identity claim is missing or holds no email address.
+    #[error("the proxy's token names no email address in its identity claim")]
+    NoIdentity,
+    /// `email_verified` is present and is not `true`.
+    #[error("the proxy's token marks the address unverified")]
+    EmailUnverified,
+    /// The admit rule does not admit the address.
+    #[error("the account is not admitted")]
+    NotAdmitted,
+    /// A fetch of the key set for an unknown key failed.
+    #[error("the proxy's key set could not be fetched")]
+    KeysUnavailable,
+}
+
+impl ProxyRefusal {
+    /// The check's name, for a log line: such as `signature` or
+    /// `audience`.
+    #[must_use]
+    pub fn check(&self) -> &'static str {
+        match self {
+            Self::TooLong => "too_long",
+            Self::Malformed => "malformed",
+            Self::Algorithm => "algorithm",
+            Self::UnknownKey => "unknown_key",
+            Self::Signature => "signature",
+            Self::Issuer => "issuer",
+            Self::Audience => "audience",
+            Self::Expired => "expired",
+            Self::NotYetValid => "not_yet_valid",
+            Self::NoIdentity => "no_identity",
+            Self::EmailUnverified => "email_unverified",
+            Self::NotAdmitted => "not_admitted",
+            Self::KeysUnavailable => "keys_unavailable",
+        }
+    }
+
+    /// Whether the same token may be accepted later without any change, so
+    /// a server answers 503 rather than 401.
+    #[must_use]
+    pub fn is_temporary(&self) -> bool {
+        matches!(self, Self::KeysUnavailable)
+    }
+}

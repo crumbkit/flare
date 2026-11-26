@@ -76,6 +76,17 @@ pub(crate) async fn send(request: reqwest::RequestBuilder) -> Result<Reply, Repl
     read(response).await
 }
 
+/// GETs `url` and returns the body of a 2xx reply of at most 64 KiB. Any
+/// other status is [`ReplyError::Unreachable`].
+pub(crate) async fn fetch(client: &reqwest::Client, url: Url) -> Result<Vec<u8>, ReplyError> {
+    let reply = send(client.get(url)).await?;
+    if (200..300).contains(&reply.status) {
+        Ok(reply.body)
+    } else {
+        Err(ReplyError::Unreachable)
+    }
+}
+
 /// The fields of the discovery document that the crate reads.
 #[derive(Deserialize)]
 struct Metadata {
@@ -155,12 +166,7 @@ impl Provider {
     /// Fetches the key set's bytes. A status other than 2xx is
     /// [`ReplyError::Unreachable`].
     pub(crate) async fn fetch_keys(&self) -> Result<Vec<u8>, ReplyError> {
-        let reply = send(self.client.get(self.endpoints.keys.clone())).await?;
-        if (200..300).contains(&reply.status) {
-            Ok(reply.body)
-        } else {
-            Err(ReplyError::Unreachable)
-        }
+        fetch(&self.client, self.endpoints.keys.clone()).await
     }
 
     /// The client, for the token request.
