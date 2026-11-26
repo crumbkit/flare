@@ -23,6 +23,11 @@ use std::cmp::Reverse;
 /// The most hits one search answers.
 pub const MAX_HITS: usize = 500;
 
+/// Whether a search reads shares open to everyone signed in. It does not:
+/// it reads direct and team grants, as `flare shares --with-me` does by
+/// default.
+const INCLUDE_EVERYONE_GRANTS: bool = false;
+
 /// One share a search found, with what the caller is to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -189,7 +194,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C, U, T: Teams, K>
         let mine = self.shares.mine(who).await.map_err(SearchError::Share)?;
         let granted_to_me = self
             .shares
-            .shared_with_me(who, false)
+            .shared_with_me(who, INCLUDE_EVERYONE_GRANTS)
             .await
             .map_err(SearchError::Share)?;
         let partial = mine.truncated() || granted_to_me.truncated();

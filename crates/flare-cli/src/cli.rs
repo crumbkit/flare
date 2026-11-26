@@ -108,6 +108,10 @@ pub(crate) enum Verb {
     CommentDelete(CommentDeleteArgs),
     /// Search the shares you can open, newest first
     ///
+    /// A search reads the shares you own and those granted to you directly
+    /// or through a team. It does not search shares open to everyone
+    /// signed in.
+    ///
     /// A word or a "quoted phrase" matches inside a title, in any case.
     /// type:markdown or type:html filters by kind, and from:me, from: an
     /// address or from: a name this server knows filters by who shared it.

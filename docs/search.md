@@ -1,9 +1,11 @@
 # Searching flare
 
 `flare search '<query>'` and `GET /api/search?q=<query>` find the shares you
-can open: the shares you own and the shares granted to you. A search never
-finds a share that `flare show` would refuse you, and nothing you type can
-widen that.
+can open: the shares you own and the shares granted to you directly or
+through a team you belong to. A search does not find a share that is open
+only to everyone signed in. A search
+never finds a share that `flare show` would refuse you, and nothing you
+type can widen that.
 
 In this version, words and phrases match share titles only. A search does
 not read a share's Markdown or its comments. Results come newest first, by

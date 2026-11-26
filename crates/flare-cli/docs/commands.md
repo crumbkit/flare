@@ -885,6 +885,8 @@ Effects: destructive, not idempotent, closed-world.
 
 Search the shares you can open, newest first
 
+A search reads the shares you own and those granted to you directly or through a team. It does not search shares open to everyone signed in.
+
 A word or a "quoted phrase" matches inside a title, in any case. type:markdown or type:html filters by kind, and from:me, from: an address or from: a name this server knows filters by who shared it. A comma means any of, as in from:ana,me, a leading minus leaves a part out, and a space means every part must match. docs/search.md in the flare repository has more examples.
 
 ### Arguments

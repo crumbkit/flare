@@ -6,10 +6,12 @@
 use flare_core::contract::block_on;
 use flare_core::memory::{
     MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemoryShareStore,
+    MemoryTeamStore,
 };
 use flare_core::{
-    AllAdmitted, DocumentText, Email, Flares, NamedRecipients, NewFlare, Principal, PrincipalId,
-    Role, SearchHit, ShareContent, ShareId, ShareTitle, Standing, Timestamp,
+    Admission, AllAdmitted, DocumentText, Email, FlareTeams, Flares, Group, MailDomain,
+    NamedRecipients, NewFlare, Principal, PrincipalId, Role, SearchHit, ShareContent, ShareId,
+    ShareTitle, Standing, TeamName, Teams, Timestamp,
 };
 use flare_query::parse;
 use proptest::prelude::*;
@@ -146,6 +148,58 @@ fn a_share_granted_to_others_is_never_found_even_by_its_exact_title() {
 
 /// A part of a generated query: a word from the fixture's titles, a
 /// filter, or either excluded.
+#[test]
+fn a_share_granted_to_a_team_is_found_and_a_share_open_only_to_everyone_is_not() {
+    let flares = Flares::new(
+        MemoryShareStore::new(),
+        MemoryGrantStore::new(),
+        MemoryResponseStore::new(),
+        MemoryCommentStore::new(),
+        MemoryCursorStore::new(),
+        AllAdmitted,
+    )
+    .with_teams(FlareTeams::new(MemoryTeamStore::new()))
+    .admitting(Admission::Domain(
+        MailDomain::try_from("example.org").unwrap(),
+    ));
+    let design = TeamName::try_from("design").unwrap();
+    block_on(flares.create_team(&person(ANA), design.clone(), Timestamp::from_secs(1))).unwrap();
+    block_on(
+        flares
+            .shares()
+            .teams()
+            .add(&email(ANA), &design, &email(ME)),
+    )
+    .unwrap();
+    let new = |byte: u8, title: &str, group: Group| {
+        NewFlare::new(
+            id(byte),
+            ShareTitle::try_from(title).unwrap(),
+            ShareContent::Document(DocumentText::try_from("# Notes\n").unwrap()),
+            Vec::new(),
+            Vec::new(),
+        )
+        .with_groups(vec![group])
+    };
+    let at = Timestamp::from_secs(200);
+    block_on(flares.share(
+        &person(ANA),
+        new(1, "Budget for the team", Group::Team(design)),
+        at,
+    ))
+    .unwrap();
+    block_on(flares.share(
+        &person(ANA),
+        new(2, "Budget for everyone", Group::Everyone),
+        at,
+    ))
+    .unwrap();
+    let query = parse("budget").unwrap();
+    let found = block_on(flares.search(&person(ME), &query, &directory(), 50)).unwrap();
+    let ids: Vec<&ShareId> = found.hits.iter().map(|hit| hit.share.id()).collect();
+    assert_eq!(ids, [&id(1)]);
+}
+
 fn part() -> impl Strategy<Value = String> {
     let term = prop_oneof![
         prop::sample::select(vec![

@@ -275,7 +275,9 @@ This file records the notable changes to flare. The format follows
   their team can open in `flare activity`. `docs/teams.md` gives the life
   of teams and group grants.
 - `flare search '<query>'` and `GET /api/search?q=<query>` find the shares
-  you can open whose titles match a short query: words, "quoted phrases",
+  you own and the shares granted to you directly or through a team whose
+  titles match a short query. A search does not find a share that is open
+  only to everyone signed in. The query takes words, "quoted phrases",
   `type:markdown` or `type:html`, `from:me`, `from:` an address or a name
   the server knows, a comma for any of, and a leading minus to leave a part
   out. A query with an error runs nothing: the API answers 422 with each
