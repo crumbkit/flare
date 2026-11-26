@@ -374,8 +374,10 @@ where
         ApiRoute::SaveCursor => body_of(ctx, body)
             .await?
             .map(|request| Call::SaveCursor(name.to_owned(), request)),
-        ApiRoute::Search => number(ctx, MAX_LIST, DEFAULT_LIST)
-            .and_then(|limit| search_call(every(ctx.uri, "q"), limit)),
+        ApiRoute::Search => flag(ctx, "everyone").and_then(|everyone| {
+            number(ctx, MAX_LIST, DEFAULT_LIST)
+                .and_then(|limit| search_call(every(ctx.uri, "q"), limit, everyone))
+        }),
         ApiRoute::SearchFields => Ok(Call::SearchFields),
         ApiRoute::Exchange | ApiRoute::CliLogin | ApiRoute::ShareFile => {
             Err(ApiCode::BadQuery.into())

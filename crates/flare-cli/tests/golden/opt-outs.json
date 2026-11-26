@@ -54,15 +54,15 @@
     {
       "rule": "path-budget/command",
       "applies_to": "flare skills print",
-      "reason": "It prints the 6,270-byte skill.",
+      "reason": "It prints the 6,406-byte skill.",
       "costs": [
-        "An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens."
+        "An agent that finds and runs the command can read 1500 bytes more than the default, about 375 tokens."
       ],
       "budget": {
-        "bytes": 9000,
+        "bytes": 9500,
         "default": 8000,
-        "extra_bytes": 1000,
-        "extra_tokens": 250
+        "extra_bytes": 1500,
+        "extra_tokens": 375
       }
     }
   ],
@@ -286,6 +286,11 @@
     {
       "declaration": "example-precondition",
       "applies_to": "flare search 'from:ana@example.org,me \"review notes\"' --limit 20",
+      "declares": "The example runs only in a test run that provides server."
+    },
+    {
+      "declaration": "example-precondition",
+      "applies_to": "flare search budget --everyone",
       "declares": "The example runs only in a test run that provides server."
     },
     {

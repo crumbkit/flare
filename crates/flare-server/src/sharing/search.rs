@@ -20,11 +20,20 @@ use flare_core::{
 use flare_query::fields::{FIELDS, FieldKind};
 use flare_query::{ErrorCode, QueryError, parse};
 
-/// The call of `GET /api/search` from the query's `q` values and its
-/// limit. The query needs exactly one `q`, which may be empty.
-pub(crate) fn search_call(texts: Vec<String>, limit: usize) -> Result<Call, Refusal> {
+/// The call of `GET /api/search` from the query's `q` values, its limit
+/// and its `everyone` flag. The query needs exactly one `q`, which may be
+/// empty.
+pub(crate) fn search_call(
+    texts: Vec<String>,
+    limit: usize,
+    everyone: bool,
+) -> Result<Call, Refusal> {
     let [text]: [String; 1] = texts.try_into().map_err(|_| ApiCode::BadQuery)?;
-    Ok(Call::Search { text, limit })
+    Ok(Call::Search {
+        text,
+        limit,
+        everyone,
+    })
 }
 
 /// The 422 refusal that lists `errors`: `unknown_person` when every error
@@ -90,12 +99,19 @@ where
     K: Creators,
 {
     /// The answer of `GET /api/search` for `text`, with at most `limit`
-    /// results.
-    pub(super) async fn search(&self, who: &Principal, text: &str, limit: usize) -> Answer {
+    /// results, searching the shares open to everyone signed in only with
+    /// `everyone`.
+    pub(super) async fn search(
+        &self,
+        who: &Principal,
+        text: &str,
+        limit: usize,
+        everyone: bool,
+    ) -> Answer {
         let query = parse(text).map_err(|errors| invalid(&errors))?;
         let found = self
             .flares
-            .search(who, &query, &self.recipients, limit)
+            .search(who, &query, &self.recipients, everyone, limit)
             .await
             .map_err(search_error)?;
         let results = found

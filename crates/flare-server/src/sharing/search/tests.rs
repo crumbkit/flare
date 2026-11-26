@@ -63,6 +63,7 @@ async fn search(api: &Memory, text: &str, limit: usize) -> Value {
     let call = Call::Search {
         text: text.to_owned(),
         limit,
+        everyone: false,
     };
     let now = Timestamp::from_secs(9_000);
     let (status, body) = api
@@ -96,6 +97,7 @@ async fn an_invalid_query_reads_no_store_and_lists_every_error() {
     let call = Call::Search {
         text: "sort:new -".to_owned(),
         limit: 50,
+        everyone: false,
     };
     let now = Timestamp::from_secs(9_000);
     let refusal = api

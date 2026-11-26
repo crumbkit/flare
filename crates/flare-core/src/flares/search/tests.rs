@@ -75,7 +75,7 @@ impl Recipients for Directory {
 const UP: Directory = Directory { down: false };
 
 fn run(flares: &Memory, who: &Principal, text: &str, limit: usize) -> Result<Found, SearchError> {
-    block_on(flares.search(who, &parse(text).unwrap(), &UP, limit))
+    block_on(flares.search(who, &parse(text).unwrap(), &UP, false, limit))
 }
 
 fn invalid(result: Result<Found, SearchError>) -> Vec<(ErrorCode, Span)> {
@@ -131,10 +131,10 @@ fn a_directory_that_does_not_answer_stops_the_search_and_me_needs_no_directory()
     let mei = person("mei@example.org");
     let down = Directory { down: true };
     let query = parse("from:ana").unwrap();
-    let result = block_on(flares.search(&mei, &query, &down, 50));
+    let result = block_on(flares.search(&mei, &query, &down, false, 50));
     assert_eq!(result.unwrap_err(), SearchError::RecipientsUnavailable);
     let me = parse("from:me").unwrap();
-    let found = block_on(flares.search(&mei, &me, &down, 50)).unwrap();
+    let found = block_on(flares.search(&mei, &me, &down, false, 50)).unwrap();
     assert_eq!(found.hits.len(), 1);
 }
 

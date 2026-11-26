@@ -2,10 +2,12 @@
 
 `flare search '<query>'` and `GET /api/search?q=<query>` find the shares you
 can open: the shares you own and the shares granted to you directly or
-through a team you belong to. A search does not find a share that is open
-only to everyone signed in. A search
-never finds a share that `flare show` would refuse you, and nothing you
-type can widen that.
+through a team you belong to. A search leaves out the shares open to
+everyone signed in unless it asks for them: `flare search --everyone` and
+`GET /api/search?q=<query>&everyone=true` also search those, as
+`flare shares --with-me --everyone` lists them. A search never finds a
+share that `flare show` would refuse you, and nothing you type can widen
+that.
 
 In this version, words and phrases match share titles only. A search does
 not read a share's Markdown or its comments. Results come newest first, by
@@ -79,9 +81,10 @@ anything, and an unknown person fails with exit code 1.
 ## Limits
 
 One search reads at most 500 of your own shares and 500 of the shares
-granted to you. When either list holds more, the answer's `partial` is
-true, `flare search` says that a match may be missing, and a narrower
-search finds it. One answer holds at most 500 shares, set by `limit`, and
+granted to you, counting the shares open to everyone signed in among the
+granted ones when the search asks for them. When either list holds more,
+the answer's `partial` is true, `flare search` says that a match may be
+missing, and a narrower search finds it. One answer holds at most 500 shares, set by `limit`, and
 `next` is always null in this version.
 
 `GET /api/search/fields` lists the filters, with what kind of value each

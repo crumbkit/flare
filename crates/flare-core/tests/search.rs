@@ -24,6 +24,16 @@ type Memory = Flares<
     MemoryCursorStore,
 >;
 
+/// [`Memory`] with teams.
+type TeamMemory = Flares<
+    MemoryShareStore,
+    MemoryGrantStore,
+    MemoryResponseStore,
+    MemoryCommentStore,
+    MemoryCursorStore,
+    FlareTeams<MemoryTeamStore>,
+>;
+
 fn email(text: &str) -> Email {
     Email::try_from(text).unwrap()
 }
@@ -91,7 +101,7 @@ fn fixture() -> Memory {
 
 fn search(flares: &Memory, who: &str, text: &str) -> Vec<SearchHit> {
     let query = parse(text).unwrap();
-    block_on(flares.search(&person(who), &query, &directory(), 50))
+    block_on(flares.search(&person(who), &query, &directory(), false, 50))
         .unwrap()
         .hits
 }
@@ -146,10 +156,9 @@ fn a_share_granted_to_others_is_never_found_even_by_its_exact_title() {
     assert_eq!(numbers(&search(&flares, JO, "\"Secret budget\"")), [7]);
 }
 
-/// A part of a generated query: a word from the fixture's titles, a
-/// filter, or either excluded.
-#[test]
-fn a_share_granted_to_a_team_is_found_and_a_share_open_only_to_everyone_is_not() {
+/// Mei is in ana's design team. Ana shares one flare with the team, one
+/// with mei directly and one with everyone at example.org.
+fn team_direct_and_everyone() -> TeamMemory {
     let flares = Flares::new(
         MemoryShareStore::new(),
         MemoryGrantStore::new(),
@@ -171,35 +180,62 @@ fn a_share_granted_to_a_team_is_found_and_a_share_open_only_to_everyone_is_not()
             .add(&email(ANA), &design, &email(ME)),
     )
     .unwrap();
-    let new = |byte: u8, title: &str, group: Group| {
+    let new = |byte: u8, title: &str, with: Vec<Email>, groups: Vec<Group>| {
         NewFlare::new(
             id(byte),
             ShareTitle::try_from(title).unwrap(),
             ShareContent::Document(DocumentText::try_from("# Notes\n").unwrap()),
-            Vec::new(),
+            with,
             Vec::new(),
         )
-        .with_groups(vec![group])
+        .with_groups(groups)
     };
-    let at = Timestamp::from_secs(200);
-    block_on(flares.share(
-        &person(ANA),
-        new(1, "Budget for the team", Group::Team(design)),
-        at,
-    ))
-    .unwrap();
-    block_on(flares.share(
-        &person(ANA),
-        new(2, "Budget for everyone", Group::Everyone),
-        at,
-    ))
-    .unwrap();
-    let query = parse("budget").unwrap();
-    let found = block_on(flares.search(&person(ME), &query, &directory(), 50)).unwrap();
-    let ids: Vec<&ShareId> = found.hits.iter().map(|hit| hit.share.id()).collect();
-    assert_eq!(ids, [&id(1)]);
+    let shares = [
+        new(
+            1,
+            "Budget for the team",
+            Vec::new(),
+            vec![Group::Team(design)],
+        ),
+        new(2, "Budget for everyone", Vec::new(), vec![Group::Everyone]),
+        new(3, "Budget for mei", vec![email(ME)], Vec::new()),
+    ];
+    for (second, flare) in (200..).zip(shares) {
+        block_on(flares.share(&person(ANA), flare, Timestamp::from_secs(second))).unwrap();
+    }
+    flares
 }
 
+fn found(flares: &TeamMemory, everyone: bool) -> Vec<u8> {
+    let query = parse("budget").unwrap();
+    let found = block_on(flares.search(&person(ME), &query, &directory(), everyone, 50)).unwrap();
+    numbers(&found.hits)
+}
+
+#[test]
+fn a_search_leaves_out_a_share_open_only_to_everyone_by_default() {
+    let flares = team_direct_and_everyone();
+    assert_eq!(found(&flares, false), [3, 1]);
+}
+
+#[test]
+fn a_search_with_everyone_finds_a_share_open_to_everyone_signed_in() {
+    let flares = team_direct_and_everyone();
+    assert_eq!(found(&flares, true), [3, 2, 1]);
+}
+
+#[test]
+fn a_share_granted_to_the_person_or_their_team_is_found_with_or_without_everyone() {
+    let flares = team_direct_and_everyone();
+    for everyone in [false, true] {
+        let hits = found(&flares, everyone);
+        assert!(hits.contains(&3), "direct, everyone {everyone}: {hits:?}");
+        assert!(hits.contains(&1), "team, everyone {everyone}: {hits:?}");
+    }
+}
+
+/// A part of a generated query: a word from the fixture's titles, a
+/// filter, or either excluded.
 fn part() -> impl Strategy<Value = String> {
     let term = prop_oneof![
         prop::sample::select(vec![

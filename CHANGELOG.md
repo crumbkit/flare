@@ -276,8 +276,10 @@ This file records the notable changes to flare. The format follows
   of teams and group grants.
 - `flare search '<query>'` and `GET /api/search?q=<query>` find the shares
   you own and the shares granted to you directly or through a team whose
-  titles match a short query. A search does not find a share that is open
-  only to everyone signed in. The query takes words, "quoted phrases",
+  titles match a short query. A search leaves out the shares open to
+  everyone signed in unless it is given `--everyone`, or `everyone=true`
+  in the API, and the API answers 400 `flare::requests::bad_query` for
+  any other value of `everyone`. The query takes words, "quoted phrases",
   `type:markdown` or `type:html`, `from:me`, `from:` an address or a name
   the server knows, a comma for any of, and a leading minus to leave a part
   out. A query with an error runs nothing: the API answers 422 with each

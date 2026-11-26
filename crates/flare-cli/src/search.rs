@@ -79,10 +79,12 @@ pub(crate) async fn search(
         .map_or(MAX_RESULTS, |limit| limit.saturating_add(1))
         .min(MAX_RESULTS)
         .to_string();
-    let pairs = form_urlencoded::Serializer::new(String::new())
-        .append_pair("q", text)
-        .append_pair("limit", &limit)
-        .finish();
+    let mut pairs = form_urlencoded::Serializer::new(String::new());
+    pairs.append_pair("q", text).append_pair("limit", &limit);
+    if args.everyone {
+        pairs.append_pair("everyone", "true");
+    }
+    let pairs = pairs.finish();
     let target = format!("/api/search?{pairs}");
     let answer: Option<SearchAnswer> = api
         .send(Method::GET, &target, None::<&()>)
