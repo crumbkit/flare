@@ -1,6 +1,7 @@
 //! flare-server driven through a real listener on a free port, with
 //! memory stores, a raw HTTP/1.1 client and, for OpenID Connect, the fake
-//! provider of flare-auth-oidc's tests.
+//! provider of flare-auth-oidc's tests, and behind a single sign-on
+//! proxy, its fake proxy issuer.
 #![cfg(test)]
 
 #[path = "../../flare-auth-oidc/tests/support/fake_provider.rs"]
@@ -11,6 +12,14 @@
     reason = "the fake provider is test support: it panics on a broken fixture, and each test reads what it returns"
 )]
 pub mod fake_provider;
+
+#[path = "../../flare-auth-oidc/tests/support/fake_proxy.rs"]
+#[expect(
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    reason = "the fake proxy issuer is test support: it panics on a broken fixture, and each test reads what it returns"
+)]
+pub mod fake_proxy;
 
 #[path = "../../flare-auth-loopback/tests/support/scratch.rs"]
 #[expect(
@@ -39,6 +48,14 @@ pub mod hosted;
 
 #[path = "support/faulty.rs"]
 pub mod faulty;
+
+#[path = "support/proxied.rs"]
+#[expect(
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    reason = "the proxied harness is test support: it panics on a broken fixture, and each test reads what it returns"
+)]
+pub mod proxied;
 
 #[path = "support/api.rs"]
 #[expect(
@@ -80,6 +97,8 @@ mod ops;
 mod pages;
 #[path = "server/process.rs"]
 mod process;
+#[path = "server/proxied.rs"]
+mod proxied_site;
 #[path = "server/reading.rs"]
 mod reading;
 #[path = "server/search.rs"]

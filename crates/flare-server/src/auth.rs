@@ -15,6 +15,8 @@ pub enum Side {
     Loopback,
     /// The OpenID Connect authenticator: one of its sessions.
     Oidc,
+    /// The hosted site's sign-in, whichever it is.
+    Hosted,
 }
 
 /// A credential that one side accepted, for one request. Nothing keeps it
@@ -106,6 +108,8 @@ impl<C: OidcClock> Gate<C> {
                 let oidc = self.oidc.as_ref().ok_or(AuthError::Unavailable)?;
                 oidc.authorize(&admitted.principal, access, resource).await
             }
+            // A gate never admits a request as the hosted site's.
+            Side::Hosted => Err(AuthError::Rejected),
         }
     }
 }

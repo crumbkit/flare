@@ -257,6 +257,7 @@ mod routes;
 mod schemas;
 mod secret;
 mod sharing;
+mod sign_in;
 mod site;
 mod tasks;
 
@@ -277,4 +278,5 @@ pub use schemas::Schemas;
 pub use sharing::{
     BodyRefused, GetFlare, NoFiles, NotGetFlare, Sharing, check_share, check_version,
 };
+pub use sign_in::{HostedRefusal, HostedSignIn, Unsigned};
 pub use site::{OriginError, PublicOrigin, Site};

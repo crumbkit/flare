@@ -10,6 +10,7 @@ use super::multipart::{self, Part};
 use crate::metrics::Event;
 use crate::problem::{Code, Problem};
 use crate::sharing::{Answer, Api, ImagePart, Refusal, Upload};
+use crate::sign_in::HostedSignIn;
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::ApiCode;
 use flare_core::{Principal, Timestamp};
@@ -19,8 +20,8 @@ use serde::de::DeserializeOwned;
 
 /// The boundary of a create or a publish sent as a multipart form, or
 /// `None` for any other request.
-pub(super) fn boundary_of<P, R, S, K: OidcClock>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(super) fn boundary_of<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     route: ApiRoute,
 ) -> Option<String> {
     if !matches!(route, ApiRoute::CreateShare | ApiRoute::PublishVersion) {
@@ -81,8 +82,8 @@ pub(super) fn upload_of(route: ApiRoute, name: &str, parts: Vec<Part>) -> Result
 
 /// Reads the form of `route` on share `name`, runs its upload, and counts
 /// a delete that failed.
-pub(super) async fn run<P, R, S, K: OidcClock>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(super) async fn run<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     api: &dyn Api,
     who: &Principal,
     (route, name): (ApiRoute, &str),

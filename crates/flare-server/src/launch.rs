@@ -10,6 +10,7 @@ use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::secret;
+use crate::sign_in::HostedSignIn;
 use flare_auth_loopback::{CodeError, ReturnPath, SignInError};
 use flare_auth_oidc::Clock as OidcClock;
 use flare_core::{PageStore, RecordStore};
@@ -20,12 +21,13 @@ const HOME: &str = "/flare/";
 
 /// `POST /launch/codes?return_to=`: a launch code, its opener file, and
 /// the opener's path as JSON.
-pub(crate) fn codes<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
+pub(crate) fn codes<P, R, S, K, H>(ctx: &Ctx<'_, P, R, S, K, H>) -> Result<Reply, Problem>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let target = ctx.query("return_to").unwrap_or_else(|| HOME.to_owned());
     let target = ReturnPath::try_from(target.as_str()).map_err(|_| Code::BadQuery)?;
@@ -60,12 +62,13 @@ where
 
 /// `GET /launch?code=`: signs the browser in, removes the opener, and
 /// sends the browser on to the code's target.
-pub(crate) fn launch<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
+pub(crate) fn launch<P, R, S, K, H>(ctx: &Ctx<'_, P, R, S, K, H>) -> Result<Reply, Problem>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let code = ctx.query("code").ok_or(Code::BadQuery)?;
     let (Some(gate), Some(state)) = (ctx.shared.site.gate(), ctx.shared.site.state()) else {
@@ -88,12 +91,13 @@ where
 
 /// `GET /auth/oidc/finish?code=`: redeems a hand-over code and sets the
 /// OpenID Connect session's cookie on the launch host.
-pub(crate) async fn finish<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
+pub(crate) async fn finish<P, R, S, K, H>(ctx: &Ctx<'_, P, R, S, K, H>) -> Result<Reply, Problem>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let code = ctx.query("code").ok_or(Code::BadQuery)?;
     let handed = match ctx.shared.handover.redeem(&code, ctx.now) {

@@ -23,6 +23,7 @@ use crate::problem::{Code, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::secret::{self, HOSTED_CLEAR_KEPT, HOSTED_KEPT_COOKIE, KEPT_COOKIE};
+use crate::sign_in::HostedSignIn;
 use flare_auth_loopback::ReturnPath;
 use flare_auth_oidc::{Clock as OidcClock, ReturnTo, SignInRefusal, SignedIn};
 use flare_core::{Credential, PageStore, RecordStore};
@@ -32,8 +33,8 @@ use std::net::IpAddr;
 /// Clears the kept-state cookie.
 const CLEAR_KEPT: &str = "flare_oidc_state=; Path=/auth/oidc; HttpOnly; SameSite=Lax; Max-Age=0";
 
-pub(crate) async fn handle<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn handle<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     port: u16,
     peer: IpAddr,
     method: &Method,
@@ -43,6 +44,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     checks::sign_in_host(peer, ctx.headers, port)?;
     let path = ctx.uri.path();
@@ -107,12 +109,13 @@ where
 }
 
 /// The checked `return_to` of a start: a path on this server.
-fn return_to<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<ReturnTo, Code>
+fn return_to<P, R, S, K, H>(ctx: &Ctx<'_, P, R, S, K, H>) -> Result<ReturnTo, Code>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let back = ctx.query("return_to").ok_or(Code::BadReturn)?;
     ReturnPath::try_from(back.as_str()).map_err(|_| Code::BadReturn)?;
@@ -121,12 +124,15 @@ where
 
 /// `GET /auth/oidc/start` on the hosted site: seals the sign-in into
 /// `__Host-flare_oidc_state` and redirects to the provider.
-pub(crate) async fn hosted_start<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>) -> Result<Reply, Problem>
+pub(crate) async fn hosted_start<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
+) -> Result<Reply, Problem>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let oidc = ctx.shared.site.oidc().ok_or(Code::NotFound)?;
     let start = oidc.start(return_to(ctx)?).await.map_err(refused)?;
@@ -138,8 +144,8 @@ where
 /// credential `hosted::check` parsed, which a successful sign-in ends. The
 /// kept-state cookie is cleared on every answer, and a refusal is logged
 /// with its code and refusal, never the state or a cookie.
-pub(crate) async fn hosted_callback<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn hosted_callback<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     old: Option<&Credential>,
 ) -> Result<Reply, Problem>
 where
@@ -147,6 +153,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let oidc = ctx.shared.site.oidc().ok_or(Code::NotFound)?;
     let kept = cookies::kept_state(ctx.headers, HOSTED_KEPT_COOKIE);

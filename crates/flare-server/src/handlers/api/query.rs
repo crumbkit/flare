@@ -3,13 +3,14 @@
 use super::super::Ctx;
 use crate::schemas::Schemas;
 use crate::sharing::Refusal;
+use crate::sign_in::HostedSignIn;
 use flare_auth_oidc::Clock as OidcClock;
 use flare_contract::ApiCode;
 use flare_core::{PageStore, RecordStore, ShareVersion};
 
 /// A number in the query between 1 and `max`, or `default` when absent.
-pub(super) fn number<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(super) fn number<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     max: usize,
     default: usize,
 ) -> Result<usize, Refusal>
@@ -18,6 +19,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     match ctx.query("limit") {
         None => Ok(default),
@@ -31,14 +33,15 @@ where
 
 /// The share version that `version` in the query names, or `None` when
 /// absent. A value that is not a number from 1 is a bad query.
-pub(super) fn version<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(super) fn version<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
 ) -> Result<Option<ShareVersion>, Refusal>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     match ctx.query("version") {
         None => Ok(None),
@@ -62,12 +65,13 @@ pub(super) fn every(ctx_uri: &http::Uri, name: &str) -> Vec<String> {
 
 /// The boolean that `name` in the query gives: `true` or `false`, and
 /// `false` when absent. Any other value is a bad query.
-pub(super) fn flag<P, R, S, K>(ctx: &Ctx<'_, P, R, S, K>, name: &str) -> Result<bool, Refusal>
+pub(super) fn flag<P, R, S, K, H>(ctx: &Ctx<'_, P, R, S, K, H>, name: &str) -> Result<bool, Refusal>
 where
     P: PageStore,
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     match ctx.query(name).as_deref() {
         None | Some("false") => Ok(false),

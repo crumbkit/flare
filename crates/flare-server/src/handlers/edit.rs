@@ -10,6 +10,7 @@ use crate::problem::{Code, Help, Problem};
 use crate::reply::Reply;
 use crate::schemas::Schemas;
 use crate::secret;
+use crate::sign_in::HostedSignIn;
 use crate::tasks;
 use flare_auth_oidc::Clock as OidcClock;
 use flare_core::{
@@ -26,8 +27,8 @@ const TRIES: usize = 3;
 
 const FORM: &str = "application/x-www-form-urlencoded";
 
-pub(crate) async fn post<P, R, S, K>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn post<P, R, S, K, H>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     (admitted, access): (&Admitted, Access),
     credential: &Credential,
     name: &str,
@@ -38,6 +39,7 @@ where
     R: RecordStore,
     S: Schemas,
     K: OidcClock,
+    H: HostedSignIn<K>,
 {
     let name = BindingName::try_from(name).map_err(|_| Code::BadName)?;
     let session = secret::session_digest(credential).ok_or(Code::NeedsSession)?;
@@ -162,8 +164,8 @@ where
 }
 
 /// Reads the body through the 1 MiB limit within the read time.
-pub(crate) async fn read_body<P, R, S, K: OidcClock>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn read_body<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     body: Incoming,
 ) -> Result<Bytes, Problem> {
     read_limited(
@@ -176,8 +178,8 @@ pub(crate) async fn read_body<P, R, S, K: OidcClock>(
 
 /// Reads a request body of at most `most` bytes, as [`read_body`] does,
 /// and answers a larger one with `too_large`.
-pub(crate) async fn read_limited<P, R, S, K: OidcClock>(
-    ctx: &Ctx<'_, P, R, S, K>,
+pub(crate) async fn read_limited<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     body: Incoming,
     (most, too_large): (usize, Code),
 ) -> Result<Bytes, Problem> {
@@ -216,8 +218,8 @@ struct Again<'a> {
 
 /// The form drawn again with the post's entries, its `based_on` and a new
 /// token, stating `message`.
-fn refused<P, R, S, K: OidcClock>(
-    ctx: &Ctx<'_, P, R, S, K>,
+fn refused<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
+    ctx: &Ctx<'_, P, R, S, K, H>,
     again: &Again<'_>,
     record: &Record,
     message: &str,
