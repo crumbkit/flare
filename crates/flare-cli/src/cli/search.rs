@@ -12,6 +12,9 @@ pub(crate) struct SearchArgs {
     /// It may start with a minus, as in '-from:me'.
     #[arg(value_name = "QUERY", allow_hyphen_values = true)]
     pub(crate) query: String,
+    /// Also search the shares open to everyone signed in
+    #[arg(long)]
+    pub(crate) everyone: bool,
     /// How many shares to list; --all lists up to 500.
     #[command(flatten)]
     pub(crate) page: Page<50, 500>,
@@ -28,6 +31,11 @@ pub(super) const LEAF: Leaf = Leaf::new(&["search"])
         Example::new(
             &["from:ana@example.org,me \"review notes\"", "--limit", "20"],
             "List the 20 newest shares from ana or you whose title holds review notes",
+        )
+        .needs(&["server"]),
+        Example::new(
+            &["budget", "--everyone"],
+            "List the shares you can open whose title holds budget, including those open to everyone signed in",
         )
         .needs(&["server"]),
     ])

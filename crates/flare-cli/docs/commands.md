@@ -886,13 +886,14 @@ Effects: destructive, not idempotent, closed-world.
 
 Search the shares you can open, newest first
 
-A search reads the shares you own and those granted to you directly or through a team. It does not search shares open to everyone signed in.
+A search reads the shares you own and those granted to you directly or through a team. It searches the shares open to everyone signed in only with --everyone.
 
 A word or a "quoted phrase" matches inside a title, in any case. type:markdown or type:html filters by kind, and from:me, from: an address or from: a name this server knows filters by who shared it. A comma means any of, as in from:ana,me, a leading minus leaves a part out, and a space means every part must match. docs/search.md in the flare repository has more examples.
 
 ### Arguments
 
 - `<QUERY>`: The search, such as 'budget -type:html' or 'from:me "review notes"'. It may start with a minus, as in '-from:me'. Required.
+- `--everyone`: Also search the shares open to everyone signed in
 - `--limit <N>`: Print at most this many rows, up to 500. Default: `50`.
 - `--all`: Print every row
 
@@ -908,6 +909,12 @@ List the 20 newest shares from ana or you whose title holds review notes.
 
 ```sh
 flare search 'from:ana@example.org,me "review notes"' --limit 20
+```
+
+List the shares you can open whose title holds budget, including those open to everyone signed in.
+
+```sh
+flare search budget --everyone
 ```
 
 ### Columns

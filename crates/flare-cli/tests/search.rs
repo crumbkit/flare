@@ -166,6 +166,28 @@ fn search_all_and_limit_ask_the_server_for_that_many_results() {
     );
 }
 
+#[test]
+fn search_everyone_asks_for_shares_open_to_everyone_and_a_plain_search_does_not() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    api.route("GET", "/api/search", 200, &answer("x", "X", false));
+    api.route("GET", "/api/search", 200, &answer("x", "X", false));
+    home.sharing(&["search", "x", "--everyone"]).assert_ok();
+    home.sharing(&["search", "x"]).assert_ok();
+    let targets: Vec<String> = api
+        .requests_to("/api/search")
+        .into_iter()
+        .map(|request| request.target)
+        .collect();
+    assert_eq!(
+        targets,
+        [
+            "/api/search?q=x&limit=51&everyone=true",
+            "/api/search?q=x&limit=51"
+        ]
+    );
+}
+
 /// A search answer with `count` shares.
 fn answer_of(count: usize) -> Value {
     let results: Vec<Value> = (0..count)

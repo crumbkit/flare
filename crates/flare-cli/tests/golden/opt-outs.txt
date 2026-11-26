@@ -22,11 +22,11 @@ help-budget/root: flare
   Cost: Each read of the page can cost 500 bytes more than the default, about 125 tokens.
 
 path-budget/command: flare skills print
-  Budget: 9000 bytes, where the default is 8000 bytes.
-  Reason: It prints the 6,270-byte skill.
-  Cost: An agent that finds and runs the command can read 1000 bytes more than the default, about 250 tokens.
+  Budget: 9500 bytes, where the default is 8000 bytes.
+  Reason: It prints the 6,406-byte skill.
+  Cost: An agent that finds and runs the command can read 1500 bytes more than the default, about 375 tokens.
 
-flare has 46 declarations.
+flare has 47 declarations.
 
 root-verbs: flare serve, flare open, flare publish, flare bind, flare login, flare logout, flare share, flare show, flare grant, flare revoke, flare grants, flare shares, flare activity, flare comments, flare comment, flare reply, flare comment-edit, flare comment-delete, flare search, flare metrics
   Declares: Each command sits directly under the root as a verb, and root help lists it under the heading Verbs.
@@ -159,6 +159,9 @@ example-precondition: flare search 'budget -type:html'
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare search 'from:ana@example.org,me "review notes"' --limit 20
+  Declares: The example runs only in a test run that provides server.
+
+example-precondition: flare search budget --everyone
   Declares: The example runs only in a test run that provides server.
 
 example-precondition: flare files sweep --config /etc/flare/config.json --yes
