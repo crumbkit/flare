@@ -42,6 +42,7 @@ mod search;
 mod serve;
 mod sharing;
 mod teams;
+mod token_command;
 
 pub use cli::{Cli, TOOL};
 pub use codes::CODES;

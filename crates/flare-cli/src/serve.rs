@@ -6,36 +6,31 @@
 //! prints one line that names the board and says to run `flare open`; it
 //! never prints the launch host, a launch URL or the token. With one, it
 //! serves the hosted site on the configured address behind a TLS proxy,
-//! reads the client secret from the configured file, writes no server file
-//! and has no idle exit. When the hosted section names its stores, it checks
+//! writes no server file and has no idle exit. A hosted site signs people
+//! in through flare's OpenID Connect sign-in, whose client secret it reads
+//! from the configured file, or through the signed token of a single
+//! sign-on proxy, whose key set it fetches before it binds. When the hosted section names its stores, it checks
 //! the DynamoDB table and the S3 bucket before it binds and serves the share
 //! API from them, with the images of shares kept in the bucket.
+
+mod hosted;
 
 use crate::board;
 use crate::cli::ServeArgs;
 use crate::codes::{Failed, HeldPort};
-use crate::config::{
-    self, Hosted, HostedCreators, KEYCHAIN_SERVICE, LocalOidc, Secret, Sharing as SharingConfig,
-    Site as Configured,
-};
+use crate::config::{self, KEYCHAIN_SERVICE, LocalOidc, Secret, Site as Configured};
 use crate::documents::Served;
 use crate::env::Snapshot;
 use crate::{log, open};
 use crumbkit::Call;
 use flare_auth_loopback::{Loopback, Served as Reach, local_principal};
 use flare_auth_oidc::{
-    Admit, ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator,
-    OidcConfig,
+    ClientSecretSource, ConnectError, FileSecret, KeychainSecret, OidcAuthenticator, OidcConfig,
 };
-use flare_aws::{
-    DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
-    DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
-    S3FileStore, Stores,
-};
+use flare_aws::{DynamoSealingKeys, DynamoSessionStore};
 use flare_board::BoardStore;
-use flare_core::{FlareTeams, Flares, NamedRecipients};
 use flare_server::{
-    App, BindError, Gate, Limits, Listeners, Metrics, ServeError, Sharing, Site, Stopped,
+    App, BindError, Gate, HostedSignIn, Limits, Listeners, Metrics, ServeError, Site, Stopped,
 };
 use std::path::Path;
 use std::sync::OnceLock;
@@ -183,7 +178,7 @@ async fn serve_board(args: &ServeArgs, env: &Snapshot) -> Result<(Served, Stop),
     let metrics = Metrics::new(config.metrics);
     match config.site {
         Configured::Local { oidc } => local(args, env, (&root, store), oidc, metrics).await,
-        Configured::Hosted(hosted) => self::hosted(&root, store, hosted, metrics).await,
+        Configured::Hosted(site) => hosted::hosted(&root, store, site, metrics).await,
     }
 }
 
@@ -237,7 +232,8 @@ async fn local(
         gate: Gate::new(loopback, oidc),
         state,
     };
-    let app = App::new(store.clone(), store.clone(), store, site, limits).with_metrics(metrics);
+    let app: App<_, _, _> =
+        App::new(store.clone(), store.clone(), store, site, limits).with_metrics(metrics);
     log::start();
     tracing::info!(
         board = %root.display(),
@@ -246,109 +242,11 @@ async fn local(
     serve(root, listeners, app, &mut signals).await
 }
 
-/// Serves the hosted site: reads the secret file, draws the sealing key
-/// and discovers the provider before it binds.
-async fn hosted(
-    root: &Path,
-    store: BoardStore,
-    hosted: Hosted,
-    metrics: Metrics,
-) -> Result<(Served, Stop), Failed> {
-    let Hosted {
-        origin,
-        listen,
-        oidc,
-        secret_file,
-        sharing,
-    } = hosted;
-    let admit = oidc.admit().clone();
-    let stores = match &sharing {
-        Some(config) => Some(Stores::connect(&config.stores).await),
-        None => None,
-    };
-    let persisted = stores.as_ref().map(|stores| Persisted {
-        sessions: stores.sessions.clone(),
-        keys: stores.keys.clone(),
-    });
-    let oidc = connect(oidc, &Secret::File(secret_file), persisted).await?;
-    if sharing.as_ref().is_some_and(|config| config.open_to_anyone) {
-        tracing::warn!(
-            "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
-        );
-    }
-    let sharing = match (sharing, stores) {
-        (Some(config), Some(stores)) => Some(share_api(*config, stores, admit).await?),
-        _ => None,
-    };
-    let mut signals = Signals::install()?;
-    let listeners =
-        Listeners::bind_hosted(listen).map_err(|error| bind_failed(error, |_| HeldPort::Hosted))?;
-    log::start();
-    tracing::info!(
-        board = %root.display(),
-        origin = origin.as_str(),
-        "flare serves this board as a hosted site behind a TLS proxy"
-    );
-    let site = Site::Hosted { origin, oidc };
-    let app = App::new(store.clone(), store.clone(), store, site, Limits::default())
-        .with_metrics(metrics);
-    let app = match sharing {
-        Some(sharing) => app.with_sharing(sharing),
-        None => app,
-    };
-    serve(root, listeners, app, &mut signals).await
-}
-
-/// The share API on the hosted site's table and bucket.
-type HostedSharing = Sharing<
-    DynamoShareStore,
-    DynamoGrantStore,
-    DynamoResponseStore,
-    DynamoCommentStore,
-    DynamoCursorStore,
-    DynamoTokenStore,
-    NamedRecipients,
-    FlareTeams<DynamoTeamStore>,
-    HostedCreators,
-    S3FileStore,
->;
-
-/// The share API on the configured table and bucket, which it checks
-/// first, keeping images in the bucket and accepting a token only while
-/// `admit` admits its owner.
-async fn share_api(
-    config: SharingConfig,
-    stores: Stores,
-    admit: Admit,
-) -> Result<HostedSharing, Failed> {
-    stores
-        .check()
-        .await
-        .map_err(|error| Failed::StoresUnavailable {
-            problem: error.to_string(),
-        })?;
-    let flares = Flares::new(
-        stores.shares,
-        stores.grants,
-        stores.responses,
-        stores.comments,
-        stores.cursors,
-        config.creators,
-    )
-    .with_teams(FlareTeams::new(stores.teams));
-    let api =
-        Sharing::new(flares, stores.tokens, config.recipients, admit).with_files(stores.files);
-    Ok(match config.get_flare {
-        Some(address) => api.with_get_flare(address),
-        None => api,
-    })
-}
-
 /// Serves `app` until a signal or, on the local site, the idle exit.
-async fn serve(
+async fn serve<H: HostedSignIn>(
     root: &Path,
     listeners: Listeners,
-    app: App<BoardStore, BoardStore, BoardStore>,
+    app: App<BoardStore, BoardStore, BoardStore, flare_auth_oidc::SystemClock, H>,
     signals: &mut Signals,
 ) -> Result<(Served, Stop), Failed> {
     let caught = OnceLock::new();

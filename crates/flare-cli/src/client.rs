@@ -26,6 +26,8 @@ pub(crate) struct Api {
     client: Client,
     origin: String,
     token: Option<SecretString>,
+    /// The token command that gave `token`, when the config names one.
+    helper: Option<String>,
 }
 
 impl Api {
@@ -46,7 +48,14 @@ impl Api {
             client,
             origin: origin.to_owned(),
             token,
+            helper: None,
         })
+    }
+
+    /// The same client, whose token came from the token command `helper`.
+    pub(crate) fn with_helper(mut self, helper: &str) -> Self {
+        self.helper = Some(helper.to_owned());
+        self
     }
 
     /// The server's origin.
@@ -196,6 +205,7 @@ impl Api {
             Some(code) => Err(Refused::new(code, problem.detail, &self.origin)
                 .naming(problem.share.as_deref())
                 .with_errors(problem.errors)
+                .with_helper(self.helper.as_deref())
                 .into()),
             None => Err(self.bad(StatusCode::BAD_REQUEST, format!(
                 "it answered {status} with the code {}, which this flare does not know; a newer flare may",

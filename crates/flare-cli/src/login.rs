@@ -190,12 +190,21 @@ async fn send_exchange(
 
 /// Runs `flare logout`: revokes the token on the server, then deletes it
 /// from the Keychain and forgets the login. A token that the server no
-/// longer knows counts as revoked.
+/// longer knows counts as revoked. When the config names a token command,
+/// flare saved no token, so it revokes nothing, sends no request and says
+/// so.
 ///
 /// # Errors
 ///
 /// Returns the failure that stopped it.
 pub(crate) async fn logout(env: &Snapshot) -> Result<LoggedOut, Failed> {
+    if let Some(client) = crate::config::load(None, env)?.client {
+        return Ok(LoggedOut {
+            server: client.server,
+            label: String::new(),
+            revoked: false,
+        });
+    }
     let saved = saved::required(env)?;
     if let Some(token) = keychain::read(env, &saved.server)? {
         let api = Api::new(&saved.server, Some(token))?;
@@ -218,5 +227,6 @@ pub(crate) async fn logout(env: &Snapshot) -> Result<LoggedOut, Failed> {
     Ok(LoggedOut {
         server: saved.server,
         label: saved.label,
+        revoked: true,
     })
 }

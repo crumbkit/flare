@@ -221,7 +221,8 @@ flare logout
 ### Columns
 
 - `server`: The server's origin.
-- `label`: The label of the revoked token.
+- `label`: The label of the revoked token, which is empty when nothing was revoked.
+- `revoked`: Whether a saved token was revoked and deleted. It is false when the config names a token command, which leaves no token to revoke.
 
 Effects: destructive, not idempotent, closed-world.
 

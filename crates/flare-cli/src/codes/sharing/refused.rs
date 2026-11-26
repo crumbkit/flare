@@ -14,8 +14,8 @@ use std::fmt;
 #[derive(Debug)]
 pub struct Refused {
     pub(super) code: ApiCode,
-    pub(super) detail: Option<String>,
-    pub(super) server: String,
+    pub(super) detail: Option<Box<str>>,
+    pub(super) server: Box<str>,
     /// The share that a partly finished share created, when the server
     /// named one that parses as a share id.
     pub(super) share: Option<ShareId>,
@@ -35,6 +35,10 @@ pub struct Refused {
     pub(super) again: Option<Box<Call>>,
     /// The query and errors of a search that did not run.
     pub(in crate::codes) searched: Box<Searched>,
+    /// The token command that gave the refused token, when the config's
+    /// `client` section names one, which a `sign_in_needed` recovery names
+    /// in place of `flare login`.
+    pub(super) helper: Option<Box<str>>,
 }
 
 impl Refused {
@@ -42,15 +46,23 @@ impl Refused {
     pub(crate) fn new(code: ApiCode, detail: Option<String>, server: &str) -> Self {
         Self {
             code,
-            detail,
-            server: server.to_owned(),
+            detail: detail.map(String::into_boxed_str),
+            server: server.into(),
             share: None,
             flares: Vec::new(),
             with_me: false,
             maybe_written: false,
             again: None,
             searched: Box::default(),
+            helper: None,
         }
+    }
+
+    /// The same refusal of a request whose token came from the token
+    /// command `helper`, when there is one.
+    pub(crate) fn with_helper(mut self, helper: Option<&str>) -> Self {
+        self.helper = helper.map(Box::from);
+        self
     }
 
     /// The same refusal of a `flare activity` that asked about `flares`.
@@ -125,6 +137,11 @@ impl Failure for Refused {
         if self.code == ApiCode::ShareNotFound {
             return Recovery::hint("check the flare id");
         }
+        if let (ApiCode::SignInNeeded, Some(helper)) = (self.code, &self.helper) {
+            return Recovery::hint(format!(
+                "sign in the way the token command {helper} expects, then run the command again; client.token_command in flare's config file names it"
+            ));
+        }
         match self.code.recovery(&self.server) {
             ApiRecovery::Run { .. } => sign_in(Some(&self.server)),
             ApiRecovery::Retry => Recovery::Retry,
@@ -135,7 +152,7 @@ impl Failure for Refused {
     /// The server, which a dry run has none of, and the share a partly
     /// finished share created, when the server named one.
     fn fields(&self) -> Vec<Field<'_>> {
-        let server = (!self.server.is_empty()).then(|| Field::new("server", self.server.as_str()));
+        let server = (!self.server.is_empty()).then(|| Field::new("server", &*self.server));
         let share = self
             .share
             .as_ref()

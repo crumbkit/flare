@@ -24,8 +24,8 @@ use crate::client::{self, Api};
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
 use crate::documents::{ShareOut, SharedOut, Shown};
 use crate::env::Snapshot;
-use crate::keychain;
 use crate::login::saved;
+use crate::{config, keychain, token_command};
 use flare_contract::{
     ApiCode, Format, GrantRequest, OpenedShare, Role, ShareRequest, ShareSummary, Shared,
     VersionRequest,
@@ -87,13 +87,21 @@ fn fits(outgoing: &Outgoing, images: &[LocalImage]) -> Result<(), Failed> {
     Ok(())
 }
 
-/// A client of the saved login's server with its token.
+/// A client of the server with its token. When the config's `client`
+/// section names a token command, the server is that section's and the
+/// token is the command's, and neither the saved login nor the Keychain is
+/// read. Otherwise they are the saved login's.
 ///
 /// # Errors
 ///
-/// Returns [`SharingFailed::LoginNeeded`] when no login is saved or the
-/// Keychain holds no token for it.
+/// Returns the token command's failure, the config's, or
+/// [`SharingFailed::LoginNeeded`] when no login is saved or the Keychain
+/// holds no token for it.
 pub(crate) fn session(env: &Snapshot) -> Result<Api, Failed> {
+    if let Some(client) = config::load(None, env)?.client {
+        let token = token_command::token(&client, env)?;
+        return Ok(Api::new(&client.server, Some(token))?.with_helper(&client.command.program));
+    }
     let saved = saved::required(env)?;
     let token = keychain::read(env, &saved.server)?.ok_or_else(|| SharingFailed::LoginNeeded {
         server: Some(saved.server.clone()),

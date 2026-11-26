@@ -201,6 +201,49 @@ fn serve_refuses_a_hosted_secret_file_that_is_missing_or_writable_by_others_nami
         .assert_failed("flare::oidc::provider_unavailable");
 }
 
+/// A hosted config that signs people in through a proxy whose key set is
+/// at `jwks_url`.
+fn proxy_config(jwks_url: &str) -> String {
+    format!(
+        r#"{{"hosted":{{"origin":"https://flare.example.com","listen":"127.0.0.1:0"}},"proxy":{{"issuer":"https://sso.example.com","audience":"flare","jwks_url":"{jwks_url}","cookie":"proxy_token","algorithms":["RS256"],"admit":{{"domain":"example.com","reach":"everything"}}}}}}"#
+    )
+}
+
+#[test]
+fn serve_refuses_a_proxy_key_set_it_cannot_fetch_before_binding_and_admits_a_whole_proxy_config() {
+    let home = Home::new();
+    let board = ScratchBoard::new();
+    let (root, program) = paths(&board);
+    let whole = proxy_config("https://127.0.0.1:1/jwks");
+    for (broken, key) in [
+        (
+            whole.replace("https://127.0.0.1:1/jwks", "http://127.0.0.1:1/jwks"),
+            "proxy.jwks_url",
+        ),
+        (
+            whole.replace(r#""RS256""#, r#""HS256""#),
+            "proxy.algorithms",
+        ),
+        (whole.replace(r#""cookie":"proxy_token","#, ""), "cookie"),
+    ] {
+        home.write_config(&broken);
+        let ran = home.run(&serve_args(&board, &root, &program));
+        ran.assert_failed("flare::config::invalid");
+        assert!(ran.all().contains(key), "{key}: {}", ran.all());
+    }
+    // The whole config passes the config checks and stops at the key set,
+    // which nothing serves, before it binds the listen address.
+    home.write_config(&whole);
+    let ran = home.run(&serve_args(&board, &root, &program));
+    ran.assert_failed("flare::proxy::keys_unavailable");
+    assert!(ran.all().contains("proxy.jwks_url"), "{}", ran.all());
+    assert!(
+        ran.all().contains("https://127.0.0.1:1/jwks"),
+        "{}",
+        ran.all()
+    );
+}
+
 /// A running `flare serve` and the home it runs in.
 struct Running {
     #[expect(

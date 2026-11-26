@@ -1,4 +1,4 @@
-use super::{HostedCreators, Problem, Secret, Site, parse};
+use super::{HostedCreators, Problem, Secret, SignIn, Site, parse};
 
 const DOMAIN: &str = r#"{"oidc":{"issuer":"https://accounts.google.com","client_id":"abc.apps.googleusercontent.com","admit":{"domain":"example.com","reach":"everything"}}}"#;
 
@@ -93,12 +93,19 @@ fn a_hosted_section_parses_with_its_origin_listen_address_secret_file_and_callba
     };
     assert_eq!(hosted.origin.as_str(), "https://flare.example.com");
     assert_eq!(hosted.listen, "0.0.0.0:8080".parse().unwrap());
+    let SignIn::Oidc {
+        config,
+        secret_file,
+    } = &hosted.sign_in
+    else {
+        panic!("an OpenID Connect sign-in");
+    };
     assert_eq!(
-        hosted.secret_file,
-        std::path::PathBuf::from("/run/secrets/google")
+        secret_file,
+        &std::path::PathBuf::from("/run/secrets/google")
     );
     assert_eq!(
-        hosted.oidc.redirect_uri().as_str(),
+        config.redirect_uri().as_str(),
         "https://flare.example.com/auth/oidc/callback"
     );
 }

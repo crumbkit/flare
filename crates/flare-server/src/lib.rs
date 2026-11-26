@@ -20,12 +20,17 @@
 //!   sets the session cookie.
 //!
 //! [`Site::Hosted`] is one plain-HTTP listener behind a TLS proxy, serving
-//! one [`PublicOrigin`]. It runs `hosted.rs`'s checks (the Host, the Origin
-//! of a non-GET request, the exact `__Host-flare_session` cookie and no
-//! Authorization header), then the same cross-site rule, and serves only
-//! the routes that name the hosted site: `/up`, the stylesheet, `/`,
-//! `/flare/`, `/pages/<name>`, `/auth/oidc/start` and
-//! `/auth/oidc/callback`. It writes no board record. It sets only
+//! one [`PublicOrigin`] and signing people in through a [`HostedSignIn`]:
+//! flare's [`OidcAuthenticator`](flare_auth_oidc::OidcAuthenticator) by
+//! default, or the signed token of a single sign-on proxy through
+//! [`ProxyAuthenticator`](flare_auth_oidc::ProxyAuthenticator). It runs
+//! `hosted.rs`'s checks (the Host, the Origin of a non-GET request, the
+//! exact cookie that the sign-in names, `__Host-flare_session` for OpenID
+//! Connect, and no Authorization header), then the same cross-site rule,
+//! and serves only the routes that name the hosted site: `/up`, the
+//! stylesheet, `/`, `/flare/`, `/pages/<name>`, and `/auth/oidc/start` and
+//! `/auth/oidc/callback` when the sign-in is OpenID Connect. It reads no
+//! unsigned identity header. It writes no board record. It sets only
 //! `__Host-` cookies, writes no file and has no idle exit.
 //!
 //! # The share API
