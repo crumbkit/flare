@@ -50,7 +50,7 @@ use flare_contract::{
     NewComment, RevokeRequest, ShareRequest, TeamRequest, TransferRequest, VersionRequest,
 };
 use flare_core::{
-    Admission, AllAdmitted, DocumentText, Email, Flares, ListKey, MailDomain, NoTeams, Principal,
+    Admission, AllAdmitted, DocumentText, Flares, ListKey, MailDomain, NoTeams, Principal,
     ShareTitle, ShareVersion, StoredFile, Timestamp,
 };
 use secrecy::SecretString;
@@ -101,7 +101,7 @@ impl<S, G, R, C, U, T, X, M, K> Sharing<S, G, R, C, U, T, X, M, K> {
         admit: Admit,
     ) -> Self {
         Self {
-            flares: flares.admitting(admission(&admit)),
+            flares: flares.admitting(admission(&admit), false),
             files: NoFiles,
             tokens,
             recipients,
@@ -346,10 +346,11 @@ pub(crate) trait Api: Send + Sync {
     /// cookie must pass as a bearer token does.
     fn admits(&self, who: &Principal) -> bool;
 
-    /// Issues a login code for `owner` and the CLI on `port`.
+    /// Issues a login code for the person `who` signed in as, and the CLI
+    /// on `port`.
     fn issue_code<'a>(
         &'a self,
-        owner: &'a Email,
+        who: &'a Principal,
         port: u16,
         now: Timestamp,
     ) -> Boxed<'a, Result<SecretString, ApiCode>>;

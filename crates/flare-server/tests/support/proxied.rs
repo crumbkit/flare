@@ -175,7 +175,9 @@ fn share_api() -> Sharing<
     CreatorList,
     flare_server::NoFiles,
 > {
-    let creators = CreatorList::only(vec![Email::try_from(crate::fake_proxy::EMAIL).unwrap()]);
+    let creators = CreatorList::only(vec![
+        Email::try_from(crate::fake_proxy::EMAIL).unwrap().into(),
+    ]);
     let flares = Flares::new(
         FaultyShares::default(),
         MemoryGrantStore::new(),

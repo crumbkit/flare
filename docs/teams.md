@@ -106,6 +106,7 @@ gives the life of a team, of a member and of a group grant.
 | `domain` | that domain | Each signed-in address at that domain |
 | `emails` | `admitted` | Each signed-in person, while the admit rule is `emails`; adding an address to the list widens the grant to that person |
 | `anyone` | none | Nothing; the grant is refused with `flare::grants::everyone_unbounded` (409) |
+| `anyone`, with `hosted.everyone_signed_in` on | `signed-in` | Each signed-in person while the setting is on, and no one while it is off |
 
 - Sign-in still applies: the admit rule decides who can sign in, and a
   group grant never opens a share to a person who cannot sign in.

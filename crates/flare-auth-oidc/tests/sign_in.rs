@@ -529,7 +529,7 @@ async fn the_provider_receives_the_verifier_and_the_client_secret_only_in_the_to
 async fn an_email_with_a_non_ascii_letter_that_lower_cases_to_an_allowed_one_is_refused() {
     let fake = Fake::start().await;
     let allow = AllowList::new(vec![AllowEntry::new(
-        Email::try_from("kate@example.com").unwrap(),
+        Email::try_from("kate@example.com").unwrap().into(),
         PrincipalId::try_from("kate").unwrap(),
         Reach::Everything,
     )])

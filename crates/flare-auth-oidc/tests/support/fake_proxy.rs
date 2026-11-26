@@ -359,7 +359,7 @@ pub fn home() -> Resource {
 /// page [`HOME`] only.
 pub fn allow_list() -> AllowList {
     AllowList::new(vec![AllowEntry::new(
-        Email::try_from(EMAIL).expect("an email"),
+        Email::try_from(EMAIL).expect("an email").into(),
         PrincipalId::try_from(PRINCIPAL).expect("a principal id"),
         Reach::Only(vec![home()]),
     )])

@@ -4,8 +4,8 @@
 
 use super::admit::{AdmitSection, admit};
 use flare_auth_oidc::{
-    Audience, CookieName, IdentityClaim, KeySetUrl, ProxyAlgorithm, ProxyAlgorithms, ProxyConfig,
-    ProxyIssuer, ProxyLink,
+    Audience, CookieName, Identity, IdentityClaim, KeySetUrl, ProxyAlgorithm, ProxyAlgorithms,
+    ProxyConfig, ProxyIssuer, ProxyLink,
 };
 use serde::Deserialize;
 
@@ -35,12 +35,20 @@ fn at<T, E: std::fmt::Display>(key: &str, result: Result<T, E>) -> Result<T, Str
     result.map_err(|error| format!("proxy.{key} is not valid: {error}"))
 }
 
-/// The proxy sign-in's settings from the section.
+/// The proxy sign-in's settings from the section, naming people as
+/// `identity` says. Under the username kind the admit list names
+/// usernames.
 ///
 /// # Errors
 ///
 /// Returns the problem, naming the key.
-pub(super) fn proxy(section: ProxySection) -> Result<ProxyConfig, String> {
+pub(super) fn proxy(section: ProxySection, identity: Identity) -> Result<ProxyConfig, String> {
+    if matches!(identity, Identity::Username(_)) && section.identity_claim.is_some() {
+        return Err(
+            "proxy.identity_claim cannot be set beside hosted.identity's username_claim, which names the claim that holds the username"
+                .to_owned(),
+        );
+    }
     let listed = section
         .algorithms
         .iter()
@@ -50,8 +58,8 @@ pub(super) fn proxy(section: ProxySection) -> Result<ProxyConfig, String> {
         "algorithms",
         listed.and_then(|listed| ProxyAlgorithms::new(&listed)),
     )?;
-    let admit =
-        admit(section.admit, "proxy").map_err(|problem| format!("proxy.admit: {problem}"))?;
+    let admit = admit(section.admit, "proxy", identity.kind())
+        .map_err(|problem| format!("proxy.admit: {problem}"))?;
     let mut config = ProxyConfig::new(
         at("issuer", ProxyIssuer::try_from(section.issuer.as_str()))?,
         at("audience", Audience::try_from(section.audience.as_str()))?,
@@ -66,6 +74,7 @@ pub(super) fn proxy(section: ProxySection) -> Result<ProxyConfig, String> {
             IdentityClaim::try_from(claim.as_str()),
         )?);
     }
+    config = config.with_identity(identity);
     if let Some(link) = &section.sign_in_url {
         config = config.with_sign_in_url(at("sign_in_url", ProxyLink::try_from(link.as_str()))?);
     }

@@ -12,9 +12,9 @@ use flare_core::memory::{
     MemoryTokenStore,
 };
 use flare_core::{
-    AddressesOnly, AllAdmitted, DocumentText, Email, FlareTeams, Flares, Group, NewFlare, NewToken,
-    Principal, PrincipalId, Role, ShareContent, ShareId, ShareTitle, TeamName, Timestamp, TokenId,
-    TokenLabel, TokenStore as _,
+    AllAdmitted, ByIdentity, DocumentText, Email, FlareTeams, Flares, Group, IdentityKind,
+    NewFlare, NewToken, Person, Principal, PrincipalId, Role, ShareContent, ShareId, ShareTitle,
+    TeamName, Timestamp, TokenId, TokenLabel, TokenStore as _,
 };
 use secrecy::SecretString;
 
@@ -30,7 +30,7 @@ fn listing(addresses: &[&str]) -> Admit {
         .iter()
         .map(|address| {
             AllowEntry::new(
-                email(address),
+                email(address).into(),
                 PrincipalId::try_from(*address).unwrap(),
                 Reach::Everything,
             )
@@ -71,14 +71,14 @@ async fn sharing(
     MemoryCommentStore,
     MemoryCursorStore,
     MemoryTokenStore,
-    AddressesOnly,
+    ByIdentity,
 > {
     let store = MemoryTokenStore::default();
     for minted in tokens {
         let token = NewToken::new(
             minted.id.clone(),
             digest(&minted.secret),
-            minted.owner.clone(),
+            minted.owner.clone().into(),
             TokenLabel::try_from("test").unwrap(),
             NOW,
         );
@@ -92,7 +92,7 @@ async fn sharing(
         MemoryCursorStore::new(),
         AllAdmitted,
     );
-    Sharing::new(flares, store, AddressesOnly, admit)
+    Sharing::new(flares, store, ByIdentity(IdentityKind::Email), admit)
 }
 
 fn owner_of(check: TokenCheck) -> Option<Email> {
@@ -160,13 +160,19 @@ async fn an_admin_is_refused_a_new_version_and_the_owner_publishes_it() {
     flares.share(&ana, new, NOW).await.unwrap();
     flares
         .shares()
-        .grant(&ana, &id, &email("bob@example.org"), Role::Admin, NOW)
+        .grant(
+            &ana,
+            &id,
+            &Person::from(email("bob@example.org")),
+            Role::Admin,
+            NOW,
+        )
         .await
         .unwrap();
     let api = Sharing::new(
         flares,
         MemoryTokenStore::default(),
-        AddressesOnly,
+        ByIdentity(IdentityKind::Email),
         listing(&["ana@example.org", "bob@example.org"]),
     );
     let post = || {
@@ -263,13 +269,19 @@ async fn a_share_admin_outside_a_team_sees_its_grant_as_a_placeholder_in_the_lis
     flares.share(&ana, new, NOW).await.unwrap();
     flares
         .shares()
-        .grant(&ana, &id, &email("bob@example.org"), Role::Admin, NOW)
+        .grant(
+            &ana,
+            &id,
+            &Person::from(email("bob@example.org")),
+            Role::Admin,
+            NOW,
+        )
         .await
         .unwrap();
     let api = Sharing::new(
         flares,
         MemoryTokenStore::default(),
-        AddressesOnly,
+        ByIdentity(IdentityKind::Email),
         listing(&["ana@example.org", "bob@example.org"]),
     );
     let grantees = |answer: Option<String>| -> Vec<String> {
@@ -370,7 +382,7 @@ async fn share_as(
         id.clone(),
         ShareTitle::try_from("Plan").unwrap(),
         ShareContent::Document(DocumentText::try_from("# Plan\n").unwrap()),
-        with.iter().map(|address| email(address)).collect(),
+        with.iter().map(|address| email(address).into()).collect(),
         Vec::new(),
     );
     flares.share(&person(owner), new, NOW).await.unwrap();
@@ -389,7 +401,7 @@ async fn badged(
         MemoryCommentStore,
         MemoryCursorStore,
         MemoryTokenStore,
-        AddressesOnly,
+        ByIdentity,
     >,
     ShareId,
     Counting,
@@ -413,7 +425,7 @@ async fn badged(
     let api = Sharing::new(
         flares,
         MemoryTokenStore::default(),
-        AddressesOnly,
+        ByIdentity(IdentityKind::Email),
         listing(&["ana@example.org", "bob@example.org"]),
     );
     let api = match get_flare {

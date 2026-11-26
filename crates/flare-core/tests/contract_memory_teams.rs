@@ -2,8 +2,8 @@
 //! suite is known to pass on a correct implementation.
 #![cfg(test)]
 
-use flare_core::contract::{People, block_on};
 use flare_core::contract::team_store::{self, TeamFixture};
+use flare_core::contract::{People, block_on};
 use flare_core::memory::MemoryTeamStore;
 
 macro_rules! suite {

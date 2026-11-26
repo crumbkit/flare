@@ -1,5 +1,6 @@
-//! The hosted site of `flare serve`: it connects the sign-in, checks the
-//! share API's stores, and only then binds the listen address.
+//! The hosted site of `flare serve`: it checks the share API's stores and
+//! the identifier kind their table records, connects the sign-in, and only
+//! then binds the listen address.
 
 use super::{Persisted, Signals, Stop, bind_failed, connect, serve};
 use crate::codes::{Failed, HeldPort};
@@ -9,10 +10,10 @@ use crate::log;
 use flare_auth_oidc::{Admit, OidcAuthenticator, ProxyAuthenticator, ProxyConfig};
 use flare_aws::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore, DynamoShareStore,
-    DynamoTeamStore, DynamoTokenStore, S3FileStore, Stores,
+    DynamoTeamStore, DynamoTokenStore, IdentityError, S3FileStore, Stores,
 };
 use flare_board::BoardStore;
-use flare_core::{FlareTeams, Flares, NamedRecipients};
+use flare_core::{FlareTeams, Flares, IdentityKind, NamedRecipients};
 use flare_server::{App, HostedSignIn, Limits, Listeners, Metrics, PublicOrigin, Sharing, Site};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -32,8 +33,9 @@ pub(super) async fn hosted(
         sharing,
     } = hosted;
     let admit = sign_in.admit().clone();
+    let kind = sign_in.identity().kind();
     let stores = match &sharing {
-        Some(config) => Some(Stores::connect(&config.stores).await),
+        Some(config) => Some(checked(Stores::connect(&config.stores).await, kind).await?),
         None => None,
     };
     let persisted = stores.as_ref().map(|stores| Persisted {
@@ -53,7 +55,7 @@ pub(super) async fn hosted(
         );
     }
     let sharing = match (sharing, stores) {
-        (Some(config), Some(stores)) => Some(share_api(*config, stores, admit).await?),
+        (Some(config), Some(stores)) => Some(share_api(*config, stores, admit, kind)),
         _ => None,
     };
     let start = Start {
@@ -67,6 +69,25 @@ pub(super) async fn hosted(
     match sign_in {
         Connected::Oidc(oidc) => start.serve(oidc).await,
         Connected::Proxy(proxy) => start.serve(proxy).await,
+    }
+}
+
+/// The stores, once their table and bucket answer and the table records
+/// `kind`, which a first start writes. A table that records another kind
+/// is refused, with nothing written.
+async fn checked(stores: Stores, kind: IdentityKind) -> Result<Stores, Failed> {
+    let unavailable = |problem: String| Failed::StoresUnavailable { problem };
+    stores
+        .check()
+        .await
+        .map_err(|error| unavailable(error.to_string()))?;
+    match stores.identity(kind).await {
+        Ok(()) => Ok(stores),
+        Err(IdentityError::Changed { recorded }) => Err(Failed::IdentityChanged {
+            recorded: recorded.as_str().to_owned(),
+            configured: kind.as_str().to_owned(),
+        }),
+        Err(error) => Err(unavailable(error.to_string())),
     }
 }
 
@@ -143,20 +164,15 @@ type HostedSharing = Sharing<
     S3FileStore,
 >;
 
-/// The share API on the configured table and bucket, which it checks
-/// first, keeping images in the bucket and accepting a token only while
+/// The share API on the checked table and bucket, naming people of
+/// `kind`, keeping images in the bucket and accepting a token only while
 /// `admit` admits its owner.
-async fn share_api(
+fn share_api(
     config: SharingConfig,
     stores: Stores,
     admit: Admit,
-) -> Result<HostedSharing, Failed> {
-    stores
-        .check()
-        .await
-        .map_err(|error| Failed::StoresUnavailable {
-            problem: error.to_string(),
-        })?;
+    kind: IdentityKind,
+) -> HostedSharing {
     let flares = Flares::new(
         stores.shares,
         stores.grants,
@@ -165,11 +181,13 @@ async fn share_api(
         stores.cursors,
         config.creators,
     )
-    .with_teams(FlareTeams::new(stores.teams));
-    let api =
-        Sharing::new(flares, stores.tokens, config.recipients, admit).with_files(stores.files);
-    Ok(match config.get_flare {
+    .with_teams(FlareTeams::new(stores.teams))
+    .with_identity(kind);
+    let api = Sharing::new(flares, stores.tokens, config.recipients, admit)
+        .with_everyone_signed_in(config.everyone_signed_in)
+        .with_files(stores.files);
+    match config.get_flare {
         Some(address) => api.with_get_flare(address),
         None => api,
-    })
+    }
 }

@@ -3,11 +3,11 @@
 
 use flare_core::memory::{MemoryResponseStore, MemoryShareStore, MemoryTokenStore};
 use flare_core::{
-    AddressesOnly, CreatorList, Creators, CreatorsError, Digest, Email, IndexEntry, Listing,
-    LoginCode, NewEntry, NewLink, NewShare, NewToken, NewVersion, Position, Principal, PrincipalId,
-    Reader, RecipientError, Recipients, ResponseLink, ResponseStore, ResponseStoreError, Share,
-    ShareId, ShareStore, ShareStoreError, ShareVersion, SharedVersion, StoredToken, Timestamp,
-    TokenId, TokenStore, TokenStoreError, UsedCode,
+    ByIdentity, CreatorList, Creators, CreatorsError, Digest, IdentityKind, IndexEntry, Listing,
+    LoginCode, NewEntry, NewLink, NewShare, NewToken, NewVersion, Person, Position, Principal,
+    PrincipalId, Reader, RecipientError, Recipients, ResponseLink, ResponseStore,
+    ResponseStoreError, Share, ShareId, ShareStore, ShareStoreError, ShareVersion, SharedVersion,
+    StoredToken, Timestamp, TokenId, TokenStore, TokenStoreError, UsedCode,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -123,7 +123,7 @@ impl TokenStore for FaultyTokens {
     async fn revoke(
         &self,
         id: &TokenId,
-        owner: &Email,
+        owner: &Person,
         at: Timestamp,
     ) -> Result<(), TokenStoreError> {
         self.check()?;
@@ -222,11 +222,11 @@ pub struct FaultyRecipients {
 }
 
 impl Recipients for FaultyRecipients {
-    async fn resolve(&self, identifier: &str) -> Result<Email, RecipientError> {
+    async fn resolve(&self, identifier: &str) -> Result<Person, RecipientError> {
         if on(&self.fail) {
             return Err(RecipientError::Unavailable);
         }
-        AddressesOnly.resolve(identifier).await
+        ByIdentity(IdentityKind::Email).resolve(identifier).await
     }
 }
 

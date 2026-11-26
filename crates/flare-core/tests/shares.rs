@@ -588,7 +588,10 @@ fn a_principal_with_no_verified_email_gets_no_verified_email_on_every_method() {
             shares.may_publish(&nameless, &id(1)).await.err(),
         ]
     });
-    assert_eq!(answers, [Some(ShareError::NoPerson); 10]);
+    assert_eq!(
+        answers,
+        [Some(ShareError::NoPerson(flare_core::IdentityKind::Email)); 10]
+    );
     assert!(block_on(shares.open(&alice(), &id(1), None)).is_ok());
 }
 

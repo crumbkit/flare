@@ -16,11 +16,12 @@ use fake_proxy::{
     AUDIENCE, DOMAIN, EMAIL, FakeProxy, KeysReply, PRINCIPAL, Sign, allow_list, domain_rule, home,
 };
 use flare_auth_oidc::{
-    Admit, IdentityClaim, ProxyAlgorithm, ProxyAlgorithms, ProxyAuthenticator, ProxyConnectError,
-    ProxyRefusal, Reach,
+    Admit, Identity, IdentityClaim, ProxyAlgorithm, ProxyAlgorithms, ProxyAuthenticator,
+    ProxyConnectError, ProxyRefusal, Reach,
 };
 use flare_core::{
-    Access, AuthError, Authenticator as _, Credential, Decision, PageName, Principal, Resource,
+    Access, AuthError, Authenticator as _, Credential, Decision, PageName, Person, Principal,
+    Resource,
 };
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -452,4 +453,107 @@ async fn a_refusal_names_its_check_and_never_the_token() {
     let shown = format!("{refusal} {refusal:?} {proxy:?}");
     assert!(!shown.contains(&token), "{shown}");
     assert!(!shown.contains(EMAIL), "{shown}");
+}
+
+fn usernames(fake: &FakeProxy, admit: Admit) -> flare_auth_oidc::ProxyConfig {
+    fake.config(admit).with_identity(Identity::Username(
+        IdentityClaim::try_from("preferred_username").unwrap(),
+    ))
+}
+
+fn username_list() -> flare_auth_oidc::AllowList {
+    flare_auth_oidc::AllowList::new(vec![flare_auth_oidc::AllowEntry::new(
+        Person::try_from("ada").unwrap(),
+        flare_core::PrincipalId::try_from(PRINCIPAL).unwrap(),
+        Reach::Only(vec![home()]),
+    )])
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_username_token_with_email_verified_false_or_absent_signs_in_by_username() {
+    let fake = FakeProxy::start().await;
+    let (proxy, _clock) = fake
+        .connect_config(usernames(&fake, Admit::Emails(username_list())))
+        .await;
+    let unverified = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+        claims.insert("email_verified".into(), json!(false));
+    });
+    let principal = check(&proxy, &unverified).await.unwrap();
+    assert_eq!(principal.person(), Some(&Person::try_from("ada").unwrap()));
+    assert_eq!(principal.id().as_str(), PRINCIPAL);
+    assert_eq!(principal.email(), None, "an unverified email is not kept");
+    let absent = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+        claims.remove("email_verified");
+    });
+    assert!(check(&proxy, &absent).await.unwrap().email().is_none());
+    let verified = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+    });
+    let kept = check(&proxy, &verified).await.unwrap();
+    assert_eq!(kept.email().unwrap().as_str(), EMAIL);
+}
+
+#[tokio::test]
+async fn a_username_token_whose_claim_is_missing_or_an_address_is_refused_with_no_identity() {
+    let fake = FakeProxy::start().await;
+    let (proxy, _clock) = fake
+        .connect_config(usernames(&fake, Admit::Anyone(Reach::Everything)))
+        .await;
+    let missing = fake.token(Sign::Rs256);
+    assert_eq!(check(&proxy, &missing).await, Err(ProxyRefusal::NoIdentity));
+    let address = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!(EMAIL));
+    });
+    assert_eq!(check(&proxy, &address).await, Err(ProxyRefusal::NoIdentity));
+    let named = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("bo"));
+    });
+    let principal = check(&proxy, &named).await.unwrap();
+    assert_eq!(principal.person(), Some(&Person::try_from("bo").unwrap()));
+}
+
+#[tokio::test]
+async fn a_list_entry_admits_only_the_username_it_names() {
+    let fake = FakeProxy::start().await;
+    let (proxy, _clock) = fake
+        .connect_config(usernames(&fake, Admit::Emails(username_list())))
+        .await;
+    let other = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("bo"));
+    });
+    assert_eq!(check(&proxy, &other).await, Err(ProxyRefusal::NotAdmitted));
+    let listed = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+    });
+    assert!(check(&proxy, &listed).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_domain_rule_admits_a_username_only_with_a_verified_email_at_the_domain() {
+    let fake = FakeProxy::start().await;
+    let (proxy, _clock) = fake.connect_config(usernames(&fake, domain_rule())).await;
+    let at_domain = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+    });
+    let principal = check(&proxy, &at_domain).await.unwrap();
+    assert_eq!(principal.email().unwrap().as_str(), EMAIL);
+    let unverified = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+        claims.insert("email_verified".into(), json!(false));
+    });
+    assert_eq!(
+        check(&proxy, &unverified).await,
+        Err(ProxyRefusal::NotAdmitted)
+    );
+    let elsewhere = fake.token_with(Sign::Rs256, |claims| {
+        claims.insert("preferred_username".into(), json!("ada"));
+        claims.insert("email".into(), json!("ada@outside.example"));
+    });
+    assert_eq!(
+        check(&proxy, &elsewhere).await,
+        Err(ProxyRefusal::NotAdmitted)
+    );
 }

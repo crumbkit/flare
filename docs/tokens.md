@@ -65,7 +65,9 @@ command its token from that program instead, and saves nothing;
   taken off the list, every token of that owner answers 401
   `flare::tokens::sign_in_needed`, and the stored token does not change.
   If the address goes back on the list before the token expires, the token
-  works again.
+  works again. Under `hosted.identity`'s `username_claim`, the rule admits
+  the owner when it lists the username or the verified email kept beside
+  it.
 - Under a `domain` or `anyone` rule the server cannot tell from an address
   whether its account still belongs to the domain, so a token keeps working
   until it expires or its owner revokes it.

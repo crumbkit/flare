@@ -338,6 +338,27 @@ async fn under_an_anyone_rule_an_everyone_grant_is_refused() {
 }
 
 #[tokio::test]
+async fn with_everyone_signed_in_on_an_everyone_grant_under_an_anyone_rule_opens_to_every_signed_in_person()
+ {
+    let api = Api::start_everyone_signed_in().await;
+    let alice = api.token_for("alice").await;
+    let dave = api.token_for("dave").await;
+    let id = api.share(&alice, "Note", &["everyone"], &[]).await;
+    let path = format!("/api/shares/{id}");
+    let (status, opened) = api.read("GET", &path, Some(&dave)).await;
+    assert_eq!(status, 200, "{opened}");
+    let (status, grants) = api
+        .read("GET", &format!("/api/grants/{id}"), Some(&alice))
+        .await;
+    assert_eq!(status, 200, "{grants}");
+    assert!(grants.to_string().contains("everyone"), "{grants}");
+    // The twin: a share named to no one stays closed to dave.
+    let closed = api.share(&alice, "Private", &[], &[]).await;
+    let path = format!("/api/shares/{closed}");
+    assert_eq!(api.read("GET", &path, Some(&dave)).await.0, 404);
+}
+
+#[tokio::test]
 async fn revoke_removes_a_persons_grant_and_an_empty_body_is_refused() {
     let (api, alice, bob, _carol) = with_design().await;
     let id = api.share(&alice, "Plan", &["carol@example.com"], &[]).await;

@@ -211,3 +211,26 @@ fn a_problem_without_search_errors_has_no_errors_field() {
     .unwrap();
     assert!(read.errors.is_empty());
 }
+
+#[test]
+fn a_username_deployment_has_its_own_codes_for_a_missing_username_and_an_address_recipient() {
+    let no_username = ApiCode::from_text("flare::shares::no_username").expect("a code");
+    assert_eq!(no_username.status(), 403);
+    let not_a_username = ApiCode::from_text("flare::recipients::not_a_username").expect("a code");
+    assert_eq!(not_a_username.status(), 400);
+    assert!(not_a_username.title().contains("username"));
+    // The email kind keeps its codes.
+    assert_eq!(
+        ApiCode::from_text("flare::shares::no_email").map(ApiCode::status),
+        Some(403)
+    );
+}
+
+#[test]
+fn the_everyone_unbounded_refusal_names_the_setting_that_allows_it() {
+    let Recovery::Hint { text } = ApiCode::EveryoneUnbounded.recovery("https://flare.example.org")
+    else {
+        panic!("a hint");
+    };
+    assert!(text.contains("hosted.everyone_signed_in"), "{text}");
+}

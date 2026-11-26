@@ -480,7 +480,7 @@ async fn a_cookie_of_a_person_the_admit_rule_no_longer_names_is_refused_on_comme
     let alice_email = Email::try_from("alice@example.com").unwrap();
     let rule = Admit::Emails(
         AllowList::new(vec![AllowEntry::new(
-            alice_email.clone(),
+            alice_email.clone().into(),
             alice_email.principal_id(),
             Reach::Everything,
         )])

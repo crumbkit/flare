@@ -15,8 +15,8 @@ use crate::stores::{DynKeys, DynSessions};
 use crate::token::{self, Expected};
 use flare_core::memory::{MemorySealingKeys, MemorySessionStore};
 use flare_core::{
-    Access, AuthError, Authenticator, Credential, Decision, Principal, Resource, SealingKeys,
-    SessionStore,
+    Access, AuthError, Authenticator, Credential, Decision, Person, Principal, Resource,
+    SealingKeys, SessionStore,
 };
 use secrecy::SecretString;
 use std::fmt;
@@ -205,10 +205,18 @@ impl<C: Clock> OidcAuthenticator<C> {
             now,
         };
         let verified = token::check(&id_token, &key, &expected)?;
-        let principal = self
+        let admitted = self
             .config
             .admit
             .principal(&verified.email, verified.hd.as_ref())?;
+        let principal = match verified.username {
+            Some(username) => Principal::with_person(
+                admitted.id().clone(),
+                Person::Username(username),
+                admitted.email().cloned(),
+            ),
+            None => admitted,
+        };
         self.sessions
             .create(principal, pending.return_to, self.clock.now(), old)
             .await

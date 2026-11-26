@@ -234,7 +234,7 @@ fn creators_limit_who_may_share() {
     let HostedCreators::Listed(list) = creators else {
         panic!("a list: {creators:?}");
     };
-    assert_eq!(list, flare_core::CreatorList::only(vec![ana]));
+    assert_eq!(list, flare_core::CreatorList::only(vec![ana.into()]));
 }
 
 #[test]

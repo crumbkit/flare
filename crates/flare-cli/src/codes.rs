@@ -21,9 +21,9 @@ pub use sign_in::SignInAgain;
 pub use spelled::{
     BINDINGS_INVALID, BINDINGS_MISFIT, BINDINGS_NAME_TAKEN, BINDINGS_RECORD_NOT_FOUND,
     BOARD_NOT_A_BOARD, BOARD_NOT_FOUND, BOARD_PROGRAM_UNAVAILABLE, BOARD_TOO_OLD,
-    BOARD_UNAVAILABLE, CONFIG_INVALID, CONFIG_UNREADABLE, METRICS_UNREADABLE,
-    OIDC_PROVIDER_UNAVAILABLE, OIDC_SECRET_UNAVAILABLE, OPENER_FAILED, PAGES_INVALID,
-    PAGES_NOT_FOUND, PAGES_TEMPLATE_FLAWS, PAGES_UNKNOWN_FORMAT, PAGES_UNREADABLE,
+    BOARD_UNAVAILABLE, CONFIG_IDENTITY_CHANGED, CONFIG_INVALID, CONFIG_UNREADABLE,
+    METRICS_UNREADABLE, OIDC_PROVIDER_UNAVAILABLE, OIDC_SECRET_UNAVAILABLE, OPENER_FAILED,
+    PAGES_INVALID, PAGES_NOT_FOUND, PAGES_TEMPLATE_FLAWS, PAGES_UNKNOWN_FORMAT, PAGES_UNREADABLE,
     PROXY_KEYS_UNAVAILABLE, SERVER_ALREADY_RUNNING, SERVER_NOT_RUNNING, SERVER_PORT_IN_USE,
     STATE_UNUSABLE, STORES_UNAVAILABLE, SYSTEM_UNAVAILABLE,
 };
@@ -319,6 +319,23 @@ pub enum Failed {
     StoresUnavailable {
         /// What the check found, as flare-aws says it.
         problem: String,
+    },
+    /// The share API's table names people by another kind than
+    /// `hosted.identity`, so `flare serve` wrote nothing and binds nothing.
+    #[error(
+        "the share API's table names people by {recorded}, and hosted.identity names them by {configured}"
+    )]
+    #[failure(
+        code = CONFIG_IDENTITY_CHANGED,
+        hint = "set hosted.identity back to the kind the table records",
+        alternative = Recovery::hint("point hosted.stores at a new table for the new kind"),
+        field(recorded = recorded)
+    )]
+    IdentityChanged {
+        /// The kind the table records, `email` or `username`.
+        recorded: String,
+        /// The kind `hosted.identity` names.
+        configured: String,
     },
     /// A log that `flare metrics` was given could not be read.
     #[error("{path} could not be read: {problem}")]

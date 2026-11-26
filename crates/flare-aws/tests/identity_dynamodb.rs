@@ -250,7 +250,7 @@ async fn a_username_token_code_and_session_keep_the_verified_email_beside_the_us
     stores
         .sessions
         .create(
-            NewSession::new(digest.clone(), principal.clone()),
+            NewSession::new(digest, principal.clone()),
             None,
             &rule,
             Timestamp::from_secs(1_000),

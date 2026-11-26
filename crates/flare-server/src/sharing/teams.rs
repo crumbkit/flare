@@ -9,14 +9,9 @@ use flare_contract::{
     TransferRequest,
 };
 use flare_core::{
-    CommentStore, Creators, CursorStore, Email, GrantStore, Principal, Recipients, ResponseStore,
+    CommentStore, Creators, CursorStore, GrantStore, Principal, Recipients, ResponseStore,
     ShareStore, Team, TeamName, Teams, Timestamp, TokenStore,
 };
-
-/// The caller's verified address.
-fn caller(who: &Principal) -> Result<&Email, Refusal> {
-    who.email().ok_or_else(|| ApiCode::NoVerifiedEmail.into())
-}
 
 /// The team that `text` names; a malformed name is a missing team.
 fn team_name(text: &str) -> Result<TeamName, Refusal> {
@@ -41,7 +36,7 @@ where
         request: &TeamRequest,
         now: Timestamp,
     ) -> Answer {
-        let owner = caller(who)?;
+        let owner = self.caller(who)?;
         let name = TeamName::try_from(request.name.as_str()).map_err(|error| Refusal {
             code: ApiCode::TeamNameInvalid,
             detail: Some(error.to_string()),
@@ -57,7 +52,7 @@ where
     }
 
     pub(super) async fn list_teams(&self, who: &Principal) -> Answer {
-        let person = caller(who)?;
+        let person = self.caller(who)?;
         let teams = self
             .flares
             .shares()
@@ -73,7 +68,7 @@ where
     }
 
     pub(super) async fn show_team(&self, who: &Principal, name: &str) -> Answer {
-        let person = caller(who)?;
+        let person = self.caller(who)?;
         let name = team_name(name)?;
         let (team, members) = self
             .flares
@@ -94,7 +89,7 @@ where
     /// Deletes the team for its owner: removes its grant from every share,
     /// at most 200 a call, then its members, and frees the name.
     pub(super) async fn delete_team(&self, who: &Principal, name: &str) -> Answer {
-        caller(who)?;
+        self.caller(who)?;
         let name = team_name(name)?;
         let deletion = self
             .flares
@@ -118,7 +113,7 @@ where
         name: &str,
         request: &TransferRequest,
     ) -> Answer {
-        let person = caller(who)?;
+        let person = self.caller(who)?;
         let name = team_name(name)?;
         let teams = self.flares.shares().teams();
         // The team is read first, so a caller who cannot see it learns
@@ -144,7 +139,7 @@ where
         request: &MembersRequest,
         add: bool,
     ) -> Answer {
-        let person = caller(who)?;
+        let person = self.caller(who)?;
         let name = team_name(name)?;
         let teams = self.flares.shares().teams();
         // The team is read first, so a caller who cannot see it learns

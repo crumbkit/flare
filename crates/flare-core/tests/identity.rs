@@ -220,10 +220,15 @@ fn an_email_principal_under_the_username_kind_has_no_person() {
     let mail = Principal::with_email(email.principal_id(), email);
     assert_eq!(
         block_on(flares.share(&mail, flare(1, &[], vec![], vec![]), at(1))).err(),
-        Some(FlareError::Share(ShareError::NoPerson))
+        Some(FlareError::Share(ShareError::NoPerson(
+            IdentityKind::Username
+        )))
     );
     block_on(flares.share(&user("ana"), flare(2, &[], vec![], vec![]), at(2))).unwrap();
-    assert_eq!(opens(&flares, &mail, 2), Err(ShareError::NoPerson));
+    assert_eq!(
+        opens(&flares, &mail, 2),
+        Err(ShareError::NoPerson(IdentityKind::Username))
+    );
 }
 
 #[test]
@@ -231,6 +236,6 @@ fn a_username_principal_under_the_email_kind_has_no_person() {
     let flares = usernames(Admission::Listed).with_identity(IdentityKind::Email);
     assert_eq!(
         block_on(flares.share(&user("ana"), flare(1, &[], vec![], vec![]), at(1))).err(),
-        Some(FlareError::Share(ShareError::NoPerson))
+        Some(FlareError::Share(ShareError::NoPerson(IdentityKind::Email)))
     );
 }

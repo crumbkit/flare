@@ -97,6 +97,7 @@ and has the value 1 on each line.
 | `provider_misbehaved` | The provider sent a reply the protocol does not allow. |
 | `token_rejected` | The ID token failed a check. |
 | `email_unverified` | The account's email was missing or not verified. |
+| `no_username` | The ID token's username claim was missing or not a username. |
 | `not_allowed` | The admit rule does not admit the account. |
 | `too_many_sessions` | Too many sessions were live. |
 | `no_randomness` | The system's random number generator failed. |

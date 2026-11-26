@@ -149,7 +149,7 @@ fn a_caller_without_a_person_is_refused() {
     let result = run(&flares, &local, "budget", 50);
     assert_eq!(
         result.unwrap_err(),
-        SearchError::Share(ShareError::NoPerson)
+        SearchError::Share(ShareError::NoPerson(crate::IdentityKind::Email))
     );
 }
 

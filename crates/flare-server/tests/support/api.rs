@@ -53,7 +53,13 @@ impl Api {
     /// The server of [`Api::start`], whose app `extra` finishes after the
     /// share API is added, such as by turning metrics on.
     pub async fn start_with(extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
-        Self::launch(Admit::Anyone(Reach::Everything), None, extra).await
+        Self::launch(Admit::Anyone(Reach::Everything), None, false, extra).await
+    }
+
+    /// The server of [`Api::start`] with `hosted.everyone_signed_in` on, so
+    /// an everyone grant opens to every signed-in person.
+    pub async fn start_everyone_signed_in() -> Self {
+        Self::launch(Admit::Anyone(Reach::Everything), None, true, |app| app).await
     }
 
     /// The same server under an admit rule of the domain example.com.
@@ -65,19 +71,26 @@ impl Api {
     /// The server of [`Api::start`] with the share API's admit rule `admit`,
     /// whose app `extra` finishes after the share API is added.
     pub async fn start_full(admit: Admit, extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
-        Self::launch(admit, None, extra).await
+        Self::launch(admit, None, false, extra).await
     }
 
     /// The server of [`Api::start`], whose reading pages link readers who
     /// have never shared to `get_flare`.
     pub async fn with_get_flare(get_flare: &str) -> Self {
         let address = GetFlare::try_from(get_flare).unwrap();
-        Self::launch(Admit::Anyone(Reach::Everything), Some(address), |app| app).await
+        Self::launch(
+            Admit::Anyone(Reach::Everything),
+            Some(address),
+            false,
+            |app| app,
+        )
+        .await
     }
 
     async fn launch(
         admit: Admit,
         get_flare: Option<GetFlare>,
+        everyone_signed_in: bool,
         extra: impl FnOnce(HostedApp) -> HostedApp,
     ) -> Self {
         let faults = Faults::default();
@@ -95,7 +108,9 @@ impl Api {
                     ["alice", "bob", "carol"]
                         .iter()
                         .map(|name| {
-                            Email::try_from(format!("{name}@example.com").as_str()).unwrap()
+                            Email::try_from(format!("{name}@example.com").as_str())
+                                .unwrap()
+                                .into()
                         })
                         .collect(),
                 ),
@@ -121,8 +136,9 @@ impl Api {
             let recipients = FaultyRecipients {
                 fail: switches.recipients.clone(),
             };
-            let sharing =
-                Sharing::new(flares, tokens, recipients, admit).with_files(MemoryFileStore::new());
+            let sharing = Sharing::new(flares, tokens, recipients, admit)
+                .with_everyone_signed_in(everyone_signed_in)
+                .with_files(MemoryFileStore::new());
             let sharing = match get_flare {
                 Some(address) => sharing.with_get_flare(address),
                 None => sharing,

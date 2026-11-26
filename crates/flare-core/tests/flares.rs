@@ -507,7 +507,7 @@ fn a_principal_with_no_verified_email_cannot_share() {
     let refused = block_on(flares.share(&nobody, flare(1, &[], &[]), at(1)));
     assert_eq!(
         refused.unwrap_err(),
-        FlareError::Share(ShareError::NoPerson)
+        FlareError::Share(ShareError::NoPerson(flare_core::IdentityKind::Email))
     );
 }
 

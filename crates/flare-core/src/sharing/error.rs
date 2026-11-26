@@ -1,10 +1,11 @@
 //! [`ShareError`], the answer to a refused request about a share.
 
 use super::Refusal;
+use crate::IdentityKind;
 use crate::store::{FileStoreError, GrantStoreError, ShareStoreError};
 
 /// Why the [`Shares`](super::Shares) service refused a request. No variant
-/// carries a value, so no answer holds an address.
+/// carries an address or a username, so no answer holds one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ShareError {
@@ -42,10 +43,11 @@ pub enum ShareError {
     #[error("a share with that id exists")]
     IdTaken,
     /// The caller's sign-in named no person of the deployment's identifier
-    /// kind, such as no verified email address under the email kind or no
-    /// username under the username kind, and shares are decided by it.
+    /// kind, which the error holds: no verified email address under the
+    /// email kind or no username under the username kind. Shares are
+    /// decided by that person.
     #[error("the caller's sign-in named no person of the deployment's identifier kind")]
-    NoPerson,
+    NoPerson(IdentityKind),
     /// A named team does not exist, is deleted, or the caller is not a
     /// member. The three give the same answer, so no one learns which team
     /// names exist.

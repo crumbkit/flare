@@ -15,9 +15,9 @@ use flare_core::memory::{
     MemoryCommentStore, MemoryCursorStore, MemoryGrantStore, MemoryResponseStore, MemoryTokenStore,
 };
 use flare_core::{
-    AddressesOnly, AllAdmitted, Creators, Email, FileId, FileStore as _, Flares, NoTeams,
-    Principal, PrincipalId, ShareId, ShareStore as _, ShareStoreError, ShareVersion, SweepReport,
-    Timestamp, sweep_files,
+    AllAdmitted, ByIdentity, Creators, Email, FileId, FileStore as _, Flares, IdentityKind,
+    NoTeams, Principal, PrincipalId, ShareId, ShareStore as _, ShareStoreError, ShareVersion,
+    SweepReport, Timestamp, sweep_files,
 };
 use hyper::body::Bytes;
 use std::sync::Arc;
@@ -42,7 +42,7 @@ fn admit() -> Admit {
         .iter()
         .map(|address| {
             AllowEntry::new(
-                Email::try_from(*address).unwrap(),
+                Email::try_from(*address).unwrap().into(),
                 PrincipalId::try_from(*address).unwrap(),
                 Reach::Everything,
             )
@@ -58,7 +58,7 @@ type Site<K> = Sharing<
     MemoryCommentStore,
     MemoryCursorStore,
     MemoryTokenStore,
-    AddressesOnly,
+    ByIdentity,
     NoTeams,
     K,
     Files,
@@ -74,8 +74,13 @@ fn site<K: Creators>(shares: &Shares, files: &Files, creators: K) -> Site<K> {
         MemoryCursorStore::new(),
         creators,
     );
-    Sharing::new(flares, MemoryTokenStore::default(), AddressesOnly, admit())
-        .with_files(files.clone())
+    Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        ByIdentity(IdentityKind::Email),
+        admit(),
+    )
+    .with_files(files.clone())
 }
 
 /// Stores whose files are stamped at [`T0`].
@@ -544,8 +549,12 @@ async fn a_site_with_no_file_store_refuses_an_image_and_writes_no_share_and_admi
         MemoryCursorStore::new(),
         AllAdmitted,
     );
-    let site: Sharing<_, _, _, _, _, _, _, NoTeams, AllAdmitted, NoFiles> =
-        Sharing::new(flares, MemoryTokenStore::default(), AddressesOnly, admit());
+    let site: Sharing<_, _, _, _, _, _, _, NoTeams, AllAdmitted, NoFiles> = Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        ByIdentity(IdentityKind::Email),
+        admit(),
+    );
     let refused = site
         .upload(
             &person(ANA),
