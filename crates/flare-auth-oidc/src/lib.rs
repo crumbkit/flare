@@ -215,9 +215,10 @@
 //!
 //! The proxy sign-in's key set follows the same table, except that a
 //! failed fetch leaves the held keys answering: a stale set's keys verify
-//! tokens while fetches fail, a stale set is fetched at most once every 60
-//! seconds, and an unknown key id within 60 seconds of a failed fetch gets
-//! that failure.
+//! tokens while fetches fail, until a day after the last successful fetch;
+//! a stale set is fetched at most once every 60 seconds; a held key answers
+//! at once while another lookup fetches; and an unknown key id within 60
+//! seconds of a failed fetch gets that failure.
 //!
 //! A key is usable when it is RSA, its `use` is absent or `sig`, its `alg`
 //! is absent or RS256, and it has a key id. A fetched set replaces the

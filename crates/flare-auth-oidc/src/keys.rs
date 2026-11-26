@@ -13,6 +13,9 @@ use std::time::{Duration, SystemTime};
 
 /// How long a fetched key set is used before it is fetched again.
 const KEY_SET_LIFETIME: Duration = Duration::from_secs(60 * 60);
+/// How long a held key keeps answering after the last successful fetch,
+/// under a rule that keeps held keys while fetches fail.
+const HELD_KEYS_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
 /// The shortest time between two fetches for an unknown key id.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -45,9 +48,11 @@ pub(crate) struct KeyRule {
     pub(crate) es256: bool,
     /// The most keys a set may hold, usable or not, or `None` for no limit.
     pub(crate) max_keys: Option<usize>,
-    /// Whether the held keys keep answering after a fetch fails, with
-    /// stale fetches at most once every 60 seconds, and an unknown key id
-    /// gets that failure until the next fetch. The proxy sign-in reads keys
+    /// Whether the held keys keep answering after a fetch fails, for up to
+    /// a day after the last successful fetch, with stale fetches at most
+    /// once every 60 seconds and a held key answering at once while another
+    /// lookup fetches. An unknown key id gets that failure until the next
+    /// fetch. The proxy sign-in reads keys
     /// on every request, so it keeps them; the OpenID Connect sign-in reads
     /// them only at a callback and refuses that sign-in instead.
     pub(crate) keeps_held_keys: bool,
@@ -146,17 +151,23 @@ struct Cached {
 
 impl Cached {
     /// The key for `kid` after the last completed fetch. Under a rule that
-    /// keeps held keys, a held key answers even when that fetch failed, so
-    /// an outage of the key set address keeps the keys flare has. Otherwise
-    /// a failed fetch answers its failure, and a successful one an unknown
-    /// key.
-    fn outcome(&self, kid: &str, rule: KeyRule) -> Result<DecodingKey, KeyError> {
+    /// keeps held keys, a held key answers even when that fetch failed, for
+    /// up to a day after the last successful fetch, so an outage of the key
+    /// set address keeps the keys flare has. Otherwise a failed fetch
+    /// answers its failure, and a successful one an unknown key.
+    fn outcome(&self, kid: &str, rule: KeyRule, now: SystemTime) -> Result<DecodingKey, KeyError> {
         match (self.keys.0.get(kid), self.failure) {
-            (Some(_), Some(failure)) if !rule.keeps_held_keys => Err(failure),
-            (Some(key), _) => Ok(key.clone()),
-            (None, Some(failure)) => Err(failure),
+            (Some(key), None) => Ok(key.clone()),
+            (Some(key), Some(_)) if self.holds(rule, now) => Ok(key.clone()),
+            (_, Some(failure)) => Err(failure),
             (None, None) => Err(KeyError::Unknown),
         }
+    }
+
+    /// Whether the held keys still answer at `now` while fetches fail: under
+    /// a rule that keeps them, until a day after the last successful fetch.
+    fn holds(&self, rule: KeyRule, now: SystemTime) -> bool {
+        rule.keeps_held_keys && !has_passed(self.fetched, HELD_KEYS_LIFETIME, now)
     }
 }
 
@@ -169,7 +180,9 @@ impl Cached {
 /// the same failure. It starts no fetch of its own, so sign-ins that arrive
 /// together cost one fetch and one request deadline, whether the provider
 /// answers or not. When the fetching sign-in is dropped before its fetch
-/// completes, the next waiter fetches in its place.
+/// completes, the next waiter fetches in its place. Under a rule that keeps
+/// held keys, a lookup of a held key id does not wait: it answers with the
+/// held key.
 pub(crate) struct KeyCache {
     cached: Mutex<Cached>,
     refreshing: tokio::sync::Mutex<()>,
@@ -181,8 +194,9 @@ enum Lookup {
     /// The key, in a set under one hour old.
     Found(DecodingKey),
     /// The cache must fetch the set again first. It holds how many fetches
-    /// had completed when the cache was read.
-    Refresh(u64),
+    /// had completed when the cache was read, and the held key that answers
+    /// at once when another lookup is already fetching, if any.
+    Refresh(u64, Option<DecodingKey>),
     /// The key id is unknown, and the last fetch was under 60 seconds ago.
     /// It holds that fetch's failure, or `None` when it succeeded.
     Unknown(Option<KeyError>),
@@ -222,11 +236,17 @@ impl KeyCache {
             .last_attempt
             .is_none_or(|last| has_passed(last, REFRESH_INTERVAL, now));
         let keeps = self.rule.keeps_held_keys;
+        let holds = cached.holds(self.rule, now);
+        let completed = cached.completed;
         match cached.keys.0.get(kid) {
             Some(key) if !stale => Lookup::Found(key.clone()),
-            Some(key) if keeps && !may_fetch => Lookup::Found(key.clone()),
-            Some(_) => Lookup::Refresh(cached.completed),
-            None if may_fetch => Lookup::Refresh(cached.completed),
+            Some(key) if holds && !may_fetch => Lookup::Found(key.clone()),
+            Some(key) if holds => Lookup::Refresh(completed, Some(key.clone())),
+            Some(_) if keeps && !may_fetch => Lookup::Unknown(cached.failure),
+            Some(_) => Lookup::Refresh(completed, None),
+            // The OpenID Connect rule fetches a stale set for any key id.
+            None if stale && !keeps => Lookup::Refresh(completed, None),
+            None if may_fetch => Lookup::Refresh(completed, None),
             None if keeps => Lookup::Unknown(cached.failure),
             None => Lookup::Unknown(None),
         }
@@ -256,18 +276,26 @@ impl KeyCache {
     where
         F: Future<Output = Result<Vec<u8>, ReplyError>>,
     {
-        let seen = match self.look_up(kid, now) {
+        let (seen, held) = match self.look_up(kid, now) {
             Lookup::Found(key) => return Ok(key),
             Lookup::Unknown(failure) => return Err(failure.unwrap_or(KeyError::Unknown)),
-            Lookup::Refresh(completed) => completed,
+            Lookup::Refresh(completed, held) => (completed, held),
         };
-        let _refreshing = self.refreshing.lock().await;
+        // A held key answers at once while another lookup fetches, so a key
+        // set address that hangs does not stall every request.
+        let _refreshing = match held {
+            Some(key) => match self.refreshing.try_lock() {
+                Ok(guard) => guard,
+                Err(_) => return Ok(key),
+            },
+            None => self.refreshing.lock().await,
+        };
         {
             let cached = self.lock();
             if cached.completed != seen {
                 // Another sign-in's fetch completed while this one waited,
                 // so this one takes that fetch's outcome.
-                return cached.outcome(kid, self.rule);
+                return cached.outcome(kid, self.rule, now);
             }
         }
         let fetched = match fetch().await {
@@ -287,7 +315,7 @@ impl KeyCache {
             }
             Err(failure) => cached.failure = Some(failure),
         }
-        cached.outcome(kid, self.rule)
+        cached.outcome(kid, self.rule, now)
     }
 }
 

@@ -19,8 +19,8 @@ This file records the notable changes to flare. The format follows
   the optional sign-out link, and `flare serve` exits with
   `flare::proxy::keys_unavailable` when it cannot fetch the key set. flare
   reads no unsigned identity header. While the key set address is down,
-  the keys flare holds keep verifying tokens. docs/sign-in.md describes
-  it.
+  the keys flare holds keep verifying tokens for up to 24 hours after the
+  last successful fetch. docs/sign-in.md describes it.
 - flare-server's `Site::Hosted` holds any `HostedSignIn`, which names the
   credential's cookie, what a request with no credential gets and where
   sign-out goes. `OidcAuthenticator` is the default, and flare-auth-oidc's

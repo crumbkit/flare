@@ -92,9 +92,15 @@ flare accepts a token only when every check passes, in this order:
 - A token whose `kid` is not in the held set makes flare fetch the set
   again. A key that is still missing gets 401 `auth::proxy_refused`.
 - When a fetch fails, or returns a set that flare would refuse at start,
-  flare keeps the keys it holds, and tokens signed by them keep working.
-  A token whose `kid` is not held gets 503 `auth::unavailable` until a
+  flare keeps the keys it holds, and tokens signed by them keep working
+  for up to 24 hours after the last successful fetch. After that, every
+  token gets 503 `auth::unavailable` until a fetch succeeds. A key that the
+  proxy withdraws by publishing a set flare refuses therefore stops working
+  within a day; restart `flare serve` to drop it at once.
+- A token whose `kid` is not held gets 503 `auth::unavailable` until a
   fetch succeeds.
+- A request whose key is held does not wait for a fetch in progress, so a
+  key set address that hangs does not slow page loads.
 
 ## The share API
 
