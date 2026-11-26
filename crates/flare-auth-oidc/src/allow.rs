@@ -3,7 +3,7 @@
 
 use crate::config::ConfigError;
 use crate::refusal::SignInRefusal;
-use flare_core::{Email, Principal, PrincipalId, Resource};
+use flare_core::{Email, Person, Principal, PrincipalId, Resource, Username};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fmt;
@@ -28,22 +28,22 @@ impl Reach {
     }
 }
 
-/// One person on the allow-list.
+/// One person on the allow-list, named by email or by username.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct AllowEntry {
-    email: Email,
+    person: Person,
     principal: PrincipalId,
     reach: Reach,
 }
 
 impl AllowEntry {
-    /// The person with the verified email `email` signs in as `principal`
-    /// and may reach `reach`.
+    /// The person `person`, a verified email or a username, signs in as
+    /// `principal` and may reach `reach`.
     #[must_use]
-    pub fn new(email: Email, principal: PrincipalId, reach: Reach) -> Self {
+    pub fn new(person: Person, principal: PrincipalId, reach: Reach) -> Self {
         Self {
-            email,
+            person,
             principal,
             reach,
         }
@@ -60,7 +60,7 @@ impl AllowEntry {
     }
 }
 
-/// The people who may sign in. Each email and each principal appears once.
+/// The people who may sign in. Each person and each principal appears once.
 /// Its `Debug` output gives only the number of entries.
 #[derive(Clone, Default)]
 pub struct AllowList {
@@ -72,13 +72,14 @@ impl AllowList {
     ///
     /// # Errors
     ///
-    /// Returns [`ConfigError::DuplicateEmail`] or
-    /// [`ConfigError::DuplicatePrincipal`] when two entries share one.
+    /// Returns [`ConfigError::DuplicateEmail`] when two entries name one
+    /// person, or [`ConfigError::DuplicatePrincipal`] when two share one
+    /// principal.
     pub fn new(entries: Vec<AllowEntry>) -> Result<Self, ConfigError> {
-        let mut emails = HashSet::new();
+        let mut people = HashSet::new();
         let mut principals = HashSet::new();
         for entry in &entries {
-            if !emails.insert(&entry.email) {
+            if !people.insert(&entry.person) {
                 return Err(ConfigError::DuplicateEmail);
             }
             if !principals.insert(&entry.principal) {
@@ -88,9 +89,16 @@ impl AllowList {
         Ok(Self { entries })
     }
 
-    /// The entry for `email`.
+    /// The entry for `person`.
+    pub(crate) fn by_person(&self, person: &Person) -> Option<&AllowEntry> {
+        self.entries.iter().find(|entry| entry.person == *person)
+    }
+
+    /// The entry for the verified `email`.
     pub(crate) fn by_email(&self, email: &Email) -> Option<&AllowEntry> {
-        self.entries.iter().find(|entry| entry.email == *email)
+        self.entries
+            .iter()
+            .find(|entry| entry.person.as_email() == Some(email))
     }
 
     /// The entry for `principal`.
@@ -270,16 +278,19 @@ impl Admit {
         }
     }
 
-    /// Whether the rule admits `email`, judged from the address alone, as
-    /// a CLI token's check does on every request. Under
-    /// [`Admit::Emails`] the address must be on the list. The
-    /// [`Admit::Domain`] and [`Admit::Anyone`] rules admit every address,
-    /// because the `hd` claim that decides a domain sign-in is only in an
-    /// ID token.
+    /// Whether the rule admits `owner`, whose verified email is `email`,
+    /// judged from those alone, as a CLI token's check does on every
+    /// request. Under [`Admit::Emails`] the owner or the email must be on
+    /// the list. The [`Admit::Domain`] and [`Admit::Anyone`] rules admit
+    /// every owner, because the `hd` claim that decides a domain sign-in is
+    /// only in an ID token.
     #[must_use]
-    pub fn admits(&self, email: &Email) -> bool {
+    pub fn admits(&self, owner: &Person, email: Option<&Email>) -> bool {
         match self {
-            Self::Emails(allow) => allow.by_email(email).is_some(),
+            Self::Emails(allow) => {
+                allow.by_person(owner).is_some()
+                    || email.is_some_and(|email| allow.by_email(email).is_some())
+            }
             Self::Domain(_) | Self::Anyone(_) => true,
         }
     }
@@ -298,6 +309,29 @@ impl Admit {
             Self::Anyone(_) => email.principal_id(),
         };
         Some(Principal::with_email(id, email))
+    }
+
+    /// The principal of a username that a proxy's signed token names,
+    /// beside the email the token marks verified, if any. Under
+    /// [`Admit::Emails`] it is the principal of the entry that names the
+    /// username, under [`Admit::Domain`] the username's own when the
+    /// verified email's domain is the rule's, and under [`Admit::Anyone`]
+    /// the username's own. `None` when the rule does not admit the person.
+    pub(crate) fn principal_of_username(
+        &self,
+        username: Username,
+        email: Option<Email>,
+    ) -> Option<Principal> {
+        let person = Person::Username(username);
+        let id = match self {
+            Self::Emails(allow) => allow.by_person(&person)?.principal().clone(),
+            Self::Domain(rule) if email.as_ref().is_some_and(|email| rule.domain.owns(email)) => {
+                person.principal_id()
+            }
+            Self::Domain(_) => return None,
+            Self::Anyone(_) => person.principal_id(),
+        };
+        Some(Principal::with_person(id, person, email))
     }
 
     /// Whether a principal that [`Admit::principal_of_address`] gave

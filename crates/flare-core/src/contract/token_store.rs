@@ -1,18 +1,18 @@
 //! The [`TokenStore`] contract suite. Every function writes the codes and
 //! tokens it needs, so the caller passes a new, empty store.
 
-use super::{Clause, RunTogether, Violation, ensure, fixture, unexpected};
+use super::{Clause, People, RunTogether, Violation, ensure, fixture, unexpected};
 use crate::{
-    Digest, Email, LoginCode, NewToken, TOKEN_LIFE, Timestamp, TokenId, TokenLabel, TokenStore,
-    TokenStoreError,
+    Digest, Email, LoginCode, NewToken, Person, TOKEN_LIFE, Timestamp, TokenId, TokenLabel,
+    TokenStore, TokenStoreError,
 };
 
 /// The owners and labels that the suite uses.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TokenFixture {
-    owner: Email,
-    other_owner: Email,
+    owner: Person,
+    other_owner: Person,
     label: TokenLabel,
     other_label: TokenLabel,
 }
@@ -25,12 +25,34 @@ impl TokenFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
+        Self::of(People::Emails)
+    }
+
+    /// The fixture with `people` as its owners. A username owner's codes
+    /// and tokens keep a verified address beside the username.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] if a constant of the fixture is refused by its
+    /// type, which means this crate is broken.
+    pub fn of(people: People) -> Result<Self, Violation> {
         Ok(Self {
-            owner: fixture(Email::try_from("owner@example.com"))?,
-            other_owner: fixture(Email::try_from("other@example.com"))?,
+            owner: people.person("owner")?,
+            other_owner: people.person("other")?,
             label: fixture(TokenLabel::try_from("flare on studio"))?,
             other_label: fixture(TokenLabel::try_from("flare on laptop"))?,
         })
+    }
+
+    /// The address kept beside a username owner: the username at
+    /// example.com.
+    fn email_of(owner: &Person) -> Option<Email> {
+        match owner {
+            Person::Email(_) => None,
+            Person::Username(name) => {
+                Email::try_from(format!("{}@example.com", name.as_str()).as_str()).ok()
+            }
+        }
     }
 
     fn code(&self, tag: u8, issued: u64) -> LoginCode {
@@ -40,9 +62,10 @@ impl TokenFixture {
             4000 + u16::from(tag),
             Timestamp::from_secs(issued),
         )
+        .with_email(Self::email_of(&self.owner))
     }
 
-    fn token(&self, tag: u8, owner: &Email, label: &TokenLabel, created: u64) -> NewToken {
+    fn token(&self, tag: u8, owner: &Person, label: &TokenLabel, created: u64) -> NewToken {
         NewToken::new(
             TokenId::from_random([tag; 16]),
             Digest::from_bytes([tag; 32]),
@@ -50,6 +73,7 @@ impl TokenFixture {
             label.clone(),
             Timestamp::from_secs(created),
         )
+        .with_email(Self::email_of(owner))
     }
 }
 

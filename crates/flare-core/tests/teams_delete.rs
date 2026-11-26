@@ -9,10 +9,10 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, AllAdmitted, DocumentText, Email, Grant, GrantRevoke, GrantStore, GrantStoreError,
-    GrantWrite, Group, ListKey, Listing, MAX_SWEPT, MailDomain, NewFlare, Position, Principal,
-    PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Team, TeamName, Teams, TeamsError,
-    Timestamp,
+    Admission, AllAdmitted, DocumentText, Grant, GrantRevoke, GrantStore, GrantStoreError,
+    GrantWrite, Group, ListKey, Listing, MAX_SWEPT, MailDomain, NewFlare, Person, Position,
+    Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Team, TeamName, Teams,
+    TeamsError, Timestamp,
 };
 use flare_core::{FlareTeams, Flares};
 use std::sync::Arc;
@@ -76,7 +76,7 @@ impl Teams for Racing {
         self.inner.manages()
     }
 
-    async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
+    async fn teams_of(&self, person: &Person) -> Result<Vec<TeamName>, TeamsError> {
         self.inner.teams_of(person).await
     }
 
@@ -99,13 +99,13 @@ impl Teams for Racing {
         found
     }
 
-    async fn members(&self, name: &TeamName) -> Result<Vec<Email>, TeamsError> {
+    async fn members(&self, name: &TeamName) -> Result<Vec<Person>, TeamsError> {
         self.inner.members(name).await
     }
 
     async fn create(
         &self,
-        owner: &Email,
+        owner: &Person,
         name: TeamName,
         at: Timestamp,
     ) -> Result<Team, TeamsError> {
@@ -114,44 +114,48 @@ impl Teams for Racing {
 
     async fn add(
         &self,
-        actor: &Email,
+        actor: &Person,
         name: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> Result<bool, TeamsError> {
         self.inner.add(actor, name, member).await
     }
 
     async fn remove(
         &self,
-        actor: &Email,
+        actor: &Person,
         name: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> Result<bool, TeamsError> {
         self.inner.remove(actor, name, member).await
     }
 
-    async fn delete(&self, actor: &Email, name: &TeamName) -> Result<(), TeamsError> {
+    async fn delete(&self, actor: &Person, name: &TeamName) -> Result<(), TeamsError> {
         self.inner.delete(actor, name).await
     }
 
-    async fn finish_delete(&self, actor: &Email, name: &TeamName) -> Result<(), TeamsError> {
+    async fn finish_delete(&self, actor: &Person, name: &TeamName) -> Result<(), TeamsError> {
         self.inner.finish_delete(actor, name).await
     }
 
     async fn transfer(
         &self,
-        actor: &Email,
+        actor: &Person,
         name: &TeamName,
-        to: &Email,
+        to: &Person,
     ) -> Result<Team, TeamsError> {
         self.inner.transfer(actor, name, to).await
     }
 
-    async fn show(&self, actor: &Email, name: &TeamName) -> Result<(Team, Vec<Email>), TeamsError> {
+    async fn show(
+        &self,
+        actor: &Person,
+        name: &TeamName,
+    ) -> Result<(Team, Vec<Person>), TeamsError> {
         self.inner.show(actor, name).await
     }
 
-    async fn list(&self, actor: &Email) -> Result<Vec<Team>, TeamsError> {
+    async fn list(&self, actor: &Person) -> Result<Vec<Team>, TeamsError> {
         self.inner.list(actor).await
     }
 }
@@ -165,15 +169,16 @@ type Service = Flares<
     Racing,
 >;
 
-fn email(name: &str) -> Email {
-    Email::try_from(format!("{name}@example.com").as_str()).unwrap()
+fn email(name: &str) -> Person {
+    Person::try_from(format!("{name}@example.com").as_str()).unwrap()
 }
 
 fn person(name: &str) -> Principal {
     let address = format!("{name}@example.com");
-    Principal::with_email(
+    Principal::with_person(
         PrincipalId::try_from(address.as_str()).unwrap(),
         email(name),
+        None,
     )
 }
 
@@ -232,9 +237,10 @@ fn with_design_over(left: Arc<AtomicUsize>, grants: Arc<MemoryGrantStore>) -> Se
         inner: FlareTeams::new(MemoryTeamStore::new()),
         race: AtomicBool::new(false),
     })
-    .admitting(Admission::Domain(
-        MailDomain::try_from("example.com").unwrap(),
-    ));
+    .admitting(
+        Admission::Domain(MailDomain::try_from("example.com").unwrap()),
+        false,
+    );
     block_on(flares.create_team(&person("alice"), team("design"), at(1))).unwrap();
     let teams = flares.shares().teams();
     block_on(teams.add(&email("alice"), &team("design"), &email("bob"))).unwrap();

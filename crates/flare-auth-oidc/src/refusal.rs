@@ -174,6 +174,10 @@ pub enum SignInRefusal {
     /// The ID token has no email, or does not mark it verified.
     #[error("the account's email is missing or not verified")]
     EmailUnverified,
+    /// Under [`Identity::Username`](crate::Identity::Username), the ID
+    /// token lacks the username claim, or its value is not a username.
+    #[error("the account's username is missing or not a username")]
+    NoUsername,
     /// The email is not on the allow-list, or under
     /// [`Admit::Domain`](crate::Admit::Domain) it cannot be a principal id.
     #[error("the account is not allowed to sign in")]

@@ -6,6 +6,7 @@
 pub use super::algorithms::{ProxyAlgorithm, ProxyAlgorithms};
 use crate::allow::Admit;
 use crate::config::Deadlines;
+use crate::identity::Identity;
 use std::time::Duration;
 use url::Url;
 
@@ -241,6 +242,7 @@ pub struct ProxyConfig {
     pub(crate) cookie: CookieName,
     pub(crate) algorithms: ProxyAlgorithms,
     pub(crate) identity_claim: IdentityClaim,
+    pub(crate) identity: Identity,
     pub(crate) admit: Admit,
     pub(crate) sign_in_url: Option<ProxyLink>,
     pub(crate) sign_out_url: Option<ProxyLink>,
@@ -267,6 +269,7 @@ impl ProxyConfig {
             cookie,
             algorithms,
             identity_claim: IdentityClaim::default(),
+            identity: Identity::Email,
             admit,
             sign_in_url: None,
             sign_out_url: None,
@@ -291,6 +294,16 @@ impl ProxyConfig {
         self
     }
 
+    /// Sets how a token names the person. Under [`Identity::Username`] the
+    /// token's username claim names the person, `email_verified` is not
+    /// required, and the token's `email` is kept only when it is marked
+    /// verified. The identity claim then goes unread.
+    #[must_use]
+    pub fn with_identity(mut self, identity: Identity) -> Self {
+        self.identity = identity;
+        self
+    }
+
     /// Sets the proxy's sign-in page, which a reader with no cookie is
     /// linked to.
     #[must_use]
@@ -310,6 +323,12 @@ impl ProxyConfig {
     #[must_use]
     pub fn admit(&self) -> &Admit {
         &self.admit
+    }
+
+    /// How a token names the person.
+    #[must_use]
+    pub fn identity(&self) -> &Identity {
+        &self.identity
     }
 
     /// The cookie in which the proxy sets its token.

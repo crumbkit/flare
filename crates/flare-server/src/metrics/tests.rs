@@ -124,6 +124,7 @@ fn every_refusal_of_flare_auth_oidc_has_its_own_reason() {
         SignInRefusal::ProviderMisbehaved,
         SignInRefusal::TokenRejected(flare_auth_oidc::TokenFault::Expired),
         SignInRefusal::EmailUnverified,
+        SignInRefusal::NoUsername,
         SignInRefusal::NotAllowed,
         SignInRefusal::TooManySessions,
         SignInRefusal::NoRandomness,

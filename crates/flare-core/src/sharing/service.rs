@@ -4,18 +4,19 @@
 mod grants;
 mod group_grants;
 mod groups;
+mod images;
 mod lists;
 
 use super::error::ShareError;
 use super::{Decision, ShareAction, Standing, Step, decide_actor};
 use crate::auth::Principal;
-use crate::file::{FileId, StoredFile, VersionImages};
 use crate::grant::Role;
 use crate::name::PrincipalId;
+use crate::person::{IdentityKind, Person};
 use crate::share::{
     NewShare, NewVersion, Share, ShareContent, ShareId, ShareTitle, ShareVersion, SharedVersion,
 };
-use crate::store::{FileStore, GrantStore, ShareStore, ShareStoreError};
+use crate::store::{GrantStore, ShareStore, ShareStoreError};
 use crate::teams::{Admission, NoTeams, Teams};
 use crate::time::Timestamp;
 
@@ -60,35 +61,56 @@ pub struct SharedWithMe {
 /// Decides and applies every request about a share, from the principal, the
 /// share and the grants.
 ///
-/// The actor is the principal's verified email address, never the
+/// The actor is the principal's person of the deployment's
+/// [`IdentityKind`], its verified address or its username, never the
 /// principal's own id, so a sign-in configuration that maps one address to
 /// another address-shaped id opens no share granted to the second address.
+/// A principal with no person of that kind is refused with
+/// [`ShareError::NoPerson`].
 /// Every call reads the share and the actor's grant again, keeps no cache,
 /// logs nothing, and turns every store failure into a refusal, never into
 /// access. Writes name the role the service read and the authority it acts
 /// under, so the store refuses a write whose grounds changed in between.
 /// The service does not retry.
 ///
-/// Anyone with a verified address may create a share; a caller that needs
+/// Anyone with a person of the kind may create a share; a caller that needs
 /// a narrower rule checks it before calling [`Shares::create`].
 ///
 /// A person also opens a share through a team that holds a grant on it, or
 /// through an everyone grant whose audience covers them. The service reads
 /// teams through `T` and decides everyone grants under its [`Admission`],
-/// which is [`Admission::Anyone`] until the caller sets the deployment's.
+/// which is [`Admission::Anyone`] until the caller sets the deployment's,
+/// and its `everyone_signed_in` setting, which is off until the caller
+/// sets it. The identifier kind is [`IdentityKind::Email`] until the caller
+/// sets the deployment's.
 #[derive(Debug)]
 pub struct Shares<S, G, T = NoTeams> {
     shares: S,
     grants: G,
     teams: T,
     admission: Admission,
+    everyone_signed_in: bool,
+    kind: IdentityKind,
 }
 
-/// The actor's id: the principal's verified address.
-fn actor(who: &Principal) -> Result<PrincipalId, ShareError> {
-    who.email()
-        .map(crate::Email::principal_id)
-        .ok_or(ShareError::NoVerifiedEmail)
+/// The caller as the service decides by: the id that owners and grants are
+/// keyed by, the person it is, and the principal, whose verified email a
+/// domain audience reads.
+#[derive(Debug, Clone)]
+pub(super) struct Actor<'a> {
+    /// The person's id.
+    pub(super) id: PrincipalId,
+    /// The person.
+    pub(super) person: &'a Person,
+    /// The principal who makes the request.
+    pub(super) who: &'a Principal,
+}
+
+/// The person of `kind` that `who` signed in as.
+pub(crate) fn person_of(who: &Principal, kind: IdentityKind) -> Result<&Person, ShareError> {
+    who.person()
+        .filter(|person| person.kind() == kind)
+        .ok_or(ShareError::NoPerson(kind))
 }
 
 /// Applies a first-step answer for an action that needs no target.
@@ -119,6 +141,8 @@ impl<S, G> Shares<S, G> {
             grants,
             teams: NoTeams,
             admission: Admission::Anyone,
+            everyone_signed_in: false,
+            kind: IdentityKind::Email,
         }
     }
 }
@@ -132,15 +156,54 @@ impl<S, G, T> Shares<S, G, T> {
             grants: self.grants,
             teams,
             admission: self.admission,
+            everyone_signed_in: self.everyone_signed_in,
+            kind: self.kind,
         }
     }
 
-    /// The same service under the deployment's admit rule, which writes
-    /// and reads everyone grants.
+    /// The same service under the deployment's admit rule and its
+    /// `everyone_signed_in` setting, which write and read everyone grants.
+    /// With the setting on, an everyone grant under a rule that admits
+    /// anyone records [`Audience::SignedIn`](crate::Audience::SignedIn)
+    /// and opens to every signed-in person while the setting stays on.
     #[must_use]
-    pub fn admitting(mut self, admission: Admission) -> Self {
+    pub fn admitting(mut self, admission: Admission, everyone_signed_in: bool) -> Self {
         self.admission = admission;
+        self.everyone_signed_in = everyone_signed_in;
         self
+    }
+
+    /// The same service naming people by `kind`.
+    #[must_use]
+    pub fn with_identity(mut self, kind: IdentityKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    /// The identifier kind the service names people by.
+    #[must_use]
+    pub fn identity(&self) -> IdentityKind {
+        self.kind
+    }
+
+    /// The caller's person of the service's kind.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShareError::NoPerson`] for a principal with no person of
+    /// the kind.
+    pub fn person<'a>(&self, who: &'a Principal) -> Result<&'a Person, ShareError> {
+        person_of(who, self.kind)
+    }
+
+    /// The caller as the service decides by.
+    fn actor<'a>(&self, who: &'a Principal) -> Result<Actor<'a>, ShareError> {
+        let person = self.person(who)?;
+        Ok(Actor {
+            id: person.principal_id(),
+            person,
+            who,
+        })
     }
 
     /// The teams the service reads.
@@ -166,16 +229,16 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// Reads the share and works out what `actor` is to it.
     async fn standing(
         &self,
-        actor: &PrincipalId,
+        actor: &Actor<'_>,
         id: &ShareId,
     ) -> Result<(Share, Standing), ShareError> {
         let share = self.shares.get(id).await?;
-        if share.owner() == actor {
+        if share.owner() == &actor.id {
             return Ok((share, Standing::Owner));
         }
         let grant = self
             .grants
-            .get(id, actor)
+            .get(id, &actor.id)
             .await
             .map_err(|_| ShareError::Unavailable)?;
         let standing = match grant.map(|grant| grant.role()) {
@@ -192,7 +255,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// Reads the share and checks that `actor` may do `action` to it.
     async fn admit(
         &self,
-        actor: &PrincipalId,
+        actor: &Actor<'_>,
         id: &ShareId,
         action: ShareAction,
     ) -> Result<(Share, Standing), ShareError> {
@@ -211,7 +274,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ShareError::NoVerifiedEmail`], [`ShareError::IdTaken`],
+    /// Returns [`ShareError::NoPerson`], [`ShareError::IdTaken`],
     /// [`ShareError::TooManyShares`] or [`ShareError::Unavailable`].
     pub async fn create(
         &self,
@@ -221,7 +284,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         content: ShareContent,
         at: Timestamp,
     ) -> Result<Share, ShareError> {
-        let owner = actor(who)?;
+        let owner = self.actor(who)?.id;
         Ok(self
             .shares
             .create(NewShare::new(id, owner, title, content, at))
@@ -235,7 +298,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// Returns [`ShareError::NotFound`] for a missing share and for a caller
     /// with no standing in it, [`ShareError::VersionNotFound`] for a number
-    /// above the latest, [`ShareError::NoVerifiedEmail`] and
+    /// above the latest, [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn open(
         &self,
@@ -243,7 +306,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         id: &ShareId,
         number: Option<ShareVersion>,
     ) -> Result<Opened, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         let (share, standing) = self.admit(&actor, id, ShareAction::Read).await?;
         let number = number.unwrap_or_else(|| share.latest());
         if number > share.latest() {
@@ -271,7 +334,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// Returns [`ShareError::NotFound`], [`ShareError::Forbidden`] for an
     /// admin or a reader, [`ShareError::TooManyVersions`],
-    /// [`ShareError::NoVerifiedEmail`] and [`ShareError::Unavailable`].
+    /// [`ShareError::NoPerson`] and [`ShareError::Unavailable`].
     pub async fn publish(
         &self,
         who: &Principal,
@@ -279,33 +342,12 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         content: ShareContent,
         at: Timestamp,
     ) -> Result<ShareVersion, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         self.admit(&actor, id, ShareAction::Publish).await?;
         Ok(self
             .shares
-            .publish(id, NewVersion::new(content, actor, at))
+            .publish(id, NewVersion::new(content, actor.id, at))
             .await?)
-    }
-
-    /// Creates a share as [`Shares::create`] does, whose version 1 shows
-    /// the images in `images`. The caller has stored each file under `id`
-    /// before it calls this.
-    ///
-    /// # Errors
-    ///
-    /// Returns the errors of [`Shares::create`].
-    pub async fn create_with_images(
-        &self,
-        who: &Principal,
-        id: ShareId,
-        title: ShareTitle,
-        content: ShareContent,
-        images: VersionImages,
-        at: Timestamp,
-    ) -> Result<Share, ShareError> {
-        let owner = actor(who)?;
-        let new = NewShare::new(id, owner, title, content, at).with_images(images);
-        Ok(self.shares.create(new).await?)
     }
 
     /// Checks that the caller may publish a new version of a share, which
@@ -317,62 +359,8 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// Returns the refusals of [`Shares::publish`] that come before its
     /// write.
     pub async fn may_publish(&self, who: &Principal, id: &ShareId) -> Result<(), ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         self.admit(&actor, id, ShareAction::Publish).await?;
         Ok(())
-    }
-
-    /// Publishes a version as [`Shares::publish`] does, showing the images
-    /// in `images`. The caller has stored each file under `id` before it
-    /// calls this.
-    ///
-    /// # Errors
-    ///
-    /// Returns the errors of [`Shares::publish`].
-    pub async fn publish_with_images(
-        &self,
-        who: &Principal,
-        id: &ShareId,
-        content: ShareContent,
-        images: VersionImages,
-        at: Timestamp,
-    ) -> Result<ShareVersion, ShareError> {
-        let actor = actor(who)?;
-        self.admit(&actor, id, ShareAction::Publish).await?;
-        let version = NewVersion::new(content, actor, at).with_images(images);
-        Ok(self.shares.publish(id, version).await?)
-    }
-
-    /// Reads a file that version `number` of a share lists in its image
-    /// table, for a caller who may read the share. A file stored under the
-    /// share that the version does not list is never read, so a file that a
-    /// failed create or publish left behind is never served.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ShareError::NotFound`] for a missing share, a caller with
-    /// no standing in it, a missing version, a file the version does not
-    /// list and a listed file the store does not hold, so the answers
-    /// cannot be told apart; [`ShareError::NoVerifiedEmail`] and
-    /// [`ShareError::Unavailable`].
-    pub async fn file<F: FileStore>(
-        &self,
-        who: &Principal,
-        files: &F,
-        id: &ShareId,
-        number: ShareVersion,
-        file: &FileId,
-    ) -> Result<StoredFile, ShareError> {
-        let opened = self
-            .open(who, id, Some(number))
-            .await
-            .map_err(|error| match error {
-                ShareError::VersionNotFound => ShareError::NotFound,
-                other => other,
-            })?;
-        if !opened.version.images().names(file) {
-            return Err(ShareError::NotFound);
-        }
-        Ok(files.get(id, file).await?)
     }
 }

@@ -3,17 +3,18 @@
 //! Every function writes the teams it needs through the store, so the
 //! caller passes a new, empty store.
 
-use super::{Clause, Violation, ensure, fixture as parsed, unexpected};
-use crate::{Email, MAX_MEMBERS, Team, TeamName, TeamState, TeamStore, TeamStoreError, Timestamp};
+use super::{Clause, People, Violation, ensure, fixture as parsed, unexpected};
+use crate::{MAX_MEMBERS, Person, Team, TeamName, TeamState, TeamStore, TeamStoreError, Timestamp};
 
 /// The people and the team name that the suite uses.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TeamFixture {
-    owner: Email,
-    bob: Email,
-    carol: Email,
+    owner: Person,
+    bob: Person,
+    carol: Person,
     name: TeamName,
+    people: People,
 }
 
 impl TeamFixture {
@@ -24,11 +25,22 @@ impl TeamFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
+        Self::of(People::Emails)
+    }
+
+    /// The fixture with `people` as its owner and members.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] if a constant of the fixture is refused by its
+    /// type, which means this crate is broken.
+    pub fn of(people: People) -> Result<Self, Violation> {
         Ok(Self {
-            owner: parsed(Email::try_from("owner@example.com"))?,
-            bob: parsed(Email::try_from("bob@example.com"))?,
-            carol: parsed(Email::try_from("carol@example.com"))?,
+            owner: people.person("owner")?,
+            bob: people.person("bob")?,
+            carol: people.person("carol")?,
             name: parsed(TeamName::try_from("design"))?,
+            people,
         })
     }
 
@@ -196,9 +208,7 @@ pub async fn a_full_team_refuses_another_member_and_writes_nothing<S: TeamStore>
 ) -> Result<(), Violation> {
     created(store, fixture).await?;
     for number in 1..MAX_MEMBERS {
-        let member = parsed(Email::try_from(
-            format!("member-{number}@example.com").as_str(),
-        ))?;
+        let member = fixture.people.person(&format!("member-{number}"))?;
         unexpected(store.add(&fixture.name, &member).await)?;
     }
     let clause = Clause::AFullTeamRefusesAMember;

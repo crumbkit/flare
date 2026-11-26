@@ -6,7 +6,10 @@
 //! the item some time after it expires. A use writes `used_by`, a random
 //! value, so a settling read can tell its own use from another. A token
 //! item holds the digest of the token's secret as 32 bytes, its owner,
-//! label, creation time, expiry and, once revoked, its revoked time. A
+//! label, creation time, expiry and, once revoked, its revoked time. An
+//! owner named by username has the address its sign-in verified, when there
+//! was one, in `email` beside it; an owner named by address has no `email`
+//! attribute, so its items are what they were before usernames. A
 //! label slot names the latest token of one owner and label, so a new
 //! token with that label finds the one to revoke.
 
@@ -18,13 +21,16 @@ use crate::dynamodb::transact::{ABSENT, ItemRole, Transaction, key_map, names, p
 use aws_sdk_dynamodb::primitives::Blob;
 use aws_sdk_dynamodb::types::{AttributeValue, TransactWriteItem, Update};
 use flare_core::{
-    Digest, Email, LoginCode, NewToken, StoredToken, Timestamp, TokenId, TokenLabel, UsedCode,
+    Digest, Email, LoginCode, NewToken, Person, StoredToken, Timestamp, TokenId, TokenLabel,
+    UsedCode,
 };
 
 /// A login code as the table holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HeldCode {
-    pub(crate) owner: Email,
+    pub(crate) owner: Person,
+    /// The address kept beside a username owner.
+    pub(crate) email: Option<Email>,
     pub(crate) port: u16,
     pub(crate) expires: Timestamp,
     /// The `used_by` of the use that spent the code, or `None`.
@@ -39,12 +45,28 @@ impl HeldCode {
 
     /// What a successful use answers.
     pub(crate) fn used(&self) -> UsedCode {
-        UsedCode::new(self.owner.clone(), self.port)
+        UsedCode::new(self.owner.clone(), self.port).with_email(self.email.clone())
     }
 }
 
-fn read_email(item: &Item, name: &str, kind: ItemKind) -> Result<Email, Malformed> {
-    Email::try_from(read_text(item, name, kind)?).map_err(|_| Malformed(kind))
+fn read_person(item: &Item, name: &str, kind: ItemKind) -> Result<Person, Malformed> {
+    Person::try_from(read_text(item, name, kind)?).map_err(|_| Malformed(kind))
+}
+
+/// The address kept beside a username owner, when the item holds one.
+fn read_kept_email(item: &Item, kind: ItemKind) -> Result<Option<Email>, Malformed> {
+    read_optional_text(item, attr::EMAIL, kind)?
+        .map(|text| Email::try_from(text.as_str()).map_err(|_| Malformed(kind)))
+        .transpose()
+}
+
+/// The `email` attribute that a username owner's item keeps: the address
+/// beside the username, or nothing for an owner named by address.
+fn kept_email(owner: &Person, email: Option<&Email>) -> Option<(&'static str, AttributeValue)> {
+    match owner {
+        Person::Email(_) => None,
+        Person::Username(_) => email.map(|email| (attr::EMAIL, text(email.as_str()))),
+    }
 }
 
 fn read_optional_text(
@@ -62,7 +84,7 @@ fn read_optional_text(
 /// A code's item.
 pub(crate) fn code_item(code: &LoginCode) -> Item {
     let expires = number(code.expires().as_secs());
-    keyed(
+    let mut item = keyed(
         &Key::code(code.digest()),
         [
             (attr::OWNER, text(code.owner().as_str())),
@@ -70,7 +92,11 @@ pub(crate) fn code_item(code: &LoginCode) -> Item {
             (attr::EXPIRES, expires.clone()),
             (attr::TTL, expires),
         ],
-    )
+    );
+    item.extend(
+        kept_email(code.owner(), code.email()).map(|(name, value)| (name.to_owned(), value)),
+    );
+    item
 }
 
 /// The code that a code item holds.
@@ -78,7 +104,8 @@ pub(crate) fn code_from(item: &Item) -> Result<HeldCode, Malformed> {
     let kind = ItemKind::Code;
     let port = u16::try_from(read_number(item, attr::PORT, kind)?).map_err(|_| Malformed(kind))?;
     Ok(HeldCode {
-        owner: read_email(item, attr::OWNER, kind)?,
+        owner: read_person(item, attr::OWNER, kind)?,
+        email: read_kept_email(item, kind)?,
         port,
         expires: Timestamp::from_secs(read_number(item, attr::EXPIRES, kind)?),
         used_by: read_optional_text(item, attr::USED_BY, kind)?,
@@ -103,6 +130,9 @@ pub(crate) fn token_item(token: &StoredToken) -> Item {
     if let Some(revoked) = token.revoked() {
         item.insert(attr::REVOKED.to_owned(), number(revoked.as_secs()));
     }
+    item.extend(
+        kept_email(token.owner(), token.email()).map(|(name, value)| (name.to_owned(), value)),
+    );
     item
 }
 
@@ -120,10 +150,11 @@ pub(crate) fn token_from(item: &Item, id: &TokenId) -> Result<StoredToken, Malfo
     let new = NewToken::new(
         id.clone(),
         digest,
-        read_email(item, attr::OWNER, kind)?,
+        read_person(item, attr::OWNER, kind)?,
         label,
         Timestamp::from_secs(read_number(item, attr::CREATED, kind)?),
-    );
+    )
+    .with_email(read_kept_email(item, kind)?);
     let revoked = match item.get(attr::REVOKED) {
         None => None,
         Some(_) => Some(Timestamp::from_secs(read_number(
@@ -253,7 +284,7 @@ pub(crate) fn create(
 fn revoke_item(
     table: &str,
     id: &TokenId,
-    owner: Option<&Email>,
+    owner: Option<&Person>,
     at: Timestamp,
 ) -> Option<TransactWriteItem> {
     let mut condition = "attribute_exists(pk) AND attribute_not_exists(#r)".to_owned();
@@ -278,7 +309,7 @@ fn revoke_item(
 pub(crate) fn revoke(
     table: &str,
     id: &TokenId,
-    owner: &Email,
+    owner: &Person,
     at: Timestamp,
 ) -> Option<Transaction> {
     let mut transaction = Transaction::default();

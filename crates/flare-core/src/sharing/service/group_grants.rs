@@ -8,8 +8,10 @@
 //! | Grant or revoke everyone | yes | forbidden | forbidden | not found |
 //!
 //! A group grant is always Reader. An everyone grant records the audience
-//! of the deployment's admit rule, and under a rule that admits anyone it
-//! is refused with [`ShareError::EveryoneUnbounded`].
+//! of the deployment's admit rule. Under a rule that admits anyone it
+//! records `signed-in` while the deployment's `everyone_signed_in` setting
+//! is on, and is refused with [`ShareError::EveryoneUnbounded`] while it is
+//! off.
 //!
 //! A team grant reads when the team was created before its write and again
 //! after it. When the team was deleted, or deleted and created again, in
@@ -17,9 +19,8 @@
 //! [`ShareError::TeamNotFound`], so a grant never outlives a delete that
 //! swept the team's grants before the grant was written.
 
-use super::{Shares, actor};
+use super::{Actor, Shares};
 use crate::auth::Principal;
-use crate::email::Email;
 use crate::grant::{Grant, GrantRevoke, GrantWrite, Granter, Revoker, Role};
 use crate::name::PrincipalId;
 use crate::share::ShareId;
@@ -33,7 +34,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// The authority under which `actor` grants or revokes on the share.
     async fn authority(
         &self,
-        actor: &PrincipalId,
+        actor: &Actor<'_>,
         id: &ShareId,
         action: ShareAction,
     ) -> Result<Authority, ShareError> {
@@ -47,13 +48,16 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
 
     /// Checks that `actor` belongs to the active team of `group`, when it
     /// is a team.
-    async fn member_of(&self, actor: &PrincipalId, group: &Group) -> Result<(), ShareError> {
+    async fn member_of(&self, actor: &Actor<'_>, group: &Group) -> Result<(), ShareError> {
         let Group::Team(name) = group else {
             return Ok(());
         };
-        let person = Email::try_from(actor.as_str()).map_err(|_| ShareError::TeamNotFound)?;
         let unavailable = |_| ShareError::Unavailable;
-        let mine = self.teams.teams_of(&person).await.map_err(unavailable)?;
+        let mine = self
+            .teams
+            .teams_of(actor.person)
+            .await
+            .map_err(unavailable)?;
         if mine.contains(name) && self.teams.exists(name).await.map_err(unavailable)? {
             Ok(())
         } else {
@@ -67,7 +71,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             Group::Team(_) => Ok(None),
             Group::Everyone => self
                 .admission
-                .audience()
+                .audience(self.everyone_signed_in)
                 .map(Some)
                 .ok_or(ShareError::EveryoneUnbounded),
         }
@@ -78,11 +82,11 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ShareError::NoVerifiedEmail`],
+    /// Returns [`ShareError::NoPerson`],
     /// [`ShareError::TeamNotFound`], [`ShareError::EveryoneUnbounded`] and
     /// [`ShareError::Unavailable`].
     pub async fn check_group(&self, who: &Principal, group: &Group) -> Result<(), ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         self.audience_for(group)?;
         self.member_of(&actor, group).await
     }
@@ -97,7 +101,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// reader and for an admin who names everyone,
     /// [`ShareError::TeamNotFound`], [`ShareError::EveryoneUnbounded`],
     /// [`ShareError::GrantChanged`], [`ShareError::TooManyGrants`],
-    /// [`ShareError::NoVerifiedEmail`] and [`ShareError::Unavailable`].
+    /// [`ShareError::NoPerson`] and [`ShareError::Unavailable`].
     pub async fn grant_group(
         &self,
         who: &Principal,
@@ -105,7 +109,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         group: &Group,
         at: Timestamp,
     ) -> Result<Grant, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         let authority = self.authority(&actor, id, ShareAction::Grant).await?;
         if *group == Group::Everyone && authority != Authority::Owner {
             return Err(ShareError::Forbidden);
@@ -121,8 +125,8 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             .map_err(|_| ShareError::Unavailable)?
             .map(|grant| grant.role());
         let by = match authority {
-            Authority::Owner => Granter::Owner(actor),
-            Authority::Admin => Granter::Admin(actor),
+            Authority::Owner => Granter::Owner(actor.id.clone()),
+            Authority::Admin => Granter::Admin(actor.id.clone()),
         };
         let write = GrantWrite::new(id.clone(), grantee.clone(), Role::Reader, current, by, at)
             .with_audience(audience);
@@ -209,7 +213,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// Returns [`ShareError::NotFound`], [`ShareError::Forbidden`],
     /// [`ShareError::TeamNotFound`], [`ShareError::GrantNotFound`],
-    /// [`ShareError::GrantChanged`], [`ShareError::NoVerifiedEmail`] and
+    /// [`ShareError::GrantChanged`], [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn revoke_group(
         &self,
@@ -217,14 +221,14 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         id: &ShareId,
         group: &Group,
     ) -> Result<(), ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         let authority = self.authority(&actor, id, ShareAction::Revoke).await?;
         let by = match authority {
-            Authority::Owner => Revoker::Owner(actor),
+            Authority::Owner => Revoker::Owner(actor.id),
             Authority::Admin if *group == Group::Everyone => return Err(ShareError::Forbidden),
             Authority::Admin => {
                 self.member_of(&actor, group).await?;
-                Revoker::Admin(actor)
+                Revoker::Admin(actor.id)
             }
         };
         let grantee = group.principal_id();

@@ -2,8 +2,8 @@
 //! one domain, or anyone, each with what it may reach.
 
 use super::reach::{ReachSection, reach};
-use flare_auth_oidc::{Admit, AllowEntry, AllowList, DomainRule, Email, WorkspaceDomain};
-use flare_core::PrincipalId;
+use flare_auth_oidc::{Admit, AllowEntry, AllowList, DomainRule, WorkspaceDomain};
+use flare_core::{IdentityKind, PrincipalId};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -50,21 +50,23 @@ impl AdmitSection {
 }
 
 /// The rule that `section`, the `admit` key of the section `key` names,
-/// gives.
+/// gives. Each list entry's `email` names a person of `kind`: an address
+/// under the email kind, a username under the username kind.
 ///
 /// # Errors
 ///
 /// Returns the problem.
-pub(super) fn admit(section: AdmitSection, key: &str) -> Result<Admit, String> {
+pub(super) fn admit(section: AdmitSection, key: &str, kind: IdentityKind) -> Result<Admit, String> {
     Ok(match section {
         AdmitSection::Emails(list) => {
             let mut entries = Vec::new();
             for entry in list.emails {
-                let email =
-                    Email::try_from(entry.email.as_str()).map_err(|error| error.to_string())?;
+                let person = kind
+                    .person(entry.email.as_str())
+                    .map_err(|error| error.to_string())?;
                 let principal = PrincipalId::try_from(entry.principal.as_str())
                     .map_err(|error| format!("a principal is not valid: {error}"))?;
-                entries.push(AllowEntry::new(email, principal, reach(entry.reach)?));
+                entries.push(AllowEntry::new(person, principal, reach(entry.reach)?));
             }
             Admit::Emails(AllowList::new(entries).map_err(|error| error.to_string())?)
         }

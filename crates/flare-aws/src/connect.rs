@@ -3,6 +3,7 @@
 //! makes before it listens.
 
 use crate::config::HostedConfig;
+use crate::dynamodb::IdentityError;
 use crate::dynamodb::retry::Policy;
 use crate::dynamodb::{
     DynamoClient, DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
@@ -119,6 +120,22 @@ impl Stores {
             table,
             bucket,
         }
+    }
+
+    /// Records `kind` in the table's identity marker when the table has
+    /// none, and checks that the marker records `kind`, so a server can
+    /// refuse to start under a kind other than the one its grants, teams
+    /// and tokens were written under. A table that holds items and no
+    /// marker was written before the marker and is recorded as the email
+    /// kind.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IdentityError::Changed`], with nothing written, when the
+    /// marker records the other kind, and [`IdentityError::Unavailable`]
+    /// when the table cannot be read or written.
+    pub async fn identity(&self, kind: flare_core::IdentityKind) -> Result<(), IdentityError> {
+        crate::dynamodb::identity::settle(&self.table, kind).await
     }
 
     /// Checks that the table exists with the string keys `pk` and `sk`, and

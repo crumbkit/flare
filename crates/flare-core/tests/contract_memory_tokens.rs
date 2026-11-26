@@ -4,7 +4,7 @@
 
 use flare_core::contract::response_store::{self, ResponseFixture, index as response_index};
 use flare_core::contract::token_store::{self, TokenFixture};
-use flare_core::contract::{Threads, block_on};
+use flare_core::contract::{People, Threads, block_on};
 use flare_core::memory::{MemoryResponseStore, MemoryTokenStore};
 
 macro_rules! suite {
@@ -13,6 +13,30 @@ macro_rules! suite {
         fn $name() {
             let fixture = $fixture::standard().unwrap();
             block_on($module::$name(&$store::new(), &fixture)).unwrap();
+        }
+    )*};
+}
+
+macro_rules! people_suite {
+    ($module:ident, $store:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[test]
+        fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                block_on($module::$name(&$store::new(), &fixture)).unwrap();
+            }
+        }
+    )*};
+}
+
+macro_rules! people_concurrent_suite {
+    ($module:ident, $store:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[test]
+        fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                block_on($module::$name(&$store::new(), &fixture, &Threads)).unwrap();
+            }
         }
     )*};
 }
@@ -30,7 +54,7 @@ macro_rules! concurrent_suite {
 mod tokens {
     use super::*;
 
-    suite!(token_store, MemoryTokenStore, TokenFixture;
+    people_suite!(token_store, MemoryTokenStore, TokenFixture;
         a_code_is_used_once,
         an_expired_code_is_refused,
         an_unknown_code_is_refused,
@@ -41,7 +65,7 @@ mod tokens {
         a_new_token_with_the_same_label_revokes_the_old,
     );
 
-    concurrent_suite!(token_store, MemoryTokenStore, TokenFixture;
+    people_concurrent_suite!(token_store, MemoryTokenStore, TokenFixture;
         concurrent_uses_of_one_code_give_one_success,
     );
 }

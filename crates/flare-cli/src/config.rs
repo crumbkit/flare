@@ -9,7 +9,10 @@
 //! front of the site. A `client` section names the server that the share
 //! commands call and the token command that gives them its token. A `stores` key in the hosted section
 //! adds the share API, which `creators` limits, `names` serves and
-//! `get_flare` links the reading page's Get Flare link to. A
+//! `get_flare` links the reading page's Get Flare link to.
+//! `identity` says whether people are named by email or by username, and
+//! `everyone_signed_in` lets an everyone grant under an `anyone` rule open
+//! to every signed-in person. A
 //! `log` section with `"metrics": true` turns on the metric lines of
 //! docs/metrics.md; they are off without it. Every object refuses
 //! unknown keys, and a
@@ -19,7 +22,8 @@
 
 use crate::codes::Failed;
 use crate::env::Snapshot;
-use flare_auth_oidc::{Admit, ClientId, IssuerUrl, OidcConfig, ProxyConfig, RedirectUri};
+use flare_auth_oidc::{ClientId, Identity, IssuerUrl, OidcConfig, RedirectUri};
+use flare_core::IdentityKind;
 use flare_server::PublicOrigin;
 use serde::Deserialize;
 use serde_json::Value;
@@ -29,9 +33,11 @@ use std::path::{Path, PathBuf};
 
 mod admit;
 mod client;
+mod identity;
 mod proxy;
 mod reach;
 mod sharing;
+mod sign_in;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +45,7 @@ use admit::{AdmitSection, admit};
 pub(crate) use client::{Client, TokenCommand};
 use proxy::ProxySection;
 pub(crate) use sharing::{HostedCreators, Sharing};
+pub(crate) use sign_in::SignIn;
 
 /// The local site's only redirect URI: the sign-in host's callback.
 const REDIRECT: &str = "http://localhost:8740/auth/oidc/callback";
@@ -103,30 +110,6 @@ pub(crate) struct Hosted {
     pub(crate) sharing: Option<Box<Sharing>>,
 }
 
-/// How the hosted site signs people in: exactly one of the two.
-#[derive(Debug)]
-pub(crate) enum SignIn {
-    /// flare's own OpenID Connect sign-in.
-    Oidc {
-        /// The settings, whose redirect URI is `<origin>/auth/oidc/callback`.
-        config: OidcConfig,
-        /// The file that holds the client secret.
-        secret_file: PathBuf,
-    },
-    /// The signed token of a single sign-on proxy in front of the site.
-    Proxy(ProxyConfig),
-}
-
-impl SignIn {
-    /// Who the sign-in admits, which the share API's tokens follow too.
-    pub(crate) fn admit(&self) -> &Admit {
-        match self {
-            Self::Oidc { config, .. } => config.admit(),
-            Self::Proxy(config) => config.admit(),
-        }
-    }
-}
-
 /// Why a config's text was refused.
 #[derive(Debug)]
 pub(crate) enum Problem {
@@ -160,6 +143,8 @@ struct HostedSection {
     creators: Option<Value>,
     names: Option<std::collections::BTreeMap<String, String>>,
     get_flare: Option<String>,
+    identity: Option<Value>,
+    everyone_signed_in: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -308,7 +293,7 @@ fn local_oidc(section: OidcSection) -> Result<LocalOidc, String> {
     };
     let redirect = RedirectUri::try_from(REDIRECT).map_err(|error| error.to_string())?;
     Ok(LocalOidc {
-        config: oidc(section, redirect)?,
+        config: oidc(section, redirect, Identity::Email)?,
         secret,
     })
 }
@@ -320,6 +305,7 @@ fn hosted(section: HostedSection, sign_in: HostedSignIn) -> Result<Hosted, Strin
         "hosted.listen must be an IP address and a port, such as 0.0.0.0:8080 or [::]:8080"
             .to_owned()
     })?;
+    let identity = identity::identity(section.identity.as_ref())?;
     let anyone = match &sign_in {
         HostedSignIn::Oidc(oidc) => oidc.admit.is_anyone(),
         HostedSignIn::Proxy(proxy) => proxy.admits_anyone(),
@@ -330,13 +316,15 @@ fn hosted(section: HostedSection, sign_in: HostedSignIn) -> Result<Hosted, Strin
             creators: section.creators,
             names: section.names,
             get_flare: section.get_flare,
+            everyone_signed_in: section.everyone_signed_in,
         },
         anyone,
+        identity.kind(),
     )?
     .map(Box::new);
     let sign_in = match sign_in {
-        HostedSignIn::Oidc(oidc_section) => hosted_oidc(&origin, oidc_section)?,
-        HostedSignIn::Proxy(proxy) => SignIn::Proxy(proxy::proxy(proxy)?),
+        HostedSignIn::Oidc(oidc_section) => hosted_oidc(&origin, oidc_section, identity)?,
+        HostedSignIn::Proxy(proxy) => SignIn::Proxy(proxy::proxy(proxy, identity)?),
     };
     Ok(Hosted {
         origin,
@@ -347,8 +335,12 @@ fn hosted(section: HostedSection, sign_in: HostedSignIn) -> Result<Hosted, Strin
 }
 
 /// The hosted site's OpenID Connect sign-in, which reads its client secret
-/// from a file.
-fn hosted_oidc(origin: &PublicOrigin, section: OidcSection) -> Result<SignIn, String> {
+/// from a file and names people as `identity` says.
+fn hosted_oidc(
+    origin: &PublicOrigin,
+    section: OidcSection,
+    identity: Identity,
+) -> Result<SignIn, String> {
     let secret_file = match &section.client_secret_file {
         Some(text) => secret_file(text)?,
         None => {
@@ -361,7 +353,7 @@ fn hosted_oidc(origin: &PublicOrigin, section: OidcSection) -> Result<SignIn, St
     let redirect =
         RedirectUri::try_from(origin.redirect_uri().as_str()).map_err(|error| error.to_string())?;
     Ok(SignIn::Oidc {
-        config: oidc(section, redirect)?,
+        config: oidc(section, redirect, identity)?,
         secret_file,
     })
 }
@@ -377,10 +369,16 @@ fn holds_client_secret(value: &Value) -> bool {
     }
 }
 
-fn oidc(section: OidcSection, redirect: RedirectUri) -> Result<OidcConfig, String> {
+/// The OpenID Connect settings. Its admit rule judges the verified email
+/// under either kind, so its list entries are addresses.
+fn oidc(
+    section: OidcSection,
+    redirect: RedirectUri,
+    identity: Identity,
+) -> Result<OidcConfig, String> {
     let issuer = IssuerUrl::try_from(section.issuer.as_str()).map_err(|error| error.to_string())?;
     let client =
         ClientId::try_from(section.client_id.as_str()).map_err(|error| error.to_string())?;
-    let admit = admit(section.admit, "oidc")?;
-    Ok(OidcConfig::new(issuer, client, redirect, admit))
+    let admit = admit(section.admit, "oidc", IdentityKind::Email)?;
+    Ok(OidcConfig::new(issuer, client, redirect, admit).with_identity(identity))
 }

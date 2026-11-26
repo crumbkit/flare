@@ -271,12 +271,12 @@ async fn a_failed_sign_in_leaves_the_old_session_live_and_a_good_one_ends_it() {
 async fn two_entry_authenticator(fake: &Fake) -> OidcAuthenticator<TestClock> {
     let allow = AllowList::new(vec![
         AllowEntry::new(
-            Email::try_from(EMAIL).unwrap(),
+            Email::try_from(EMAIL).unwrap().into(),
             PrincipalId::try_from("ada").unwrap(),
             Reach::Only(vec![page(HOME)]),
         ),
         AllowEntry::new(
-            Email::try_from("grace@example.com").unwrap(),
+            Email::try_from("grace@example.com").unwrap().into(),
             PrincipalId::try_from("grace").unwrap(),
             Reach::Everything,
         ),

@@ -134,7 +134,7 @@ fn a_principal_without_a_verified_address_is_refused_before_the_creators_rule_is
     let share = block_on(flares.share(&local(), flare(), at()));
     assert_eq!(
         share.unwrap_err(),
-        FlareError::Share(ShareError::NoVerifiedEmail)
+        FlareError::Share(ShareError::NoPerson(flare_core::IdentityKind::Email))
     );
     let team = block_on(flares.create_team(&local(), design(), at()));
     assert_eq!(team.unwrap_err(), TeamsError::NotACreator);

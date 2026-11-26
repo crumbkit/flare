@@ -146,7 +146,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     ///
     /// Returns [`FlareError::NotFound`] when the caller cannot open a named
     /// flare, [`FlareError::TooManyFlares`], [`FlareError::Share`] with
-    /// [`ShareError::NoVerifiedEmail`] or [`ShareError::Unavailable`], and
+    /// [`ShareError::NoPerson`] or [`ShareError::Unavailable`], and
     /// [`FlareError::ResponsesUnavailable`].
     pub async fn activity(
         &self,
@@ -155,9 +155,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         after: Position,
         limit: usize,
     ) -> Result<ActivityPage, FlareError> {
-        if who.email().is_none() {
-            return Err(FlareError::Share(ShareError::NoVerifiedEmail));
-        }
+        let person = self.person_id(who)?;
         let flares = once_each(flares.to_vec());
         if flares.len() > MAX_FLARES {
             return Err(FlareError::TooManyFlares);
@@ -169,15 +167,12 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
                 .map_err(flare_refused)?;
         }
         let limit = limit.clamp(1, MAX_PAGE);
-        let person = who
-            .email()
-            .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))?;
         let mut readers = Vec::with_capacity(flares.len());
         for flare in &flares {
-            let mut of_flare = vec![Reader::Person(person.principal_id())];
+            let mut of_flare = vec![Reader::Person(person.clone())];
             let groups = self
                 .shares
-                .groups_reading(person, flare)
+                .groups_reading(who, flare)
                 .await
                 .map_err(FlareError::Share)?;
             of_flare.extend(groups.into_iter().map(Reader::Group));

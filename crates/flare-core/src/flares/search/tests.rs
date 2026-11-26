@@ -6,7 +6,7 @@ use crate::memory::{
 };
 use crate::sharing::ShareError;
 use crate::{
-    DocumentText, Email, MAX_LISTED, Principal, PrincipalId, ShareContent, ShareId, ShareTitle,
+    DocumentText, MAX_LISTED, Person, Principal, PrincipalId, ShareContent, ShareId, ShareTitle,
     Timestamp,
 };
 use flare_query::{ErrorCode, Span, parse};
@@ -19,12 +19,16 @@ type Memory = Flares<
     MemoryCursorStore,
 >;
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn memory() -> Memory {
@@ -62,7 +66,7 @@ struct Directory {
 }
 
 impl Recipients for Directory {
-    async fn resolve(&self, identifier: &str) -> Result<Email, RecipientError> {
+    async fn resolve(&self, identifier: &str) -> Result<Person, RecipientError> {
         if self.down {
             return Err(RecipientError::Unavailable);
         }
@@ -139,13 +143,13 @@ fn a_directory_that_does_not_answer_stops_the_search_and_me_needs_no_directory()
 }
 
 #[test]
-fn a_caller_without_a_verified_address_is_refused() {
+fn a_caller_without_a_person_is_refused() {
     let flares = memory();
     let local = Principal::new(PrincipalId::try_from("local:mei").unwrap());
     let result = run(&flares, &local, "budget", 50);
     assert_eq!(
         result.unwrap_err(),
-        SearchError::Share(ShareError::NoVerifiedEmail)
+        SearchError::Share(ShareError::NoPerson(crate::IdentityKind::Email))
     );
 }
 

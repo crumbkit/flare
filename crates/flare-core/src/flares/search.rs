@@ -93,10 +93,10 @@ impl Clause {
     }
 }
 
-/// The person each `from:` value of `query` names: `me` is the caller, and
-/// any other value is what `recipients` resolves.
+/// The person each `from:` value of `query` names: `me` is `me`, the
+/// caller's person, and any other value is what `recipients` resolves.
 async fn resolve<X: Recipients>(
-    who: &Principal,
+    me: Result<PrincipalId, ShareError>,
     values: &[Value],
     recipients: &X,
     errors: &mut Vec<QueryError>,
@@ -104,15 +104,14 @@ async fn resolve<X: Recipients>(
     let mut people = Vec::with_capacity(values.len());
     for value in values {
         if value.text.eq_ignore_ascii_case("me") {
-            let me = who
-                .email()
-                .ok_or(SearchError::Share(ShareError::NoVerifiedEmail))?;
-            people.push(me.principal_id());
+            people.push(me.clone().map_err(SearchError::Share)?);
             continue;
         }
         match recipients.resolve(&value.text).await {
-            Ok(email) => people.push(email.principal_id()),
-            Err(RecipientError::NotAnAddress) => errors.push(unknown_person(value)),
+            Ok(person) => people.push(person.principal_id()),
+            Err(RecipientError::NotAnAddress | RecipientError::NotAUsername) => {
+                errors.push(unknown_person(value));
+            }
             Err(_) => return Err(SearchError::RecipientsUnavailable),
         }
     }
@@ -122,7 +121,7 @@ async fn resolve<X: Recipients>(
 /// The clauses of `query`, after every `type:` value is checked and every
 /// `from:` value resolved.
 async fn compile<X: Recipients>(
-    who: &Principal,
+    me: Result<PrincipalId, ShareError>,
     query: &Query,
     recipients: &X,
 ) -> Result<Vec<Clause>, SearchError> {
@@ -143,7 +142,7 @@ async fn compile<X: Recipients>(
             Term::Filter {
                 field: Field::From,
                 values,
-            } => Test::People(resolve(who, values, recipients, &mut errors).await?),
+            } => Test::People(resolve(me.clone(), values, recipients, &mut errors).await?),
         };
         clauses.push(Clause {
             test,
@@ -180,7 +179,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C, U, T: Teams, K>
     ///
     /// Returns [`SearchError::Invalid`] with every unknown type and person
     /// before any share is read, [`SearchError::RecipientsUnavailable`],
-    /// and [`SearchError::Share`] with [`ShareError::NoVerifiedEmail`] or
+    /// and [`SearchError::Share`] with [`ShareError::NoPerson`] or
     /// [`ShareError::Unavailable`].
     pub async fn search<X: Recipients>(
         &self,
@@ -190,7 +189,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C, U, T: Teams, K>
         everyone: bool,
         limit: usize,
     ) -> Result<Found, SearchError> {
-        let clauses = compile(who, query, recipients).await?;
+        let me = self.shares.person(who).map(crate::Person::principal_id);
+        let clauses = compile(me, query, recipients).await?;
         let mine = self.shares.mine(who).await.map_err(SearchError::Share)?;
         let granted_to_me = self
             .shares

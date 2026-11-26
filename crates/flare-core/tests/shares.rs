@@ -8,8 +8,8 @@ mod sharing_stores;
 use flare_core::contract::block_on;
 use flare_core::memory::{MemoryFileStore, MemoryGrantStore, MemoryShareStore};
 use flare_core::{
-    DocumentText, Email, FileBytes, FileId, FileStore, ImagePath, ListKey, MAX_GRANTS,
-    MAX_SHARES_PER_OWNER, MAX_VERSIONS, MediaType, NewFile, Principal, PrincipalId, Role,
+    DocumentText, FileBytes, FileId, FileStore, ImagePath, ListKey, MAX_GRANTS,
+    MAX_SHARES_PER_OWNER, MAX_VERSIONS, MediaType, NewFile, Person, Principal, PrincipalId, Role,
     ShareContent, ShareError, ShareId, ShareTitle, ShareVersion, Shares, Standing, Timestamp,
     VersionImage, VersionImages,
 };
@@ -20,13 +20,17 @@ use std::sync::Arc;
 
 type Memory = Shares<MemoryShareStore, MemoryGrantStore>;
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 /// A person who signed in with `address`, as sign-in builds them.
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn alice() -> Principal {
@@ -83,7 +87,7 @@ fn every_request(shares: &Memory, who: &Principal, share: &ShareId) -> Vec<Optio
     let file = FileId::from_random([9; 16]);
     let owner = email("alice@example.com");
     let other = email("zed@example.com");
-    let own = who.email().cloned().unwrap();
+    let own = who.person().cloned().unwrap();
     block_on(async {
         vec![
             shares.open(who, share, None).await.err(),
@@ -538,9 +542,10 @@ fn create_and_publish_record_the_calling_principal_as_owner_and_publisher() {
     let shares = memory();
     // The principal's own id differs from its verified address; the share
     // records the address.
-    let alice = Principal::with_email(
+    let alice = Principal::with_person(
         PrincipalId::try_from("google:1234").unwrap(),
         email("Alice@Example.com"),
+        None,
     );
     let share = block_on(shares.create(&alice, id(1), title(), doc("# One\n"), at(1))).unwrap();
     assert_eq!(share.owner().as_str(), "alice@example.com");
@@ -583,7 +588,10 @@ fn a_principal_with_no_verified_email_gets_no_verified_email_on_every_method() {
             shares.may_publish(&nameless, &id(1)).await.err(),
         ]
     });
-    assert_eq!(answers, [Some(ShareError::NoVerifiedEmail); 10]);
+    assert_eq!(
+        answers,
+        [Some(ShareError::NoPerson(flare_core::IdentityKind::Email)); 10]
+    );
     assert!(block_on(shares.open(&alice(), &id(1), None)).is_ok());
 }
 
@@ -595,9 +603,10 @@ fn a_principal_whose_config_id_is_bob_and_whose_email_is_mallory_opens_mallorys_
         block_on(shares.create(&alice(), id(byte), title(), doc("# S\n"), at(1))).unwrap();
         block_on(shares.grant(&alice(), &id(byte), &email(grantee), Role::Reader, at(2))).unwrap();
     }
-    let mallory = Principal::with_email(
+    let mallory = Principal::with_person(
         PrincipalId::try_from("bob@y.com").unwrap(),
         email("mallory@x.com"),
+        None,
     );
     assert_eq!(
         block_on(shares.open(&mallory, &id(1), None)).unwrap_err(),

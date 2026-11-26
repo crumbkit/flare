@@ -13,10 +13,10 @@ use flare_contract::{
     VersionRequest, utc,
 };
 use flare_core::{
-    CommentStore, Creators, CursorStore, Email, FileStore, FlareError, Flared, GrantStore,
-    LoginCode, NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError,
-    ShareId, ShareStore, ShareVersion, StoredFile, Teams, Timestamp, TokenId, TokenLabel,
-    TokenStore, TokenStoreError,
+    CommentStore, Creators, CursorStore, FileStore, FlareError, Flared, GrantStore, LoginCode,
+    NewFlare, NewToken, Principal, Recipients, ResponseStore, ShareContent, ShareError, ShareId,
+    ShareStore, ShareVersion, StoredFile, Teams, Timestamp, TokenId, TokenLabel, TokenStore,
+    TokenStoreError,
 };
 use secrecy::SecretString;
 use serde::Serialize;
@@ -176,7 +176,7 @@ where
 
     async fn revoke(&self, who: &Principal, id: &str, now: Timestamp) -> Answer {
         let id = TokenId::try_from(id).map_err(|_| ApiCode::TokenNotFound)?;
-        let owner = who.email().ok_or(ApiCode::NoVerifiedEmail)?;
+        let owner = self.caller(who)?;
         self.tokens
             .revoke(&id, owner, now)
             .await
@@ -194,23 +194,29 @@ where
             Err(_) => return TokenCheck::Refused(ApiCode::TokensUnavailable),
         };
         let owner = stored.owner();
-        if !same(stored.digest(), &presented) || !stored.is_active(now) || !self.admit.admits(owner)
-        {
+        let admitted = self.admit.admits(owner, stored.email());
+        if !same(stored.digest(), &presented) || !stored.is_active(now) || !admitted {
             return TokenCheck::Refused(ApiCode::SignInNeeded);
         }
-        let owner = owner.clone();
-        TokenCheck::Principal(Principal::with_email(owner.principal_id(), owner))
+        let email = stored.email().cloned();
+        TokenCheck::Principal(Principal::with_person(
+            owner.principal_id(),
+            owner.clone(),
+            email,
+        ))
     }
 
     async fn code(
         &self,
-        owner: &Email,
+        who: &Principal,
         port: u16,
         now: Timestamp,
     ) -> Result<SecretString, ApiCode> {
+        let owner = self.caller(who)?;
         for _ in 0..DRAWS {
             let code = new_secret().ok_or(ApiCode::TokensUnavailable)?;
-            let login = LoginCode::new(digest(&code), owner.clone(), port, now);
+            let login = LoginCode::new(digest(&code), owner.clone(), port, now)
+                .with_email(who.email().cloned());
             match self.tokens.issue_code(login).await {
                 Ok(()) => return Ok(code),
                 Err(TokenStoreError::Taken) => {}
@@ -242,7 +248,8 @@ where
                 used.owner.clone(),
                 label.clone(),
                 now,
-            );
+            )
+            .with_email(used.email.clone());
             let expires = token.clone().stored().expires();
             match self.tokens.create(token).await {
                 Ok(_) => {
@@ -277,7 +284,8 @@ where
     F: FileStore,
 {
     fn admits(&self, who: &Principal) -> bool {
-        who.email().is_some_and(|email| self.admit.admits(email))
+        who.person()
+            .is_some_and(|person| self.admit.admits(person, who.email()))
     }
 
     fn authenticate<'a>(
@@ -290,11 +298,11 @@ where
 
     fn issue_code<'a>(
         &'a self,
-        owner: &'a Email,
+        who: &'a Principal,
         port: u16,
         now: Timestamp,
     ) -> Boxed<'a, Result<SecretString, ApiCode>> {
-        Box::pin(self.code(owner, port, now))
+        Box::pin(self.code(who, port, now))
     }
 
     fn exchange(&self, request: ExchangeRequest, now: Timestamp) -> Boxed<'_, Answer> {

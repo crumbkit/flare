@@ -1,4 +1,6 @@
 use super::*;
+use crate::auth::Principal;
+use crate::email::Email;
 use crate::name::PrincipalId;
 
 #[test]
@@ -34,22 +36,50 @@ fn a_with_identifier_names_a_team_everyone_or_a_person() {
 }
 
 #[test]
-fn an_audience_round_trips_as_a_domain_or_admitted() {
+fn an_audience_round_trips_as_a_domain_admitted_or_signed_in() {
     let domain = Audience::try_from("Example.COM").unwrap();
     assert_eq!(domain.as_str(), "example.com");
     assert_eq!(Audience::try_from("admitted"), Ok(Audience::Admitted));
+    assert_eq!(Audience::try_from("signed-in"), Ok(Audience::SignedIn));
+    assert_eq!(Audience::SignedIn.as_str(), "signed-in");
     assert!(Audience::try_from("nodot").is_err());
+}
+
+fn signed_in(address: &str) -> Principal {
+    let email = Email::try_from(address).unwrap();
+    Principal::with_email(email.principal_id(), email)
 }
 
 #[test]
 fn an_anyone_rule_gives_no_audience_and_a_domain_audience_holds_only_its_domain() {
-    assert_eq!(Admission::Anyone.audience(), None);
+    assert_eq!(Admission::Anyone.audience(false), None);
     let domain = MailDomain::try_from("example.com").unwrap();
-    let audience = Admission::Domain(domain).audience().unwrap();
-    let inside = Email::try_from("ana@example.com").unwrap();
-    let below = Email::try_from("ana@mail.example.com").unwrap();
-    assert!(Admission::Anyone.opens(&audience, &inside));
-    assert!(!Admission::Anyone.opens(&audience, &below));
-    assert!(Admission::Listed.opens(&Audience::Admitted, &inside));
-    assert!(!Admission::Anyone.opens(&Audience::Admitted, &inside));
+    let audience = Admission::Domain(domain).audience(false).unwrap();
+    let inside = signed_in("ana@example.com");
+    let below = signed_in("ana@mail.example.com");
+    assert!(Admission::Anyone.opens(&audience, &inside, false));
+    assert!(!Admission::Anyone.opens(&audience, &below, false));
+    assert!(Admission::Listed.opens(&Audience::Admitted, &inside, false));
+    assert!(!Admission::Anyone.opens(&Audience::Admitted, &inside, false));
+}
+
+#[test]
+fn an_anyone_rule_with_everyone_signed_in_gives_the_signed_in_audience_which_holds_while_it_is_on()
+{
+    assert_eq!(Admission::Anyone.audience(true), Some(Audience::SignedIn));
+    let domain = MailDomain::try_from("example.com").unwrap();
+    assert_eq!(
+        Admission::Domain(domain.clone()).audience(true),
+        Some(Audience::Domain(domain))
+    );
+    assert_eq!(Admission::Listed.audience(true), Some(Audience::Admitted));
+    let username = Principal::with_person(
+        PrincipalId::try_from("ana").unwrap(),
+        crate::Person::try_from("ana").unwrap(),
+        None,
+    );
+    for who in [signed_in("ana@other.example"), username] {
+        assert!(Admission::Anyone.opens(&Audience::SignedIn, &who, true));
+        assert!(!Admission::Anyone.opens(&Audience::SignedIn, &who, false));
+    }
 }

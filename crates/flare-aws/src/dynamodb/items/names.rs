@@ -32,6 +32,7 @@ pub(crate) mod attr {
     pub(crate) const POSITION: &str = "position";
     pub(crate) const PRINCIPAL: &str = "principal";
     pub(crate) const EMAIL: &str = "email";
+    pub(crate) const PERSON: &str = "person";
     pub(crate) const BYTES: &str = "bytes";
     pub(crate) const COMMENT: &str = "comment";
     pub(crate) const PARENT: &str = "parent";
@@ -74,6 +75,7 @@ pub(crate) enum ItemKind {
     Member,
     IndexEntry,
     IndexMarker,
+    Identity,
 }
 
 impl ItemKind {
@@ -104,6 +106,7 @@ impl ItemKind {
             Self::Member => "team member",
             Self::IndexEntry => "activity index entry",
             Self::IndexMarker => "activity index marker",
+            Self::Identity => "identity marker",
         }
     }
 }

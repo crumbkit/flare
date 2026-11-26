@@ -2,25 +2,32 @@
 
 use crate::email::Email;
 use crate::name::{BindingName, PageName, PrincipalId};
+use crate::person::Person;
 use crate::record::RecordPath;
 use secrecy::SecretString;
 use std::future::Future;
 
 /// Someone who makes requests: an id that pages, bindings and records are
-/// decided by, and the email address that the sign-in verified, which
-/// shares are decided by.
+/// decided by, the person that shares are decided by, and the email
+/// address that the sign-in verified, which domain rules are decided by.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Principal {
     id: PrincipalId,
+    person: Option<Person>,
     email: Option<Email>,
 }
 
 impl Principal {
-    /// Builds a principal from its id, with no verified email.
+    /// Builds a principal from its id, with no person and no verified
+    /// email.
     #[must_use]
     pub fn new(id: PrincipalId) -> Self {
-        Self { id, email: None }
+        Self {
+            id,
+            person: None,
+            email: None,
+        }
     }
 
     /// Builds a principal from its id and the email address that its
@@ -32,11 +39,32 @@ impl Principal {
     /// and opens every share granted to it, so a principal built with an
     /// address from any other source, such as a request header or an
     /// unverified claim, gets the shares granted to that address.
+    ///
+    /// The principal's person is the address, as a deployment that names
+    /// people by email needs.
     #[must_use]
     pub fn with_email(id: PrincipalId, email: Email) -> Self {
         Self {
             id,
+            person: Some(Person::Email(email.clone())),
             email: Some(email),
+        }
+    }
+
+    /// Builds a principal from its id, the person its sign-in named, and
+    /// the email address that the sign-in verified, if any.
+    ///
+    /// As with [`Principal::with_email`], only an [`Authenticator`] calls
+    /// this function, with a person and an address that the identity
+    /// provider vouched for. A person named by an address with no `email`
+    /// given takes that address as its verified email.
+    #[must_use]
+    pub fn with_person(id: PrincipalId, person: Person, email: Option<Email>) -> Self {
+        let email = email.or_else(|| person.as_email().cloned());
+        Self {
+            id,
+            person: Some(person),
+            email,
         }
     }
 
@@ -50,6 +78,14 @@ impl Principal {
     #[must_use]
     pub fn email(&self) -> Option<&Email> {
         self.email.as_ref()
+    }
+
+    /// The person the principal's sign-in named, if any: the verified
+    /// address under a deployment that names people by email, or the
+    /// username under one that names them by username.
+    #[must_use]
+    pub fn person(&self) -> Option<&Person> {
+        self.person.as_ref()
     }
 }
 

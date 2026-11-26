@@ -9,20 +9,24 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, CreatorList, DocumentText, Email, FlareError, FlareTeams, Flares, Grant,
-    GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Group, ListKey, Listing, MailDomain,
-    NewFlare, Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Standing,
-    Team, TeamName, TeamStore, TeamStoreError, Teams, TeamsError, Timestamp,
+    Admission, CreatorList, DocumentText, FlareError, FlareTeams, Flares, Grant, GrantRevoke,
+    GrantStore, GrantStoreError, GrantWrite, Group, ListKey, Listing, MailDomain, NewFlare, Person,
+    Principal, PrincipalId, ShareContent, ShareError, ShareId, ShareTitle, Standing, Team,
+    TeamName, TeamStore, TeamStoreError, Teams, TeamsError, Timestamp,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn alice() -> Principal {
@@ -123,7 +127,7 @@ fn a_team_grant_that_fails_after_the_share_exists_answers_partly_shared_and_a_re
         creators(),
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
-    .admitting(admission());
+    .admitting(admission(), false);
     block_on(flares.create_team(&alice(), team("design"), at(1))).unwrap();
     fail.store(true, Ordering::SeqCst);
     let design = Group::Team(team("design"));
@@ -182,7 +186,7 @@ impl Teams for SwitchedTeams {
         self.inner.manages()
     }
 
-    async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
+    async fn teams_of(&self, person: &Person) -> Result<Vec<TeamName>, TeamsError> {
         self.check()?;
         self.inner.teams_of(person).await
     }
@@ -192,14 +196,14 @@ impl Teams for SwitchedTeams {
         self.inner.exists(team).await
     }
 
-    async fn members(&self, team: &TeamName) -> Result<Vec<Email>, TeamsError> {
+    async fn members(&self, team: &TeamName) -> Result<Vec<Person>, TeamsError> {
         self.check()?;
         self.inner.members(team).await
     }
 
     async fn create(
         &self,
-        owner: &Email,
+        owner: &Person,
         team: TeamName,
         at: Timestamp,
     ) -> Result<Team, TeamsError> {
@@ -208,9 +212,9 @@ impl Teams for SwitchedTeams {
 
     async fn add(
         &self,
-        actor: &Email,
+        actor: &Person,
         team: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> Result<bool, TeamsError> {
         self.inner.add(actor, team, member).await
     }
@@ -234,7 +238,7 @@ fn an_unavailable_team_store_answers_unavailable_to_a_reader_through_a_team_and_
         creators(),
     )
     .with_teams(teams)
-    .admitting(admission());
+    .admitting(admission(), false);
     block_on(flares.create_team(&alice(), team("design"), at(1))).unwrap();
     let shares = flares.shares();
     block_on(shares.teams().add(
@@ -279,11 +283,11 @@ impl TeamStore for RemovalFails {
         self.inner.get(team).await
     }
 
-    async fn add(&self, team: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+    async fn add(&self, team: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
         self.inner.add(team, member).await
     }
 
-    async fn remove(&self, team: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+    async fn remove(&self, team: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
         if self.fail.load(Ordering::SeqCst) {
             return Err(TeamStoreError::Unavailable);
         }
@@ -301,17 +305,17 @@ impl TeamStore for RemovalFails {
     async fn transfer(
         &self,
         team: &TeamName,
-        from: &Email,
-        to: &Email,
+        from: &Person,
+        to: &Person,
     ) -> Result<(), TeamStoreError> {
         self.inner.transfer(team, from, to).await
     }
 
-    async fn members(&self, team: &TeamName) -> Result<Vec<Email>, TeamStoreError> {
+    async fn members(&self, team: &TeamName) -> Result<Vec<Person>, TeamStoreError> {
         self.inner.members(team).await
     }
 
-    async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamStoreError> {
+    async fn teams_of(&self, person: &Person) -> Result<Vec<TeamName>, TeamStoreError> {
         self.inner.teams_of(person).await
     }
 }
@@ -334,7 +338,7 @@ fn a_delete_that_stops_before_the_member_pairs_leaves_the_team_deleting_and_a_re
         creators(),
     )
     .with_teams(FlareTeams::new(store))
-    .admitting(admission());
+    .admitting(admission(), false);
     let owner = email("alice@example.com");
     let member = email("bob@example.com");
     block_on(flares.create_team(&alice(), team("design"), at(1))).unwrap();

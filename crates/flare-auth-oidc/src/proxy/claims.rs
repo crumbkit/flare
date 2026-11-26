@@ -4,6 +4,7 @@
 
 use super::config::ProxyConfig;
 use crate::clock::unix_seconds;
+use crate::identity::Identity;
 use crate::refusal::ProxyRefusal;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -130,6 +131,9 @@ pub(super) fn verify(
             return Err(ProxyRefusal::NotYetValid);
         }
     }
+    if let Identity::Username(_) = config.identity {
+        return admit_username(&claims, config);
+    }
     let email = claims
         .get(config.identity_claim.as_str())
         .and_then(Value::as_str)
@@ -144,5 +148,27 @@ pub(super) fn verify(
     config
         .admit
         .principal_of_address(email)
+        .ok_or(ProxyRefusal::NotAdmitted)
+}
+
+/// The principal of a username token: the username of the configured
+/// claim, with the token's `email` kept only when `email_verified` is true.
+fn admit_username(
+    claims: &Map<String, Value>,
+    config: &ProxyConfig,
+) -> Result<Principal, ProxyRefusal> {
+    let username = config
+        .identity
+        .username(claims)
+        .flatten()
+        .ok_or(ProxyRefusal::NoIdentity)?;
+    let email = claims
+        .get("email")
+        .and_then(Value::as_str)
+        .filter(|_| claims.get("email_verified") == Some(&Value::Bool(true)))
+        .and_then(|text| Email::try_from(text).ok());
+    config
+        .admit
+        .principal_of_username(username, email)
         .ok_or(ProxyRefusal::NotAdmitted)
 }

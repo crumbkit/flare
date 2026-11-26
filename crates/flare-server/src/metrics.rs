@@ -208,6 +208,7 @@ pub(crate) enum Reason {
     ProviderMisbehaved,
     TokenRejected,
     EmailUnverified,
+    NoUsername,
     NotAllowed,
     TooManySessions,
     NoRandomness,
@@ -223,7 +224,7 @@ pub(crate) enum Reason {
 impl Reason {
     /// Every reason, in the order docs/metrics.md lists them.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 18] = [
+    pub(crate) const ALL: [Self; 19] = [
         Self::Malformed,
         Self::NoKeptState,
         Self::WrongState,
@@ -234,6 +235,7 @@ impl Reason {
         Self::ProviderMisbehaved,
         Self::TokenRejected,
         Self::EmailUnverified,
+        Self::NoUsername,
         Self::NotAllowed,
         Self::TooManySessions,
         Self::NoRandomness,
@@ -257,6 +259,7 @@ impl Reason {
             SignInRefusal::ProviderMisbehaved => Self::ProviderMisbehaved,
             SignInRefusal::TokenRejected(_) => Self::TokenRejected,
             SignInRefusal::EmailUnverified => Self::EmailUnverified,
+            SignInRefusal::NoUsername => Self::NoUsername,
             SignInRefusal::NotAllowed => Self::NotAllowed,
             SignInRefusal::TooManySessions => Self::TooManySessions,
             SignInRefusal::NoRandomness => Self::NoRandomness,
@@ -285,6 +288,7 @@ impl Reason {
             Self::ProviderMisbehaved => "provider_misbehaved",
             Self::TokenRejected => "token_rejected",
             Self::EmailUnverified => "email_unverified",
+            Self::NoUsername => "no_username",
             Self::NotAllowed => "not_allowed",
             Self::TooManySessions => "too_many_sessions",
             Self::NoRandomness => "no_randomness",

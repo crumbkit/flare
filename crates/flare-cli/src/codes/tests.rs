@@ -88,3 +88,20 @@ fn opener_failed_prints_the_program_it_names_and_gives_it_as_a_field() {
         )
     );
 }
+
+#[test]
+fn identity_changed_names_both_kinds_and_gives_the_recorded_one_as_a_field() {
+    let changed = Failed::IdentityChanged {
+        recorded: "email".to_owned(),
+        configured: "username".to_owned(),
+    };
+    assert_eq!(
+        shown(&changed),
+        (
+            "the share API's table names people by email, and hosted.identity names them by username"
+                .to_owned(),
+            vec![Field::new("recorded", "email")]
+        )
+    );
+    assert_eq!(changed.code().as_str(), "flare::config::identity_changed");
+}

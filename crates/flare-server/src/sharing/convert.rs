@@ -7,8 +7,9 @@ use flare_contract::{
     ListScope, Role as WireRole, ShareCursor, ShareSummary, TeamRole, TeamSummary, utc,
 };
 use flare_core::{
-    ActivityItem, Email, FlareError, Group, ListKey, ListedGrant, ParseError, RecipientError,
-    ResponseActivity, Role, Share, ShareError, ShareId, Standing, Team, TeamsError, Timestamp,
+    ActivityItem, FlareError, Group, IdentityKind, ListKey, ListedGrant, ParseError, Person,
+    RecipientError, ResponseActivity, Role, Share, ShareError, ShareId, Standing, Team, TeamsError,
+    Timestamp,
 };
 
 /// The summary of `share` for a caller with `role`.
@@ -83,7 +84,8 @@ pub(super) fn share_error(error: ShareError) -> ApiCode {
         ShareError::TooManyGrants => ApiCode::TooManyGrants,
         ShareError::TooManyShares => ApiCode::TooManyShares,
         ShareError::TooManyVersions => ApiCode::TooManyVersions,
-        ShareError::NoVerifiedEmail => ApiCode::NoVerifiedEmail,
+        ShareError::NoPerson(IdentityKind::Username) => ApiCode::NoUsername,
+        ShareError::NoPerson(_) => ApiCode::NoVerifiedEmail,
         ShareError::TeamNotFound => ApiCode::TeamNotFound,
         ShareError::EveryoneUnbounded => ApiCode::EveryoneUnbounded,
         _ => ApiCode::SharesUnavailable,
@@ -132,6 +134,12 @@ pub(super) fn recipient_error(error: RecipientError, identifier: &str) -> Refusa
             share: None,
             errors: Vec::new(),
         },
+        RecipientError::NotAUsername => Refusal {
+            code: ApiCode::NotAUsername,
+            detail: Some(format!("{identifier} is not a username")),
+            share: None,
+            errors: Vec::new(),
+        },
         _ => ApiCode::RecipientsUnavailable.into(),
     }
 }
@@ -171,8 +179,8 @@ pub(super) fn teams_error(error: TeamsError) -> ApiCode {
     }
 }
 
-/// The summary of `team` for the caller with the address `caller`.
-pub(super) fn team_summary(team: &Team, caller: &Email) -> TeamSummary {
+/// The summary of `team` for the caller `caller`.
+pub(super) fn team_summary(team: &Team, caller: &Person) -> TeamSummary {
     TeamSummary {
         name: team.name().as_str().to_owned(),
         owner: team.owner().as_str().to_owned(),

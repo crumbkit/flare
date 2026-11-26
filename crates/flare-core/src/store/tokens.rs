@@ -1,6 +1,6 @@
 //! The [`TokenStore`] trait and its error.
 
-use crate::email::Email;
+use crate::person::Person;
 use crate::time::Timestamp;
 use crate::token::{Digest, LoginCode, NewToken, StoredToken, TokenId, UsedCode};
 use std::future::Future;
@@ -87,7 +87,7 @@ pub trait TokenStore: Send + Sync {
     fn revoke(
         &self,
         id: &TokenId,
-        owner: &Email,
+        owner: &Person,
         at: Timestamp,
     ) -> impl Future<Output = Result<(), TokenStoreError>> + Send;
 }

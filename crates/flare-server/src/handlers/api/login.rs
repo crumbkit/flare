@@ -58,7 +58,10 @@ where
         }
         _ => None,
     };
-    let Some(email) = signed_in.and_then(|admitted| admitted.principal.email().cloned()) else {
+    let Some(principal) = signed_in
+        .map(|admitted| admitted.principal)
+        .filter(|principal| principal.person().is_some())
+    else {
         // A sign-in that is not flare's own sends the browser to its own
         // address, which the proxy in front of the site serves.
         if let Some(Unsigned::SignInAt(at)) =
@@ -73,7 +76,7 @@ where
             "/auth/oidc/start?return_to={encoded}"
         )));
     };
-    let code = api.issue_code(&email, port, now).await?;
+    let code = api.issue_code(&principal, port, now).await?;
     Ok(Reply::see_other(
         LoginRedirect::new(port, state, code).location(),
     ))

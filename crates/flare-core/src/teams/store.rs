@@ -1,7 +1,7 @@
 //! [`Team`] and the [`TeamStore`] trait that keeps teams and their members.
 
 use super::names::TeamName;
-use crate::email::Email;
+use crate::person::Person;
 use crate::time::Timestamp;
 use std::fmt;
 use std::future::Future;
@@ -20,7 +20,7 @@ pub enum TeamState {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Team {
     name: TeamName,
-    owner: Email,
+    owner: Person,
     created: Timestamp,
     state: TeamState,
     members: usize,
@@ -31,7 +31,7 @@ impl Team {
     #[must_use]
     pub fn new(
         name: TeamName,
-        owner: Email,
+        owner: Person,
         created: Timestamp,
         state: TeamState,
         members: usize,
@@ -53,7 +53,7 @@ impl Team {
 
     /// The person who created the team and alone manages it.
     #[must_use]
-    pub fn owner(&self) -> &Email {
+    pub fn owner(&self) -> &Person {
         &self.owner
     }
 
@@ -146,7 +146,7 @@ pub trait TeamStore: Send + Sync {
     fn add(
         &self,
         name: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> impl Future<Output = Result<bool, TeamStoreError>> + Send;
 
     /// Removes `member` from the team, active or deleting. Answers `false`
@@ -158,7 +158,7 @@ pub trait TeamStore: Send + Sync {
     fn remove(
         &self,
         name: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> impl Future<Output = Result<bool, TeamStoreError>> + Send;
 
     /// Marks the team deleting. Its member pairs stay until the caller
@@ -193,11 +193,11 @@ pub trait TeamStore: Send + Sync {
     fn transfer(
         &self,
         name: &TeamName,
-        from: &Email,
-        to: &Email,
+        from: &Person,
+        to: &Person,
     ) -> impl Future<Output = Result<(), TeamStoreError>> + Send;
 
-    /// The members of the team, in address order. A team has at most
+    /// The members of the team, in id order. A team has at most
     /// [`MAX_MEMBERS`](crate::MAX_MEMBERS).
     ///
     /// # Errors
@@ -206,7 +206,7 @@ pub trait TeamStore: Send + Sync {
     fn members(
         &self,
         name: &TeamName,
-    ) -> impl Future<Output = Result<Vec<Email>, TeamStoreError>> + Send;
+    ) -> impl Future<Output = Result<Vec<Person>, TeamStoreError>> + Send;
 
     /// The names of the teams that `member` belongs to, in name order,
     /// including a deleting team whose pairs are not yet removed.
@@ -216,6 +216,6 @@ pub trait TeamStore: Send + Sync {
     /// Returns [`TeamStoreError::Unavailable`].
     fn teams_of(
         &self,
-        member: &Email,
+        member: &Person,
     ) -> impl Future<Output = Result<Vec<TeamName>, TeamStoreError>> + Send;
 }

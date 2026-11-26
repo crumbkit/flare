@@ -13,7 +13,8 @@ both.
 - The token must be signed with RS256 or ES256, by a key that the proxy
   publishes as a JSON Web Key Set (a JWKS) at an `https` address.
 - The token must carry `iss`, `aud`, `exp` and a claim that holds the
-  person's email address, `email` by default.
+  person's email address, `email` by default, or their username under
+  `hosted.identity`'s `username_claim`.
 - flare never reads an unsigned identity header such as `X-Forwarded-Email`,
   `X-Forwarded-User` or `Remote-User`. A proxy that only sets such headers
   cannot be used, because anything that reaches `hosted.listen` could set
@@ -51,7 +52,8 @@ or neither.
 - `cookie` is the name of the cookie that carries the token.
 - `algorithms` lists `RS256`, `ES256` or both. Nothing else is accepted.
 - `identity_claim` names the claim that holds the email address. It is
-  `email` when left out.
+  `email` when left out. It is refused beside `hosted.identity`'s
+  `username_claim`, which then names the claim instead.
 - `admit` is the same rule that the `oidc` section takes. The hosted
   section's share API follows it too.
 - `sign_in_url`, optional, is linked from the 401 page that a reader with no
@@ -60,6 +62,29 @@ or neither.
 - `sign_out_url`, optional, is linked from the 403 page that a person the
   admit rule refuses gets, so they can sign in as someone else.
 - The `/auth/oidc/*` routes answer 404 on a proxy site.
+
+## Naming people by username
+
+- `hosted.identity` is `"email"`, the default, or
+  `{"username_claim": "<claim>"}`.
+- Under `username_claim`, every grant, team, creator, name and token names
+  people by the username in that claim. A username is 1 to 64 lower-case
+  letters, digits, dots, hyphens and underscores, starts with a letter or a
+  digit, and is never `everyone` or `me`. An upper-case claim is read in
+  lower case.
+- The proxy's token must carry the claim. `email_verified` is not required.
+  The token's `email` is kept beside the username only when
+  `email_verified` is true.
+- An `emails` admit entry names a username in its `email` key. A `domain`
+  rule admits a username whose token carries a verified email at the
+  domain. An `anyone` rule admits every username.
+- flare's own OpenID Connect sign-in reads the username from the ID
+  token's claim of that name, and refuses a sign-in without it. Its admit
+  rule still judges the verified email, so its `emails` entries stay
+  addresses.
+- The share API's table records the kind on first start. `flare serve`
+  exits with `flare::config::identity_changed`, writing nothing, when the
+  config names the other kind. Restore the config or use a new table.
 
 ## How a token is checked
 
@@ -73,8 +98,8 @@ flare accepts a token only when every check passes, in this order:
 5. `exp` has not passed, and `nbf` and `iat`, when present, are not in the
    future, each with 60 seconds of leeway.
 6. The identity claim holds an email address, and `email_verified`, when
-   present, is true.
-7. The admit rule admits the address.
+   present, is true. Under `username_claim`, the claim holds a username.
+7. The admit rule admits the address or the username.
 
 - A token that fails a check from 1 to 6 gets 401 `auth::proxy_refused`,
   with no redirect and no sign-in link, so a misconfigured check cannot

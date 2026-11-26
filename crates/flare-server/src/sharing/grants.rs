@@ -3,10 +3,10 @@
 
 use super::convert::{flare_error, grant_entry, recipient_error, share_error};
 use super::run::{json, share_id, shared};
-use super::{Answer, Refusal, Sharing};
+use super::{Answer, Refusal, Sharing, admission};
 use flare_contract::{ApiCode, GrantList, GrantRequest, RevokeRequest, Revoked, Role as WireRole};
 use flare_core::{
-    CommentStore, Creators, CursorStore, Email, GrantStore, Group, Principal, Recipients,
+    CommentStore, Creators, CursorStore, GrantStore, Group, Person, Principal, Recipients,
     ResponseStore, ShareStore, Teams, Timestamp, TokenStore,
 };
 
@@ -17,6 +17,25 @@ fn nobody() -> Refusal {
         detail: Some("name a person or a team in with, or set everyone".to_owned()),
         share: None,
         errors: Vec::new(),
+    }
+}
+
+impl<S, G, R, C, U, T, X, M, K, F> Sharing<S, G, R, C, U, T, X, M, K, F> {
+    /// The share API of `self`, where an everyone grant under an `anyone`
+    /// admit rule opens the share to every signed-in person while `on` is
+    /// true. While it is false such a grant is refused, and a stored one
+    /// opens the share to no one.
+    #[must_use]
+    pub fn with_everyone_signed_in(mut self, on: bool) -> Self {
+        self.flares = self.flares.admitting(admission(&self.admit), on);
+        self
+    }
+
+    /// The caller's person of the deployment's identifier kind: a
+    /// verified email under the email kind, a username under the username
+    /// kind.
+    pub(super) fn caller<'a>(&self, who: &'a Principal) -> Result<&'a Person, ApiCode> {
+        self.flares.shares().person(who).map_err(share_error)
     }
 }
 
@@ -35,13 +54,13 @@ where
     /// The people and the groups that the identifiers name, with
     /// everyone added when `everyone` is set. `team:<name>` names a team
     /// and `everyone` names everyone; the directory resolves every other
-    /// identifier to an address. A malformed team name answers the same
+    /// identifier to a person. A malformed team name answers the same
     /// refusal as a team the caller is not in.
     pub(super) async fn named(
         &self,
         with: &[String],
         everyone: bool,
-    ) -> Result<(Vec<Email>, Vec<Group>), Refusal> {
+    ) -> Result<(Vec<Person>, Vec<Group>), Refusal> {
         let mut people = Vec::new();
         let mut groups = Vec::new();
         for identifier in with {
@@ -81,7 +100,7 @@ where
             .grant_all(who, &id, &with, &groups, &re, now)
             .await
             .map_err(flare_error)?;
-        let owner = who.email().map(Email::principal_id);
+        let owner = who.person().map(Person::principal_id);
         let role = if owner.as_ref() == Some(flared.share.owner()) {
             WireRole::Owner
         } else {
@@ -130,7 +149,7 @@ where
                 revoked: revoked
                     .people
                     .iter()
-                    .map(|email| email.as_str().to_owned())
+                    .map(|person| person.as_str().to_owned())
                     .chain(revoked.groups.iter().map(ToString::to_string))
                     .collect(),
             },

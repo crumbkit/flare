@@ -2,11 +2,10 @@
 //! share through a team or an everyone grant, and the grants of a share
 //! with their state.
 
-use super::{ListedGrant, Shares, actor};
+use super::{Actor, ListedGrant, Shares};
 use crate::auth::Principal;
-use crate::email::Email;
 use crate::grant::{Grant, Role};
-use crate::name::PrincipalId;
+use crate::person::Person;
 use crate::share::ShareId;
 use crate::sharing::error::ShareError;
 use crate::sharing::{ShareAction, Standing};
@@ -21,15 +20,9 @@ pub(super) fn rank(role: Role) -> u8 {
     }
 }
 
-/// The address an actor's id holds. Every actor id is the lower-case
-/// address it came from, so it parses back.
-pub(super) fn address(actor: &PrincipalId) -> Option<Email> {
-    Email::try_from(actor.as_str()).ok()
-}
-
 impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// The active teams that `person` belongs to.
-    pub(super) async fn active_teams(&self, person: &Email) -> Result<Vec<TeamName>, ShareError> {
+    pub(super) async fn active_teams(&self, person: &Person) -> Result<Vec<TeamName>, ShareError> {
         let mut active = Vec::new();
         let names = self
             .teams
@@ -49,11 +42,11 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         Ok(active)
     }
 
-    /// Whether `grant`, an everyone grant, opens its share to `person`.
-    pub(super) fn everyone_opens(&self, grant: &Grant, person: &Email) -> bool {
+    /// Whether `grant`, an everyone grant, opens its share to `who`.
+    pub(super) fn everyone_opens(&self, grant: &Grant, who: &Principal) -> bool {
         grant
             .audience()
-            .is_some_and(|audience| self.admission.opens(audience, person))
+            .is_some_and(|audience| self.admission.opens(audience, who, self.everyone_signed_in))
     }
 
     /// Whether the actor opens the share through one of its group grants.
@@ -62,12 +55,9 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// answer.
     pub(super) async fn opens_through_group(
         &self,
-        actor: &PrincipalId,
+        actor: &Actor<'_>,
         id: &ShareId,
     ) -> Result<bool, ShareError> {
-        let Some(person) = address(actor) else {
-            return Ok(false);
-        };
         let grants = self
             .grants
             .of_share(id)
@@ -76,10 +66,12 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         let mut teams: Option<Vec<TeamName>> = None;
         for grant in &grants {
             match Group::of_grantee(grant.grantee()) {
-                Some(Group::Everyone) if self.everyone_opens(grant, &person) => return Ok(true),
+                Some(Group::Everyone) if self.everyone_opens(grant, actor.who) => {
+                    return Ok(true);
+                }
                 Some(Group::Team(name)) => {
                     if teams.is_none() {
-                        teams = Some(self.active_teams(&person).await?);
+                        teams = Some(self.active_teams(actor.person).await?);
                     }
                     if teams.as_ref().is_some_and(|teams| teams.contains(&name)) {
                         return Ok(true);
@@ -91,15 +83,20 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         Ok(false)
     }
 
-    /// The groups through which `person` reads `id`: each team grant on it
-    /// of an active team the person belongs to, and its everyone grant when
-    /// the grant's audience covers them. The teams are read only when the
-    /// share has a team grant.
+    /// The groups through which `who` reads `id`: each team grant on it
+    /// of an active team the caller's person belongs to, and its everyone
+    /// grant when the grant's audience covers them. The teams are read only
+    /// when the share has a team grant.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShareError::NoPerson`] and [`ShareError::Unavailable`].
     pub(crate) async fn groups_reading(
         &self,
-        person: &Email,
+        who: &Principal,
         id: &ShareId,
     ) -> Result<Vec<Group>, ShareError> {
+        let person = self.person(who)?;
         let grants = self
             .grants
             .of_share(id)
@@ -109,7 +106,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         let mut groups = Vec::new();
         for grant in &grants {
             match Group::of_grantee(grant.grantee()) {
-                Some(Group::Everyone) if self.everyone_opens(grant, person) => {
+                Some(Group::Everyone) if self.everyone_opens(grant, who) => {
                     groups.push(Group::Everyone);
                 }
                 Some(Group::Team(name)) => {
@@ -134,20 +131,19 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// # Errors
     ///
     /// Returns [`ShareError::NotFound`], [`ShareError::Forbidden`] for a
-    /// reader, [`ShareError::NoVerifiedEmail`] and
+    /// reader, [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn listed_grants(
         &self,
         who: &Principal,
         id: &ShareId,
     ) -> Result<Vec<ListedGrant>, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         let (_, standing) = self.admit(&actor, id, ShareAction::ListGrants).await?;
         let mine = if standing == Standing::Owner {
             None
         } else {
-            let person = address(&actor).ok_or(ShareError::NoVerifiedEmail)?;
-            Some(self.active_teams(&person).await?)
+            Some(self.active_teams(actor.person).await?)
         };
         let grants = self
             .grants

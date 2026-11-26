@@ -2,12 +2,12 @@
 //! build.
 
 use super::*;
-use flare_core::{Email, PageName};
+use flare_core::{Email, PageName, Person};
 use serde_json::json;
 
 fn entry(email: &str, principal: &str) -> AllowEntry {
     AllowEntry::new(
-        Email::try_from(email).unwrap(),
+        Email::try_from(email).unwrap().into(),
         PrincipalId::try_from(principal).unwrap(),
         Reach::Everything,
     )
@@ -158,11 +158,11 @@ fn an_allow_list_still_admits_a_listed_address_and_no_longer_admits_one_taken_of
     .unwrap();
     let ana = Email::try_from("Ana@Example.org").unwrap();
     let bob = Email::try_from("bob@example.org").unwrap();
-    assert!(Admit::Emails(both).admits(&ana));
+    assert!(Admit::Emails(both).admits(&Person::from(ana.clone()), Some(&ana)));
     let bob_only = AllowList::new(vec![entry("bob@example.org", "bob")]).unwrap();
-    assert!(!Admit::Emails(bob_only.clone()).admits(&ana));
+    assert!(!Admit::Emails(bob_only.clone()).admits(&Person::from(ana.clone()), Some(&ana)));
     // The admitted twin: the address still on the list is admitted.
-    assert!(Admit::Emails(bob_only).admits(&bob));
+    assert!(Admit::Emails(bob_only).admits(&Person::from(bob.clone()), Some(&bob)));
 }
 
 #[test]
@@ -172,6 +172,52 @@ fn the_domain_and_anyone_rules_admit_every_address_because_an_address_alone_carr
         Reach::Everything,
     );
     let elsewhere = Email::try_from("ana@secondary.example").unwrap();
-    assert!(Admit::Domain(rule).admits(&elsewhere));
-    assert!(Admit::Anyone(Reach::Everything).admits(&elsewhere));
+    assert!(Admit::Domain(rule).admits(&Person::from(elsewhere.clone()), Some(&elsewhere)));
+    assert!(
+        Admit::Anyone(Reach::Everything).admits(&Person::from(elsewhere.clone()), Some(&elsewhere))
+    );
+}
+
+#[test]
+fn a_username_owner_is_admitted_by_a_list_entry_naming_it_or_its_verified_email() {
+    let ada = Person::try_from("ada").unwrap();
+    let by_name = AllowList::new(vec![AllowEntry::new(
+        ada.clone(),
+        PrincipalId::try_from("ada").unwrap(),
+        Reach::Everything,
+    )])
+    .unwrap();
+    assert!(Admit::Emails(by_name.clone()).admits(&ada, None));
+    let bo = Person::try_from("bo").unwrap();
+    assert!(!Admit::Emails(by_name).admits(&bo, None));
+    let by_email = AllowList::new(vec![entry("bo@example.org", "bo")]).unwrap();
+    let email = Email::try_from("bo@example.org").unwrap();
+    assert!(Admit::Emails(by_email.clone()).admits(&bo, Some(&email)));
+    assert!(!Admit::Emails(by_email).admits(&bo, None));
+}
+
+#[test]
+fn an_allow_list_refuses_one_person_named_twice() {
+    let twice = AllowList::new(vec![
+        AllowEntry::new(
+            Person::try_from("ada").unwrap(),
+            PrincipalId::try_from("one").unwrap(),
+            Reach::Everything,
+        ),
+        AllowEntry::new(
+            Person::try_from("Ada").unwrap(),
+            PrincipalId::try_from("two").unwrap(),
+            Reach::Everything,
+        ),
+    ]);
+    assert!(matches!(twice, Err(ConfigError::DuplicateEmail)));
+    let distinct = AllowList::new(vec![
+        AllowEntry::new(
+            Person::try_from("ada").unwrap(),
+            PrincipalId::try_from("one").unwrap(),
+            Reach::Everything,
+        ),
+        entry("ada@example.org", "two"),
+    ]);
+    assert!(distinct.is_ok());
 }

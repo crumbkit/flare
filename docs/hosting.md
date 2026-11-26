@@ -90,7 +90,9 @@ The share API lets people share Markdown files with named people from the
   "stores": { "region": "eu-west-1", "table": "flare-shares", "bucket": "flare-files" },
   "creators": ["ana@example.com", "@example.com"],
   "names": { "ana": "ana@example.com" },
-  "get_flare": "https://example.com/flare"
+  "get_flare": "https://example.com/flare",
+  "identity": "email",
+  "everyone_signed_in": false
 }
 ```
 
@@ -133,6 +135,21 @@ The share API lets people share Markdown files with named people from the
   to `ana@example.com`. A full address still resolves as itself, and a name
   that is not listed is refused as not an email address. `names` without
   `stores` is refused, and a bad entry is refused naming `hosted.names`.
+- `identity` says how people are named: `"email"`, the default, or
+  `{"username_claim": "<claim>"}`, which names them by the username in
+  that claim of the sign-in's token. Under a username claim, `creators`
+  and `names` hold usernames where this page shows addresses, `--with`
+  takes a username and refuses an address with 400
+  `flare::recipients::not_a_username`, and a caller whose sign-in carries
+  no username gets 403 `flare::shares::no_username`. A malformed value
+  stops `flare serve` with `flare::config::invalid` naming
+  `hosted.identity`. [sign-in.md](sign-in.md) says how each sign-in reads
+  the claim.
+- `everyone_signed_in`, `false` by default, lets an everyone grant under an
+  `anyone` admit rule open the share to every signed-in person. Such a
+  grant stores the audience `signed-in` and opens to no one while the
+  setting is off; the grant stays until its owner revokes it.
+  `everyone_signed_in` without `stores` is refused.
 - `get_flare` is the address that the reading page's Get Flare link opens,
   in a new tab, for a reader who has never shared a flare
   (`docs/reading.md`). It must be an `https` URL with a host and no user
@@ -150,7 +167,7 @@ The share API lets people share Markdown files with named people from the
   under that rule. Under an
   `anyone` rule the grant is refused with 409
   `flare::grants::everyone_unbounded`, because it would open the share to
-  any Google account. [teams.md](teams.md) gives the life of teams and
+  any Google account, unless `everyone_signed_in` is on. [teams.md](teams.md) gives the life of teams and
   group grants.
 
 Routes:

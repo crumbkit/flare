@@ -596,7 +596,7 @@ fn mint(state: &State, nonce: &str) -> String {
 pub fn allow_list() -> AllowList {
     let home = Resource::Page(PageName::try_from(HOME).expect("a page name"));
     AllowList::new(vec![AllowEntry::new(
-        Email::try_from(EMAIL).expect("an email"),
+        Email::try_from(EMAIL).expect("an email").into(),
         PrincipalId::try_from(PRINCIPAL).expect("a principal id"),
         Reach::Only(vec![home]),
     )])

@@ -9,9 +9,9 @@ use flare_core::memory::{
     MemoryTeamStore,
 };
 use flare_core::{
-    Admission, AllAdmitted, DocumentText, Email, FlareTeams, Flares, Group, MailDomain,
-    NamedRecipients, NewFlare, Principal, PrincipalId, Role, SearchHit, ShareContent, ShareId,
-    ShareTitle, Standing, TeamName, Teams, Timestamp,
+    Admission, AllAdmitted, DocumentText, FlareTeams, Flares, Group, MailDomain, NamedRecipients,
+    NewFlare, Person, Principal, PrincipalId, Role, SearchHit, ShareContent, ShareId, ShareTitle,
+    Standing, TeamName, Teams, Timestamp,
 };
 use flare_query::parse;
 use proptest::prelude::*;
@@ -34,12 +34,16 @@ type TeamMemory = Flares<
     FlareTeams<MemoryTeamStore>,
 >;
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 const ME: &str = "mei@example.org";
@@ -168,9 +172,10 @@ fn team_direct_and_everyone() -> TeamMemory {
         AllAdmitted,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
-    .admitting(Admission::Domain(
-        MailDomain::try_from("example.org").unwrap(),
-    ));
+    .admitting(
+        Admission::Domain(MailDomain::try_from("example.org").unwrap()),
+        false,
+    );
     let design = TeamName::try_from("design").unwrap();
     block_on(flares.create_team(&person(ANA), design.clone(), Timestamp::from_secs(1))).unwrap();
     block_on(
@@ -180,7 +185,7 @@ fn team_direct_and_everyone() -> TeamMemory {
             .add(&email(ANA), &design, &email(ME)),
     )
     .unwrap();
-    let new = |byte: u8, title: &str, with: Vec<Email>, groups: Vec<Group>| {
+    let new = |byte: u8, title: &str, with: Vec<Person>, groups: Vec<Group>| {
         NewFlare::new(
             id(byte),
             ShareTitle::try_from(title).unwrap(),

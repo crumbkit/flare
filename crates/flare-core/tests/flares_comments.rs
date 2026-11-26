@@ -10,7 +10,7 @@ use flare_core::memory::{
 };
 use flare_core::{
     ActivityItem, AllAdmitted, CommentAction, CommentBody, CommentDraft, CommentId, CommentKey,
-    CursorName, DocumentText, Email, FlareError, Flares, NewFlare, Position, Principal,
+    CursorName, DocumentText, FlareError, Flares, NewFlare, Person, Position, Principal,
     PrincipalId, ShareContent, ShareId, ShareTitle, Timestamp,
 };
 
@@ -22,12 +22,16 @@ type Memory = Flares<
     MemoryCursorStore,
 >;
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn alice() -> Principal {

@@ -19,7 +19,7 @@ pub use races::{
     concurrent_creates_of_one_id_give_one_id_taken, concurrent_publishes_get_consecutive_versions,
 };
 
-use super::{Clause, Violation, ensure, fixture, unexpected};
+use super::{Clause, People, Violation, ensure, fixture, unexpected};
 use crate::{
     DocumentText, NewShare, NewVersion, PrincipalId, ShareContent, ShareId, ShareKind, ShareStore,
     ShareStoreError, ShareTitle, ShareVersion, Timestamp,
@@ -44,11 +44,21 @@ impl ShareFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
+        Self::of(People::Emails)
+    }
+
+    /// The fixture with `people` as the people it names.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] if a constant of the fixture is refused by its
+    /// type, which means this crate is broken.
+    pub fn of(people: People) -> Result<Self, Violation> {
         let document =
             |text: &str| fixture(DocumentText::try_from(text)).map(ShareContent::Document);
         Ok(Self {
-            owner: fixture(PrincipalId::try_from("owner@example.com"))?,
-            other_owner: fixture(PrincipalId::try_from("other@example.com"))?,
+            owner: people.id("owner")?,
+            other_owner: people.id("other")?,
             title: fixture(ShareTitle::try_from("Contract notes"))?,
             other_title: fixture(ShareTitle::try_from("Another title"))?,
             contents: [

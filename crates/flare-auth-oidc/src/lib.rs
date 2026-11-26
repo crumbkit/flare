@@ -241,6 +241,7 @@ mod clock;
 mod config;
 mod file_secret;
 mod flow;
+mod identity;
 mod keychain;
 mod keys;
 mod provider;
@@ -262,6 +263,7 @@ pub use file_secret::FileSecret;
 /// The verified address that sign-in admits, defined in `flare-core`.
 pub use flare_core::Email;
 pub use flow::{KeptState, ReturnTo, SignInStart};
+pub use identity::Identity;
 pub use keychain::KeychainSecret;
 pub use proxy::{
     Audience, CookieName, IdentityClaim, KeySetUrl, ProxyAlgorithm, ProxyAlgorithms,

@@ -4,7 +4,7 @@
 
 use flare_core::contract::sealing_keys::{self, KeyFixture};
 use flare_core::contract::session_store::{self, SessionFixture};
-use flare_core::contract::{Threads, block_on};
+use flare_core::contract::{People, Threads, block_on};
 use flare_core::memory::{MemorySealingKeys, MemorySessionStore};
 
 macro_rules! suite {
@@ -17,7 +17,19 @@ macro_rules! suite {
     )*};
 }
 
-suite!(session_store, MemorySessionStore, SessionFixture;
+macro_rules! people_suite {
+    ($module:ident, $store:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[test]
+        fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                block_on($module::$name(&$store::new(), &fixture)).unwrap();
+            }
+        }
+    )*};
+}
+
+people_suite!(session_store, MemorySessionStore, SessionFixture;
     a_session_lives_twelve_hours_from_sign_in,
     a_request_slides_the_expiry_at_most_every_ten_minutes,
     a_session_ends_seven_days_after_sign_in,

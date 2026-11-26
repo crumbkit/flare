@@ -2,16 +2,18 @@
 //! suite is known to pass on a correct implementation.
 #![cfg(test)]
 
-use flare_core::contract::block_on;
 use flare_core::contract::team_store::{self, TeamFixture};
+use flare_core::contract::{People, block_on};
 use flare_core::memory::MemoryTeamStore;
 
 macro_rules! suite {
     ($($name:ident),* $(,)?) => {$(
         #[test]
         fn $name() {
-            let fixture = TeamFixture::standard().unwrap();
-            block_on(team_store::$name(&MemoryTeamStore::new(), &fixture)).unwrap();
+            for people in People::ALL {
+                let fixture = TeamFixture::of(people).unwrap();
+                block_on(team_store::$name(&MemoryTeamStore::new(), &fixture)).unwrap();
+            }
         }
     )*};
 }

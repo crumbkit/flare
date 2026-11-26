@@ -32,7 +32,7 @@ pub use races::{
     concurrent_grants_from_no_grant_give_one_changed,
 };
 
-use super::{Clause, Violation, ensure, fixture, unexpected};
+use super::{Clause, People, Violation, ensure, fixture, unexpected};
 use crate::{
     Grant, GrantRevoke, GrantStore, GrantStoreError, GrantWrite, Granter, PrincipalId, Revoker,
     Role, ShareId, Timestamp,
@@ -56,11 +56,21 @@ impl GrantFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
+        Self::of(People::Emails)
+    }
+
+    /// The fixture with `people` as the people it names.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] if a constant of the fixture is refused by its
+    /// type, which means this crate is broken.
+    pub fn of(people: People) -> Result<Self, Violation> {
         Ok(Self {
-            owner: fixture(PrincipalId::try_from("owner@example.com"))?,
-            admin: fixture(PrincipalId::try_from("admin@example.com"))?,
-            bob: fixture(PrincipalId::try_from("bob@example.com"))?,
-            carol: fixture(PrincipalId::try_from("carol@example.com"))?,
+            owner: people.id("owner")?,
+            admin: people.id("admin")?,
+            bob: people.id("bob")?,
+            carol: people.id("carol")?,
         })
     }
 

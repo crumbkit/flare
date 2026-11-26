@@ -9,7 +9,7 @@ use crate::dynamodb::transact::{
     ABSENT, ItemRole, PRESENT, Transaction, delete, key_map, names, put, values,
 };
 use aws_sdk_dynamodb::types::{AttributeValue, ConditionCheck, Delete, TransactWriteItem, Update};
-use flare_core::{Email, MAX_MEMBERS, Team, TeamName, TeamState, Timestamp};
+use flare_core::{MAX_MEMBERS, Person, Team, TeamName, TeamState, Timestamp};
 
 const ACTIVE: &str = "active";
 const DELETING: &str = "deleting";
@@ -41,7 +41,7 @@ pub(super) fn team_item(team: &Team) -> Item {
 pub(super) fn team_from(item: &Item, name: &TeamName) -> Result<Team, Malformed> {
     let kind = ItemKind::Team;
     let owner =
-        Email::try_from(read_text(item, attr::OWNER, kind)?).map_err(|_| Malformed(kind))?;
+        Person::try_from(read_text(item, attr::OWNER, kind)?).map_err(|_| Malformed(kind))?;
     let state = match read_text(item, attr::STATE, kind)? {
         ACTIVE => TeamState::Active,
         DELETING => TeamState::Deleting,
@@ -63,7 +63,7 @@ fn put_pair(
     transaction: &mut Transaction,
     table: &str,
     team: &TeamName,
-    member: &Email,
+    member: &Person,
 ) -> Option<()> {
     let (in_team, in_person) = Key::member_pair(team, member);
     for key in [in_team, in_person] {
@@ -109,7 +109,7 @@ fn update_team(
 
 /// The transaction of an add: one more in the count of an active team below
 /// [`MAX_MEMBERS`], and both items of the pair, each only if absent.
-pub(super) fn add(table: &str, team: &TeamName, member: &Email) -> Option<Transaction> {
+pub(super) fn add(table: &str, team: &TeamName, member: &Person) -> Option<Transaction> {
     let mut transaction = Transaction::default();
     transaction.push(
         ItemRole::TeamItem,
@@ -131,7 +131,7 @@ pub(super) fn add(table: &str, team: &TeamName, member: &Email) -> Option<Transa
 
 /// The transaction of a remove: both items of the pair, the first only if
 /// present, and one less in the team's count.
-pub(super) fn remove(table: &str, team: &TeamName, member: &Email) -> Option<Transaction> {
+pub(super) fn remove(table: &str, team: &TeamName, member: &Person) -> Option<Transaction> {
     let mut transaction = Transaction::default();
     let (in_team, in_person) = Key::member_pair(team, member);
     let first = Delete::builder()
@@ -206,8 +206,8 @@ pub(super) fn forget(table: &str, team: &TeamName) -> Option<Transaction> {
 pub(super) fn transfer(
     table: &str,
     team: &TeamName,
-    from: &Email,
-    to: &Email,
+    from: &Person,
+    to: &Person,
 ) -> Option<Transaction> {
     let mut transaction = Transaction::default();
     transaction.push(

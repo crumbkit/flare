@@ -7,11 +7,12 @@ use crate::refusal::{SignInRefusal, TokenFault};
 use aws_lc_rs::constant_time;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use flare_core::Username;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Deserializer};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::time::SystemTime;
 
 /// How far past `exp` a token is still accepted, for clock skew.
@@ -114,12 +115,13 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, 
 }
 
 /// What a verified ID token says about the person: the email it marks
-/// verified, and its `hd` claim, which Google sets to the domain of the
-/// account's organisation. It has no `Debug` output, so neither value can
-/// reach a log.
+/// verified, its `hd` claim, which Google sets to the domain of the
+/// account's organisation, and under the username kind the username of the
+/// configured claim. It has no `Debug` output, so no value can reach a log.
 pub(crate) struct Verified {
     pub(crate) email: String,
     pub(crate) hd: Option<Value>,
+    pub(crate) username: Option<Username>,
 }
 
 /// What a token must say to be accepted.
@@ -149,14 +151,19 @@ fn audience_is(aud: Option<&Value>, client_id: &str) -> bool {
     }
 }
 
-fn verify_signature(token: &SecretString, key: &DecodingKey) -> Result<Claims, TokenFault> {
+/// Verifies the signature and returns every claim, so that the configured
+/// username claim can be read whatever its name.
+fn verify_signature(
+    token: &SecretString,
+    key: &DecodingKey,
+) -> Result<Map<String, Value>, TokenFault> {
     // jsonwebtoken checks only the signature and the algorithm here. The
     // claims are checked below, against the crate's clock.
     let mut validation = Validation::new(Algorithm::RS256);
     validation.validate_exp = false;
     validation.validate_aud = false;
     validation.required_spec_claims.clear();
-    jsonwebtoken::decode::<Claims>(token.expose_secret(), key, &validation)
+    jsonwebtoken::decode::<Map<String, Value>>(token.expose_secret(), key, &validation)
         .map(|data| data.claims)
         .map_err(|error| match error.kind() {
             ErrorKind::InvalidSignature => TokenFault::Signature,
@@ -166,14 +173,17 @@ fn verify_signature(token: &SecretString, key: &DecodingKey) -> Result<Claims, T
 }
 
 /// Verifies the token with `key`, checks its claims in order and returns
-/// its verified email and its `hd` claim.
+/// its verified email, its `hd` claim and, under the username kind, its
+/// username.
 pub(crate) fn check(
     token: &SecretString,
     key: &DecodingKey,
     expected: &Expected<'_>,
 ) -> Result<Verified, SignInRefusal> {
     let reject = SignInRefusal::TokenRejected;
-    let claims = verify_signature(token, key).map_err(reject)?;
+    let all = verify_signature(token, key).map_err(reject)?;
+    let claims = Claims::deserialize(Value::Object(all.clone()))
+        .map_err(|_| reject(TokenFault::Malformed))?;
     let config = expected.config;
     let iss = claims.iss.unwrap_or_default();
     if !issuer_matches(config.issuer.as_str(), &iss) {
@@ -202,9 +212,14 @@ pub(crate) fn check(
         .email
         .filter(|_| verified)
         .ok_or(SignInRefusal::EmailUnverified)?;
+    let username = match config.identity.username(&all) {
+        None => None,
+        Some(username) => Some(username.ok_or(SignInRefusal::NoUsername)?),
+    };
     Ok(Verified {
         email,
         hd: claims.hd,
+        username,
     })
 }
 

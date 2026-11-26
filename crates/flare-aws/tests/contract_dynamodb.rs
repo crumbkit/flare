@@ -14,6 +14,7 @@
 pub mod stand_in;
 
 use flare_aws::Stores;
+use flare_core::contract::People;
 use flare_core::contract::grant_store::{self, GrantFixture};
 use flare_core::contract::response_store::{self, ResponseFixture, index as response_index};
 use flare_core::contract::sealing_keys::{self, KeyFixture};
@@ -22,9 +23,9 @@ use flare_core::contract::share_store::{self, ShareFixture};
 use flare_core::contract::team_store::{self, TeamFixture};
 use flare_core::contract::token_store::{self, TokenFixture};
 use flare_core::{
-    CODE_LIFE, Digest, DocumentText, Email, GrantStore, LoginCode, NewLink, NewToken, Position,
-    Principal, ResponseStore, Role, ShareContent, ShareId, ShareStore, ShareTitle, ShareVersion,
-    Shares, Timestamp, TokenId, TokenLabel, TokenStore,
+    CODE_LIFE, Digest, DocumentText, Email, GrantStore, LoginCode, NewLink, NewToken, Person,
+    Position, Principal, ResponseStore, Role, ShareContent, ShareId, ShareStore, ShareTitle,
+    ShareVersion, Shares, Timestamp, TokenId, TokenLabel, TokenStore,
 };
 use stand_in::{Joined, dynamodb_client, endpoints, fresh, fresh_config};
 
@@ -50,10 +51,36 @@ macro_rules! concurrent_suite {
     )*};
 }
 
+macro_rules! people_suite {
+    ($module:ident, $field:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[tokio::test(flavor = "multi_thread")]
+        async fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                let stores = fresh().await;
+                $module::$name(&stores.$field, &fixture).await.unwrap();
+            }
+        }
+    )*};
+}
+
+macro_rules! people_concurrent_suite {
+    ($module:ident, $field:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[tokio::test(flavor = "multi_thread")]
+        async fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                let stores = fresh().await;
+                $module::$name(&stores.$field, &fixture, &Joined).await.unwrap();
+            }
+        }
+    )*};
+}
+
 mod shares {
     use super::*;
 
-    suite!(share_store, shares, ShareFixture;
+    people_suite!(share_store, shares, ShareFixture;
         a_created_share_reads_back,
         the_first_version_holds_the_created_content,
         a_taken_share_id_changes_nothing,
@@ -68,7 +95,7 @@ mod shares {
         each_version_keeps_its_image_table,
     );
 
-    concurrent_suite!(share_store, shares, ShareFixture;
+    people_concurrent_suite!(share_store, shares, ShareFixture;
         concurrent_creates_of_one_id_give_one_id_taken,
         concurrent_publishes_get_consecutive_versions,
         the_share_limit_per_owner_holds,
@@ -79,7 +106,7 @@ mod shares {
 mod teams {
     use super::*;
 
-    suite!(team_store, teams, TeamFixture;
+    people_suite!(team_store, teams, TeamFixture;
         a_created_team_reads_back_with_its_owner_as_its_only_member,
         a_name_is_taken_while_its_team_is_active_or_deleting,
         member_pairs_always_agree_after_adds_and_removes,
@@ -96,7 +123,7 @@ mod teams {
 mod grants {
     use super::*;
 
-    suite!(grant_store, grants, GrantFixture;
+    people_suite!(grant_store, grants, GrantFixture;
         a_grant_reads_back,
         a_grant_from_the_current_role_replaces_it,
         a_grant_from_a_stale_role_is_changed,
@@ -118,7 +145,7 @@ mod grants {
         a_persons_grants_page_in_order_past_the_listing_limit,
     );
 
-    concurrent_suite!(grant_store, grants, GrantFixture;
+    people_concurrent_suite!(grant_store, grants, GrantFixture;
         concurrent_grants_from_no_grant_give_one_changed,
         a_grant_and_a_revoke_together_leave_a_consistent_state,
         an_admins_grant_never_lands_after_their_revoke,
@@ -129,7 +156,7 @@ mod grants {
 mod tokens {
     use super::*;
 
-    suite!(token_store, tokens, TokenFixture;
+    people_suite!(token_store, tokens, TokenFixture;
         a_code_is_used_once,
         an_expired_code_is_refused,
         an_unknown_code_is_refused,
@@ -140,7 +167,7 @@ mod tokens {
         a_new_token_with_the_same_label_revokes_the_old,
     );
 
-    concurrent_suite!(token_store, tokens, TokenFixture;
+    people_concurrent_suite!(token_store, tokens, TokenFixture;
         concurrent_uses_of_one_code_give_one_success,
     );
 }
@@ -166,7 +193,7 @@ mod responses {
 mod sessions {
     use super::*;
 
-    suite!(session_store, sessions, SessionFixture;
+    people_suite!(session_store, sessions, SessionFixture;
         a_session_lives_twelve_hours_from_sign_in,
         a_request_slides_the_expiry_at_most_every_ten_minutes,
         a_session_ends_seven_days_after_sign_in,
@@ -209,11 +236,11 @@ mod index {
     );
 }
 
-fn person(address: &str) -> (Principal, Email) {
+fn person(address: &str) -> (Principal, Person) {
     let email = Email::try_from(address).unwrap();
     (
         Principal::with_email(email.principal_id(), email.clone()),
-        email,
+        Person::Email(email),
     )
 }
 

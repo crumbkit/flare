@@ -1,10 +1,9 @@
 //! The [`SessionStore`] contract suite. Every function creates the sessions
 //! it needs, so the caller passes a new, empty store.
 
-use super::{Clause, Violation, ensure, fixture, unexpected};
+use super::{Clause, People, Violation, ensure, unexpected};
 use crate::{
-    Digest, Email, NewSession, Principal, SESSION_CAP, SESSION_IDLE, SessionRule, SessionStore,
-    Timestamp,
+    Digest, NewSession, Principal, SESSION_CAP, SESSION_IDLE, SessionRule, SessionStore, Timestamp,
 };
 
 const START: u64 = 1_000_000;
@@ -27,11 +26,20 @@ impl SessionFixture {
     /// Returns a [`Violation`] if a constant of the fixture is refused by its
     /// type, which means this crate is broken.
     pub fn standard() -> Result<Self, Violation> {
-        let person = fixture(Email::try_from("person@example.com"))?;
-        let other = fixture(Email::try_from("other@example.com"))?;
+        Self::of(People::Emails)
+    }
+
+    /// The fixture with `people` as its principals. A username principal
+    /// carries a verified address beside its username.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`Violation`] if a constant of the fixture is refused by its
+    /// type, which means this crate is broken.
+    pub fn of(people: People) -> Result<Self, Violation> {
         Ok(Self {
-            person: Principal::with_email(person.principal_id(), person),
-            other: Principal::with_email(other.principal_id(), other),
+            person: people.principal("person")?,
+            other: people.principal("other")?,
         })
     }
 

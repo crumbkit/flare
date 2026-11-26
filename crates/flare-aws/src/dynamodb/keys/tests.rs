@@ -1,6 +1,6 @@
 use super::{Key, entry_of, grantee_of};
 use flare_core::{
-    Digest, Email, Position, PrincipalId, Reader, ShareId, ShareVersion, Timestamp, TokenId,
+    Digest, Person, Position, PrincipalId, Reader, ShareId, ShareVersion, Timestamp, TokenId,
     TokenLabel,
 };
 use proptest::prelude::*;
@@ -28,7 +28,7 @@ fn every_key(
         Key::code(&Digest::from_bytes([share.as_str().as_bytes()[0]; 32])),
         Key::token(&TokenId::try_from(share.as_str()).unwrap()),
         Key::label_slot(
-            &Email::try_from("a@x.com").unwrap(),
+            &Person::try_from("a@x.com").unwrap(),
             &TokenLabel::try_from(person.as_str()).unwrap(),
         ),
         Key::sequence(),
@@ -180,7 +180,7 @@ fn a_group_grant_keys_its_entry_in_the_team_partition_or_the_everyone_partition(
 #[test]
 fn a_teams_items_and_a_members_pair_have_their_own_keys() {
     let team = flare_core::TeamName::try_from("design").unwrap();
-    let ana = Email::try_from("ana@example.com").unwrap();
+    let ana = Person::try_from("ana@example.com").unwrap();
     assert_eq!(
         Key::team(&team),
         Key {
@@ -195,6 +195,19 @@ fn a_teams_items_and_a_members_pair_have_their_own_keys() {
     assert_eq!(in_person.sk, "T#design");
     assert_eq!(super::member_of("M#ana@example.com"), Some(ana));
     assert_eq!(super::team_of("T#design"), Some(team));
+}
+
+#[test]
+fn a_username_members_pair_and_label_slot_key_on_the_username() {
+    let team = flare_core::TeamName::try_from("design").unwrap();
+    let ana = Person::try_from("ana").unwrap();
+    let (in_team, in_person) = Key::member_pair(&team, &ana);
+    assert_eq!(in_team.sk, "M#ana");
+    assert_eq!(in_person.pk, "MEMBER#ana");
+    assert_eq!(super::member_of("M#ana"), Some(ana.clone()));
+    let label = TokenLabel::try_from("laptop").unwrap();
+    let slot = Key::label_slot(&ana, &label);
+    assert!(slot.pk.ends_with("ana"), "{slot:?}");
 }
 
 #[test]

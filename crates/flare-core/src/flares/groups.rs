@@ -3,8 +3,8 @@
 
 use super::{Creators, FlareError, Flared, Flares, once_each};
 use crate::auth::Principal;
-use crate::email::Email;
 use crate::grant::Role;
+use crate::person::Person;
 use crate::share::ShareId;
 use crate::sharing::{ShareError, Standing};
 use crate::store::{CommentStore, CursorStore, GrantStore, ResponseStore, ShareStore};
@@ -18,7 +18,7 @@ pub struct Revoked {
     /// The share.
     pub share: ShareId,
     /// The people whose grant ended.
-    pub people: Vec<Email>,
+    pub people: Vec<Person>,
     /// The teams, or everyone, whose grant ended.
     pub groups: Vec<Group>,
 }
@@ -58,7 +58,7 @@ impl<
         &self,
         who: &Principal,
         id: &ShareId,
-        with: &[Email],
+        with: &[Person],
         re: &[ShareId],
         at: Timestamp,
     ) -> Result<Flared, FlareError> {
@@ -82,7 +82,7 @@ impl<
         &self,
         who: &Principal,
         id: &ShareId,
-        with: &[Email],
+        with: &[Person],
         groups: &[Group],
         re: &[ShareId],
         at: Timestamp,
@@ -135,10 +135,10 @@ impl<
             }
         }
         let written = granted.len() + granted_groups.len();
-        let ids = |people: &[Email], groups: &[Group]| -> Vec<crate::PrincipalId> {
+        let ids = |people: &[Person], groups: &[Group]| -> Vec<crate::PrincipalId> {
             people
                 .iter()
-                .map(Email::principal_id)
+                .map(Person::principal_id)
                 .chain(groups.iter().map(Group::principal_id))
                 .collect()
         };
@@ -173,7 +173,7 @@ impl<
     /// and removes their activity index entries for the share as a
     /// response. One who holds no grant is skipped, and their entries are
     /// still removed, so a repeat finishes a revoke that failed midway. The
-    /// caller's own address ends their own grant.
+    /// caller's own person ends their own grant.
     ///
     /// Each grant ends before its entries go, so a failure leaves entries
     /// that `activity` skips, because it opens every response again.
@@ -184,14 +184,14 @@ impl<
     /// the first revoke that failed: [`ShareError::NotFound`],
     /// [`ShareError::Forbidden`], [`ShareError::OwnerCannotBeChanged`],
     /// [`ShareError::TeamNotFound`], [`ShareError::GrantChanged`],
-    /// [`ShareError::NoVerifiedEmail`] or [`ShareError::Unavailable`], and
+    /// [`ShareError::NoPerson`] or [`ShareError::Unavailable`], and
     /// [`FlareError::ResponsesUnavailable`] when a grant ended and its
     /// entries could not be removed.
     pub async fn revoke(
         &self,
         who: &Principal,
         id: &ShareId,
-        with: &[Email],
+        with: &[Person],
         groups: &[Group],
     ) -> Result<Revoked, FlareError> {
         let mut revoked = Revoked {
@@ -200,7 +200,7 @@ impl<
             groups: Vec::new(),
         };
         for person in once_each(with.to_vec()) {
-            let leaving = who.email() == Some(&person);
+            let leaving = who.person() == Some(&person);
             let outcome = self.shares.revoke(who, id, &person).await;
             // Only a caller allowed to revoke learns that no grant exists,
             // and a person leaving removes only their own entries.

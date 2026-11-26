@@ -2,6 +2,7 @@
 //! redirect URI and who may sign in.
 
 use crate::allow::Admit;
+use crate::identity::Identity;
 use std::net::IpAddr;
 use std::time::Duration;
 use url::{Host, Url};
@@ -22,8 +23,8 @@ pub enum ConfigError {
     /// host, or it has a user or a fragment.
     #[error("the redirect URI must be https, or http on a loopback host, with no user or fragment")]
     RedirectUri,
-    /// The allow-list names one email twice.
-    #[error("the allow-list names one email twice")]
+    /// The allow-list names one person twice.
+    #[error("the allow-list names one person twice")]
     DuplicateEmail,
     /// The allow-list names one principal twice.
     #[error("the allow-list names one principal twice")]
@@ -188,6 +189,7 @@ pub struct OidcConfig {
     pub(crate) client_id: ClientId,
     pub(crate) redirect_uri: RedirectUri,
     pub(crate) admit: Admit,
+    pub(crate) identity: Identity,
     pub(crate) session_lifetime: Duration,
     pub(crate) deadlines: Deadlines,
 }
@@ -208,6 +210,7 @@ impl OidcConfig {
             client_id,
             redirect_uri,
             admit,
+            identity: Identity::Email,
             session_lifetime: Duration::from_secs(12 * 60 * 60),
             deadlines: Deadlines {
                 connect: Duration::from_secs(5),
@@ -226,6 +229,21 @@ impl OidcConfig {
     #[must_use]
     pub fn admit(&self) -> &Admit {
         &self.admit
+    }
+
+    /// How sign-in names the person.
+    #[must_use]
+    pub fn identity(&self) -> &Identity {
+        &self.identity
+    }
+
+    /// Sets how sign-in names the person. Under [`Identity::Username`] a
+    /// sign-in whose ID token lacks the username claim is refused, and the
+    /// admit rule still judges the verified email.
+    #[must_use]
+    pub fn with_identity(mut self, identity: Identity) -> Self {
+        self.identity = identity;
+        self
     }
 
     /// Sets how long a session lasts from its sign-in.

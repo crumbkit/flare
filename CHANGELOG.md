@@ -8,6 +8,22 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A hosted deployment can name people by username. `hosted.identity` set
+  to `{"username_claim": "<claim>"}` makes grants, teams, creators, names
+  and tokens key on the username in that claim of the sign-in's token, and
+  keeps the verified email beside it. `--with` then takes usernames and
+  refuses an address with `flare::recipients::not_a_username`, and a
+  sign-in without a username is refused, or answers
+  `flare::shares::no_username` on the share API. The share API's table
+  records the kind on first start, and `flare serve` exits with
+  `flare::config::identity_changed` when the config names the other kind.
+  The default, `"email"`, keeps today's behaviour and writes the same
+  items. docs/sign-in.md describes it.
+- `hosted.everyone_signed_in`, off by default, lets an everyone grant
+  under an `anyone` admit rule open the share to every signed-in person.
+  Such a grant stores the audience `signed-in`, and opens to no one while
+  the setting is off.
+
 - A hosted site can sign people in through the single sign-on proxy in
   front of it. A `proxy` section in place of the `oidc` section names the
   proxy's issuer, flare's audience, the key set address, the cookie, the

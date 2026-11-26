@@ -70,7 +70,9 @@ fn admit(rule: &[String]) -> Result<Admit, StartError> {
         [email] => {
             let principal = PrincipalId::try_from("owner").map_err(|_| StartError::Usage)?;
             let allow = AllowList::new(vec![AllowEntry::new(
-                Email::try_from(email.as_str()).map_err(StartError::Email)?,
+                Email::try_from(email.as_str())
+                    .map_err(StartError::Email)?
+                    .into(),
                 principal,
                 Reach::Everything,
             )])

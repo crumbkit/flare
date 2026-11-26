@@ -4,7 +4,7 @@
 use super::names::TeamName;
 use super::store::{Team, TeamState, TeamStore};
 use super::{MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, Teams, TeamsError};
-use crate::email::Email;
+use crate::person::Person;
 use crate::time::Timestamp;
 
 /// Teams kept in a [`TeamStore`].
@@ -33,7 +33,7 @@ impl<S: TeamStore> FlareTeams<S> {
     }
 
     /// The active team that `actor` may see: one they belong to.
-    async fn visible(&self, actor: &Email, team: &TeamName) -> Result<Team, TeamsError> {
+    async fn visible(&self, actor: &Person, team: &TeamName) -> Result<Team, TeamsError> {
         let found = self.store.get(team).await?;
         let Some(found) = found.filter(|found| found.state() == TeamState::Active) else {
             return Err(TeamsError::NotFound);
@@ -47,7 +47,7 @@ impl<S: TeamStore> FlareTeams<S> {
     }
 
     /// The visible team, when `actor` owns it.
-    async fn owned(&self, actor: &Email, team: &TeamName) -> Result<Team, TeamsError> {
+    async fn owned(&self, actor: &Person, team: &TeamName) -> Result<Team, TeamsError> {
         let found = self.visible(actor, team).await?;
         if found.owner() == actor {
             Ok(found)
@@ -57,7 +57,7 @@ impl<S: TeamStore> FlareTeams<S> {
     }
 
     /// How many active teams `person` owns.
-    async fn owned_count(&self, person: &Email) -> Result<usize, TeamsError> {
+    async fn owned_count(&self, person: &Person) -> Result<usize, TeamsError> {
         let mut owned = 0;
         for name in self.store.teams_of(person).await? {
             let found = self.store.get(&name).await?;
@@ -76,7 +76,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         true
     }
 
-    async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
+    async fn teams_of(&self, person: &Person) -> Result<Vec<TeamName>, TeamsError> {
         Ok(self.store.teams_of(person).await?)
     }
 
@@ -95,7 +95,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
             .map(|found| found.created()))
     }
 
-    async fn members(&self, team: &TeamName) -> Result<Vec<Email>, TeamsError> {
+    async fn members(&self, team: &TeamName) -> Result<Vec<Person>, TeamsError> {
         if !self.exists(team).await? {
             return Err(TeamsError::NotFound);
         }
@@ -104,7 +104,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
 
     async fn create(
         &self,
-        owner: &Email,
+        owner: &Person,
         team: TeamName,
         at: Timestamp,
     ) -> Result<Team, TeamsError> {
@@ -131,9 +131,9 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
 
     async fn add(
         &self,
-        actor: &Email,
+        actor: &Person,
         team: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> Result<bool, TeamsError> {
         self.owned(actor, team).await?;
         let joined = self.store.teams_of(member).await?;
@@ -148,9 +148,9 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
 
     async fn remove(
         &self,
-        actor: &Email,
+        actor: &Person,
         team: &TeamName,
-        member: &Email,
+        member: &Person,
     ) -> Result<bool, TeamsError> {
         let found = self.visible(actor, team).await?;
         let owner = found.owner() == actor;
@@ -165,7 +165,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         Ok(self.store.remove(team, member).await?)
     }
 
-    async fn delete(&self, actor: &Email, team: &TeamName) -> Result<(), TeamsError> {
+    async fn delete(&self, actor: &Person, team: &TeamName) -> Result<(), TeamsError> {
         match self.store.get(team).await? {
             // A repeat by the owner continues a delete that stopped midway.
             Some(found) if found.state() == TeamState::Deleting && found.owner() == actor => Ok(()),
@@ -177,7 +177,7 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         }
     }
 
-    async fn finish_delete(&self, actor: &Email, team: &TeamName) -> Result<(), TeamsError> {
+    async fn finish_delete(&self, actor: &Person, team: &TeamName) -> Result<(), TeamsError> {
         match self.store.get(team).await? {
             None => Ok(()),
             Some(found) if found.state() == TeamState::Deleting && found.owner() == actor => {
@@ -193,9 +193,9 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
 
     async fn transfer(
         &self,
-        actor: &Email,
+        actor: &Person,
         team: &TeamName,
-        to: &Email,
+        to: &Person,
     ) -> Result<Team, TeamsError> {
         let found = self.visible(actor, team).await?;
         if found.owner() == to {
@@ -220,13 +220,17 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         ))
     }
 
-    async fn show(&self, actor: &Email, team: &TeamName) -> Result<(Team, Vec<Email>), TeamsError> {
+    async fn show(
+        &self,
+        actor: &Person,
+        team: &TeamName,
+    ) -> Result<(Team, Vec<Person>), TeamsError> {
         let found = self.visible(actor, team).await?;
         let members = self.store.members(team).await?;
         Ok((found, members))
     }
 
-    async fn list(&self, actor: &Email) -> Result<Vec<Team>, TeamsError> {
+    async fn list(&self, actor: &Person) -> Result<Vec<Team>, TeamsError> {
         let mut teams = Vec::new();
         for name in self.store.teams_of(actor).await? {
             if let Some(found) = self.store.get(&name).await?

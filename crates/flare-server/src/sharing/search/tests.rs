@@ -5,8 +5,8 @@ use flare_core::memory::{
     MemoryTokenStore,
 };
 use flare_core::{
-    AddressesOnly, AllAdmitted, DocumentText, Email, Flares, MAX_LISTED, NewFlare, Principal,
-    ShareContent, ShareId, ShareTitle, Timestamp,
+    AllAdmitted, ByIdentity, DocumentText, Email, Flares, IdentityKind, MAX_LISTED, NewFlare,
+    Principal, ShareContent, ShareId, ShareTitle, Timestamp,
 };
 use serde_json::Value;
 
@@ -17,7 +17,7 @@ type Memory = Sharing<
     MemoryCommentStore,
     MemoryCursorStore,
     MemoryTokenStore,
-    AddressesOnly,
+    ByIdentity,
 >;
 
 fn person(address: &str) -> Principal {
@@ -49,14 +49,19 @@ async fn granted_to_mei(count: usize) -> Memory {
             ShareId::from_random(bytes),
             ShareTitle::try_from("Plan").unwrap(),
             ShareContent::Document(DocumentText::try_from("# Plan\n").unwrap()),
-            vec![mei.clone()],
+            vec![mei.clone().into()],
             Vec::new(),
         );
         let at = Timestamp::from_secs(1_000 + u64::try_from(number).unwrap());
         flares.share(&person(owner), flare, at).await.unwrap();
     }
     let admit = Admit::Anyone(Reach::Everything);
-    Sharing::new(flares, MemoryTokenStore::default(), AddressesOnly, admit)
+    Sharing::new(
+        flares,
+        MemoryTokenStore::default(),
+        ByIdentity(IdentityKind::Email),
+        admit,
+    )
 }
 
 async fn search(api: &Memory, text: &str, limit: usize) -> Value {
