@@ -11,8 +11,8 @@ use flare_core::memory::{
     MemoryShareStore,
 };
 use flare_core::{
-    ActivityPage, AllAdmitted, DocumentText, Email, FlareError, Flares, MAX_EXAMINED, NewEntry,
-    NewFlare, NewLink, Position, Principal, PrincipalId, Reader, ResponseStore, Revoked,
+    ActivityPage, AllAdmitted, DocumentText, FlareError, Flares, MAX_EXAMINED, NewEntry, NewFlare,
+    NewLink, Person, Position, Principal, PrincipalId, Reader, ResponseStore, Revoked,
     ShareContent, ShareId, ShareTitle, ShareVersion, Timestamp,
 };
 use instrumented_responses::Instrumented;
@@ -21,15 +21,16 @@ use std::sync::atomic::Ordering;
 type Service =
     Flares<MemoryShareStore, MemoryGrantStore, Instrumented, MemoryCommentStore, MemoryCursorStore>;
 
-fn email(name: &str) -> Email {
-    Email::try_from(format!("{name}@example.com").as_str()).unwrap()
+fn email(name: &str) -> Person {
+    Person::try_from(format!("{name}@example.com").as_str()).unwrap()
 }
 
 fn person(name: &str) -> Principal {
     let address = format!("{name}@example.com");
-    Principal::with_email(
+    Principal::with_person(
         PrincipalId::try_from(address.as_str()).unwrap(),
         email(name),
+        None,
     )
 }
 
@@ -73,7 +74,7 @@ fn share(flares: &Service, who: &str, n: u16, with: &[&str], re: &[u16]) {
 }
 
 fn grant(flares: &Service, who: &str, n: u16, with: &[&str]) {
-    let with: Vec<Email> = with.iter().map(|name| email(name)).collect();
+    let with: Vec<Person> = with.iter().map(|name| email(name)).collect();
     block_on(flares.grant(&person(who), &id(n), &with, &[], at(2))).unwrap();
 }
 

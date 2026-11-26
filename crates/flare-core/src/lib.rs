@@ -9,8 +9,9 @@
 //!
 //! A share is a document that one owner publishes in numbered versions and
 //! opens to the people a grant names. [`Shares`] decides every request
-//! about a share from the caller's verified [`Email`], the share and its
-//! grants, and is the only caller of the share and grant stores.
+//! about a share from the caller's [`Person`], their verified address or
+//! their username as the deployment's [`IdentityKind`] chooses, the share
+//! and its grants, and is the only caller of the share and grant stores.
 //! [`Flares`] wraps it with the creators rule and the response links that
 //! `--re` writes, and reads the responses to a flare since a cursor.
 //! [`TokenStore`] keeps the digests of CLI tokens and login codes.
@@ -29,6 +30,7 @@ mod grant;
 pub mod memory;
 mod name;
 mod page;
+mod person;
 mod provenance;
 mod record;
 mod response;
@@ -55,7 +57,7 @@ pub use file::{
     SweepReport, VersionImage, VersionImages, sweep_files,
 };
 pub use flares::{
-    ActivityItem, ActivityPage, AddressesOnly, AllAdmitted, CommentActivity, CommentDraft,
+    ActivityItem, ActivityPage, AllAdmitted, ByIdentity, CommentActivity, CommentDraft,
     CommentThread, CreatorDomain, CreatorList, Creators, CreatorsError, FlareError, Flared, Flares,
     MAX_EXAMINED, MAX_FLARES, MAX_SWEPT, NamedRecipients, NewFlare, Posted, RecipientError,
     Recipients, ResponseActivity, Revoked, TeamDeletion,
@@ -66,6 +68,7 @@ pub use name::{BindingName, FieldName, PageName, PageVersion, PrincipalId, SlotN
 pub use page::{
     ContentFormat, Fills, Misfit, Page, PageContent, PagePin, PublishedPage, Sample, Slot, Slots,
 };
+pub use person::{IdentityKind, Person, Username};
 pub use provenance::{MadeFrom, Provenance, RecordRef, WriteProvenance};
 pub use record::{Blob, MAX_RECORD_BYTES, Record, RecordBody, RecordPath, RecordType};
 pub use response::{IndexEntry, MAX_PAGE, NewEntry, NewLink, Position, Reader, ResponseLink};

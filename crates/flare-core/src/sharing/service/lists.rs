@@ -1,8 +1,8 @@
 //! The [`Shares`] methods that list the caller's shares and the shares
 //! granted to the caller, whole or one page after a key.
 
-use super::groups::{address, rank};
-use super::{SharedWithMe, Shares, actor};
+use super::groups::rank;
+use super::{Actor, SharedWithMe, Shares};
 use crate::auth::Principal;
 use crate::grant::Grant;
 use crate::share::{Listing, MAX_LISTED, Share, ShareId};
@@ -16,7 +16,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
+    /// Returns [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn mine(&self, who: &Principal) -> Result<Listing<Share>, ShareError> {
         let page = self.mine_page(who, None, MAX_LISTED).await?;
@@ -31,7 +31,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
+    /// Returns [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn mine_page(
         &self,
@@ -39,7 +39,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         after: Option<&ListKey>,
         limit: usize,
     ) -> Result<ListPage<Share>, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?.id;
         // This reads the owner's whole list and applies the key and the
         // limit here, where a store-side key would read only the page. An
         // owner holds at most MAX_SHARES_PER_OWNER (500) shares, which
@@ -73,7 +73,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
+    /// Returns [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`] when a store fails.
     pub async fn shared_with_me(
         &self,
@@ -111,7 +111,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     ///
     /// # Errors
     ///
-    /// Returns [`ShareError::NoVerifiedEmail`] and
+    /// Returns [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`] when a store fails.
     pub async fn shared_with_me_page(
         &self,
@@ -120,12 +120,13 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         after: Option<&ListKey>,
         limit: usize,
     ) -> Result<ListPage<SharedWithMe>, ShareError> {
-        let actor = actor(who)?;
-        let person = address(&actor).ok_or(ShareError::NoVerifiedEmail)?;
+        let Actor {
+            id: actor, person, ..
+        } = self.actor(who)?;
         let limit = limit.clamp(1, MAX_LISTED);
         let mut lists = vec![actor.clone()];
         lists.extend(
-            self.active_teams(&person)
+            self.active_teams(person)
                 .await?
                 .into_iter()
                 .map(|team| Group::Team(team).principal_id()),
@@ -154,7 +155,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         let mut best: HashMap<ShareId, Grant> = HashMap::new();
         let opens = |grant: &Grant| {
             Group::of_grantee(grant.grantee()) != Some(Group::Everyone)
-                || self.everyone_opens(grant, &person)
+                || self.everyone_opens(grant, who)
         };
         for grant in grants.into_iter().filter(opens) {
             match best.get(grant.share()) {

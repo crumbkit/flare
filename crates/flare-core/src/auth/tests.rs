@@ -36,3 +36,29 @@ fn a_principal_built_with_a_verified_email_keeps_it_and_one_built_from_an_id_has
     let shown = format!("{principal:?}");
     assert!(!shown.contains("mallory"), "{shown}");
 }
+
+#[test]
+fn a_principal_built_with_an_email_is_the_person_with_that_address() {
+    let email = crate::Email::try_from("bob@y.com").unwrap();
+    let principal = Principal::with_email(email.principal_id(), email.clone());
+    assert_eq!(principal.person(), Some(&crate::Person::Email(email)));
+}
+
+#[test]
+fn a_principal_built_with_a_username_keeps_its_verified_email_beside_it() {
+    let name = crate::Person::try_from("bob").unwrap();
+    let email = crate::Email::try_from("bob@y.com").unwrap();
+    let id = PrincipalId::try_from("bob").unwrap();
+    let principal = Principal::with_person(id.clone(), name.clone(), Some(email.clone()));
+    assert_eq!(principal.person(), Some(&name));
+    assert_eq!(principal.email(), Some(&email));
+    let bare = Principal::with_person(id, name.clone(), None);
+    assert_eq!(bare.person(), Some(&name));
+    assert_eq!(bare.email(), None);
+}
+
+#[test]
+fn a_principal_built_from_an_id_has_no_person() {
+    let id = PrincipalId::try_from("ada").unwrap();
+    assert_eq!(Principal::new(id).person(), None);
+}

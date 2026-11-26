@@ -10,10 +10,8 @@ use super::{FlareError, Flares, flare_refused};
 use crate::PrincipalId;
 use crate::auth::Principal;
 use crate::comment::{Comment, CommentBody, CommentId, CommentKey, CursorName, NewComment};
-use crate::email::Email;
 use crate::response::Position;
 use crate::share::ShareId;
-use crate::sharing::ShareError;
 use crate::store::{
     Added, CommentStore, CommentStoreError, CursorStore, GrantStore, ResponseStore, ShareStore,
 };
@@ -85,7 +83,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
 {
     /// Checks that `who` can open `flare` and answers who they are.
     async fn readable(&self, who: &Principal, flare: &ShareId) -> Result<PrincipalId, FlareError> {
-        let person = person(who)?;
+        let person = self.person_id(who)?;
         self.shares
             .open(who, flare, None)
             .await
@@ -239,7 +237,7 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     /// [`FlareError::CommentsUnavailable`].
     pub async fn cursor(&self, who: &Principal, name: &CursorName) -> Result<Position, FlareError> {
         self.cursors
-            .get(&person(who)?, name)
+            .get(&self.person_id(who)?, name)
             .await
             .map_err(comment_refused)?
             .ok_or(FlareError::CursorNotFound)
@@ -259,19 +257,11 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
         to: Position,
     ) -> Result<Position, FlareError> {
         self.cursors
-            .advance(&person(who)?, name, to)
+            .advance(&self.person_id(who)?, name, to)
             .await
             .map_err(|error| match error {
                 CommentStoreError::TooMany => FlareError::TooManyCursors,
                 other => comment_refused(other),
             })
     }
-}
-
-/// The person `who` is: the id derived from their verified address, which
-/// is the same for the browser and the CLI whatever id a sign-in names.
-fn person(who: &Principal) -> Result<PrincipalId, FlareError> {
-    who.email()
-        .map(Email::principal_id)
-        .ok_or(FlareError::Share(ShareError::NoVerifiedEmail))
 }

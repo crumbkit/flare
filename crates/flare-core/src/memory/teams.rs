@@ -2,14 +2,14 @@
 
 use super::locked;
 use crate::teams::{Team, TeamState, TeamStore, TeamStoreError};
-use crate::{Email, MAX_MEMBERS, TeamName};
+use crate::{MAX_MEMBERS, Person, TeamName};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-/// One team and its members, by address.
+/// One team and its members, by id.
 struct Held {
     team: Team,
-    members: BTreeMap<String, Email>,
+    members: BTreeMap<String, Person>,
 }
 
 /// A [`TeamStore`] that keeps its teams in memory. Every operation is one
@@ -65,7 +65,7 @@ impl TeamStore for MemoryTeamStore {
         Ok(state.get(name).map(|held| held.team.clone()))
     }
 
-    async fn add(&self, name: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+    async fn add(&self, name: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
         let mut state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
         let held = state
             .get_mut(name)
@@ -83,7 +83,7 @@ impl TeamStore for MemoryTeamStore {
         Ok(true)
     }
 
-    async fn remove(&self, name: &TeamName, member: &Email) -> Result<bool, TeamStoreError> {
+    async fn remove(&self, name: &TeamName, member: &Person) -> Result<bool, TeamStoreError> {
         let mut state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
         let Some(held) = state.get_mut(name) else {
             return Ok(false);
@@ -123,8 +123,8 @@ impl TeamStore for MemoryTeamStore {
     async fn transfer(
         &self,
         name: &TeamName,
-        from: &Email,
-        to: &Email,
+        from: &Person,
+        to: &Person,
     ) -> Result<(), TeamStoreError> {
         let mut state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
         let held = state
@@ -145,7 +145,7 @@ impl TeamStore for MemoryTeamStore {
         Ok(())
     }
 
-    async fn members(&self, name: &TeamName) -> Result<Vec<Email>, TeamStoreError> {
+    async fn members(&self, name: &TeamName) -> Result<Vec<Person>, TeamStoreError> {
         let state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
         Ok(state
             .get(name)
@@ -153,7 +153,7 @@ impl TeamStore for MemoryTeamStore {
             .unwrap_or_default())
     }
 
-    async fn teams_of(&self, member: &Email) -> Result<Vec<TeamName>, TeamStoreError> {
+    async fn teams_of(&self, member: &Person) -> Result<Vec<TeamName>, TeamStoreError> {
         let state = locked(&self.state).ok_or(TeamStoreError::Unavailable)?;
         Ok(state
             .iter()

@@ -38,6 +38,10 @@ pub enum Subject {
     Sources,
     /// An [`Email`](crate::Email).
     Email,
+    /// A [`Username`](crate::Username).
+    Username,
+    /// An [`IdentityKind`](crate::IdentityKind).
+    IdentityKind,
     /// A [`ShareId`](crate::ShareId).
     ShareId,
     /// A [`ShareTitle`](crate::ShareTitle).
@@ -95,6 +99,8 @@ impl fmt::Display for Subject {
             Self::Fills => "fills",
             Self::Sources => "sources",
             Self::Email => "email",
+            Self::Username => "username",
+            Self::IdentityKind => "identity kind",
             Self::ShareId => "share id",
             Self::ShareTitle => "share title",
             Self::ShareVersion => "share version",

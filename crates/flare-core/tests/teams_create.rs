@@ -9,9 +9,10 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, AllAdmitted, CommentStore, CursorStore, DocumentText, Email, FlareTeams, Flares,
-    GrantStore, Group, MAX_SWEPT, MailDomain, NewFlare, Principal, PrincipalId, ResponseStore,
-    ShareContent, ShareId, ShareStore, ShareTitle, TeamName, Teams, TeamsError, Timestamp,
+    Admission, AllAdmitted, CommentStore, CursorStore, DocumentText, FlareTeams, Flares,
+    GrantStore, Group, MAX_SWEPT, MailDomain, NewFlare, Person, Principal, PrincipalId,
+    ResponseStore, ShareContent, ShareId, ShareStore, ShareTitle, TeamName, Teams, TeamsError,
+    Timestamp,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -29,7 +30,7 @@ impl Directory {
 }
 
 impl Teams for Directory {
-    async fn teams_of(&self, person: &Email) -> Result<Vec<TeamName>, TeamsError> {
+    async fn teams_of(&self, person: &Person) -> Result<Vec<TeamName>, TeamsError> {
         let member = [email("alice"), email("bob")].contains(person);
         Ok(if member && self.holds(&team("design")) {
             vec![team("design")]
@@ -42,7 +43,7 @@ impl Teams for Directory {
         Ok(self.holds(name))
     }
 
-    async fn members(&self, name: &TeamName) -> Result<Vec<Email>, TeamsError> {
+    async fn members(&self, name: &TeamName) -> Result<Vec<Person>, TeamsError> {
         if self.holds(name) {
             Ok(vec![email("alice"), email("bob")])
         } else {
@@ -51,15 +52,16 @@ impl Teams for Directory {
     }
 }
 
-fn email(name: &str) -> Email {
-    Email::try_from(format!("{name}@example.com").as_str()).unwrap()
+fn email(name: &str) -> Person {
+    Person::try_from(format!("{name}@example.com").as_str()).unwrap()
 }
 
 fn person(name: &str) -> Principal {
     let address = format!("{name}@example.com");
-    Principal::with_email(
+    Principal::with_person(
         PrincipalId::try_from(address.as_str()).unwrap(),
         email(name),
+        None,
     )
 }
 
@@ -116,9 +118,10 @@ fn service<T: Teams>(
         AllAdmitted,
     )
     .with_teams(teams)
-    .admitting(Admission::Domain(
-        MailDomain::try_from("example.com").unwrap(),
-    ))
+    .admitting(
+        Admission::Domain(MailDomain::try_from("example.com").unwrap()),
+        false,
+    )
 }
 
 /// How many of alice's shares 1 to `count` list a grant to design.

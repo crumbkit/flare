@@ -5,7 +5,7 @@
 use flare_core::contract::file_store::{self, FileFixture};
 use flare_core::contract::grant_store::{self, GrantFixture};
 use flare_core::contract::share_store::{self, ShareFixture};
-use flare_core::contract::{Threads, block_on};
+use flare_core::contract::{People, Threads, block_on};
 use flare_core::memory::{MemoryFileStore, MemoryGrantStore, MemoryShareStore};
 
 macro_rules! suite {
@@ -14,6 +14,30 @@ macro_rules! suite {
         fn $name() {
             let fixture = $fixture::standard().unwrap();
             block_on($module::$name(&$store::new(), &fixture)).unwrap();
+        }
+    )*};
+}
+
+macro_rules! people_suite {
+    ($module:ident, $store:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[test]
+        fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                block_on($module::$name(&$store::new(), &fixture)).unwrap();
+            }
+        }
+    )*};
+}
+
+macro_rules! people_concurrent_suite {
+    ($module:ident, $store:ident, $fixture:ident; $($name:ident),* $(,)?) => {$(
+        #[test]
+        fn $name() {
+            for people in People::ALL {
+                let fixture = $fixture::of(people).unwrap();
+                block_on($module::$name(&$store::new(), &fixture, &Threads)).unwrap();
+            }
         }
     )*};
 }
@@ -31,7 +55,7 @@ macro_rules! concurrent_suite {
 mod shares {
     use super::*;
 
-    suite!(share_store, MemoryShareStore, ShareFixture;
+    people_suite!(share_store, MemoryShareStore, ShareFixture;
         a_created_share_reads_back,
         the_first_version_holds_the_created_content,
         a_taken_share_id_changes_nothing,
@@ -46,7 +70,7 @@ mod shares {
         each_version_keeps_its_image_table,
     );
 
-    concurrent_suite!(share_store, MemoryShareStore, ShareFixture;
+    people_concurrent_suite!(share_store, MemoryShareStore, ShareFixture;
         concurrent_creates_of_one_id_give_one_id_taken,
         concurrent_publishes_get_consecutive_versions,
         the_share_limit_per_owner_holds,
@@ -57,7 +81,7 @@ mod shares {
 mod grants {
     use super::*;
 
-    suite!(grant_store, MemoryGrantStore, GrantFixture;
+    people_suite!(grant_store, MemoryGrantStore, GrantFixture;
         a_grant_reads_back,
         a_grant_from_the_current_role_replaces_it,
         a_grant_from_a_stale_role_is_changed,
@@ -79,7 +103,7 @@ mod grants {
         a_persons_grants_page_in_order_past_the_listing_limit,
     );
 
-    concurrent_suite!(grant_store, MemoryGrantStore, GrantFixture;
+    people_concurrent_suite!(grant_store, MemoryGrantStore, GrantFixture;
         concurrent_grants_from_no_grant_give_one_changed,
         a_grant_and_a_revoke_together_leave_a_consistent_state,
         an_admins_grant_never_lands_after_their_revoke,

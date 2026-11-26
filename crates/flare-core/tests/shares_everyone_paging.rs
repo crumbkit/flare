@@ -6,16 +6,20 @@
 use flare_core::contract::block_on;
 use flare_core::memory::{MemoryGrantStore, MemoryShareStore};
 use flare_core::{
-    Admission, DocumentText, Email, Group, MailDomain, Principal, PrincipalId, Role, ShareContent,
+    Admission, DocumentText, Group, MailDomain, Person, Principal, PrincipalId, Role, ShareContent,
     ShareId, ShareTitle, Shares, Timestamp,
 };
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn id(byte: u8) -> ShareId {
@@ -32,8 +36,8 @@ fn domain() -> Admission {
 
 #[test]
 fn a_walk_of_shares_with_me_lists_every_open_everyone_grant_when_an_unopened_one_fills_a_read() {
-    let listed =
-        Shares::new(MemoryShareStore::new(), MemoryGrantStore::new()).admitting(Admission::Listed);
+    let listed = Shares::new(MemoryShareStore::new(), MemoryGrantStore::new())
+        .admitting(Admission::Listed, false);
     let alice = person("alice@example.com");
     let content = || ShareContent::Document(DocumentText::try_from("# S\n").unwrap());
     let title = || ShareTitle::try_from("Notes").unwrap();
@@ -44,7 +48,7 @@ fn a_walk_of_shares_with_me_lists_every_open_everyone_grant_when_an_unopened_one
     // After the deployment moves to the domain rule, that grant opens it
     // to nobody.
     block_on(listed.grant_group(&alice, &id(1), &Group::Everyone, at(60))).unwrap();
-    let domain_wide = listed.admitting(domain());
+    let domain_wide = listed.admitting(domain(), false);
     block_on(domain_wide.grant_group(&alice, &id(2), &Group::Everyone, at(50))).unwrap();
     block_on(domain_wide.grant_group(&alice, &id(3), &Group::Everyone, at(40))).unwrap();
     block_on(domain_wide.grant(

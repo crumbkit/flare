@@ -11,7 +11,7 @@ use flare_core::memory::{
 };
 use flare_core::{
     ActivityItem, ActivityPage, Admission, AllAdmitted, CommentBody, CommentDraft, CommentId,
-    CommentKey, DocumentText, Email, FlareError, FlareTeams, Flares, Group, MailDomain, NewFlare,
+    CommentKey, DocumentText, FlareError, FlareTeams, Flares, Group, MailDomain, NewFlare, Person,
     Position, Principal, PrincipalId, Reader, ShareContent, ShareId, ShareTitle, TeamName, Teams,
     Timestamp,
 };
@@ -25,15 +25,16 @@ type Memory = Flares<
     FlareTeams<MemoryTeamStore>,
 >;
 
-fn email(name: &str) -> Email {
-    Email::try_from(format!("{name}@example.com").as_str()).unwrap()
+fn email(name: &str) -> Person {
+    Person::try_from(format!("{name}@example.com").as_str()).unwrap()
 }
 
 fn person(name: &str) -> Principal {
     let address = format!("{name}@example.com");
-    Principal::with_email(
+    Principal::with_person(
         PrincipalId::try_from(address.as_str()).unwrap(),
         email(name),
+        None,
     )
 }
 
@@ -77,9 +78,10 @@ fn with_design() -> Memory {
         AllAdmitted,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
-    .admitting(Admission::Domain(
-        MailDomain::try_from("example.com").unwrap(),
-    ));
+    .admitting(
+        Admission::Domain(MailDomain::try_from("example.com").unwrap()),
+        false,
+    );
     block_on(flares.create_team(&person("alice"), team("design"), at(1))).unwrap();
     let teams = flares.shares().teams();
     for member in ["bob", "carol"] {

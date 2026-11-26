@@ -8,8 +8,8 @@ use flare_core::memory::{
     MemoryShareStore,
 };
 use flare_core::{
-    ActivityPage, AllAdmitted, CreatorList, DocumentText, Email, FileId, FlareError, Flares,
-    ImagePath, MAX_GRANTS, MediaType, NewFlare, NoTeams, Position, Principal, PrincipalId, Role,
+    ActivityPage, AllAdmitted, CreatorList, DocumentText, FileId, FlareError, Flares, ImagePath,
+    MAX_GRANTS, MediaType, NewFlare, NoTeams, Person, Position, Principal, PrincipalId, Role,
     ShareContent, ShareError, ShareId, ShareTitle, ShareVersion, Timestamp, VersionImage,
     VersionImages,
 };
@@ -36,12 +36,16 @@ fn stores<K>(creators: K) -> Memory<K> {
     )
 }
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn alice() -> Principal {
@@ -503,7 +507,7 @@ fn a_principal_with_no_verified_email_cannot_share() {
     let refused = block_on(flares.share(&nobody, flare(1, &[], &[]), at(1)));
     assert_eq!(
         refused.unwrap_err(),
-        FlareError::Share(ShareError::NoVerifiedEmail)
+        FlareError::Share(ShareError::NoPerson)
     );
 }
 
@@ -601,9 +605,10 @@ fn a_grant_whose_first_write_is_a_refused_owner_grant_answers_the_refusal_and_wr
 fn a_creator_whose_principal_id_differs_from_their_address_gets_no_grant_on_a_response_to_their_own_flare()
  {
     let flares = memory();
-    let alice = Principal::with_email(
+    let alice = Principal::with_person(
         PrincipalId::try_from("google:a").unwrap(),
         email("alice@example.com"),
+        None,
     );
     block_on(flares.share(&alice, flare(1, &[], &[]), at(1))).unwrap();
     block_on(flares.share(&alice, flare(2, &[], &[id(1)]), at(2))).unwrap();

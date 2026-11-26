@@ -1,6 +1,7 @@
 //! The names of teams and groups, and the audience an everyone grant
 //! records from the deployment's admit rule.
 
+use crate::auth::Principal;
 use crate::email::Email;
 use crate::error::{ParseError, Subject};
 use crate::name::PrincipalId;
@@ -78,8 +79,9 @@ pub enum Group {
 
 impl Group {
     /// The id that the group's grant is keyed by: `team:<name>` or
-    /// `everyone`. No person has such an id, because a person's id is an
-    /// email address, which holds an `@`, and a group id holds none.
+    /// `everyone`. No person has such an id: an address holds an `@`, which
+    /// no group id holds, and a username is never `everyone` and holds no
+    /// `:`.
     #[must_use]
     pub fn principal_id(&self) -> PrincipalId {
         PrincipalId::of_group(self.to_string())
@@ -172,19 +174,28 @@ pub enum Audience {
     /// Every person the deployment's email list admits, while the admit
     /// rule is an email list.
     Admitted,
+    /// Every signed-in person, of either identifier kind, while the
+    /// deployment's `everyone_signed_in` setting is on. A grant to everyone
+    /// records it only under a rule that admits anyone.
+    SignedIn,
 }
 
 /// The text of [`Audience::Admitted`], which no domain spells, because a
 /// domain holds a dot.
 const ADMITTED: &str = "admitted";
 
+/// The text of [`Audience::SignedIn`], which no domain spells, because a
+/// domain holds a dot.
+const SIGNED_IN: &str = "signed-in";
+
 impl Audience {
-    /// The audience as stored: the domain, or `admitted`.
+    /// The audience as stored: the domain, `admitted` or `signed-in`.
     #[must_use]
     pub fn as_str(&self) -> &str {
         match self {
             Self::Domain(domain) => domain.as_str(),
             Self::Admitted => ADMITTED,
+            Self::SignedIn => SIGNED_IN,
         }
     }
 }
@@ -193,14 +204,16 @@ impl TryFrom<&str> for Audience {
     type Error = ParseError;
 
     fn try_from(text: &str) -> Result<Self, ParseError> {
-        if text == ADMITTED {
-            return Ok(Self::Admitted);
+        match text {
+            ADMITTED => return Ok(Self::Admitted),
+            SIGNED_IN => return Ok(Self::SignedIn),
+            _ => {}
         }
         MailDomain::try_from(text)
             .map(Self::Domain)
             .map_err(|_| ParseError::Malformed {
                 subject: Subject::Audience,
-                rule: "a mail domain or the word admitted",
+                rule: "a mail domain or the word admitted or signed-in",
             })
     }
 }
@@ -214,32 +227,39 @@ pub enum Admission {
     /// The addresses on an email list sign in.
     Listed,
     /// Every verified account signs in, so an everyone grant would open a
-    /// share to every account of the provider and is refused.
+    /// share to every account of the provider. It is refused unless the
+    /// deployment's `everyone_signed_in` setting is on, when it records
+    /// [`Audience::SignedIn`].
     Anyone,
 }
 
 impl Admission {
     /// The audience that a new everyone grant records, or `None` when the
-    /// rule admits anyone and the grant is refused.
+    /// grant is refused: under a rule that admits anyone while
+    /// `everyone_signed_in` is off.
     #[must_use]
-    pub fn audience(&self) -> Option<Audience> {
+    pub fn audience(&self, everyone_signed_in: bool) -> Option<Audience> {
         match self {
             Self::Domain(domain) => Some(Audience::Domain(domain.clone())),
             Self::Listed => Some(Audience::Admitted),
+            Self::Anyone if everyone_signed_in => Some(Audience::SignedIn),
             Self::Anyone => None,
         }
     }
 
     /// Whether an everyone grant that recorded `audience` opens a share to
-    /// the signed-in person with `email` under this rule. A domain audience
-    /// holds an address at that domain under any rule. The admitted
-    /// audience holds only while the rule is still an email list, because
-    /// a signed-in person was then admitted by the list.
+    /// the signed-in principal `who` under this rule. A domain audience
+    /// holds a principal whose verified email is at that domain under any
+    /// rule. The admitted audience holds only while the rule is still an
+    /// email list, because a signed-in person was then admitted by the
+    /// list. The signed-in audience holds every signed-in person while
+    /// `everyone_signed_in` is on, and no one while it is off.
     #[must_use]
-    pub fn opens(&self, audience: &Audience, email: &Email) -> bool {
+    pub fn opens(&self, audience: &Audience, who: &Principal, everyone_signed_in: bool) -> bool {
         match audience {
-            Audience::Domain(domain) => domain.holds(email),
+            Audience::Domain(domain) => who.email().is_some_and(|email| domain.holds(email)),
             Audience::Admitted => matches!(self, Self::Listed),
+            Audience::SignedIn => everyone_signed_in,
         }
     }
 }

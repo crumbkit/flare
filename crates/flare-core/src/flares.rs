@@ -10,7 +10,7 @@
 //! [`FlareError::NotFound`].
 //!
 //! `share` checks in this order and writes nothing until every check has
-//! passed: a verified address, the creators rule, then that the caller can
+//! passed: a person of the deployment's identifier kind, the creators rule, then that the caller can
 //! open each `--re` flare. It then creates the share, grants each
 //! recipient, and writes the response links and their activity index
 //! entries. A write that fails after the share exists answers
@@ -37,15 +37,15 @@ pub use comments::{CommentDraft, CommentThread, Posted};
 pub use error::FlareError;
 pub use groups::Revoked;
 pub use people::{
-    AddressesOnly, AllAdmitted, CreatorDomain, CreatorList, Creators, CreatorsError,
-    NamedRecipients, RecipientError, Recipients,
+    AllAdmitted, ByIdentity, CreatorDomain, CreatorList, Creators, CreatorsError, NamedRecipients,
+    RecipientError, Recipients,
 };
 pub use search::{Found, MAX_HITS, SearchError, SearchHit};
 pub use team_life::{MAX_SWEPT, TeamDeletion};
 
 use crate::auth::Principal;
-use crate::email::Email;
 use crate::file::VersionImages;
+use crate::person::{IdentityKind, Person};
 use crate::response::NewLink;
 use crate::share::{Share, ShareContent, ShareId, ShareTitle};
 use crate::sharing::{ShareError, Shares};
@@ -65,7 +65,7 @@ pub struct NewFlare {
     id: ShareId,
     title: ShareTitle,
     content: ShareContent,
-    with: Vec<Email>,
+    with: Vec<Person>,
     groups: Vec<Group>,
     re: Vec<ShareId>,
     images: VersionImages,
@@ -79,7 +79,7 @@ impl NewFlare {
         id: ShareId,
         title: ShareTitle,
         content: ShareContent,
-        with: Vec<Email>,
+        with: Vec<Person>,
         re: Vec<ShareId>,
     ) -> Self {
         Self {
@@ -117,7 +117,7 @@ pub struct Flared {
     /// The new share.
     pub share: Share,
     /// The people granted Reader.
-    pub granted: Vec<Email>,
+    pub granted: Vec<Person>,
     /// The teams, or everyone, granted Reader.
     pub groups: Vec<Group>,
     /// The flares it responds to.
@@ -191,10 +191,18 @@ impl<S, G, R, C, U, T, K> Flares<S, G, R, C, U, T, K> {
         }
     }
 
-    /// The same service under the deployment's admit rule.
+    /// The same service under the deployment's admit rule and its
+    /// `everyone_signed_in` setting, as [`Shares::admitting`] takes them.
     #[must_use]
-    pub fn admitting(mut self, admission: Admission) -> Self {
-        self.shares = self.shares.admitting(admission);
+    pub fn admitting(mut self, admission: Admission, everyone_signed_in: bool) -> Self {
+        self.shares = self.shares.admitting(admission, everyone_signed_in);
+        self
+    }
+
+    /// The same service naming people by `kind`.
+    #[must_use]
+    pub fn with_identity(mut self, kind: IdentityKind) -> Self {
+        self.shares = self.shares.with_identity(kind);
         self
     }
 
@@ -217,6 +225,15 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     #[must_use]
     pub fn responses(&self) -> &R {
         &self.responses
+    }
+
+    /// The id of the person `who` is under the deployment's kind, which is
+    /// the same for the browser and the CLI whatever id a sign-in names.
+    pub(crate) fn person_id(&self, who: &Principal) -> Result<PrincipalId, FlareError> {
+        self.shares
+            .person(who)
+            .map(Person::principal_id)
+            .map_err(FlareError::Share)
     }
 
     /// The latest version of each flare in `re`, which `who` must be able
@@ -273,11 +290,10 @@ impl<
     K: Creators,
 > Flares<S, G, R, C, U, T, K>
 {
-    /// Checks that `who` has a verified address and is a creator.
+    /// Checks that `who` has a person of the deployment's kind and is a
+    /// creator.
     async fn creator(&self, who: &Principal) -> Result<(), FlareError> {
-        if who.email().is_none() {
-            return Err(FlareError::Share(ShareError::NoVerifiedEmail));
-        }
+        self.person_id(who)?;
         match self.creators.may_create(who).await {
             Ok(true) => Ok(()),
             Ok(false) => Err(FlareError::NotACreator),
@@ -309,7 +325,7 @@ impl<
     /// # Errors
     ///
     /// Before any write: [`FlareError::Share`] with
-    /// [`ShareError::NoVerifiedEmail`], [`FlareError::NotACreator`],
+    /// [`ShareError::NoPerson`], [`FlareError::NotACreator`],
     /// [`FlareError::CreatorsUnavailable`],
     /// [`FlareError::TooManyFlares`] and [`FlareError::NotFound`] for a
     /// `--re` flare the caller cannot open. The create's own refusals as
@@ -341,7 +357,7 @@ impl<
         };
         let mut granted = Vec::with_capacity(flare.with.len());
         for person in flare.with {
-            if who.email() == Some(&person) {
+            if who.person() == Some(&person) {
                 continue;
             }
             match self

@@ -2,7 +2,7 @@
 
 use super::locked;
 use crate::store::{TokenStore, TokenStoreError};
-use crate::{Digest, Email, LoginCode, NewToken, StoredToken, Timestamp, TokenId, UsedCode};
+use crate::{Digest, LoginCode, NewToken, Person, StoredToken, Timestamp, TokenId, UsedCode};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -102,7 +102,7 @@ impl TokenStore for MemoryTokenStore {
     async fn revoke(
         &self,
         id: &TokenId,
-        owner: &Email,
+        owner: &Person,
         at: Timestamp,
     ) -> Result<(), TokenStoreError> {
         let mut state = locked(&self.state).ok_or(TokenStoreError::Unavailable)?;

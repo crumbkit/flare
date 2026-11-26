@@ -41,18 +41,22 @@ pub enum ShareError {
     /// A share with that id exists. The caller draws a new id.
     #[error("a share with that id exists")]
     IdTaken,
-    /// The caller's sign-in verified no email address, and shares are
-    /// decided by it.
-    #[error("the caller has no verified email address")]
-    NoVerifiedEmail,
+    /// The caller's sign-in named no person of the deployment's identifier
+    /// kind, such as no verified email address under the email kind or no
+    /// username under the username kind, and shares are decided by it.
+    #[error("the caller's sign-in named no person of the deployment's identifier kind")]
+    NoPerson,
     /// A named team does not exist, is deleted, or the caller is not a
     /// member. The three give the same answer, so no one learns which team
     /// names exist.
     #[error("no such team")]
     TeamNotFound,
-    /// The deployment admits anyone to sign in, so a grant to everyone
-    /// would open the share to every account, and it is refused.
-    #[error("the deployment admits anyone, so a share cannot be granted to everyone")]
+    /// The deployment admits anyone to sign in and its
+    /// `everyone_signed_in` setting is off, so a grant to everyone would
+    /// open the share to every account, and it is refused.
+    #[error(
+        "the deployment admits anyone and hosted.everyone_signed_in is off, so a share cannot be granted to everyone"
+    )]
     EveryoneUnbounded,
     /// A store could not answer. After a write the outcome is unknown.
     #[error("the share stores are unavailable")]

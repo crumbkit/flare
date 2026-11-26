@@ -1,8 +1,8 @@
 use super::*;
 use crate::Email;
 
-fn owner() -> Email {
-    Email::try_from("ana@example.org").unwrap()
+fn owner() -> Person {
+    Person::try_from("ana@example.org").unwrap()
 }
 
 #[test]
@@ -96,4 +96,40 @@ fn a_digest_reads_back_from_its_hex_and_refuses_other_text() {
     ] {
         assert_eq!(Digest::from_hex(bad), None, "{bad}");
     }
+}
+
+#[test]
+fn a_username_token_and_code_keep_the_verified_email_and_an_address_owner_keeps_only_its_own() {
+    let ana = Person::try_from("ana").unwrap();
+    let email = Email::try_from("ana@example.org").unwrap();
+    let token = NewToken::new(
+        TokenId::from_random([3; 16]),
+        Digest::from_bytes([3; 32]),
+        ana.clone(),
+        TokenLabel::try_from("cli").unwrap(),
+        Timestamp::from_secs(1),
+    )
+    .with_email(Some(email.clone()));
+    assert_eq!(token.email(), Some(&email));
+    assert_eq!(token.stored().email(), Some(&email));
+    let code = LoginCode::new(
+        Digest::from_bytes([4; 32]),
+        ana.clone(),
+        4321,
+        Timestamp::from_secs(1),
+    )
+    .with_email(Some(email.clone()));
+    assert_eq!(
+        code.used(),
+        UsedCode::new(ana, 4321).with_email(Some(email.clone()))
+    );
+    let other = Email::try_from("other@example.org").unwrap();
+    let addressed = LoginCode::new(
+        Digest::from_bytes([5; 32]),
+        owner(),
+        4321,
+        Timestamp::from_secs(1),
+    )
+    .with_email(Some(other));
+    assert_eq!(addressed.email(), owner().as_email());
 }

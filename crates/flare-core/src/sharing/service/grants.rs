@@ -1,10 +1,10 @@
 //! The [`Shares`] methods that read and change grants.
 
-use super::{Shares, actor, decided};
+use super::{Actor, Shares, decided};
 use crate::auth::Principal;
-use crate::email::Email;
 use crate::grant::{Grant, GrantRevoke, GrantWrite, Granter, Revoker, Role};
 use crate::name::PrincipalId;
+use crate::person::Person;
 use crate::share::{Share, ShareId};
 use crate::sharing::error::ShareError;
 use crate::sharing::{
@@ -34,7 +34,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// target's role as it was read.
     async fn decide_on_target(
         &self,
-        actor: &PrincipalId,
+        actor: &Actor<'_>,
         id: &ShareId,
         action: ShareAction,
         on: TargetAction,
@@ -55,7 +55,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         }
     }
 
-    /// Gives the person with the address `grantee` the role `role` on a
+    /// Gives the person `grantee` the role `role` on a
     /// share, or changes their role. The write applies only if their grant
     /// is still the one the service read, and, for an admin, only while
     /// the admin still holds the Admin grant.
@@ -66,48 +66,48 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// caller who lacks the right or an admin whose grant ended,
     /// [`ShareError::OwnerCannotBeChanged`] when `grantee` is the owner,
     /// [`ShareError::GrantChanged`], [`ShareError::TooManyGrants`],
-    /// [`ShareError::NoVerifiedEmail`] and [`ShareError::Unavailable`].
+    /// [`ShareError::NoPerson`] and [`ShareError::Unavailable`].
     pub async fn grant(
         &self,
         who: &Principal,
         id: &ShareId,
-        grantee: &Email,
+        grantee: &Person,
         role: Role,
         at: Timestamp,
     ) -> Result<Grant, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         let person = grantee.principal_id();
         let on = TargetAction::Grant(role);
         let (authority, expected) = self
             .decide_on_target(&actor, id, ShareAction::Grant, on, &person)
             .await?;
         let by = match authority {
-            Authority::Owner => Granter::Owner(actor),
-            Authority::Admin => Granter::Admin(actor),
+            Authority::Owner => Granter::Owner(actor.id),
+            Authority::Admin => Granter::Admin(actor.id),
         };
         let write = GrantWrite::new(id.clone(), person, role, expected, by, at);
         Ok(self.grants.grant(write).await?)
     }
 
-    /// Ends the grant of the person with the address `grantee`. When
-    /// `grantee` is the caller's own address, the caller leaves the share.
+    /// Ends the grant of the person `grantee`. When `grantee` is the
+    /// caller's own person, the caller leaves the share.
     ///
     /// # Errors
     ///
     /// Returns [`ShareError::NotFound`], [`ShareError::Forbidden`],
     /// [`ShareError::OwnerCannotBeChanged`] when `grantee` is the owner,
     /// [`ShareError::GrantNotFound`] when `grantee` holds no grant,
-    /// [`ShareError::GrantChanged`], [`ShareError::NoVerifiedEmail`] and
+    /// [`ShareError::GrantChanged`], [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn revoke(
         &self,
         who: &Principal,
         id: &ShareId,
-        grantee: &Email,
+        grantee: &Person,
     ) -> Result<(), ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         let person = grantee.principal_id();
-        if person == actor {
+        if person == actor.id {
             return self.leave(&actor, id).await;
         }
         let (authority, current) = self
@@ -121,15 +121,15 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             .await?;
         let expected = current.ok_or(ShareError::GrantNotFound)?;
         let by = match authority {
-            Authority::Owner => Revoker::Owner(actor),
-            Authority::Admin => Revoker::Admin(actor),
+            Authority::Owner => Revoker::Owner(actor.id),
+            Authority::Admin => Revoker::Admin(actor.id),
         };
         let revoke = GrantRevoke::new(id.clone(), person, expected, by);
         Ok(self.grants.revoke(revoke).await?)
     }
 
     /// Ends the actor's own grant.
-    async fn leave(&self, actor: &PrincipalId, id: &ShareId) -> Result<(), ShareError> {
+    async fn leave(&self, actor: &Actor<'_>, id: &ShareId) -> Result<(), ShareError> {
         let (_, standing) = self.admit(actor, id, ShareAction::Leave).await?;
         let expected = match standing {
             Standing::Admin => Role::Admin,
@@ -137,7 +137,7 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             Standing::Owner => return Err(ShareError::OwnerCannotBeChanged),
             Standing::Stranger => return Err(ShareError::NotFound),
         };
-        let revoke = GrantRevoke::new(id.clone(), actor.clone(), expected, Revoker::Grantee);
+        let revoke = GrantRevoke::new(id.clone(), actor.id.clone(), expected, Revoker::Grantee);
         Ok(self.grants.revoke(revoke).await?)
     }
 
@@ -146,10 +146,10 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
     /// # Errors
     ///
     /// Returns [`ShareError::NotFound`], [`ShareError::Forbidden`] for a
-    /// reader, [`ShareError::NoVerifiedEmail`] and
+    /// reader, [`ShareError::NoPerson`] and
     /// [`ShareError::Unavailable`].
     pub async fn grants(&self, who: &Principal, id: &ShareId) -> Result<Vec<Grant>, ShareError> {
-        let actor = actor(who)?;
+        let actor = self.actor(who)?;
         self.admit(&actor, id, ShareAction::ListGrants).await?;
         self.grants
             .of_share(id)

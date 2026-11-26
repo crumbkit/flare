@@ -35,7 +35,7 @@ pub use names::{Admission, Audience, Group, MailDomain, TeamName};
 pub use service::FlareTeams;
 pub use store::{Team, TeamState, TeamStore, TeamStoreError};
 
-use crate::email::Email;
+use crate::person::Person;
 use crate::time::Timestamp;
 use std::future::Future;
 
@@ -107,7 +107,7 @@ impl From<TeamStoreError> for TeamsError {
 }
 
 /// The teams that the share service reads, and the changes that the team
-/// routes make. Each `actor` is the caller's verified address.
+/// routes make. Each `actor` is the caller's person.
 ///
 /// The three reads are what a share's standing needs. The changes have
 /// default bodies that answer [`TeamsError::ManagedElsewhere`], so a
@@ -131,7 +131,7 @@ pub trait Teams: Send + Sync {
     /// Returns [`TeamsError::Unavailable`].
     fn teams_of(
         &self,
-        person: &Email,
+        person: &Person,
     ) -> impl Future<Output = Result<Vec<TeamName>, TeamsError>> + Send;
 
     /// Whether an active team has the name.
@@ -175,7 +175,7 @@ pub trait Teams: Send + Sync {
     fn members(
         &self,
         team: &TeamName,
-    ) -> impl Future<Output = Result<Vec<Email>, TeamsError>> + Send;
+    ) -> impl Future<Output = Result<Vec<Person>, TeamsError>> + Send;
 
     /// Creates a team owned by `owner`, who becomes its first member. The
     /// caller has checked that `owner` is a creator. A repeat by the owner
@@ -188,7 +188,7 @@ pub trait Teams: Send + Sync {
     /// [`TeamsError::Unavailable`].
     fn create(
         &self,
-        _owner: &Email,
+        _owner: &Person,
         _team: TeamName,
         _at: Timestamp,
     ) -> impl Future<Output = Result<Team, TeamsError>> + Send {
@@ -205,9 +205,9 @@ pub trait Teams: Send + Sync {
     /// [`TeamsError::ManagedElsewhere`] and [`TeamsError::Unavailable`].
     fn add(
         &self,
-        _actor: &Email,
+        _actor: &Person,
         _team: &TeamName,
-        _member: &Email,
+        _member: &Person,
     ) -> impl Future<Output = Result<bool, TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
     }
@@ -223,9 +223,9 @@ pub trait Teams: Send + Sync {
     /// and [`TeamsError::Unavailable`].
     fn remove(
         &self,
-        _actor: &Email,
+        _actor: &Person,
         _team: &TeamName,
-        _member: &Email,
+        _member: &Person,
     ) -> impl Future<Output = Result<bool, TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
     }
@@ -241,7 +241,7 @@ pub trait Teams: Send + Sync {
     /// [`TeamsError::ManagedElsewhere`] and [`TeamsError::Unavailable`].
     fn delete(
         &self,
-        _actor: &Email,
+        _actor: &Person,
         _team: &TeamName,
     ) -> impl Future<Output = Result<(), TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
@@ -258,7 +258,7 @@ pub trait Teams: Send + Sync {
     /// [`TeamsError::Unavailable`].
     fn finish_delete(
         &self,
-        _actor: &Email,
+        _actor: &Person,
         _team: &TeamName,
     ) -> impl Future<Output = Result<(), TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
@@ -275,9 +275,9 @@ pub trait Teams: Send + Sync {
     /// [`TeamsError::ManagedElsewhere`] and [`TeamsError::Unavailable`].
     fn transfer(
         &self,
-        _actor: &Email,
+        _actor: &Person,
         _team: &TeamName,
-        _to: &Email,
+        _to: &Person,
     ) -> impl Future<Output = Result<Team, TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
     }
@@ -290,9 +290,9 @@ pub trait Teams: Send + Sync {
     /// and [`TeamsError::Unavailable`].
     fn show(
         &self,
-        _actor: &Email,
+        _actor: &Person,
         _team: &TeamName,
-    ) -> impl Future<Output = Result<(Team, Vec<Email>), TeamsError>> + Send {
+    ) -> impl Future<Output = Result<(Team, Vec<Person>), TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
     }
 
@@ -302,7 +302,7 @@ pub trait Teams: Send + Sync {
     ///
     /// Returns [`TeamsError::ManagedElsewhere`] and
     /// [`TeamsError::Unavailable`].
-    fn list(&self, _actor: &Email) -> impl Future<Output = Result<Vec<Team>, TeamsError>> + Send {
+    fn list(&self, _actor: &Person) -> impl Future<Output = Result<Vec<Team>, TeamsError>> + Send {
         async { Err(TeamsError::ManagedElsewhere) }
     }
 }
@@ -313,7 +313,7 @@ pub trait Teams: Send + Sync {
 pub struct NoTeams;
 
 impl Teams for NoTeams {
-    async fn teams_of(&self, _person: &Email) -> Result<Vec<TeamName>, TeamsError> {
+    async fn teams_of(&self, _person: &Person) -> Result<Vec<TeamName>, TeamsError> {
         Ok(Vec::new())
     }
 
@@ -321,7 +321,7 @@ impl Teams for NoTeams {
         Ok(false)
     }
 
-    async fn members(&self, _team: &TeamName) -> Result<Vec<Email>, TeamsError> {
+    async fn members(&self, _team: &TeamName) -> Result<Vec<Person>, TeamsError> {
         Err(TeamsError::NotFound)
     }
 }

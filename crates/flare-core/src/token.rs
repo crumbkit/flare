@@ -7,6 +7,7 @@
 
 use crate::email::Email;
 use crate::error::{ParseError, Subject};
+use crate::person::Person;
 use crate::share::HiddenPrincipal;
 use crate::share::{check_hex_id, hex_id};
 use crate::time::Timestamp;
@@ -100,7 +101,8 @@ impl TryFrom<&str> for TokenLabel {
 pub struct StoredToken {
     id: TokenId,
     digest: Digest,
-    owner: Email,
+    owner: Person,
+    email: Option<Email>,
     label: TokenLabel,
     created: Timestamp,
     expires: Timestamp,
@@ -115,6 +117,7 @@ impl StoredToken {
             id: new.id,
             digest: new.digest,
             owner: new.owner,
+            email: new.email,
             label: new.label,
             created: new.created,
             expires,
@@ -134,10 +137,18 @@ impl StoredToken {
         &self.digest
     }
 
-    /// The verified address the token authenticates as.
+    /// The person the token authenticates as.
     #[must_use]
-    pub fn owner(&self) -> &Email {
+    pub fn owner(&self) -> &Person {
         &self.owner
+    }
+
+    /// The email address the owner's sign-in verified when the token was
+    /// made: the owner's own address under the email kind, and the address
+    /// kept beside a username, if there was one.
+    #[must_use]
+    pub fn email(&self) -> Option<&Email> {
+        self.email.as_ref().or_else(|| self.owner.as_email())
     }
 
     /// The token's label.
@@ -197,7 +208,8 @@ impl fmt::Debug for StoredToken {
 pub struct NewToken {
     id: TokenId,
     digest: Digest,
-    owner: Email,
+    owner: Person,
+    email: Option<Email>,
     label: TokenLabel,
     created: Timestamp,
 }
@@ -209,7 +221,7 @@ impl NewToken {
     pub fn new(
         id: TokenId,
         digest: Digest,
-        owner: Email,
+        owner: Person,
         label: TokenLabel,
         created: Timestamp,
     ) -> Self {
@@ -217,9 +229,19 @@ impl NewToken {
             id,
             digest,
             owner,
+            email: None,
             label,
             created,
         }
+    }
+
+    /// The same token, keeping `email`, the address the owner's sign-in
+    /// verified, beside an owner named by username. An owner named by an
+    /// address keeps only that address, so `email` is then ignored.
+    #[must_use]
+    pub fn with_email(mut self, email: Option<Email>) -> Self {
+        self.email = email.filter(|_| self.owner.as_email().is_none());
+        self
     }
 
     /// The token's id.
@@ -230,8 +252,15 @@ impl NewToken {
 
     /// The token's owner.
     #[must_use]
-    pub fn owner(&self) -> &Email {
+    pub fn owner(&self) -> &Person {
         &self.owner
+    }
+
+    /// The email address kept beside the owner, as [`StoredToken::email`]
+    /// answers it.
+    #[must_use]
+    pub fn email(&self) -> Option<&Email> {
+        self.email.as_ref().or_else(|| self.owner.as_email())
     }
 
     /// The token's label.
@@ -270,7 +299,8 @@ impl fmt::Debug for NewToken {
 #[derive(Clone, PartialEq, Eq)]
 pub struct LoginCode {
     digest: Digest,
-    owner: Email,
+    owner: Person,
+    email: Option<Email>,
     port: u16,
     expires: Timestamp,
 }
@@ -279,13 +309,23 @@ impl LoginCode {
     /// A code of `owner` for the CLI listening on `port`, issued at
     /// `issued` and expiring [`CODE_LIFE`] seconds later.
     #[must_use]
-    pub fn new(digest: Digest, owner: Email, port: u16, issued: Timestamp) -> Self {
+    pub fn new(digest: Digest, owner: Person, port: u16, issued: Timestamp) -> Self {
         Self {
             digest,
             owner,
+            email: None,
             port,
             expires: Timestamp::from_secs(issued.as_secs().saturating_add(CODE_LIFE)),
         }
+    }
+
+    /// The same code, keeping `email`, the address the owner's sign-in
+    /// verified, beside an owner named by username. An owner named by an
+    /// address keeps only that address, so `email` is then ignored.
+    #[must_use]
+    pub fn with_email(mut self, email: Option<Email>) -> Self {
+        self.email = email.filter(|_| self.owner.as_email().is_none());
+        self
     }
 
     /// The digest of the code.
@@ -296,8 +336,15 @@ impl LoginCode {
 
     /// The person the code signs in.
     #[must_use]
-    pub fn owner(&self) -> &Email {
+    pub fn owner(&self) -> &Person {
         &self.owner
+    }
+
+    /// The email address kept beside the owner, as [`StoredToken::email`]
+    /// answers it.
+    #[must_use]
+    pub fn email(&self) -> Option<&Email> {
+        self.email.as_ref().or_else(|| self.owner.as_email())
     }
 
     /// The CLI's loopback port.
@@ -323,6 +370,7 @@ impl LoginCode {
     pub fn used(&self) -> UsedCode {
         UsedCode {
             owner: self.owner.clone(),
+            email: self.email().cloned(),
             port: self.port,
         }
     }
@@ -345,16 +393,30 @@ impl fmt::Debug for LoginCode {
 #[non_exhaustive]
 pub struct UsedCode {
     /// The person the code signs in.
-    pub owner: Email,
+    pub owner: Person,
+    /// The email address the owner's sign-in verified, if any.
+    pub email: Option<Email>,
     /// The CLI's loopback port the code was issued for.
     pub port: u16,
 }
 
 impl UsedCode {
-    /// What a used code of `owner`, issued for `port`, gave.
+    /// What a used code of `owner`, issued for `port`, gave. An owner
+    /// named by an address has that address as its email.
     #[must_use]
-    pub fn new(owner: Email, port: u16) -> Self {
-        Self { owner, port }
+    pub fn new(owner: Person, port: u16) -> Self {
+        let email = owner.as_email().cloned();
+        Self { owner, email, port }
+    }
+
+    /// The same answer, with `email` kept beside an owner named by
+    /// username.
+    #[must_use]
+    pub fn with_email(mut self, email: Option<Email>) -> Self {
+        if self.owner.as_email().is_none() {
+            self.email = email;
+        }
+        self
     }
 }
 

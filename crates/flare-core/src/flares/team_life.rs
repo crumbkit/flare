@@ -75,7 +75,7 @@ impl<
         name: TeamName,
         at: Timestamp,
     ) -> Result<Team, TeamsError> {
-        let Some(owner) = who.email() else {
+        let Ok(owner) = self.shares.person(who) else {
             return Err(TeamsError::NotACreator);
         };
         match self.creators.may_create(who).await {
@@ -112,7 +112,7 @@ impl<
         who: &Principal,
         name: &TeamName,
     ) -> Result<TeamDeletion, TeamsError> {
-        let actor = who.email().ok_or(TeamsError::NotFound)?;
+        let actor = self.shares.person(who).map_err(|_| TeamsError::NotFound)?;
         let teams = self.shares.teams();
         teams.delete(actor, name).await?;
         let (removed, more) = self.sweep(&Group::Team(name.clone())).await?;

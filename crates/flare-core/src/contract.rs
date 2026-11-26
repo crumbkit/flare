@@ -253,6 +253,56 @@ pub(crate) fn fixture<T, E: fmt::Debug>(parsed: Result<T, E>) -> Result<T, Viola
     parsed.map_err(|error| Violation::new(Clause::FixtureIsUnusable, error))
 }
 
+/// Which kind of people a suite's fixture names, so that each store is
+/// checked with people named by address and with people named by
+/// username. The team, token, session, share and grant suites take it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum People {
+    /// People named by address, such as `owner@example.com`.
+    Emails,
+    /// People named by username, such as `owner`, whose sign-in verified
+    /// an address such as `owner@example.com` beside it.
+    Usernames,
+}
+
+impl People {
+    /// Both kinds, for a test that runs a clause once with each.
+    pub const ALL: [Self; 2] = [Self::Emails, Self::Usernames];
+
+    /// The person `stem` names: `stem@example.com` or `stem`.
+    pub(crate) fn person(self, stem: &str) -> Result<crate::Person, Violation> {
+        match self {
+            Self::Emails => fixture(crate::Email::try_from(
+                format!("{stem}@example.com").as_str(),
+            ))
+            .map(crate::Person::Email),
+            Self::Usernames => {
+                fixture(crate::Username::try_from(stem)).map(crate::Person::Username)
+            }
+        }
+    }
+
+    /// The id of the person `stem` names.
+    pub(crate) fn id(self, stem: &str) -> Result<crate::PrincipalId, Violation> {
+        self.person(stem).map(|person| person.principal_id())
+    }
+
+    /// A signed-in principal for the person `stem` names, with the address
+    /// `stem@example.com` as its verified email.
+    pub(crate) fn principal(self, stem: &str) -> Result<crate::Principal, Violation> {
+        let person = self.person(stem)?;
+        let email = fixture(crate::Email::try_from(
+            format!("{stem}@example.com").as_str(),
+        ))?;
+        Ok(crate::Principal::with_person(
+            person.principal_id(),
+            person,
+            Some(email),
+        ))
+    }
+}
+
 /// Turns an error that no clause expects into a [`Violation`].
 pub(crate) fn unexpected<T, E: fmt::Debug>(result: Result<T, E>) -> Result<T, Violation> {
     result.map_err(|error| Violation::new(Clause::TheStoreFailedUnexpectedly, error))

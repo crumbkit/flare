@@ -9,10 +9,10 @@ use flare_core::memory::{
     MemoryShareStore, MemoryTeamStore,
 };
 use flare_core::{
-    Admission, AllAdmitted, CreatorList, DocumentText, Email, FlareError, FlareTeams, Flares,
-    Group, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, MailDomain, NewFlare, Position,
-    Principal, PrincipalId, Role, ShareContent, ShareError, ShareId, ShareTitle, Standing,
-    TeamName, Teams, TeamsError, Timestamp,
+    Admission, AllAdmitted, Audience, CreatorList, DocumentText, FlareError, FlareTeams, Flares,
+    Group, IdentityKind, MAX_MEMBERS, MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, MailDomain, NewFlare,
+    Person, Position, Principal, PrincipalId, Role, ShareContent, ShareError, ShareId, ShareTitle,
+    Standing, TeamName, Teams, TeamsError, Timestamp,
 };
 
 type Memory = Flares<
@@ -25,12 +25,16 @@ type Memory = Flares<
     CreatorList,
 >;
 
-fn email(text: &str) -> Email {
-    Email::try_from(text).unwrap()
+fn email(text: &str) -> Person {
+    Person::try_from(text).unwrap()
 }
 
 fn person(address: &str) -> Principal {
-    Principal::with_email(PrincipalId::try_from(address).unwrap(), email(address))
+    Principal::with_person(
+        PrincipalId::try_from(address).unwrap(),
+        email(address),
+        None,
+    )
 }
 
 fn alice() -> Principal {
@@ -89,7 +93,7 @@ fn memory_admitting(admission: Admission) -> Memory {
         creators,
     )
     .with_teams(FlareTeams::new(MemoryTeamStore::new()))
-    .admitting(admission)
+    .admitting(admission, false)
 }
 
 fn domain(text: &str) -> MailDomain {
@@ -242,7 +246,7 @@ fn a_person_belongs_to_at_most_the_joined_limit_of_teams() {
         let name = team(&format!("j{number}"));
         let owner = if number % 2 == 0 { alice() } else { bob() };
         block_on(flares.create_team(&owner, name.clone(), at(1))).unwrap();
-        let by = owner.email().unwrap().clone();
+        let by = owner.person().unwrap().clone();
         block_on(teams.add(&by, &name, &carol_address)).unwrap();
     }
     block_on(flares.create_team(&alice(), team("last"), at(2))).unwrap();
@@ -331,7 +335,7 @@ fn an_everyone_grant_opens_to_its_audience_and_refuses_anyone_outside_it() {
 fn an_everyone_grant_keeps_its_audience_after_the_admit_rule_is_widened() {
     let stores = memory();
     block_on(stores.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1))).unwrap();
-    let widened = stores.admitting(Admission::Anyone);
+    let widened = stores.admitting(Admission::Anyone, false);
     assert_eq!(opens(&widened, &carol(), 1), Ok(Standing::Reader));
     assert_eq!(opens(&widened, &outsider(), 1), Err(ShareError::NotFound));
     let refused =
@@ -353,7 +357,7 @@ fn an_admitted_audience_opens_only_while_the_rule_is_a_list() {
     let listed = memory_admitting(Admission::Listed);
     block_on(listed.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1))).unwrap();
     assert_eq!(opens(&listed, &outsider(), 1), Ok(Standing::Reader));
-    let widened = listed.admitting(Admission::Anyone);
+    let widened = listed.admitting(Admission::Anyone, false);
     assert_eq!(opens(&widened, &outsider(), 1), Err(ShareError::NotFound));
 }
 
@@ -369,6 +373,81 @@ fn under_an_anyone_rule_an_everyone_grant_is_refused_before_any_write() {
         block_on(flares.shares().open(&alice(), &id(1), None)).map(|_| ()),
         Err(ShareError::NotFound)
     );
+}
+
+/// A username principal with no verified email, for the signed-in
+/// audience, which opens to a person of either kind.
+fn username_person(name: &str) -> Principal {
+    Principal::with_person(
+        PrincipalId::try_from(name).unwrap(),
+        Person::try_from(name).unwrap(),
+        None,
+    )
+}
+
+#[test]
+fn under_an_anyone_rule_with_everyone_signed_in_off_an_everyone_share_is_still_refused() {
+    let flares = memory_admitting(Admission::Anyone).admitting(Admission::Anyone, false);
+    let refused = block_on(flares.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1)));
+    assert_eq!(
+        refused.err(),
+        Some(FlareError::Share(ShareError::EveryoneUnbounded))
+    );
+    assert_eq!(
+        block_on(flares.shares().open(&alice(), &id(1), None)).map(|_| ()),
+        Err(ShareError::NotFound),
+        "nothing is written"
+    );
+}
+
+#[test]
+fn under_an_anyone_rule_with_everyone_signed_in_on_an_everyone_grant_records_signed_in() {
+    let flares = memory_admitting(Admission::Anyone).admitting(Admission::Anyone, true);
+    block_on(flares.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1))).unwrap();
+    let grants = block_on(flares.shares().grants(&alice(), &id(1))).unwrap();
+    let everyone = grants
+        .iter()
+        .find(|grant| grant.grantee() == &Group::Everyone.principal_id())
+        .unwrap();
+    assert_eq!(everyone.audience(), Some(&Audience::SignedIn));
+    assert_eq!(opens(&flares, &outsider(), 1), Ok(Standing::Reader));
+    assert_eq!(opens(&flares, &carol(), 1), Ok(Standing::Reader));
+}
+
+#[test]
+fn a_signed_in_grant_opens_to_a_person_of_either_kind() {
+    let flares = memory_admitting(Admission::Anyone).admitting(Admission::Anyone, true);
+    block_on(flares.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1))).unwrap();
+    assert_eq!(opens(&flares, &outsider(), 1), Ok(Standing::Reader));
+    let usernames = flares.with_identity(IdentityKind::Username);
+    assert_eq!(
+        opens(&usernames, &username_person("ola"), 1),
+        Ok(Standing::Reader)
+    );
+}
+
+#[test]
+fn a_signed_in_share_opens_to_no_one_once_the_setting_is_turned_off() {
+    let on = memory_admitting(Admission::Anyone).admitting(Admission::Anyone, true);
+    block_on(on.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1))).unwrap();
+    let off = on.admitting(Admission::Anyone, false);
+    assert_eq!(opens(&off, &outsider(), 1), Err(ShareError::NotFound));
+    assert_eq!(opens(&off, &carol(), 1), Err(ShareError::NotFound));
+    let grants = block_on(off.shares().grants(&alice(), &id(1))).unwrap();
+    assert!(
+        grants
+            .iter()
+            .any(|grant| grant.audience() == Some(&Audience::SignedIn)),
+        "the grant stays stored until its owner revokes it"
+    );
+}
+
+#[test]
+fn with_everyone_signed_in_on_a_domain_rule_still_records_its_domain() {
+    let flares = memory().admitting(Admission::Domain(domain("example.com")), true);
+    block_on(flares.share(&alice(), flare(1, &[], vec![Group::Everyone]), at(1))).unwrap();
+    assert_eq!(opens(&flares, &carol(), 1), Ok(Standing::Reader));
+    assert_eq!(opens(&flares, &outsider(), 1), Err(ShareError::NotFound));
 }
 
 #[test]
