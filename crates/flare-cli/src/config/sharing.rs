@@ -19,6 +19,11 @@
 //! `get_flare` is the https address that the reading page's Get Flare link
 //! opens for a reader who has never shared a flare. Left out, the reading
 //! page shows no link to anyone.
+//!
+//! `content_origin` is the https origin of the content host, which serves
+//! the HTML file of an uploaded HTML share to a frame of the reading page.
+//! It must differ from `hosted.origin`, so the uploaded page's scripts run
+//! in an origin of their own. Left out, the server refuses HTML uploads.
 
 use super::teams::{TeamsSource, teams as teams_from};
 use flare_aws::HostedConfig;
@@ -26,7 +31,7 @@ use flare_core::{
     AllAdmitted, CreatorDomain, CreatorList, Creators, CreatorsError, IdentityKind,
     NamedRecipients, Principal,
 };
-use flare_server::GetFlare;
+use flare_server::{GetFlare, PublicOrigin};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -69,12 +74,14 @@ pub(crate) struct Sharing {
     pub(crate) open_to_anyone: bool,
     /// The address the reading page's Get Flare link opens, when set.
     pub(crate) get_flare: Option<GetFlare>,
+    /// The origin of the content host, when set.
+    pub(crate) content_origin: Option<PublicOrigin>,
     /// Where the teams come from.
     pub(crate) teams: TeamsSource,
 }
 
 /// The hosted section's share API keys, as the file gave them.
-pub(crate) struct Keys {
+pub(crate) struct Keys<'a> {
     /// `hosted.stores`.
     pub(crate) stores: Option<HostedConfig>,
     /// `hosted.creators`.
@@ -83,6 +90,10 @@ pub(crate) struct Keys {
     pub(crate) names: Option<BTreeMap<String, String>>,
     /// `hosted.get_flare`.
     pub(crate) get_flare: Option<String>,
+    /// `hosted.content_origin`.
+    pub(crate) content_origin: Option<String>,
+    /// `hosted.origin`, which the content origin must differ from.
+    pub(crate) origin: &'a PublicOrigin,
     /// `hosted.everyone_signed_in`.
     pub(crate) everyone_signed_in: Option<bool>,
     /// `hosted.teams`.
@@ -96,7 +107,7 @@ pub(crate) struct Keys {
 ///
 /// Returns the problem, naming the key.
 pub(crate) fn sharing(
-    keys: Keys,
+    keys: Keys<'_>,
     anyone: bool,
     kind: IdentityKind,
 ) -> Result<Option<Sharing>, String> {
@@ -105,6 +116,8 @@ pub(crate) fn sharing(
         creators,
         names,
         get_flare,
+        content_origin,
+        origin,
         everyone_signed_in,
         teams,
     } = keys;
@@ -115,6 +128,8 @@ pub(crate) fn sharing(
             "hosted.names"
         } else if get_flare.is_some() {
             "hosted.get_flare"
+        } else if content_origin.is_some() {
+            "hosted.content_origin"
         } else if everyone_signed_in.is_some() {
             "hosted.everyone_signed_in"
         } else if teams.is_some() {
@@ -145,6 +160,18 @@ pub(crate) fn sharing(
         .map_err(|_| {
             "hosted.get_flare must be an https URL with a host, such as the project page that readers go to to get Flare".to_owned()
         })?;
+    let content_origin = content_origin
+        .map(|text| {
+            PublicOrigin::try_from(text.as_str())
+                .ok()
+                .filter(|content| content.as_str() != origin.as_str())
+        })
+        .map(|parsed| {
+            parsed.ok_or_else(|| {
+                "hosted.content_origin must be an https origin with a host, such as https://content.example.com, that differs from hosted.origin".to_owned()
+            })
+        })
+        .transpose()?;
     Ok(Some(Sharing {
         stores,
         creators,
@@ -152,6 +179,7 @@ pub(crate) fn sharing(
         everyone_signed_in: everyone_signed_in.unwrap_or(false),
         open_to_anyone,
         get_flare,
+        content_origin,
         teams,
     }))
 }

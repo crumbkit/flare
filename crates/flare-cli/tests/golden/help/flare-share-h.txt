@@ -3,7 +3,7 @@ Share a Markdown file
 Usage: flare share [OPTIONS] <FILE>
 
 Arguments:
-  <FILE>  The file to share: .md for Markdown
+  <FILE>  The file: .md or .html
 
 Options:
       --title <TITLE>  The title; without it, a Markdown file's first level-one heading, else the file name without its ending

@@ -280,3 +280,50 @@ async fn a_new_version_of_an_html_share_replaces_the_file_and_a_markdown_version
     assert_eq!(status, 422, "{refused}");
     assert_eq!(refused["code"], "flare::versions::kind_changed");
 }
+
+/// The journey of `ui/flare/tests/acceptance/html.spec.ts`: alice uploads the
+/// Compliance page that `flightdeck compliance build` wrote, bob's session
+/// stands for his sign-in in the browser, and Chromium and WebKit draw the
+/// page in the frame with no policy violation. `FLARE_HTML_JOURNEY` names
+/// the `ui/flare` directory; with it unset the test only checks that the
+/// reading page frames the uploaded file.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_flightdeck_compliance_file_draws_in_the_frame_in_a_browser() {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "CI names the ui/flare directory for the journey this test starts"
+    )]
+    let ui = std::env::var_os("FLARE_HTML_JOURNEY");
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../ui/flare/tests/fixtures/compliance/compliance.html");
+    let file = std::fs::read(&fixture).unwrap();
+    let api = Api::start_with_content_host().await;
+    let token = api.token_for("alice").await;
+    let reply = upload(&api, &token, form(&file)).await;
+    assert_eq!(reply.status, 201, "{}", reply.body);
+    let shared: Value = serde_json::from_str(&reply.body).unwrap();
+    let id = shared["share"]["id"].as_str().unwrap().to_owned();
+    let bob = api.session("bob").await;
+    let page = api.browser("GET", &format!("/s/{id}"), &bob).send().await;
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert!(page.body.contains("<iframe"), "{}", page.body);
+    let Some(ui) = ui else {
+        return;
+    };
+    let origin = api.hosted.origin.clone();
+    let status = tokio::task::block_in_place(|| {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test runs Playwright, which drives a browser against this server, and waits for it to exit"
+        )]
+        std::process::Command::new("pnpm")
+            .args(["exec", "playwright", "test", "tests/acceptance/html.spec.ts"])
+            .current_dir(ui)
+            .env("FLARE_JOURNEY_ORIGIN", &origin)
+            .env("FLARE_JOURNEY_COOKIE", &bob)
+            .env("FLARE_JOURNEY_SHARE", &id)
+            .status()
+    })
+    .unwrap();
+    assert!(status.success(), "the HTML journey failed: {status}");
+}

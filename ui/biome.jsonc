@@ -3,7 +3,14 @@
   // Biome formats and lints every file git tracks (BASE-2, BASE-10).
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!dist", "!playwright-report", "!test-results", "!pnpm-lock.yaml"]
+    "includes": [
+      "**",
+      "!dist",
+      "!playwright-report",
+      "!test-results",
+      "!pnpm-lock.yaml",
+      "!**/tests/fixtures"
+    ]
   },
   "formatter": {
     "enabled": true,

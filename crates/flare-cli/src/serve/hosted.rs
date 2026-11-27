@@ -18,7 +18,9 @@ use flare_aws::{
 };
 use flare_board::BoardStore;
 use flare_core::{Flares, IdentityKind, NamedRecipients};
-use flare_server::{App, HostedSignIn, Limits, Listeners, Metrics, PublicOrigin, Sharing, Site};
+use flare_server::{
+    App, ContentHost, HostedSignIn, Limits, Listeners, Metrics, PublicOrigin, Sharing, Site,
+};
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -65,8 +67,13 @@ pub(super) async fn hosted(
             "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
         );
     }
+    let mut content = None;
     let sharing = match (sharing, stores, teams) {
         (Some(config), Some(stores), Some(teams)) => {
+            content = config
+                .content_origin
+                .clone()
+                .map(|origin| ContentHost::new(origin, stores.keys.clone()));
             Some(share_api(*config, stores, teams, admit, kind))
         }
         _ => None,
@@ -78,6 +85,7 @@ pub(super) async fn hosted(
         listen,
         metrics,
         sharing,
+        content,
     };
     match sign_in {
         Connected::Oidc(oidc) => start.serve(oidc).await,
@@ -155,6 +163,7 @@ struct Start<'a> {
     listen: SocketAddr,
     metrics: Metrics,
     sharing: Option<HostedSharing>,
+    content: Option<ContentHost>,
 }
 
 impl Start<'_> {
@@ -179,6 +188,10 @@ impl Start<'_> {
                 .with_metrics(self.metrics);
         let app = match self.sharing {
             Some(sharing) => app.with_sharing(sharing),
+            None => app,
+        };
+        let app = match self.content {
+            Some(content) => app.with_content_host(content),
             None => app,
         };
         serve(self.root, listeners, app, &mut signals).await

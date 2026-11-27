@@ -6,7 +6,7 @@ Usage: flare share [OPTIONS] <FILE>
 
 Arguments:
   <FILE>
-          The file to share: .md for Markdown
+          The file: .md or .html
 
 Options:
       --title <TITLE>

@@ -1,10 +1,11 @@
 //! Unit tests of the form body a share with images is sent as.
 
 use super::{boundary, form};
-use crate::sharing::LocalImage;
+use crate::sharing::{LocalImage, Part};
 
 fn image(path: &str, bytes: &[u8]) -> LocalImage {
     LocalImage {
+        part: Part::Image,
         path: path.to_owned(),
         bytes: bytes.to_vec(),
     }
@@ -40,4 +41,20 @@ fn the_boundary_is_one_that_no_part_holds() {
     assert_eq!(second, "flare-form-0000000000000001");
     let in_share = boundary(holding.as_bytes(), &[]);
     assert_eq!(in_share, "flare-form-0000000000000001");
+}
+
+#[test]
+fn an_html_file_is_the_part_named_html_with_the_content_type_text_html() {
+    let file = LocalImage {
+        part: Part::Html,
+        path: "plan.html".to_owned(),
+        bytes: b"<p>x</p>".to_vec(),
+    };
+    let body = String::from_utf8(form("b", b"{}", &[file])).unwrap();
+    assert!(
+        body.contains(
+            "name=\"html\"; filename=\"plan.html\"\r\nContent-Type: text/html\r\n\r\n<p>x</p>"
+        ),
+        "{body}"
+    );
 }

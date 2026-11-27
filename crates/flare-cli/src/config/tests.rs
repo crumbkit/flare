@@ -1,4 +1,5 @@
 use super::{HostedCreators, Problem, Secret, SignIn, Site, TeamsSource, parse};
+use flare_server::PublicOrigin;
 
 const DOMAIN: &str = r#"{"oidc":{"issuer":"https://accounts.google.com","client_id":"abc.apps.googleusercontent.com","admit":{"domain":"example.com","reach":"everything"}}}"#;
 
@@ -471,6 +472,59 @@ fn a_get_flare_address_that_is_not_an_https_url_with_a_host_is_refused_naming_th
 fn a_get_flare_address_without_stores_is_refused_naming_hosted_stores() {
     let message = invalid(&hosted_with(r#""get_flare":"https://example.com/flare""#));
     assert!(message.contains("hosted.get_flare"), "{message}");
+    assert!(message.contains("hosted.stores"), "{message}");
+}
+
+#[test]
+fn a_content_origin_is_read_with_the_share_api() {
+    let text = hosted_with(&format!(
+        r#"{STORES},"content_origin":"https://content.example.net""#
+    ));
+    let Site::Hosted(hosted) = parse(&text).unwrap().site else {
+        panic!("a hosted config");
+    };
+    let origin = hosted.sharing.expect("the share API").content_origin;
+    assert_eq!(
+        origin.as_ref().map(PublicOrigin::as_str),
+        Some("https://content.example.net")
+    );
+    let Site::Hosted(plain) = parse(&hosted_with(STORES)).unwrap().site else {
+        panic!("a hosted config");
+    };
+    assert!(
+        plain
+            .sharing
+            .expect("the share API")
+            .content_origin
+            .is_none()
+    );
+}
+
+#[test]
+fn a_content_origin_that_is_not_an_https_origin_or_names_the_site_itself_is_refused() {
+    for address in [
+        "http://content.example.net",
+        "https://content.example.net/path",
+        "content.example.net",
+        "https://flare.example.com",
+    ] {
+        let message = invalid(&hosted_with(&format!(
+            r#"{STORES},"content_origin":"{address}""#
+        )));
+        assert!(
+            message.contains("hosted.content_origin"),
+            "{address}: {message}"
+        );
+        assert!(!message.contains(address), "{address}: {message}");
+    }
+}
+
+#[test]
+fn a_content_origin_without_stores_is_refused_naming_hosted_stores() {
+    let message = invalid(&hosted_with(
+        r#""content_origin":"https://content.example.net""#,
+    ));
+    assert!(message.contains("hosted.content_origin"), "{message}");
     assert!(message.contains("hosted.stores"), "{message}");
 }
 

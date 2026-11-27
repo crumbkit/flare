@@ -234,7 +234,7 @@ Each image that the Markdown shows by a relative path, such as img/chart.png, is
 
 ### Arguments
 
-- `<FILE>`: The file to share: .md for Markdown. Required.
+- `<FILE>`: The file: .md or .html. Required.
 - `--title <TITLE>`: The title; without it, a Markdown file's first level-one heading, else the file name without its ending
 - `--with <WHO>`: Readers, comma-separated: addresses, team:\<name\>, everyone. Takes more than one value.
 - `--re <ID>`: The flares it responds to, whose owners become Readers; repeated or comma-separated. Takes more than one value.

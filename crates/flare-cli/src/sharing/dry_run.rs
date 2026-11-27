@@ -3,13 +3,14 @@
 //! writes the HTML with `--out`. It makes no request and reads neither the
 //! saved login nor the Keychain.
 
-use super::{MAX_FILE, Outgoing};
+use super::outgoing::Outgoing;
+use super::{LocalImage, MAX_FILE};
 use crate::cli::ShareArgs;
 use crate::codes::{Failed, Refused, SharingFailed};
 use crate::documents::ShareOut;
 use crumbkit_durable::{Mode, write_atomically};
 use flare_core::{
-    ContentFormat, MAX_DOCUMENT, MAX_TITLE, Page, PageContent, PageName, ShareId, Slots,
+    ContentFormat, MAX_DOCUMENT, MAX_HTML, MAX_TITLE, Page, PageContent, PageName, ShareId, Slots,
 };
 use flare_server::{BodyRefused, check_share, check_version};
 
@@ -20,7 +21,9 @@ use flare_server::{BodyRefused, check_share, check_version};
 const PREVIEW_NAME: &str = "share";
 
 /// Checks and renders what `args` would send, and writes the HTML to
-/// `--out` when it is given.
+/// `--out` when it is given. For an HTML share, whose file `html` holds,
+/// the file already passed the server's checks when it was read, and
+/// `--out` writes it unchanged, as the server stores it.
 ///
 /// # Errors
 ///
@@ -30,7 +33,11 @@ pub(super) fn check(
     args: &ShareArgs,
     outgoing: Outgoing,
     images: usize,
+    html: Option<&LocalImage>,
 ) -> Result<ShareOut, Failed> {
+    if let Some(file) = html {
+        return check_html(args, outgoing, file);
+    }
     let ending = args
         .file
         .extension()
@@ -125,4 +132,45 @@ fn render(text: &str) -> Result<String, Failed> {
     flare_render::render_page(&page, &[])
         .map(flare_render::PageDocument::into_string)
         .map_err(|error| invalid(error.to_string()))
+}
+
+/// The dry run of an HTML share: its file was checked as the server checks
+/// it when the command read it, so this reports the checks and writes the
+/// file with `--out`.
+fn check_html(args: &ShareArgs, outgoing: Outgoing, file: &LocalImage) -> Result<ShareOut, Failed> {
+    let (id, title) = match outgoing {
+        Outgoing::Create(request) => (None, Some(request.title)),
+        Outgoing::Update(id, _) => {
+            let id = ShareId::try_from(id.as_str())
+                .map_err(|_| Refused::new(flare_contract::ApiCode::ShareNotFound, None, ""))?;
+            (Some(id.as_str().to_owned()), None)
+        }
+    };
+    let mut checks = vec![
+        "the ending names HTML, which the server serves from its content host".to_owned(),
+        format!(
+            "the file is {} bytes of UTF-8 text, within the {MAX_HTML} an HTML share holds",
+            file.bytes.len()
+        ),
+        "not checked: whether the server has a content host, which only the server knows"
+            .to_owned(),
+    ];
+    if let Some(path) = &args.out {
+        write_atomically(path, &file.bytes, Mode::Umask).map_err(|error| {
+            SharingFailed::FileUnwritable {
+                path: path.display().to_string(),
+                problem: error.to_string(),
+            }
+        })?;
+        checks.push(format!("wrote the file to {}", path.display()));
+    }
+    Ok(ShareOut {
+        id,
+        title,
+        version: None,
+        granted: None,
+        responds_to: None,
+        images: 0,
+        checks,
+    })
 }

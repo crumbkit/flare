@@ -21,6 +21,7 @@ pub struct Limits {
     /// `request::body_too_large`, read through `http_body_util::Limited`
     /// before any parsing, whose title names 4 MiB. Each image is also at
     /// most 5 MiB. The default is [`flare_core::MAX_UPLOAD_BYTES`], 4 MiB.
+    /// A form with an `html` part may carry 64 KiB more for its framing.
     pub upload_bytes: usize,
     /// How long the server waits for a request's header block, and then
     /// for its body. A slower body answers 408 `request::slow`; a slower

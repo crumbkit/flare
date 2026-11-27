@@ -12,11 +12,13 @@
 mod dry_run;
 mod grants;
 mod images;
+mod outgoing;
 mod shares;
 
 pub(crate) use grants::{grants, revoke};
 
-pub(crate) use images::LocalImage;
+pub(crate) use images::{LocalImage, Part};
+use outgoing::{Outgoing, outgoing};
 pub(crate) use shares::{row, shares};
 
 use crate::cli::{GrantArgs, ShareArgs, ShowArgs};
@@ -27,8 +29,7 @@ use crate::env::Snapshot;
 use crate::login::saved;
 use crate::{config, keychain, token_command};
 use flare_contract::{
-    ApiCode, Format, GrantRequest, OpenedShare, Role, ShareRequest, ShareSummary, Shared,
-    VersionRequest,
+    ApiCode, Format, GrantRequest, OpenedShare, Role, ShareSummary, Shared, VersionRequest,
 };
 use flare_core::{MAX_UPLOAD_BYTES, ShareId};
 use reqwest::Method;
@@ -151,6 +152,24 @@ fn format(path: &Path) -> Result<Format, Failed> {
     }
 }
 
+/// The bytes of the file at `path`, at most `limit` and one more, so that the
+/// caller sees a file over its limit as over it.
+fn read_bytes(path: &Path, limit: usize) -> Result<Vec<u8>, Failed> {
+    let unreadable = |error: std::io::Error| -> Failed {
+        SharingFailed::FileUnreadable {
+            path: path.display().to_string(),
+            problem: error.to_string(),
+        }
+        .into()
+    };
+    let file = std::fs::File::open(path).map_err(unreadable)?;
+    let mut bytes = Vec::new();
+    file.take(u64::try_from(limit).unwrap_or(u64::MAX) + 1)
+        .read_to_end(&mut bytes)
+        .map_err(unreadable)?;
+    Ok(bytes)
+}
+
 pub(crate) fn read_file(path: &Path, limit: u64) -> Result<String, Failed> {
     let unreadable = |problem: String| -> Failed {
         SharingFailed::FileUnreadable {
@@ -170,51 +189,6 @@ pub(crate) fn read_file(path: &Path, limit: u64) -> Result<String, Failed> {
     Ok(text)
 }
 
-/// What `flare share` sends: a new share, or the next version of one.
-enum Outgoing {
-    /// `POST /api/shares`.
-    Create(ShareRequest),
-    /// `POST /api/shares/{id}/versions`.
-    Update(String, VersionRequest),
-}
-
-/// The request that `args` describes, read from its file.
-fn outgoing(args: &ShareArgs) -> Result<Outgoing, Failed> {
-    let format = format(&args.file)?;
-    let content = read_file(&args.file, MAX_FILE)?;
-    if let Some(id) = &args.update {
-        return Ok(Outgoing::Update(
-            id.clone(),
-            VersionRequest { format, content },
-        ));
-    }
-    let title = args
-        .title
-        .clone()
-        .unwrap_or_else(|| title_of(&args.file, format, &content));
-    Ok(Outgoing::Create(ShareRequest {
-        title,
-        format,
-        content,
-        with: args.with.clone(),
-        re: args.re.clone(),
-    }))
-}
-
-/// The title of a new share given no `--title`: the text of a Markdown
-/// file's first level-one heading, or else the file name without its
-/// ending. An HTML file always takes its file name.
-fn title_of(path: &Path, format: Format, content: &str) -> String {
-    let heading = match format {
-        Format::Markdown => flare_render::first_heading(content),
-        Format::Html => None,
-    };
-    heading.unwrap_or_else(|| {
-        path.file_stem()
-            .map_or_else(String::new, |stem| stem.to_string_lossy().into_owned())
-    })
-}
-
 /// Runs `flare share`. A dry run checks and renders the file, and reads
 /// neither the saved login nor the Keychain.
 ///
@@ -226,10 +200,19 @@ pub(crate) async fn share(
     dry_run: bool,
     env: &Snapshot,
 ) -> Result<ShareOut, Failed> {
-    let outgoing = outgoing(args)?;
-    let images = images_of(args, &outgoing)?;
+    let (outgoing, html) = outgoing(args)?;
+    let images = match html {
+        Some(file) => vec![file],
+        None => images_of(args, &outgoing)?,
+    };
+    let sent_images = image_count(&images);
     if dry_run {
-        return dry_run::check(args, outgoing, images.len());
+        return dry_run::check(
+            args,
+            outgoing,
+            sent_images,
+            images.first().filter(|file| file.part == Part::Html),
+        );
     }
     let api = session(env)?;
     match outgoing {
@@ -245,11 +228,17 @@ pub(crate) async fn share(
                 version: Some(shared.share.version),
                 granted: Some(shared.granted),
                 responds_to: Some(shared.responds_to),
-                images: images.len(),
+                images: sent_images,
                 checks: Vec::new(),
             })
         }
     }
+}
+
+/// How many of `files` are images, which the command reports; the HTML file
+/// of an HTML share is not one.
+fn image_count(files: &[LocalImage]) -> usize {
+    files.iter().filter(|file| file.part == Part::Image).count()
 }
 
 /// Posts `request` to `target`: as JSON when there are no images, and as
@@ -287,7 +276,7 @@ async fn update(
         version: Some(share.version),
         granted: None,
         responds_to: None,
-        images: images.len(),
+        images: image_count(images),
         checks: Vec::new(),
     })
 }

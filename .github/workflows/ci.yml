@@ -227,7 +227,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - name: browsers
         working-directory: ui/flare
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium webkit
       - name: acceptance
         run: pnpm run acceptance
       # The comments journey runs against a flare-server test that starts
@@ -238,6 +238,14 @@ jobs:
         env:
           FLARE_REQUIRE_UI: "1"
           FLARE_COMMENTS_JOURNEY: ${{ github.workspace }}/ui/flare
+      # The HTML journey uploads a Compliance file that flightdeck built and
+      # checks that Chromium and WebKit draw it in the sandboxed frame.
+      - name: html journey
+        working-directory: .
+        run: cargo test --locked -p flare-server --test server a_flightdeck_compliance_file_draws
+        env:
+          FLARE_REQUIRE_UI: "1"
+          FLARE_HTML_JOURNEY: ${{ github.workspace }}/ui/flare
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

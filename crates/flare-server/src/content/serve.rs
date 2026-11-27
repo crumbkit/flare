@@ -30,7 +30,7 @@ fn refusal_policy(flare: &str) -> String {
 /// leaves the frame. `data:` images and fonts are the only other sources.
 fn page_policy(flare: &str) -> String {
     format!(
-        "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors {flare}; webrtc 'block'"
+        "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors {flare}"
     )
 }
 

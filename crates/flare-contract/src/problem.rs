@@ -189,7 +189,7 @@ codes! {
     HtmlNotUtf8 => ("flare::html::not_utf8", 422, "An uploaded HTML file must be valid UTF-8.",
         |_| hint("save the file as UTF-8 and share again")),
     HtmlNeedsForm => ("flare::html::needs_form", 415, "An HTML share is uploaded as a multipart form with an html part.",
-        |_| hint("share the file with flare share page.html, which sends the form")),
+        |_| hint("send the HTML file as a multipart form with an html part")),
     BadBody => ("flare::requests::bad_body", 400, "The request's body is not the JSON this route takes.",
         |_| hint("send the body that schema/flare-api.schema.json describes")),
     BadQuery => ("flare::requests::bad_query", 400, "The request's query is missing a value or holds a malformed one.",

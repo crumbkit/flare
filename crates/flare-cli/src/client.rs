@@ -237,7 +237,7 @@ pub(crate) fn boundary(share: &[u8], images: &[LocalImage]) -> String {
         .unwrap_or_default()
 }
 
-/// The form body of `share` and `images` with `boundary`. A filename
+/// The form body of `share` and `images`, each as the part its kind names, with `boundary`. A filename
 /// escapes a quote and a backslash with a backslash.
 pub(crate) fn form(boundary: &str, share: &[u8], images: &[LocalImage]) -> Vec<u8> {
     let mut body = format!(
@@ -249,7 +249,9 @@ pub(crate) fn form(boundary: &str, share: &[u8], images: &[LocalImage]) -> Vec<u
         let name = image.path.replace('\\', "\\\\").replace('"', "\\\"");
         body.extend_from_slice(
             format!(
-                "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+                "\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"{}\"; filename=\"{name}\"\r\nContent-Type: {}\r\n\r\n",
+                image.part.name(),
+                image.part.content_type(),
             )
             .as_bytes(),
         );
