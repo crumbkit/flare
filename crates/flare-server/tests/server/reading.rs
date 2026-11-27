@@ -79,6 +79,13 @@ async fn a_granted_reader_sees_the_latest_version_of_a_markdown_share() {
     );
     assert!(body.contains("BO</span></header>"), "{body}");
     assert!(body.contains("<figcaption>Figure 1. What happens to one sailing when a forecast arrives.</figcaption>"), "{body}");
+    // The drawing's box is named by the diagram's accDescr, the mockup's
+    // description of its branches, so a screen reader does not hear the
+    // caption twice.
+    assert!(
+        body.contains("<div class=\"dg\" role=\"img\" aria-label=\"Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master&#39;s review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.\""),
+        "{body}"
+    );
     assert!(body.contains("data-lang=\"rust\""), "{body}");
     for absent in ["Inbox", "Shared by me", "Search", "responses"] {
         assert!(!body.contains(absent), "{absent}");

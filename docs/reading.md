@@ -46,6 +46,11 @@ layout places nodes differently, and its edge labels and attributes are
   CSS variables, and the stylesheet sets them from flare's colour tokens in
   each scheme. Colours that a diagram's own `style` or `classDef` lines set
   stay as written in both schemes.
+- A screen reader hears the drawing named by the diagram's `accDescr`, or
+  its `accTitle` when it has no `accDescr`. Without either, the drawing is
+  named by its caption, or by its type, such as "flowchart diagram". Write
+  an `accDescr` that says what the diagram shows, so the reader does not
+  hear the caption twice.
 - A drawing wider than the column shrinks until its smallest text would
   fall under 10.5 px, and from there scrolls sideways in its box, which
   takes keyboard focus.

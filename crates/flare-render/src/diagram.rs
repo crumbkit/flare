@@ -108,6 +108,9 @@ pub(crate) enum Drawing {
         /// The narrowest the drawing's box may be, in CSS pixels, so its
         /// smallest text shows at 10.5 px or more.
         min_width: f64,
+        /// The drawing's accessible name from its source: its accDescr,
+        /// or its accTitle when it has no accDescr.
+        name: Option<String>,
     },
     /// limu could not parse or lay out the source; the text is limu's
     /// message.
@@ -132,10 +135,20 @@ pub(crate) fn draw(kind: Kind, source: &str) -> Drawing {
         ..Options::default()
     };
     match limu::layout(source, &options) {
-        Ok(scene) => {
+        Ok(mut scene) => {
+            // The page names the drawing's box, which is role="img" and so
+            // hides the SVG's own <title> and <desc>. limu leaves them out
+            // when the scene has none, so the SVG is the same with or
+            // without accTitle and accDescr.
+            let title = scene.title.take();
+            let name = scene.desc.take().or(title);
             let svg = svg::render(&scene, &theme::options());
             let min_width = min_width(scene.width, smallest_text(&svg));
-            Drawing::Drawn { svg, min_width }
+            Drawing::Drawn {
+                svg,
+                min_width,
+                name,
+            }
         }
         Err(error) => Drawing::Refused(error.to_string()),
     }

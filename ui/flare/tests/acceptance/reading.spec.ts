@@ -96,9 +96,10 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   const drawing = figure.locator(".dg svg");
   await expect(drawing).toHaveCount(1);
   await expect(drawing).toBeVisible();
-  await expect(figure.locator(".dg")).toHaveAttribute(
-    "aria-label",
-    "Figure 1. What happens to one sailing when a forecast arrives.",
+  // The box is named by the source's accDescr, the mockup's description of
+  // the branches, so a screen reader does not hear the caption twice.
+  await expect(figure.getByRole("img")).toHaveAccessibleName(
+    "Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master's review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.",
   );
   // Figure 1 draws the mockup's five nodes, and its 12 px edge labels show
   // at 10.5 px or more once the drawing is scaled into the column. On a

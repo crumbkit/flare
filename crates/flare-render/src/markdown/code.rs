@@ -43,12 +43,18 @@ impl Writer<'_> {
             return;
         }
         match diagram::draw(kind, source) {
-            Drawing::Drawn { svg, min_width } => {
+            Drawing::Drawn {
+                svg,
+                min_width,
+                name,
+            } => {
                 self.out.push_str(
                     "<figure class=\"diagram\" data-diagram=\"drawn\">\n<div class=\"scroll\" tabindex=\"0\">\n<div class=\"dg\" role=\"img\" aria-label=\"",
                 );
-                let label = self
-                    .caption_text()
+                // The source's accDescr or accTitle names the box; without
+                // either, the caption does, or else the diagram's type.
+                let label = name
+                    .or_else(|| self.caption_text())
                     .unwrap_or_else(|| format!("{} diagram", kind.word()));
                 escape_into(&mut self.out, &label);
                 // The box takes focus, so a keyboard can scroll a wide

@@ -134,3 +134,44 @@ fn a_page_whose_only_blocks_are_diagrams_needs_no_script() {
     let code = read(&format!("{}\n```rust\nfn x() {{}}\n```\n", fence(FIGURE_1)));
     assert!(code.has_diagrams() && code.has_code() && code.needs_script());
 }
+
+/// The accessible description of the signed mockup's Figure 1.
+const DESCRIPTION: &str = "Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master's review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.";
+
+#[test]
+fn an_accdescr_names_the_drawing_in_place_of_its_caption() {
+    let (first, rest) = FIGURE_1.split_once('\n').unwrap();
+    let source = format!("{first}\n  accTitle: A sailing\n  accDescr: {DESCRIPTION}\n{rest}");
+    let page = read(&format!(
+        "{}\nFigure 1. What happens to one sailing when a forecast arrives.\n",
+        fence(&source)
+    ));
+    let html = page.html().as_str();
+    let escaped = DESCRIPTION.replace('\'', "&#39;");
+    assert!(
+        html.contains(&format!(
+            "<div class=\"dg\" role=\"img\" aria-label=\"{escaped}\" style=\"min-width: 816px\"><svg "
+        )),
+        "{html}"
+    );
+    assert!(
+        html.contains(include_str!("diagrams/01-figure-1.svg")),
+        "{html}"
+    );
+    assert!(
+        !html.contains("<desc>") && !html.contains("<title>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn an_acctitle_names_the_drawing_when_there_is_no_accdescr() {
+    let page = read(&fence("pie\n  accTitle: Sailings by vessel\n  \"a\" : 1\n"));
+    assert!(
+        page.html()
+            .as_str()
+            .contains("<div class=\"dg\" role=\"img\" aria-label=\"Sailings by vessel\""),
+        "{}",
+        page.html().as_str()
+    );
+}

@@ -69,7 +69,7 @@ const FIXTURES: [(&str, Kind, &str); 11] = [
 /// not draw it.
 fn svg_of(kind: Kind, source: &str) -> (String, f64) {
     match draw(kind, source) {
-        Drawing::Drawn { svg, min_width } => (svg, min_width),
+        Drawing::Drawn { svg, min_width, .. } => (svg, min_width),
         other => panic!("not drawn: {other:?}"),
     }
 }
@@ -339,5 +339,46 @@ fn each_series_colour_meets_4_5_to_1_against_the_background_in_each_scheme() {
                 "{scheme} {token} {colour} is {ratio:.2}:1 against {background}"
             );
         }
+    }
+}
+
+/// The accessible description of the signed mockup's Figure 1.
+const FIGURE_1_DESCRIPTION: &str = "Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master's review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.";
+
+/// Figure 1's source with `line` added after its first line.
+fn figure_1_with(line: &str) -> String {
+    let (first, rest) = FIXTURES[0].2.split_once('\n').unwrap();
+    format!("{first}\n  {line}\n{rest}")
+}
+
+#[test]
+fn an_accdescr_names_the_drawing_and_leaves_its_svg_as_the_mockup_signed_it() {
+    let source = figure_1_with(&format!("accDescr: {FIGURE_1_DESCRIPTION}"));
+    match draw(Kind::Flowchart, &source) {
+        Drawing::Drawn { svg, name, .. } => {
+            assert_eq!(svg, include_str!("../../tests/diagrams/01-figure-1.svg"));
+            assert_eq!(name.as_deref(), Some(FIGURE_1_DESCRIPTION));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn an_acctitle_names_the_drawing_when_its_source_has_no_accdescr() {
+    let source = figure_1_with("accTitle: What happens to one sailing");
+    match draw(Kind::Flowchart, &source) {
+        Drawing::Drawn { svg, name, .. } => {
+            assert_eq!(svg, include_str!("../../tests/diagrams/01-figure-1.svg"));
+            assert_eq!(name.as_deref(), Some("What happens to one sailing"));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_drawing_whose_source_has_neither_accdescr_nor_acctitle_has_no_name_of_its_own() {
+    match draw(Kind::Flowchart, FIXTURES[0].2) {
+        Drawing::Drawn { name, .. } => assert_eq!(name, None),
+        other => panic!("{other:?}"),
     }
 }
