@@ -79,13 +79,23 @@ pub(crate) struct Shown {
     /// The share's latest version.
     #[row(column)]
     pub(crate) latest: u32,
-    /// The version's Markdown.
-    #[row(children(lines = content_lines, help = "The version's Markdown follows the share, one line of text for each line of the file."))]
+    /// The share's markup: `markdown`, or `html` for an uploaded HTML file.
+    #[row(column)]
+    pub(crate) format: String,
+    /// The version's Markdown. An HTML share's is empty, because the reading
+    /// page serves its file only in a sandboxed frame.
+    #[row(children(lines = content_lines, help = "The version's Markdown follows the share, one line of text for each line of the file. An HTML share prints a line that says so instead."))]
     pub(crate) content: String,
 }
 
-/// The lines of a shown version's Markdown.
+/// What `flare show` prints in place of an HTML share's empty Markdown.
+const HTML_NOTE: &str = "An HTML share: the reading page shows its file in a sandboxed frame.";
+
+/// The lines of a shown version's Markdown, or the note of an HTML share.
 fn content_lines(shown: &Shown) -> Vec<String> {
+    if shown.format == "html" {
+        return vec![HTML_NOTE.to_owned()];
+    }
     shown.content.lines().map(str::to_owned).collect()
 }
 
@@ -94,7 +104,7 @@ pub(crate) const SHOW: Document<Shown> = Document::new(
     "flare",
     "show",
     1,
-    "One version of a share the caller can open: its title, owner, the caller's role, its number and its Markdown.",
+    "One version of a share the caller can open: its title, owner, the caller's role, its number, its format and its Markdown.",
 );
 
 /// The document of `flare grant`.

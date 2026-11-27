@@ -4,7 +4,7 @@
 //! saved login nor the Keychain.
 
 use super::outgoing::Outgoing;
-use super::{LocalImage, MAX_FILE};
+use super::{LocalPart, MAX_FILE};
 use crate::cli::ShareArgs;
 use crate::codes::{Failed, Refused, SharingFailed};
 use crate::documents::ShareOut;
@@ -33,7 +33,7 @@ pub(super) fn check(
     args: &ShareArgs,
     outgoing: Outgoing,
     images: usize,
-    html: Option<&LocalImage>,
+    html: Option<&LocalPart>,
 ) -> Result<ShareOut, Failed> {
     if let Some(file) = html {
         return check_html(args, outgoing, file);
@@ -137,7 +137,7 @@ fn render(text: &str) -> Result<String, Failed> {
 /// The dry run of an HTML share: its file was checked as the server checks
 /// it when the command read it, so this reports the checks and writes the
 /// file with `--out`.
-fn check_html(args: &ShareArgs, outgoing: Outgoing, file: &LocalImage) -> Result<ShareOut, Failed> {
+fn check_html(args: &ShareArgs, outgoing: Outgoing, file: &LocalPart) -> Result<ShareOut, Failed> {
     let (id, title) = match outgoing {
         Outgoing::Create(request) => (None, Some(request.title)),
         Outgoing::Update(id, _) => {

@@ -519,6 +519,57 @@ fn a_content_origin_that_is_not_an_https_origin_or_names_the_site_itself_is_refu
     }
 }
 
+/// The refusal for a hosted config whose content origin is `address`.
+fn content_refusal(address: &str) -> String {
+    invalid(&hosted_with(&format!(
+        r#"{STORES},"content_origin":"{address}""#
+    )))
+}
+
+#[test]
+fn a_content_origin_on_the_site_host_with_another_port_is_refused() {
+    for address in [
+        "https://flare.example.com:8443",
+        "https://FLARE.example.com:8443",
+    ] {
+        let message = content_refusal(address);
+        assert!(
+            message.contains("hosted.content_origin"),
+            "{address}: {message}"
+        );
+        assert!(message.contains("separate domain"), "{address}: {message}");
+    }
+}
+
+#[test]
+fn a_content_origin_under_the_site_host_is_refused() {
+    let message = content_refusal("https://content.flare.example.com");
+    assert!(message.contains("hosted.content_origin"), "{message}");
+    assert!(message.contains("separate domain"), "{message}");
+}
+
+#[test]
+fn a_content_origin_above_the_site_host_is_refused() {
+    let message = content_refusal("https://example.com");
+    assert!(message.contains("hosted.content_origin"), "{message}");
+    assert!(message.contains("separate domain"), "{message}");
+}
+
+#[test]
+fn a_content_origin_whose_host_only_ends_with_the_site_host_text_is_read() {
+    let text = hosted_with(&format!(
+        r#"{STORES},"content_origin":"https://contentflare.example.com""#
+    ));
+    let Site::Hosted(hosted) = parse(&text).unwrap().site else {
+        panic!("a hosted config");
+    };
+    let origin = hosted.sharing.expect("the share API").content_origin;
+    assert_eq!(
+        origin.as_ref().map(PublicOrigin::as_str),
+        Some("https://contentflare.example.com")
+    );
+}
+
 #[test]
 fn a_content_origin_without_stores_is_refused_naming_hosted_stores() {
     let message = invalid(&hosted_with(

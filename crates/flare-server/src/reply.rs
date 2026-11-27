@@ -250,6 +250,12 @@ impl Reply {
 
 const PERMISSIONS_POLICY: HeaderName = HeaderName::from_static("permissions-policy");
 
+/// The content host's `Permissions-Policy`: an empty allowlist for each
+/// feature a page could use, so neither the uploaded page nor a frame
+/// inside it gets the feature. It names only features that Chromium
+/// recognises, since Chromium logs an error for any other name.
+const DENY_FEATURES: &str = "accelerometer=(), autoplay=(), camera=(), clipboard-read=(), clipboard-write=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=()";
+
 impl Reply {
     /// The response of the content host, with its policy, no cache, no
     /// referrer, no permission for any browser feature, a separate browsing
@@ -273,7 +279,7 @@ impl Reply {
         headers.insert(CACHE_CONTROL, HeaderValue::from_static(PRIVATE));
         headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
         headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
-        headers.insert(PERMISSIONS_POLICY, HeaderValue::from_static(""));
+        headers.insert(PERMISSIONS_POLICY, HeaderValue::from_static(DENY_FEATURES));
         headers.insert(COOP, HeaderValue::from_static("same-origin"));
         headers.insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
         response

@@ -17,7 +17,7 @@ mod shares;
 
 pub(crate) use grants::{grants, revoke};
 
-pub(crate) use images::{LocalImage, Part};
+pub(crate) use images::{LocalPart, Part};
 use outgoing::{Outgoing, outgoing};
 pub(crate) use shares::{row, shares};
 
@@ -42,7 +42,7 @@ const MAX_FILE: u64 = 4 * 1024 * 1024;
 
 /// The images of what `args` sends, refused when the form that carries
 /// them would be larger than the server reads.
-fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalImage>, Failed> {
+fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalPart>, Failed> {
     let (format, content) = match outgoing {
         Outgoing::Create(request) => (request.format, &request.content),
         Outgoing::Update(_, request) => (request.format, &request.content),
@@ -56,7 +56,7 @@ fn images_of(args: &ShareArgs, outgoing: &Outgoing) -> Result<Vec<LocalImage>, F
 /// larger than [`MAX_UPLOAD_BYTES`], the most the server reads, naming an
 /// image that alone passes it, or else the largest image. No images go
 /// as JSON, which this does not bound.
-fn fits(outgoing: &Outgoing, images: &[LocalImage]) -> Result<(), Failed> {
+fn fits(outgoing: &Outgoing, images: &[LocalPart]) -> Result<(), Failed> {
     let Some(largest) = images.iter().max_by_key(|image| image.bytes.len()) else {
         return Ok(());
     };
@@ -237,7 +237,7 @@ pub(crate) async fn share(
 
 /// How many of `files` are images, which the command reports; the HTML file
 /// of an HTML share is not one.
-fn image_count(files: &[LocalImage]) -> usize {
+fn image_count(files: &[LocalPart]) -> usize {
     files.iter().filter(|file| file.part == Part::Image).count()
 }
 
@@ -247,7 +247,7 @@ async fn sent<T: serde::de::DeserializeOwned>(
     api: &Api,
     target: &str,
     request: &impl serde::Serialize,
-    images: &[LocalImage],
+    images: &[LocalPart],
 ) -> Result<Option<T>, Failed> {
     if images.is_empty() {
         api.send(Method::POST, target, Some(request)).await
@@ -262,7 +262,7 @@ async fn update(
     api: &Api,
     id: &str,
     request: VersionRequest,
-    images: &[LocalImage],
+    images: &[LocalPart],
 ) -> Result<ShareOut, Failed> {
     let id = share_id(api, id)?;
     let target = format!("/api/shares/{}/versions", id.as_str());
@@ -302,8 +302,17 @@ pub(crate) async fn show(args: &ShowArgs, env: &Snapshot) -> Result<Shown, Faile
         role: role_name(opened.share.role).to_owned(),
         version: opened.version,
         latest: opened.share.version,
+        format: format_name(opened.share.format).to_owned(),
         content: opened.content,
     })
+}
+
+/// The name of `format` as `flare show` prints it.
+const fn format_name(format: Format) -> &'static str {
+    match format {
+        Format::Markdown => "markdown",
+        Format::Html => "html",
+    }
 }
 
 /// The name of `role` as the commands print it.

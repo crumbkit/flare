@@ -9,7 +9,7 @@
 //! images goes as a `multipart/form-data` body that [`form`] writes.
 
 use crate::codes::{Failed, NextRun, Refused, SharingFailed};
-use crate::sharing::LocalImage;
+use crate::sharing::LocalPart;
 use flare_contract::{ApiCode, ProblemDocument};
 use flare_server::{SERVER_BUSY, SERVER_DEADLINE, SERVER_FAULT};
 use reqwest::{Client, Method, StatusCode};
@@ -125,7 +125,7 @@ impl Api {
         method: Method,
         target: &str,
         share: &impl Serialize,
-        images: &[LocalImage],
+        images: &[LocalPart],
     ) -> Result<Option<T>, Failed> {
         let share = json(share)?;
         let boundary = boundary(&share, images);
@@ -224,7 +224,7 @@ fn json(body: &impl Serialize) -> Result<Vec<u8>, Failed> {
 
 /// A form boundary that appears in no part: `flare-form-` and the first
 /// number that gives one.
-pub(crate) fn boundary(share: &[u8], images: &[LocalImage]) -> String {
+pub(crate) fn boundary(share: &[u8], images: &[LocalPart]) -> String {
     let appears = |boundary: &str| {
         let needle = boundary.as_bytes();
         std::iter::once(share)
@@ -239,7 +239,7 @@ pub(crate) fn boundary(share: &[u8], images: &[LocalImage]) -> String {
 
 /// The form body of `share` and `images`, each as the part its kind names, with `boundary`. A filename
 /// escapes a quote and a backslash with a backslash.
-pub(crate) fn form(boundary: &str, share: &[u8], images: &[LocalImage]) -> Vec<u8> {
+pub(crate) fn form(boundary: &str, share: &[u8], images: &[LocalPart]) -> Vec<u8> {
     let mut body = format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"share\"\r\nContent-Type: application/json\r\n\r\n"
     )

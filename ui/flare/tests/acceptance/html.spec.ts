@@ -7,6 +7,9 @@ import { expect, type Page, test } from "@playwright/test";
 // scripts and loads nothing outside itself. A flare-server test in
 // crates/flare-server/tests/server/html.rs starts the server, uploads the
 // file and gives the origin, the reader's session cookie and the share's id.
+// After the file draws, the test runs probes as the file's own script: it
+// reads cookies, fetches from the site, posts a message to the reading page
+// and navigates its own frame to an outside origin.
 function setting(name: string): string {
   const value = process.env[name];
   if (value === undefined || value === "") throw new Error(`${name} is not set`);
@@ -96,4 +99,54 @@ test("an uploaded Compliance page draws in the sandboxed frame with no policy vi
 
   // The one violation after the file drew is the probe's own request.
   expect(violations).toEqual([`connect-src blocked ${origin}/api/shares?scope=mine`]);
+  violations.length = 0;
+
+  // A message from the file to the reading page changes nothing there:
+  // the reading page registers no message listener.
+  // The test's own listener, added after any of the page's, records when
+  // the message has been handled.
+  const before = await page.content();
+  await page.evaluate(() => {
+    window.addEventListener("message", () => Reflect.set(window, "probeMessaged", true));
+  });
+  await content.evaluate(() => {
+    window.parent.postMessage({ probe: "message" }, "*");
+  });
+  await page.waitForFunction(() => Reflect.get(window, "probeMessaged") === true);
+  expect(await page.content()).toBe(before);
+  expect(page.url()).toBe(`${origin}/s/${share}`);
+
+  // The file's script navigates its own frame to an outside origin. The
+  // frame's sandbox allows that, so the reading page's frame-src, which
+  // names only the content host, is what stops it. No request reaches the
+  // outside origin and the frame never shows it. WebKit leaves the frame on
+  // the content host; Chromium blocks the navigation by putting its own
+  // error page in the frame.
+  const host = new URL(content.url()).origin;
+  const outside = `http://elsewhere.localhost:${new URL(origin).port}`;
+  const reachedOutside: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().startsWith(outside)) reachedOutside.push(request.url());
+  });
+  const frameUrls: string[] = [];
+  page.on("framenavigated", (navigated) => {
+    if (navigated !== page.mainFrame()) frameUrls.push(navigated.url());
+  });
+  await content.evaluate((target) => {
+    window.location.href = `${target}/?data=probe`;
+  }, outside);
+  await expect.poll(() => violations).toEqual([`frame-src blocked ${outside}`]);
+  const landed = () =>
+    page
+      .frames()
+      .filter((each) => each !== page.mainFrame())
+      .map((each) => each.url());
+  if (browserName === "chromium") {
+    await expect.poll(landed).toEqual(["chrome-error://chromewebdata/"]);
+  } else {
+    expect(landed().map((url) => new URL(url).origin)).toEqual([host]);
+  }
+  expect(reachedOutside).toEqual([]);
+  expect(frameUrls.filter((url) => url.startsWith(outside))).toEqual([]);
+  expect(page.url()).toBe(`${origin}/s/${share}`);
 });

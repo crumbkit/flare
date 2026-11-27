@@ -72,7 +72,7 @@ example-precondition: flare share review.md --update 3f9c0a17e2b44d6f8a1c5b7e9d2
   Declares: The example runs only in a test run that provides server.
 
 children: flare show
-  Declares: The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file.
+  Declares: The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file. An HTML share prints a line that says so instead.
 
 example-precondition: flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
   Declares: The example runs only in a test run that provides server.

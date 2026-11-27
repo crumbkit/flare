@@ -19,7 +19,9 @@ runs in a sandboxed frame. flare stores the file unchanged.
   `flare::versions::kind_changed`.
 - A site with no `hosted.content_origin` refuses the upload with 422
   `flare::html::no_content_host`.
-- `GET /api/shares/<id>` for an HTML share answers an empty `content`.
+- `GET /api/shares/<id>` for an HTML share answers an empty `content`, so
+  `flare show` prints the format `html` and a line that says the reading
+  page shows the file in a sandboxed frame, in place of the Markdown.
 
 ## Reading
 
@@ -43,9 +45,11 @@ runs in a sandboxed frame. flare stores the file unchanged.
 - Each request checks that the viewer may still read the share. A revoked
   viewer, a missing version and a missing file all get the same 404.
 - The reply is `text/html; charset=utf-8` with `nosniff`, `Cache-Control:
-  private, no-store`, `Referrer-Policy: no-referrer`, an empty
-  `Permissions-Policy`, and a Content-Security-Policy that begins `sandbox
-  allow-scripts` with `default-src 'none'`, inline script and style, `data:`
+  private, no-store`, `Referrer-Policy: no-referrer`, a `Permissions-Policy`
+  that gives an empty allowlist to each of 20 features, such as `camera=()`
+  and `sync-xhr=()`, `Cross-Origin-Opener-Policy: same-origin`,
+  `Strict-Transport-Security`, and a Content-Security-Policy that begins
+  `sandbox allow-scripts` with `default-src 'none'`, inline script and style, `data:`
   images and fonts, `connect-src 'none'` and `frame-ancestors <site origin>`.
   It sets no cookie and no CORS header, and reads no cookie.
 - The access log names the route `/v/{token}`, never the token.

@@ -314,10 +314,11 @@ flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
 - `role`: The caller's role: `owner`, `admin` or `reader`.
 - `version`: The version whose content this holds.
 - `latest`: The share's latest version.
+- `format`: The share's markup: `markdown`, or `html` for an uploaded HTML file.
 
 Effects: read-only, closed-world.
 
-Children: The version's Markdown follows the share, one line of text for each line of the file.
+Children: The version's Markdown follows the share, one line of text for each line of the file. An HTML share prints a line that says so instead.
 
 ## `flare grant`
 

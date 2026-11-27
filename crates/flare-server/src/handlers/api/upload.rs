@@ -59,7 +59,8 @@ fn json_of<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, Refusal> {
     })
 }
 
-/// The bytes of the HTML file that a form carries, with any filename.
+/// Whether `part` is the form's `html` part, which holds the file of an
+/// HTML share under any filename.
 fn is_html(part: &Part) -> bool {
     part.name == "html"
 }

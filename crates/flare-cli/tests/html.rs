@@ -169,3 +169,47 @@ fn a_dry_run_of_an_html_file_checks_it_and_writes_it_unchanged_with_out() {
     home.sharing(&["share", bad.to_str().unwrap(), "--dry-run"])
         .assert_failed("flare::shares::invalid");
 }
+
+#[test]
+fn show_of_an_html_share_says_it_is_html_and_where_it_is_read_instead_of_an_empty_markdown_body() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let path = format!("/api/shares/{FLARE}");
+    let opened = json!({"share": summary(1), "version": 1, "content": ""});
+    api.route("GET", &path, 200, &opened);
+    api.route("GET", &path, 200, &opened);
+    let ran = home.sharing(&["show", FLARE, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["data"]["format"], "html", "{}", ran.all());
+    assert_eq!(printed["data"]["content"], "");
+    let human = home.sharing(&["show", FLARE]);
+    human.assert_ok();
+    assert!(human.stdout.contains("html"), "{}", human.all());
+    assert!(
+        human
+            .stdout
+            .contains("An HTML share: the reading page shows its file in a sandboxed frame."),
+        "{}",
+        human.all()
+    );
+}
+
+#[test]
+fn show_of_a_markdown_share_names_its_format_and_prints_the_markdown() {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let path = format!("/api/shares/{FLARE}");
+    let mut share = summary(1);
+    share["format"] = json!("markdown");
+    let opened = json!({"share": share, "version": 1, "content": "# Plan\n"});
+    api.route("GET", &path, 200, &opened);
+    api.route("GET", &path, 200, &opened);
+    let ran = home.sharing(&["show", FLARE, "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["data"]["format"], "markdown", "{}", ran.all());
+    let human = home.sharing(&["show", FLARE]);
+    assert!(human.stdout.contains("# Plan"), "{}", human.all());
+    assert!(!human.stdout.contains("An HTML share"), "{}", human.all());
+}

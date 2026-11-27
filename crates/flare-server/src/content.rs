@@ -117,8 +117,11 @@ pub struct ContentHost {
 
 impl ContentHost {
     /// The content host at `origin`, whose view tokens are sealed under keys
-    /// from `keys`. `origin` must differ from the site's own origin in its
-    /// host, so a browser gives the two separate storage.
+    /// from `keys`. `origin` must be on a separate domain from the site's
+    /// own origin, as [`PublicOrigin::is_separate_domain_from`] checks, so a
+    /// browser gives the two separate storage and sends the site's cookies
+    /// to neither the frame nor the content host. The config reader checks
+    /// this; this function does not.
     #[must_use]
     pub fn new(origin: PublicOrigin, keys: impl SealingKeys + 'static) -> Self {
         Self {

@@ -1,10 +1,10 @@
 //! Unit tests of the form body a share with images is sent as.
 
 use super::{boundary, form};
-use crate::sharing::{LocalImage, Part};
+use crate::sharing::{LocalPart, Part};
 
-fn image(path: &str, bytes: &[u8]) -> LocalImage {
-    LocalImage {
+fn image(path: &str, bytes: &[u8]) -> LocalPart {
+    LocalPart {
         part: Part::Image,
         path: path.to_owned(),
         bytes: bytes.to_vec(),
@@ -45,7 +45,7 @@ fn the_boundary_is_one_that_no_part_holds() {
 
 #[test]
 fn an_html_file_is_the_part_named_html_with_the_content_type_text_html() {
-    let file = LocalImage {
+    let file = LocalPart {
         part: Part::Html,
         path: "plan.html".to_owned(),
         bytes: b"<p>x</p>".to_vec(),

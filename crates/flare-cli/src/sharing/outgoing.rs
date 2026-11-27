@@ -1,7 +1,7 @@
 //! What `flare share` sends: the request that its file describes, and for an
 //! HTML file the file itself as the part that carries it.
 
-use super::{LocalImage, MAX_FILE, Part, format, read_bytes, read_file};
+use super::{LocalPart, MAX_FILE, Part, format, read_bytes, read_file};
 use crate::cli::ShareArgs;
 use crate::codes::{Failed, Refused};
 use flare_contract::{Format, ShareRequest, VersionRequest};
@@ -21,7 +21,7 @@ pub(super) enum Outgoing {
 /// file the file itself as the part that carries it. An HTML file is
 /// checked here with the checks the server applies, so a dry run and a
 /// real run refuse it alike, before any request.
-pub(super) fn outgoing(args: &ShareArgs) -> Result<(Outgoing, Option<LocalImage>), Failed> {
+pub(super) fn outgoing(args: &ShareArgs) -> Result<(Outgoing, Option<LocalPart>), Failed> {
     let format = format(&args.file)?;
     if format == Format::Html {
         return outgoing_html(args);
@@ -51,7 +51,7 @@ pub(super) fn outgoing(args: &ShareArgs) -> Result<(Outgoing, Option<LocalImage>
 
 /// The request for the HTML file of `args`: the share part names the format
 /// and holds no content, and the file travels as the `html` part.
-fn outgoing_html(args: &ShareArgs) -> Result<(Outgoing, Option<LocalImage>), Failed> {
+fn outgoing_html(args: &ShareArgs) -> Result<(Outgoing, Option<LocalPart>), Failed> {
     let bytes = read_bytes(&args.file, MAX_HTML)?;
     let name = args
         .file
@@ -85,7 +85,7 @@ fn outgoing_html(args: &ShareArgs) -> Result<(Outgoing, Option<LocalImage>), Fai
         check_html_share(&request, &bytes).map_err(refused)?;
         Outgoing::Create(request)
     };
-    let file = LocalImage {
+    let file = LocalPart {
         part: Part::Html,
         path: name,
         bytes,

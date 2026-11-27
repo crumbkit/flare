@@ -181,11 +181,17 @@ The share API lets people share Markdown files with named people from the
   address and counts no clicks.
 - `content_origin` is the https origin of the content host, which serves the
   HTML file of an uploaded HTML share to a frame of the reading page
-  ([html.md](html.md)). It must differ from `origin`, and the deployment
-  should give it a registrable domain other than the site's, because the
-  browser then keeps the uploaded page's storage and cookies apart from
-  the site's even if a sandbox is ever misapplied. flare checks only that
-  the two origins differ. The deployment supplies a hostname, a TLS
+  ([html.md](html.md)). It must be on a separate domain from `origin`:
+  flare refuses a `content_origin` whose host is `origin`'s host on any
+  port, a name under that host (`content.flare.example.com` beside
+  `flare.example.com`) or a name that host is under (`example.com`). The
+  deployment should give it a registrable domain other than the site's,
+  such as `flareusercontent.com`, because the browser then keeps the
+  uploaded page's storage and cookies apart from the site's even if a
+  sandbox is ever misapplied. flare cannot refuse two sibling names under
+  one registrable domain, such as `content.example.com` beside
+  `flare.example.com`, because that needs the Public Suffix List, so the
+  operator must avoid that shape. The deployment supplies a hostname, a TLS
   certificate and a route that sends both hostnames to the same listener.
   Without `content_origin`, an HTML upload is refused with 422
   `flare::html::no_content_host`. `content_origin` without `stores` is

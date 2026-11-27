@@ -161,16 +161,7 @@ pub(crate) fn sharing(
             "hosted.get_flare must be an https URL with a host, such as the project page that readers go to to get Flare".to_owned()
         })?;
     let content_origin = content_origin
-        .map(|text| {
-            PublicOrigin::try_from(text.as_str())
-                .ok()
-                .filter(|content| content.as_str() != origin.as_str())
-        })
-        .map(|parsed| {
-            parsed.ok_or_else(|| {
-                "hosted.content_origin must be an https origin with a host, such as https://content.example.com, that differs from hosted.origin".to_owned()
-            })
-        })
+        .map(|text| content_origin_from(&text, origin))
         .transpose()?;
     Ok(Some(Sharing {
         stores,
@@ -182,6 +173,19 @@ pub(crate) fn sharing(
         content_origin,
         teams,
     }))
+}
+
+/// The content origin that `text` names, which must be an https origin on
+/// a separate domain from the site's `origin`.
+fn content_origin_from(text: &str, origin: &PublicOrigin) -> Result<PublicOrigin, String> {
+    let content = PublicOrigin::try_from(text).map_err(|_| {
+        "hosted.content_origin must be an https origin with a host, such as https://usercontent.example.org".to_owned()
+    })?;
+    if content.is_separate_domain_from(origin) {
+        Ok(content)
+    } else {
+        Err("hosted.content_origin must be on a separate domain from hosted.origin: its host may not be hosted.origin's host on any port, a name under it, or a name it is under".to_owned())
+    }
 }
 
 fn creators_from(value: &Value, kind: IdentityKind) -> Result<HostedCreators, String> {

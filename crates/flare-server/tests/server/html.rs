@@ -37,7 +37,12 @@ async fn upload(api: &Api, token: &str, body: Vec<u8>) -> Reply {
 
 /// The path of the framed view in the reading page `body`.
 fn frame_src(body: &str) -> String {
-    let start = body.find("src=\"").expect("the page frames the file") + 5;
+    let frame = body.find("<iframe").expect("the page frames the file");
+    let start = frame
+        + body[frame..]
+            .find("src=\"")
+            .expect("the frame has a source")
+        + 5;
     let end = start + body[start..].find('"').unwrap();
     body[start..end].replace("&amp;", "&")
 }
@@ -73,6 +78,71 @@ fn framed(api: &Api, path: &str) -> crate::harness::Call {
         .header("Sec-Fetch-Dest", "iframe")
 }
 
+/// The features that the content host's `Permissions-Policy` denies to
+/// the uploaded page and to any frame inside it.
+const DENIED_FEATURES: [&str; 20] = [
+    "accelerometer",
+    "autoplay",
+    "camera",
+    "clipboard-read",
+    "clipboard-write",
+    "display-capture",
+    "encrypted-media",
+    "fullscreen",
+    "geolocation",
+    "gyroscope",
+    "magnetometer",
+    "microphone",
+    "midi",
+    "payment",
+    "picture-in-picture",
+    "publickey-credentials-get",
+    "screen-wake-lock",
+    "sync-xhr",
+    "usb",
+    "web-share",
+];
+
+/// Checks the headers every content reply carries, whatever its status:
+/// `content_type`, the policy that `csp_start` begins, no cache, no
+/// referrer, no browser feature, its own browsing context group, HSTS, and
+/// no frame refusal, cookie or CORS header.
+fn assert_content_headers(api: &Api, reply: &Reply, content_type: &str, csp_start: &str) {
+    assert_eq!(reply.header("content-type"), Some(content_type));
+    assert_eq!(reply.header("x-content-type-options"), Some("nosniff"));
+    assert_eq!(reply.header("cache-control"), Some("private, no-store"));
+    assert_eq!(reply.header("referrer-policy"), Some("no-referrer"));
+    assert_eq!(
+        reply.header("cross-origin-opener-policy"),
+        Some("same-origin")
+    );
+    assert_eq!(
+        reply.header("strict-transport-security"),
+        Some("max-age=63072000")
+    );
+    let permissions = reply.header("permissions-policy").unwrap();
+    let denied: Vec<String> = DENIED_FEATURES
+        .iter()
+        .map(|feature| format!("{feature}=()"))
+        .collect();
+    assert_eq!(permissions, denied.join(", "));
+    assert_eq!(reply.header("x-frame-options"), None);
+    assert_eq!(reply.header("set-cookie"), None);
+    assert_eq!(reply.header("access-control-allow-origin"), None);
+    let csp = reply.header("content-security-policy").unwrap();
+    assert!(csp.starts_with(csp_start), "{csp}");
+    assert!(
+        csp.ends_with(&format!(
+            "frame-ancestors http://localhost:{}",
+            api.hosted.port
+        )),
+        "{csp}"
+    );
+}
+
+/// The start of the policy of a refusal that the frame shows.
+const REFUSAL_POLICY: &str = "default-src 'none'; sandbox;";
+
 #[tokio::test]
 async fn a_reader_sees_the_uploaded_page_in_a_sandboxed_frame_and_the_content_host_serves_it() {
     let api = Api::start_with_content_host().await;
@@ -96,26 +166,14 @@ async fn a_reader_sees_the_uploaded_page_in_a_sandboxed_frame_and_the_content_ho
     let served = framed(&api, &content_path(&src)).send().await;
     assert_eq!(served.status, 200, "{}", served.body);
     assert_eq!(served.body, PAGE);
-    assert_eq!(
-        served.header("content-type"),
-        Some("text/html; charset=utf-8")
+    assert_content_headers(
+        &api,
+        &served,
+        "text/html; charset=utf-8",
+        "sandbox allow-scripts; default-src 'none'",
     );
-    assert_eq!(served.header("x-content-type-options"), Some("nosniff"));
-    assert_eq!(served.header("cache-control"), Some("private, no-store"));
-    assert_eq!(served.header("referrer-policy"), Some("no-referrer"));
-    assert_eq!(served.header("x-frame-options"), None);
-    assert_eq!(served.header("set-cookie"), None);
-    assert_eq!(served.header("access-control-allow-origin"), None);
     let csp = served.header("content-security-policy").unwrap();
-    assert!(
-        csp.starts_with("sandbox allow-scripts; default-src 'none'"),
-        "{csp}"
-    );
     assert!(csp.contains("connect-src 'none'"));
-    assert!(csp.contains(&format!(
-        "frame-ancestors http://localhost:{}",
-        api.hosted.port
-    )));
 }
 
 #[tokio::test]
@@ -142,7 +200,9 @@ async fn a_view_token_expires_after_its_lifetime_with_a_410() {
     api.hosted.time.advance(Duration::from_secs(300));
     assert_eq!(framed(&api, &path).send().await.status, 200);
     api.hosted.time.advance(Duration::from_secs(400));
-    assert_eq!(framed(&api, &path).send().await.status, 410);
+    let gone = framed(&api, &path).send().await;
+    assert_eq!(gone.status, 410);
+    assert_content_headers(&api, &gone, "text/plain; charset=utf-8", REFUSAL_POLICY);
 }
 
 #[tokio::test]
@@ -154,6 +214,7 @@ async fn a_forged_token_and_an_unknown_path_get_a_plain_404() {
     for bad in [forged.as_str(), "/v/1.not-a-token", "/other", "/"] {
         let reply = framed(&api, bad).send().await;
         assert_eq!(reply.status, 404, "{bad}");
+        assert_content_headers(&api, &reply, "text/plain; charset=utf-8", REFUSAL_POLICY);
     }
     assert_eq!(framed(&api, &path).send().await.status, 200);
 }

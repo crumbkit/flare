@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flare/show/v1",
-  "description": "One version of a share the caller can open: its title, owner, the caller's role, its number and its Markdown.",
+  "description": "One version of a share the caller can open: its title, owner, the caller's role, its number, its format and its Markdown.",
   "type": "object",
   "properties": {
     "data": {
@@ -26,7 +26,11 @@
       "type": "object",
       "properties": {
         "content": {
-          "description": "The version's Markdown.",
+          "description": "The version's Markdown. An HTML share's is empty, because the reading\npage serves its file only in a sandboxed frame.",
+          "type": "string"
+        },
+        "format": {
+          "description": "The share's markup: `markdown`, or `html` for an uploaded HTML file.",
           "type": "string"
         },
         "id": {
@@ -65,6 +69,7 @@
         "role",
         "version",
         "latest",
+        "format",
         "content"
       ]
     }

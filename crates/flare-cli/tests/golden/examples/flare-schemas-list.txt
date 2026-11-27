@@ -7,7 +7,7 @@ flare/bind/v1            output  document  The binding that was saved and the pa
 flare/login/v1           output  document  The server, the person and the label of the token that the Keychain now holds.
 flare/logout/v1          output  document  The server and the label of the token that was revoked and deleted, and whether one was.
 flare/share/v1           output  document  The share, its latest version, the people it is granted to and the flares it responds to, or what a dry run checked.
-flare/show/v1            output  document  One version of a share the caller can open: its title, owner, the caller's role, its number and its Markdown.
+flare/show/v1            output  document  One version of a share the caller can open: its title, owner, the caller's role, its number, its format and its Markdown.
 flare/grant/v1           output  document  The share, the people this grant added and the flares it now responds to.
 flare/revoke/v1          output  document  The share and the grants this command ended.
 flare/grants/v1          output  document  The grants of a share to people, teams and everyone, dormant grants of teams being deleted first.
