@@ -458,15 +458,12 @@ async fn a_non_creator_gets_not_a_creator_for_a_share_and_a_response_and_a_creat
 }
 
 #[tokio::test]
-async fn html_is_refused_as_a_kind_not_served_and_markdown_is_served() {
+async fn html_sent_as_json_is_refused_as_needing_a_form_and_markdown_is_served() {
     let api = Api::start().await;
     let alice = api.token_for("alice").await;
     let html = json!({"title": "Page", "format": "html", "content": "<p>x</p>"});
     let (status, body) = api.json("POST", "/api/shares", Some(&alice), html).await;
-    assert_eq!(
-        (status, code(&body)),
-        (415, "flare::shares::kind_not_served")
-    );
+    assert_eq!((status, code(&body)), (415, "flare::html::needs_form"));
     api.share(&alice, "Page", &[], &[]).await;
 }
 

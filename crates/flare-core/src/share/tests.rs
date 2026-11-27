@@ -1,6 +1,8 @@
 //! Unit tests of the share types.
 
-use super::{DocumentText, HtmlFile, MAX_HTML, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion};
+use super::{
+    DocumentText, HtmlFile, MAX_HTML, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion,
+};
 use super::{NewShare, NewVersion, Share, SharedVersion};
 use crate::error::{ParseError, Subject};
 use crate::name::PrincipalId;

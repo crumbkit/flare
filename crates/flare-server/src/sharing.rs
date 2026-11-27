@@ -27,6 +27,7 @@ mod convert;
 mod files;
 mod grants;
 mod list;
+mod open;
 mod read;
 mod run;
 mod search;
@@ -50,8 +51,8 @@ use flare_contract::{
     NewComment, RevokeRequest, ShareRequest, TeamRequest, TransferRequest, VersionRequest,
 };
 use flare_core::{
-    Admission, AllAdmitted, DocumentText, Flares, ListKey, MailDomain, NoTeams, Principal,
-    ShareTitle, ShareVersion, StoredFile, Timestamp,
+    Admission, AllAdmitted, DocumentText, Flares, ListKey, MAX_HTML, MailDomain, NoTeams,
+    Principal, ShareTitle, ShareVersion, StoredFile, Timestamp,
 };
 use secrecy::SecretString;
 use std::fmt;
@@ -225,7 +226,7 @@ impl From<BodyRefused> for Refusal {
 ///
 /// # Errors
 ///
-/// Returns `flare::shares::kind_not_served` for HTML,
+/// Returns `flare::html::needs_form` for HTML,
 /// `flare::shares::too_large` for content over 256 KiB, and
 /// `flare::shares::invalid` with a detail for any other title or content
 /// that its type refuses.
@@ -247,15 +248,88 @@ pub fn check_version(request: &VersionRequest) -> Result<DocumentText, BodyRefus
     DocumentText::try_from(request.content.as_str()).map_err(|e| content_error(&e))
 }
 
-/// Refuses a format the server does not serve.
+/// Refuses a format that a JSON body cannot carry: an HTML share is sent as
+/// a multipart form with its file in the `html` part.
 fn served(format: Format) -> Result<(), BodyRefused> {
     match format {
         Format::Markdown => Ok(()),
         Format::Html => Err(BodyRefused {
-            code: ApiCode::KindNotServed,
+            code: ApiCode::HtmlNeedsForm,
             detail: None,
         }),
     }
+}
+
+/// The checks an HTML file passes before any store call: it is not empty,
+/// at most [`MAX_HTML`] bytes and valid UTF-8, in that order. The server
+/// stores its bytes unchanged.
+///
+/// # Errors
+///
+/// Returns `flare::shares::invalid` for an empty file,
+/// `flare::html::too_large` for a file over 4 MiB and `flare::html::not_utf8`
+/// for any other text encoding.
+pub fn check_html(bytes: &[u8]) -> Result<(), BodyRefused> {
+    let refused = |code, detail: Option<&str>| BodyRefused {
+        code,
+        detail: detail.map(str::to_owned),
+    };
+    if bytes.is_empty() {
+        return Err(refused(
+            ApiCode::ShareInvalid,
+            Some("the HTML file is empty"),
+        ));
+    }
+    if bytes.len() > MAX_HTML {
+        return Err(refused(ApiCode::HtmlTooLarge, None));
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(_) => Ok(()),
+        Err(error) => Err(BodyRefused {
+            code: ApiCode::HtmlNotUtf8,
+            detail: Some(format!(
+                "the file is not UTF-8 after byte {}",
+                error.valid_up_to()
+            )),
+        }),
+    }
+}
+
+/// The checks a create of an HTML share applies before any store call: the
+/// share part says `html` with no content, then the title, then the file.
+///
+/// # Errors
+///
+/// Returns the refusals of [`check_html`] and the title's of
+/// [`check_share`].
+pub fn check_html_share(request: &ShareRequest, bytes: &[u8]) -> Result<ShareTitle, BodyRefused> {
+    check_html_part(request.format, &request.content)?;
+    let title = ShareTitle::try_from(request.title.as_str()).map_err(|e| content_error(&e))?;
+    check_html(bytes)?;
+    Ok(title)
+}
+
+/// The checks a new HTML version applies before any store call.
+///
+/// # Errors
+///
+/// Returns the refusals of [`check_html`].
+pub fn check_html_version(request: &VersionRequest, bytes: &[u8]) -> Result<(), BodyRefused> {
+    check_html_part(request.format, &request.content)?;
+    check_html(bytes)
+}
+
+/// The share part of an HTML form says `html` and holds no Markdown.
+fn check_html_part(format: Format, content: &str) -> Result<(), BodyRefused> {
+    if format == Format::Html && content.is_empty() {
+        return Ok(());
+    }
+    Err(BodyRefused {
+        code: ApiCode::BadBody,
+        detail: Some(
+            "a form with an html part names the format html and an empty content".to_owned(),
+        ),
+    })
 }
 
 impl From<ApiCode> for Refusal {
@@ -294,7 +368,7 @@ pub(crate) struct Count {
     pub(crate) replies: u32,
 }
 
-/// One version of a Markdown share, as the reading page shows it.
+/// One version of a share, as the reading page shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Reading {
     /// The share's id, which the comments section reads its thread by.
@@ -316,8 +390,11 @@ pub(crate) struct Reading {
     pub(crate) version: u32,
     /// When the version was published, in seconds since 1970.
     pub(crate) published: u64,
-    /// The version's Markdown.
+    /// The version's Markdown, empty for an HTML share.
     pub(crate) markdown: String,
+    /// Whether the version is an uploaded HTML file, which the page shows
+    /// in a frame from the content host.
+    pub(crate) html: bool,
     /// Where the page loads each image the version lists.
     pub(crate) images: flare_render::ImageSources,
     /// The get flare address the page's foot links to, for a reader who
@@ -389,6 +466,16 @@ pub(crate) trait Api: Send + Sync {
         id: &'a str,
         version: &'a str,
         file: &'a str,
+    ) -> Boxed<'a, Result<StoredFile, ReadRefusal>>;
+
+    /// The HTML file of version `version` of share `id`, for a viewer whom
+    /// the site's admit rule still admits and who may open that version.
+    /// The content host reads it for a view token.
+    fn html<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: u32,
     ) -> Boxed<'a, Result<StoredFile, ReadRefusal>>;
 }
 

@@ -150,7 +150,7 @@ async fn html_an_empty_body_and_an_oversized_body_are_refused_and_store_nothing(
         (
             json!({"format": "html", "content": "<p>x</p>"}),
             415,
-            "flare::shares::kind_not_served",
+            "flare::html::needs_form",
         ),
         (version_body(""), 400, "flare::shares::invalid"),
         (

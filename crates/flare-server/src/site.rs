@@ -228,7 +228,7 @@ impl PublicOrigin {
         })
     }
 
-    /// Admits `http://localhost:<port>`, for tests that serve a hosted site
+    /// Admits `http://localhost:<port>` and `http://<name>.localhost:<port>`, for tests that serve a hosted site
     /// without TLS. `flare serve` never enables the `testing` feature, and
     /// no config key reaches this.
     ///
@@ -240,7 +240,11 @@ impl PublicOrigin {
         let origin = Self::parse(text, "http")?;
         let host = Url::parse(text).map_err(|_| OriginError::NotAnOrigin)?;
         match host.host() {
-            Some(url::Host::Domain("localhost")) => Ok(origin),
+            Some(url::Host::Domain(name))
+                if name == "localhost" || name.ends_with(".localhost") =>
+            {
+                Ok(origin)
+            }
             _ => Err(OriginError::NotAnOrigin),
         }
     }

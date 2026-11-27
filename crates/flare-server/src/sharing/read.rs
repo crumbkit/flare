@@ -123,8 +123,10 @@ where
             .transpose()?;
         let shares = self.flares.shares();
         let opened = shares.open(who, &id, number).await.map_err(refused)?;
-        let ShareContent::Document(text) = opened.version.content() else {
-            return Err(ReadRefusal::NotFound);
+        let (markdown, html) = match opened.version.content() {
+            ShareContent::Document(text) => (text.as_str().to_owned(), false),
+            ShareContent::Html(_) => (String::new(), true),
+            _ => return Err(ReadRefusal::NotFound),
         };
         let with = match opened.standing {
             Standing::Owner | Standing::Admin => Some(
@@ -147,7 +149,8 @@ where
             with,
             version: opened.version.number().get(),
             published: opened.version.created().as_secs(),
-            markdown: text.as_str().to_owned(),
+            markdown,
+            html,
             images: image_sources(&id, &opened.version),
             badge: self.badge(who, opened.standing).await,
         })

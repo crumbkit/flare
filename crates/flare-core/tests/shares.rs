@@ -979,7 +979,8 @@ fn a_reader_reads_the_html_file_of_a_version_and_every_other_read_is_not_found()
     let page = FileId::from_random([4; 16]);
     let html = ShareContent::Html(HtmlFile::new(page.clone(), 5).unwrap());
     block_on(shares.create(&alice(), id(1), title(), html, at(1))).unwrap();
-    block_on(shares.publish(&alice(), &id(1), doc("# Two\n"), at(2))).unwrap();
+    let second = ShareContent::Html(HtmlFile::new(FileId::from_random([5; 16]), 5).unwrap());
+    block_on(shares.publish(&alice(), &id(1), second, at(2))).unwrap();
     grant(&shares, &alice(), "bob@example.com", Role::Reader);
     let files = MemoryFileStore::new();
     let media = MediaType::try_from("text/html").unwrap();
@@ -1019,4 +1020,18 @@ fn a_revoked_reader_no_longer_reads_the_html_file() {
         block_on(shares.html_file(&bob, &files, &id(1), ShareVersion::first())).unwrap_err(),
         ShareError::NotFound
     );
+}
+
+#[test]
+fn a_version_must_hold_the_kind_of_content_that_its_share_holds() {
+    let shares = memory();
+    let page = ShareContent::Html(HtmlFile::new(FileId::from_random([4; 16]), 5).unwrap());
+    block_on(shares.create(&alice(), id(1), title(), doc("# One\n"), at(1))).unwrap();
+    block_on(shares.create(&alice(), id(2), title(), page.clone(), at(1))).unwrap();
+    let wrong = block_on(shares.publish(&alice(), &id(1), page, at(2)));
+    assert_eq!(wrong.unwrap_err(), ShareError::KindChanged);
+    let wrong = block_on(shares.publish(&alice(), &id(2), doc("# Two\n"), at(2)));
+    assert_eq!(wrong.unwrap_err(), ShareError::KindChanged);
+    let right = block_on(shares.publish(&alice(), &id(1), doc("# Two\n"), at(3)));
+    assert_eq!(right.unwrap(), ShareVersion::try_from(2).unwrap());
 }

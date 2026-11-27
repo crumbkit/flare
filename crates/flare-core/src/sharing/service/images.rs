@@ -49,7 +49,10 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         at: Timestamp,
     ) -> Result<ShareVersion, ShareError> {
         let actor = self.actor(who)?;
-        self.admit(&actor, id, ShareAction::Publish).await?;
+        let (share, _) = self.admit(&actor, id, ShareAction::Publish).await?;
+        if share.kind() != content.kind() {
+            return Err(ShareError::KindChanged);
+        }
         let version = NewVersion::new(content, actor.id, at).with_images(images);
         Ok(self.shares.publish(id, version).await?)
     }

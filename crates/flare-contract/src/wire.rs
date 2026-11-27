@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 pub enum Format {
     /// Markdown, which every deployment serves.
     Markdown,
-    /// HTML, which the server refuses with `flare::shares::kind_not_served`
-    /// until it serves uploaded HTML.
+    /// An uploaded HTML file, which a deployment with a content host serves
+    /// in a sandboxed frame. It travels as a multipart upload, never as the
+    /// JSON `content` field.
     Html,
 }
 
@@ -34,7 +35,8 @@ pub struct ShareRequest {
     pub title: String,
     /// The markup of `content`.
     pub format: Format,
-    /// The content, at most 256 KiB.
+    /// The Markdown, at most 256 KiB. An HTML share sends it empty and puts the
+    /// file in the form's `html` part.
     pub content: String,
     /// Who to share with: each an identifier that the deployment resolves,
     /// which by default is an email address, or `team:<name>` for a team
@@ -54,7 +56,8 @@ pub struct ShareRequest {
 pub struct VersionRequest {
     /// The markup of `content`.
     pub format: Format,
-    /// The content, at most 256 KiB.
+    /// The Markdown, at most 256 KiB. An HTML share sends it empty and puts the
+    /// file in the form's `html` part.
     pub content: String,
 }
 

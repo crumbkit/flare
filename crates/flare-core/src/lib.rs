@@ -81,9 +81,9 @@ pub use session::{
     SessionStore, SessionStoreError,
 };
 pub use share::{
-    DocumentText, HtmlFile, Listing, MAX_DOCUMENT, MAX_HTML, MAX_LISTED, MAX_SHARES_PER_OWNER, MAX_TITLE, MAX_VERSIONS,
-    NewShare, NewVersion, Share, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion,
-    SharedVersion,
+    DocumentText, HtmlFile, Listing, MAX_DOCUMENT, MAX_HTML, MAX_LISTED, MAX_SHARES_PER_OWNER,
+    MAX_TITLE, MAX_VERSIONS, NewShare, NewVersion, Share, ShareContent, ShareId, ShareKind,
+    ShareTitle, ShareVersion, SharedVersion,
 };
 pub use sharing::{ListedGrant, Opened, ShareError, SharedWithMe, Shares, Standing};
 pub use store::{

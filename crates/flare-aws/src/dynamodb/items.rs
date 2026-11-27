@@ -7,8 +7,8 @@
 use crate::dynamodb::keys::{Key, entry_of, grantee_of};
 use aws_sdk_dynamodb::types::AttributeValue;
 use flare_core::{
-    DocumentText, FileId, Grant, HtmlFile, PrincipalId, Role, Share, ShareContent, ShareId, ShareKind, ShareTitle,
-    ShareVersion, SharedVersion, Timestamp,
+    DocumentText, FileId, Grant, HtmlFile, PrincipalId, Role, Share, ShareContent, ShareId,
+    ShareKind, ShareTitle, ShareVersion, SharedVersion, Timestamp,
 };
 use std::collections::HashMap;
 
@@ -196,9 +196,10 @@ pub(crate) fn share_from(item: &Item, id: &ShareId) -> Result<Share, Malformed> 
 /// store.
 pub(crate) fn version_item(version: &SharedVersion) -> Option<Item> {
     let (kind, body): (ShareKind, Vec<(&'static str, AttributeValue)>) = match version.content() {
-        ShareContent::Document(document) => {
-            (ShareKind::Document, vec![(attr::TEXT, text(document.as_str()))])
-        }
+        ShareContent::Document(document) => (
+            ShareKind::Document,
+            vec![(attr::TEXT, text(document.as_str()))],
+        ),
         ShareContent::Html(html) => (
             ShareKind::Html,
             vec![

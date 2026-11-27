@@ -17,6 +17,7 @@ fn every_code_is_spelled_flare_area_kind_with_a_domain_noun_as_its_area() {
         "cursors",
         "images",
         "search",
+        "html",
     ];
     for code in ApiCode::ALL {
         let parts: Vec<&str> = code.text().split("::").collect();

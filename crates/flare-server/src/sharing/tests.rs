@@ -201,11 +201,11 @@ fn share_request(title: &str, format: Format, content: &str) -> flare_contract::
 }
 
 #[test]
-fn the_share_checks_refuse_html_first_then_the_title_then_the_content() {
+fn the_share_checks_send_json_html_to_the_form_first_then_the_title_then_the_content() {
     let code = |request| super::check_share(&request).map(|_| ()).map_err(|e| e.code);
     assert_eq!(
         code(share_request("", Format::Html, "")),
-        Err(ApiCode::KindNotServed)
+        Err(ApiCode::HtmlNeedsForm)
     );
     assert_eq!(
         code(share_request("", Format::Markdown, "")),
@@ -235,7 +235,7 @@ fn the_version_checks_refuse_html_and_empty_content_and_admit_markdown() {
         .map(|_| ())
         .map_err(|e| e.code)
     };
-    assert_eq!(code(Format::Html, "<p>x</p>"), Err(ApiCode::KindNotServed));
+    assert_eq!(code(Format::Html, "<p>x</p>"), Err(ApiCode::HtmlNeedsForm));
     assert_eq!(code(Format::Markdown, ""), Err(ApiCode::ShareInvalid));
     assert_eq!(code(Format::Markdown, "# Plan\n"), Ok(()));
 }
@@ -536,4 +536,60 @@ fn a_get_flare_address_must_be_an_https_url_with_a_host() {
         GetFlare::try_from(GET_FLARE).unwrap().as_str(),
         "https://example.com/flare"
     );
+}
+
+#[test]
+fn an_html_file_must_be_non_empty_at_most_4_mib_and_utf8_and_the_check_names_the_first_fault() {
+    let code = |bytes: &[u8]| super::check_html(bytes).map_err(|e| e.code);
+    assert_eq!(code(b"<p>x</p>"), Ok(()));
+    assert_eq!(code("<p>caf\u{e9}</p>".as_bytes()), Ok(()));
+    assert_eq!(code(b""), Err(ApiCode::ShareInvalid));
+    assert_eq!(code(&vec![b'x'; 4 * 1024 * 1024]), Ok(()));
+    assert_eq!(
+        code(&vec![b'x'; 4 * 1024 * 1024 + 1]),
+        Err(ApiCode::HtmlTooLarge)
+    );
+    assert_eq!(code(&[b'<', 0xff, 0xfe]), Err(ApiCode::HtmlNotUtf8));
+    let mut wide = vec![0xff; 4 * 1024 * 1024 + 1];
+    wide[0] = b'<';
+    assert_eq!(code(&wide), Err(ApiCode::HtmlTooLarge));
+}
+
+#[test]
+fn an_html_form_names_the_format_html_with_no_content_then_the_title_then_the_file() {
+    let code = |request: flare_contract::ShareRequest, bytes: &[u8]| {
+        super::check_html_share(&request, bytes)
+            .map(|_| ())
+            .map_err(|e| e.code)
+    };
+    let page = b"<p>x</p>";
+    assert_eq!(code(share_request("Page", Format::Html, ""), page), Ok(()));
+    assert_eq!(
+        code(share_request("Page", Format::Markdown, ""), page),
+        Err(ApiCode::BadBody)
+    );
+    assert_eq!(
+        code(share_request("Page", Format::Html, "# text"), page),
+        Err(ApiCode::BadBody)
+    );
+    assert_eq!(
+        code(share_request("", Format::Html, ""), page),
+        Err(ApiCode::ShareInvalid)
+    );
+    assert_eq!(
+        code(share_request("Page", Format::Html, ""), b""),
+        Err(ApiCode::ShareInvalid)
+    );
+    let version = |format, bytes: &[u8]| {
+        super::check_html_version(
+            &VersionRequest {
+                format,
+                content: String::new(),
+            },
+            bytes,
+        )
+        .map_err(|e| e.code)
+    };
+    assert_eq!(version(Format::Html, page), Ok(()));
+    assert_eq!(version(Format::Markdown, page), Err(ApiCode::BadBody));
 }

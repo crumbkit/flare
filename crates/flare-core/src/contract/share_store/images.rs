@@ -97,7 +97,11 @@ pub async fn an_html_share_keeps_its_file<S: ShareStore>(
         let stored = unexpected(store.version(&id, number(value)?).await)?;
         read.push(stored.content().clone());
     }
-    let expected = [page(1, 10)?, contract_fixture.content(0).clone(), page(3, 4_194_304)?];
+    let expected = [
+        page(1, 10)?,
+        contract_fixture.content(0).clone(),
+        page(3, 4_194_304)?,
+    ];
     ensure(
         share.kind() == ShareKind::Html && read == expected,
         Clause::AnHtmlShareKeepsItsFile,

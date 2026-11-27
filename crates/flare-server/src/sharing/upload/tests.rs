@@ -265,6 +265,7 @@ fn with_svg(upload: Upload) -> Upload {
     match upload {
         Upload::Create(request, parts) => Upload::Create(request, replaced(parts)),
         Upload::Publish(id, request, parts) => Upload::Publish(id, request, replaced(parts)),
+        html => html,
     }
 }
 

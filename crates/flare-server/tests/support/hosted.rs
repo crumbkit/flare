@@ -72,7 +72,7 @@ impl Hosted {
     pub async fn start_with_deadline(deadline: Duration, limits: Limits) -> Self {
         let fake = Fake::start().await;
         let (oidc, clock) = connect_with_deadline(&fake, deadline).await;
-        Self::serve(oidc, fake, clock, Some(limits), |app| app).await
+        Self::serve(oidc, fake, clock, Some(limits), |app, _| app).await
     }
 
     /// A hosted server that admits `admits`, with `limits` or the default
@@ -87,6 +87,16 @@ impl Hosted {
         admits: Admits,
         limits: Option<Limits>,
         attach: impl FnOnce(HostedApp) -> HostedApp,
+    ) -> Self {
+        Self::start_attached_at(admits, limits, |app, _| attach(app)).await
+    }
+
+    /// As [`Hosted::start_attached`], with `attach` given the listener's
+    /// port, such as to name a second host on it.
+    pub async fn start_attached_at(
+        admits: Admits,
+        limits: Option<Limits>,
+        attach: impl FnOnce(HostedApp, u16) -> HostedApp,
     ) -> Self {
         let fake = Fake::start().await;
         let (oidc, clock) = match admits {
@@ -104,7 +114,7 @@ impl Hosted {
         fake: Fake,
         clock: TestClock,
         limits: Option<Limits>,
-        attach: impl FnOnce(HostedApp) -> HostedApp,
+        attach: impl FnOnce(HostedApp, u16) -> HostedApp,
     ) -> Self {
         let listeners = Listeners::bind_hosted(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
         let port = listeners.port();
@@ -123,7 +133,7 @@ impl Hosted {
             limits.unwrap_or_default(),
         );
         let time = TestTime::default();
-        let app = attach(app.with_clock(time.clone()));
+        let app = attach(app.with_clock(time.clone()), port);
         let (sender, receiver) = oneshot::channel::<()>();
         #[expect(
             clippy::disallowed_methods,

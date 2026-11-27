@@ -2,6 +2,7 @@
 //! every request shares.
 
 use crate::clock::{Clock, SystemClock};
+use crate::content::ContentHost;
 use crate::forms::Forms;
 use crate::handlers;
 use crate::handover::Handover;
@@ -80,6 +81,7 @@ pub(crate) struct Shared<P, R, S, K: OidcClock, H: HostedSignIn<K>> {
     pub(crate) forms: Forms,
     pub(crate) handover: Handover,
     pub(crate) sharing: Option<Arc<dyn Api>>,
+    pub(crate) content: Option<ContentHost>,
     pub(crate) metrics: Metrics,
     pub(crate) in_work: Semaphore,
     token_calls: Semaphore,
@@ -119,6 +121,7 @@ where
                     .min(Semaphore::MAX_PERMITS),
             ),
             sharing: None,
+            content: None,
             metrics: Metrics::default(),
             pages,
             records,
@@ -167,6 +170,18 @@ where
     {
         if let Some(shared) = Arc::get_mut(&mut self.shared) {
             shared.sharing = Some(Arc::new(sharing));
+        }
+        self
+    }
+
+    /// The same app serving uploaded HTML shares from `content`, a second
+    /// hostname on the hosted site. Without it the site refuses HTML
+    /// uploads and answers 403 `request::host` for any host but its own.
+    /// Call it before cloning the app; on a cloned app it changes nothing.
+    #[must_use]
+    pub fn with_content_host(mut self, content: ContentHost) -> Self {
+        if let Some(shared) = Arc::get_mut(&mut self.shared) {
+            shared.content = Some(content);
         }
         self
     }
