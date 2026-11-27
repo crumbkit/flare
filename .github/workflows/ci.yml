@@ -112,7 +112,7 @@ jobs:
       - run: rustup toolchain install
       # install-action runs before rust-cache, so the cache leaves out the
       # tool binaries that install-action downloads on every run.
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@0.9.140,cargo-hack@0.6.45
           fallback: none
@@ -202,7 +202,7 @@ jobs:
       - name: build
         run: pnpm run build
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # With FLARE_REQUIRE_UI=1 a missing bundle fails the build, so these
@@ -317,7 +317,7 @@ jobs:
             -e AWS_ACCESS_KEY_ID=flaretest -e AWS_SECRET_ACCESS_KEY=flaretestsecret \
             chrislusf/seaweedfs@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@0.9.140
           fallback: none
@@ -384,7 +384,7 @@ jobs:
         with:
           persist-credentials: false
       - run: rustup toolchain install
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-deny@0.20.2
           fallback: none
