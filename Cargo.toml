@@ -61,6 +61,12 @@ jsonwebtoken = { version = "12.0.0", default-features = false, features = ["aws_
 # serde feature stays off, because flare-render builds the template data
 # from serde_json values itself.
 mustache2 = { version = "1.0.7", default-features = false }
+# Draws a share's Mermaid diagrams as SVG on the server, for the reading
+# page, so the page needs no script to show them. Only the seven features of
+# the eight diagram types flare admits are on; limu-scene comes with it.
+# The pin is exact because limu is a young 0.x crate with one author.
+# Evaluated in /evals/flare-diagram-renderers.
+limu = { version = "=0.2.1", default-features = false, features = ["flowchart", "sequence", "state", "class", "er", "gantt", "pie"] }
 # Parses Markdown pages in flare-render, which writes the HTML itself, so the
 # html and getopts features stay off.
 pulldown-cmark = { version = "0.13.6", default-features = false }

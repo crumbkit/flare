@@ -16,6 +16,7 @@ A gust that is more than 5 knots above the limit cancels the sailing at once, wi
 
 ```mermaid
 flowchart LR
+  accDescr: Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master's review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.
   gust{Forecast gust<br/>over the limit?} -- no --> sail[Sailing stays on]
   gust -- yes --> hold[Hold the sailing]
   subgraph review [Duty master review]

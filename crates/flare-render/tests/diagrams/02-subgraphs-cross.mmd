@@ -1,0 +1,24 @@
+flowchart TB
+  author([Author]) --> cli
+  subgraph client [Author's machine]
+    direction LR
+    cli[flare CLI] --> render[flare-render]
+    render --> bundle[(Markdown bundle)]
+  end
+  subgraph server [flare-server]
+    direction TB
+    api[Upload API] --> store[(Page store)]
+    subgraph reading [Reading view]
+      page[Page HTML] --> diagrams[Mermaid figures]
+      page --> code[Code blocks]
+    end
+    store --> page
+    subgraph comments [Comments]
+      thread[Threads] --> inbox[Owner inbox]
+    end
+    page -. loads .-> thread
+  end
+  bundle -- upload --> api
+  reader([Reader]) --> page
+  reader -- comments --> thread
+  inbox -- notifies --> author

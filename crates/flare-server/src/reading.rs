@@ -147,15 +147,15 @@ fn comments(reading: &Reading) -> String {
 /// build embedded no bundle.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Entries<'a> {
-    /// The script that colours code and draws diagrams.
+    /// The script that colours code and shows its Copy buttons.
     pub(crate) reading: Option<&'a str>,
     /// The script that draws the comments section.
     pub(crate) comments: Option<&'a str>,
 }
 
 /// The entry scripts the page loads: the comments entry always, and the
-/// reading entry only when the article has code or a diagram, so a page
-/// without either never fetches Shiki or Mermaid.
+/// reading entry only when the article has code, so a page without code
+/// never fetches Shiki. The server draws diagrams, so they need no script.
 fn scripts<'a>(article: &Article, entries: Entries<'a>) -> Vec<&'a str> {
     let reading = entries.reading.filter(|_| article.needs_script());
     reading.into_iter().chain(entries.comments).collect()

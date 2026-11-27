@@ -2,7 +2,10 @@
 //! writes.
 //!
 //! Every function is pure: the crate opens no socket, file or process, reads
-//! no clock and keeps nothing between calls. The server hands it a
+//! no clock and keeps nothing between calls. The one exception is a gantt
+//! chart on the reading page: limu places its marker of today, and a task
+//! with no start of its own, against the time of the read, as Mermaid did in
+//! the reader's browser. The server hands it a
 //! [`Page`](flare_core::Page), the records that fill the page's slots, the
 //! JSON Schema text of a record type and a [`FormTarget`], and it hands back
 //! HTML or the body of a record write.
@@ -15,7 +18,8 @@
 //!   into a [`RecordWrite`], [`Outcome::Unchanged`] or a [`Conflict`].
 //! - [`conflict_view`] draws a conflict and the form that saves the edit
 //!   onto the newer record.
-//! - [`article`] renders a Markdown share for the reading page.
+//! - [`article`] renders a Markdown share for the reading page, with its
+//!   Mermaid diagrams drawn as SVG.
 //! - [`first_heading`] finds the plain text of a Markdown document's first
 //!   level-one heading, which `flare share` uses as a title.
 //! - [`stylesheet`] is the stylesheet that the markup's class names use.
@@ -25,6 +29,7 @@ mod article;
 mod body;
 mod check;
 mod conflict;
+mod diagram;
 mod form;
 mod heading;
 mod html;

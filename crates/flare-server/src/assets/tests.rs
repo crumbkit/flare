@@ -114,3 +114,26 @@ fn the_licence_of_each_font_family_sits_beside_its_file() {
         );
     }
 }
+
+#[test]
+fn no_embedded_file_is_a_mermaid_or_elk_module() {
+    // The server draws diagrams, so Mermaid and its elkjs layout, whose
+    // licence is EPL-2.0 or GPL-3.0-or-later, stay out of the bundle.
+    for (name, bytes) in files() {
+        let lower = name.to_ascii_lowercase();
+        for refused in ["mermaid", "elk", "khroma"] {
+            assert!(!lower.contains(refused), "{name}");
+        }
+        for marker in [
+            b"elkjs".as_slice(),
+            b"mermaid.core",
+            b"Eclipse Public License",
+        ] {
+            assert!(
+                !bytes.windows(marker.len()).any(|window| window == marker),
+                "{name} holds {}",
+                String::from_utf8_lossy(marker)
+            );
+        }
+    }
+}

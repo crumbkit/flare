@@ -4,7 +4,7 @@
 //! `/flare/assets/<file>`.
 //!
 //! With no bundle, which is the case when Node has not run, the build warns
-//! and embeds nothing, so pages show plain code and diagram source. With
+//! and embeds nothing, so pages show plain, uncoloured code. With
 //! `FLARE_REQUIRE_UI=1` a missing bundle fails the build. CI's reading job
 //! sets it; the repository has no release workflow yet, so a build that will
 //! serve readers must set it itself.
@@ -71,7 +71,7 @@ fn main() {
                 return;
             }
             tell(&format!(
-                "warning={reason}; pages will show plain code and diagram source"
+                "warning={reason}; pages will show plain, uncoloured code"
             ));
             String::from(
                 "pub(crate) const ENTRY: Option<&str> = None;\npub(crate) const COMMENTS: Option<&str> = None;\npub(crate) static FILES: &[(&str, &[u8])] = &[];\n",

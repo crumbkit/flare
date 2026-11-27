@@ -93,12 +93,18 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   await expect(figure.locator("figcaption")).toHaveText(
     "Figure 1. What happens to one sailing when a forecast arrives.",
   );
-  const drawing = figure.locator(".mm svg").filter({ visible: true });
+  const drawing = figure.locator(".dg svg");
   await expect(drawing).toHaveCount(1);
-  // Figure 1 draws the mockup's five nodes, and its 14 px labels show at
-  // about 11 px, as in the mockup, once the drawing is scaled into the
-  // column. On a phone the drawing keeps that size and scrolls.
-  await expect(drawing.locator("g.node")).toHaveText([
+  await expect(drawing).toBeVisible();
+  // The box is named by the source's accDescr, the mockup's description of
+  // the branches, so a screen reader does not hear the caption twice.
+  await expect(figure.getByRole("img")).toHaveAccessibleName(
+    "Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master's review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.",
+  );
+  // Figure 1 draws the mockup's five nodes, and its 12 px edge labels show
+  // at 10.5 px or more once the drawing is scaled into the column. On a
+  // phone the drawing keeps that size and scrolls in its box.
+  await expect(drawing.locator("g.limu-node")).toHaveText([
     "Forecast gustover the limit?",
     "Sailing stays on",
     "Hold the sailing",
@@ -107,9 +113,14 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   ]);
   const label = await drawing.evaluate((svg) => {
     const width = svg instanceof SVGSVGElement ? svg.viewBox.baseVal.width : 0;
-    return (14 * svg.getBoundingClientRect().width) / width;
+    return (12 * svg.getBoundingClientRect().width) / width;
   });
   expect(label).toBeGreaterThanOrEqual(10.5);
+  // The subgraph's border takes the line colour, as the mockup shows.
+  await expect(drawing.locator("g.limu-flowchart-cluster > rect")).toHaveCSS(
+    "stroke",
+    await colour(page, "var(--line)"),
+  );
   await expect(page.locator(".code pre.shiki")).toHaveCount(1);
   await expect(page.locator(".code button[data-copy]")).toBeVisible();
   // The code text is .92em of the block's 13 px, as the mockup draws it.
@@ -140,6 +151,21 @@ test("a reader opens artboard 01's sample share with its diagram, caption and co
   await page.screenshot({
     path: info.outputPath(`reading-${info.project.name}.png`),
     fullPage: true,
+  });
+});
+
+test.describe("with scripts turned off", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("a reader sees Figure 1 drawn, because the server drew it", async ({ page }) => {
+    await serve(page);
+    await page.goto(PAGE);
+    const figure = page.locator("figure.diagram");
+    await expect(figure).toHaveAttribute("data-diagram", "drawn");
+    const drawing = figure.locator(".dg svg");
+    await expect(drawing).toBeVisible();
+    await expect(drawing.locator("g.limu-node")).toHaveCount(5);
+    await expect(page.locator("body")).not.toHaveAttribute("data-reading", "done");
   });
 });
 

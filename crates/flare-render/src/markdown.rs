@@ -3,51 +3,35 @@
 //! A Markdown page is not a template: `{{` stays text, because filling
 //! first would let a record value add Markdown links.
 //!
-//! A fenced block whose language is `mermaid` and whose first word is one of
-//! [`DIAGRAM_TYPES`] becomes a `<figure class="diagram">` that holds its
-//! escaped source; a script draws it. Every other code block becomes a
-//! `<div class="code">` with its language label and a hidden Copy button that
-//! a script shows. A paragraph that starts with "Figure", a number and a full
-//! stop, written directly after a top-level diagram, table or code block,
-//! becomes that block's `<figcaption>`.
+//! A fenced block whose language is `mermaid` and whose first word names
+//! one of the diagram [`Kind`](crate::diagram::Kind)s becomes a `<figure class="diagram">`. On
+//! the reading page the server draws it there as SVG; elsewhere the figure
+//! holds its escaped source. Every other code block becomes a
+//! `<div class="code">` with its language label and a hidden Copy button
+//! that a script shows. A paragraph that starts with "Figure", a number and
+//! a full stop, written directly after a top-level diagram, table or code
+//! block, becomes that block's `<figcaption>`.
 
 mod blocks;
+mod code;
 mod images;
 
 pub use images::{ImageSources, image_paths, unsendable_image_paths};
 
-use blocks::{captionable, diagram_type, is_caption, top_level_blocks};
+use blocks::{captionable, is_caption, top_level_blocks};
+use code::CodeBlock;
 
 use crate::html::escape_into;
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 
-/// The Mermaid diagram types a page may draw. A Mermaid fence whose source
-/// starts with any other word, such as a `%%{init}%%` directive or front
-/// matter, renders as code. A directive on a later line still reaches
-/// Mermaid; the page is safe because Mermaid keeps `securityLevel` among its
-/// secure keys, which no directive can change.
-pub(crate) const DIAGRAM_TYPES: [&str; 8] = [
-    "flowchart",
-    "graph",
-    "sequenceDiagram",
-    "stateDiagram",
-    "classDiagram",
-    "erDiagram",
-    "gantt",
-    "pie",
-];
-
-/// The label of a code block that names no language.
-const PLAIN: &str = "text";
-
-/// Rendered Markdown, and what scripts it has work for.
+/// Rendered Markdown, and what it holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Rendered {
     /// The HTML.
     pub(crate) html: String,
     /// Whether it holds a code block that a highlighter colours.
     pub(crate) code: bool,
-    /// Whether it holds a diagram that Mermaid draws.
+    /// Whether it holds a Mermaid diagram, drawn or shown as its source.
     pub(crate) diagrams: bool,
 }
 
@@ -59,9 +43,23 @@ pub(crate) fn to_html(markdown: &str) -> String {
 }
 
 /// Renders Markdown as [`to_html`] does, and says whether the HTML holds
-/// code or a diagram.
+/// code or a diagram. A diagram shows as its source.
 pub(crate) fn render(markdown: &str) -> Rendered {
-    render_with(markdown, None)
+    render_into(markdown, Writer::default())
+}
+
+/// Renders Markdown for the reading page: as [`render`] does, with each
+/// diagram drawn as SVG, and a relative image shown from the URL `sources`
+/// gives for its path, or as its alternative text when `sources` has none.
+pub(crate) fn render_article(markdown: &str, sources: &ImageSources) -> Rendered {
+    render_into(
+        markdown,
+        Writer {
+            sources: Some(sources.clone()),
+            draw: true,
+            ..Writer::default()
+        },
+    )
 }
 
 /// The parser options every rendering uses.
@@ -69,16 +67,10 @@ pub(crate) const OPTIONS: Options = Options::ENABLE_TABLES
     .union(Options::ENABLE_STRIKETHROUGH)
     .union(Options::ENABLE_TASKLISTS);
 
-/// Renders as [`render`] does. With `sources`, a relative image shows from
-/// the URL `sources` gives for its path, and as its alternative text when
-/// `sources` has none.
-pub(crate) fn render_with(markdown: &str, sources: Option<&ImageSources>) -> Rendered {
+/// Renders `markdown` with `writer`.
+fn render_into<'a>(markdown: &'a str, mut writer: Writer<'a>) -> Rendered {
     let events: Vec<Event<'_>> = Parser::new_ext(markdown, OPTIONS).collect();
     let blocks = top_level_blocks(&events);
-    let mut writer = Writer {
-        sources: sources.cloned(),
-        ..Writer::default()
-    };
     let mut index = 0;
     while let Some(&(start, end)) = blocks.get(index) {
         let block = events.get(start..end).unwrap_or_default();
@@ -135,13 +127,6 @@ fn plain(target: &str) -> bool {
         .any(|character| character.is_whitespace() || character.is_control() || character == '\\')
 }
 
-/// A code block being read: its language and its text so far.
-#[derive(Debug)]
-struct CodeBlock {
-    language: Option<String>,
-    text: String,
-}
-
 /// Writes HTML for Markdown events.
 #[derive(Debug, Default)]
 struct Writer<'a> {
@@ -161,6 +146,9 @@ struct Writer<'a> {
     image: Option<(Option<String>, String)>,
     /// Where a share's listed images load from, when rendering a share.
     sources: Option<ImageSources>,
+    /// Whether a diagram is drawn as SVG, as on the reading page, or shown
+    /// as its source.
+    draw: bool,
     /// The alignment of each column of the table being read.
     alignments: Vec<Alignment>,
     cell: usize,
@@ -364,57 +352,6 @@ impl<'a> Writer<'a> {
             }
             TagEnd::Image => self.image_end(),
         }
-    }
-
-    /// Writes the code block just read as a diagram or as code.
-    fn code_end(&mut self) {
-        let Some(block) = self.block.take() else {
-            return;
-        };
-        let language = block.language.as_deref().unwrap_or(PLAIN);
-        if let Some(kind) = diagram_type(language, &block.text) {
-            self.diagrams = true;
-            self.out.push_str(
-                "<figure class=\"diagram\">\n<pre class=\"diagram-source\" data-diagram=\"",
-            );
-            self.out.push_str(kind);
-            self.out.push_str("\">");
-            escape_into(&mut self.out, &block.text);
-            self.out.push_str("</pre>\n");
-            self.close_figure();
-            return;
-        }
-        self.code = true;
-        if self.caption.is_some() {
-            self.out.push_str("<figure class=\"listing\">\n");
-        }
-        self.out
-            .push_str("<div class=\"code\">\n<div class=\"code-head\"><span class=\"mono\">");
-        escape_into(&mut self.out, language);
-        self.out.push_str(
-            "</span><button class=\"text-btn\" type=\"button\" data-copy hidden>Copy</button></div>\n<pre><code class=\"language-",
-        );
-        escape_into(&mut self.out, language);
-        self.out.push_str("\" data-lang=\"");
-        escape_into(&mut self.out, language);
-        self.out.push_str("\">");
-        escape_into(&mut self.out, &block.text);
-        self.out.push_str("</code></pre>\n</div>\n");
-        if self.caption.is_some() {
-            self.close_figure();
-        }
-    }
-
-    /// Writes the caption, when the block has one, and closes its figure.
-    fn close_figure(&mut self) {
-        if let Some(caption) = self.caption.take() {
-            self.out.push_str("<figcaption>");
-            for event in caption {
-                self.event(event);
-            }
-            self.out.push_str("</figcaption>\n");
-        }
-        self.out.push_str("</figure>\n");
     }
 
     fn image_end(&mut self) {

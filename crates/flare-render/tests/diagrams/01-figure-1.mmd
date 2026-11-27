@@ -1,0 +1,8 @@
+flowchart LR
+  gust{Forecast gust<br/>over the limit?} -- no --> sail[Sailing stays on]
+  gust -- yes --> hold[Hold the sailing]
+  subgraph review [Duty master review]
+    hold --> confirm{Confirmed in<br/>40 minutes?}
+  end
+  confirm -- no --> sail
+  confirm -- yes --> cancel[Cancel and rebook]

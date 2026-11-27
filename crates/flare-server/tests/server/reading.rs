@@ -79,6 +79,13 @@ async fn a_granted_reader_sees_the_latest_version_of_a_markdown_share() {
     );
     assert!(body.contains("BO</span></header>"), "{body}");
     assert!(body.contains("<figcaption>Figure 1. What happens to one sailing when a forecast arrives.</figcaption>"), "{body}");
+    // The drawing's box is named by the diagram's accDescr, the mockup's
+    // description of its branches, so a screen reader does not hear the
+    // caption twice.
+    assert!(
+        body.contains("<div class=\"dg\" role=\"img\" aria-label=\"Flowchart. If the forecast gust is not over the limit, the sailing stays on. If it is, the sailing is held for the duty master&#39;s review. If the duty master confirms within 40 minutes, the sailing is cancelled and passengers are rebooked. If not, the sailing stays on.\""),
+        "{body}"
+    );
     assert!(body.contains("data-lang=\"rust\""), "{body}");
     for absent in ["Inbox", "Shared by me", "Search", "responses"] {
         assert!(!body.contains(absent), "{absent}");
@@ -273,6 +280,36 @@ async fn a_page_that_loads_a_script_may_call_its_own_origin_and_no_policy_allows
 async fn a_page_without_code_loads_only_the_comments_entry() {
     let (api, bob, id) = shared("Prose and a table.\n\n| a |\n|---|\n| 1 |\n").await;
     let page = read(&api, &bob, &format!("/s/{id}")).await;
+    let scripts: Vec<&str> = page
+        .body
+        .split("<script type=\"module\" src=\"/flare/assets/")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    // A build with no bundle loads no script.
+    if !scripts.is_empty() {
+        assert_eq!(scripts.len(), 1, "{scripts:?}");
+        assert!(scripts[0].starts_with("comments-"), "{scripts:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_page_whose_only_blocks_are_diagrams_shows_them_drawn_and_loads_only_the_comments_entry()
+{
+    let (api, bob, id) = shared(
+        "```mermaid\nflowchart LR\n  a[Forecast] --> b{Held?}\n```\n\nFigure 1. A forecast.\n",
+    )
+    .await;
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert!(
+        page.body
+            .contains("<figure class=\"diagram\" data-diagram=\"drawn\">"),
+        "{}",
+        page.body
+    );
+    assert!(page.body.contains("<svg "), "{}", page.body);
+    assert!(!page.body.contains("diagram-source"), "{}", page.body);
     let scripts: Vec<&str> = page
         .body
         .split("<script type=\"module\" src=\"/flare/assets/")

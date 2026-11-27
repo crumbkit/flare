@@ -117,6 +117,18 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- The reading page's Mermaid diagrams are drawn as SVG by flare-server
+  with limu-rs 0.2.1 (MIT), so they show with no script, and Mermaid and
+  its elkjs layout, whose licence is EPL-2.0 or GPL-3.0-or-later, leave the
+  reading bundle. A page whose only blocks are diagrams no longer loads the
+  reading script. Flowcharts, graphs and state diagrams have right-angle
+  edges, and one drawing serves light and dark through `--limu-*` CSS
+  variables that the stylesheet sets from flare's tokens. A diagram limu
+  cannot parse keeps its source with "Flare could not draw this diagram:"
+  and limu's message, and a source over 50,000 bytes shows as source with a
+  note that it is too long to draw. limu's layout differs from Mermaid's,
+  and its edge labels are 12 px. flare-render depends on limu and
+  limu-scene, evaluated in /evals/flare-diagram-renderers.
 - A team in `GET /api/teams`, `GET /api/teams/<name>` and the team
   replies gains `managed_by`, `flare` or `directory`, and a directory team
   leaves out `owner` and `created`, so a client that reads `owner` must

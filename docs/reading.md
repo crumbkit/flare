@@ -15,9 +15,10 @@ script runs. Raw HTML in the Markdown shows as text.
 
 - A fenced block whose language is `mermaid` and whose first word is one of
   `flowchart`, `graph`, `sequenceDiagram`, `stateDiagram`, `classDiagram`,
-  `erDiagram`, `gantt` or `pie` becomes a figure that holds its source. Any
-  other Mermaid block, including one that starts with a `%%{init}%%`
-  directive or with front matter, shows as code.
+  `erDiagram`, `gantt` or `pie` becomes a figure, and the server draws the
+  diagram in it as SVG (see [Diagrams](#diagrams)). Any other Mermaid block,
+  including one that starts with a `%%{init}%%` directive, with front
+  matter or with `stateDiagram-v2`, shows as code.
 - Every other code block shows its language and a Copy button.
 - A table scrolls sideways in its own box when the screen is narrower than
   the table.
@@ -25,6 +26,41 @@ script runs. Raw HTML in the Markdown shows as text.
   "Figure 1. What happens to one sailing", and comes directly after a
   diagram, table or code block at the top level of the document, becomes
   that block's caption. Any other paragraph stays a paragraph.
+
+## Diagrams
+
+flare-server draws each diagram with limu-rs 0.2.1, a Rust port of a
+Mermaid renderer, so the page shows it with no script. limu's drawing
+differs from the one Mermaid or another Mermaid tool shows the author: its
+layout places nodes differently, and its edge labels and attributes are
+12 px where node labels are 14 px.
+
+- The drawing is laid out for the 820 px article column, with text measured
+  as IBM Plex Sans at 14 px. Text outside ASCII is measured with one average
+  width, so its box can be a little too wide or too narrow.
+- Flowcharts, graphs and state diagrams have right-angle edges. Class and
+  ER diagrams keep limu's own edges.
+- limu draws no link, image or icon that a diagram asks for, and no
+  script.
+- One drawing serves light and dark: limu writes its colours as `--limu-*`
+  CSS variables, and the stylesheet sets them from flare's colour tokens in
+  each scheme. Colours that a diagram's own `style` or `classDef` lines set
+  stay as written in both schemes.
+- A screen reader hears the drawing named by the diagram's `accDescr`, or
+  its `accTitle` when it has no `accDescr`. Without either, the drawing is
+  named by its caption, or by its type, such as "flowchart diagram". Write
+  an `accDescr` that says what the diagram shows, so the reader does not
+  hear the caption twice.
+- A drawing wider than the column shrinks until its smallest text would
+  fall under 10.5 px, and from there scrolls sideways in its box, which
+  takes keyboard focus.
+- A diagram limu cannot parse keeps its source in view, followed by "Flare
+  could not draw this diagram:" and limu's message. The other diagrams on
+  the page still draw. To fix it, change or simplify the source and share
+  a new version.
+- A diagram whose source is over 50,000 bytes, Mermaid's own limit, shows
+  as its source with a note that it is too long to draw. limu never lays
+  it out. To show it, split it into smaller diagrams.
 
 ## The foot
 
@@ -92,9 +128,9 @@ shows after ten seconds.
 
 ## What the scripts do
 
-Every page loads the comments script, and a page with code or a diagram
-also loads the reading script, so a page without either never fetches Shiki
-or Mermaid. A page that loads a script has a Content-Security-Policy that
+Every page loads the comments script, and a page with code also loads the
+reading script, so a page without code never fetches Shiki. Diagrams need
+no script. A page that loads a script has a Content-Security-Policy that
 adds `script-src 'self'` to the hosted policy, whose `connect-src 'self'`
 lets the comments section call `/api/comments` with the session cookie.
 The scripts come from `ui/flare`, which Vite builds; flare-server embeds the
@@ -105,10 +141,6 @@ because the policy has no `'unsafe-eval'`.
 - Shiki colours code with GitHub Light and GitHub Dark. Five theme colours
   that fall below a 4.5:1 contrast on the code background are replaced with
   darker or lighter GitHub colours.
-- Mermaid draws each diagram twice, once for light and once for dark, with
-  the base theme, the classic look and the ELK layout. Mermaid loads only on
-  a page that has a diagram. A diagram Mermaid cannot parse keeps its source
-  and shows Mermaid's message; the other diagrams still draw.
 
 ### Languages
 
@@ -150,8 +182,8 @@ from its own origin, so a font host is never asked.
 ## Building without Node
 
 Cargo builds flare without Node. When `ui/flare/dist` holds no bundle, the
-build script warns, pages show plain code and diagram source, and the
-comments section never loads. To build
+build script warns, pages show plain, uncoloured code, and the comments
+section never loads. Diagrams are still drawn. To build
 the bundle, run `pnpm install` and `pnpm run build` in `ui/`. With
 `FLARE_REQUIRE_UI=1`, a missing bundle fails the build. CI's reading job
 sets it. The repository has no release workflow yet, so a build that will

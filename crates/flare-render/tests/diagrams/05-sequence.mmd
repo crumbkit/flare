@@ -1,0 +1,27 @@
+sequenceDiagram
+  autonumber
+  actor Owner
+  participant Agent
+  participant Board
+  participant Signer as Signing window
+  Agent->>Board: put /orders/evals (draft)
+  Agent->>Board: request_signature(path)
+  Board-->>Owner: Show "Review order" button
+  Owner->>Signer: Open order
+  activate Signer
+  alt Owner approves
+    Signer->>Owner: Ask for Touch ID
+    Owner-->>Signer: Fingerprint
+    Signer->>Board: Write signature
+    Board-->>Agent: Order signed
+  else Owner requests changes
+    Signer->>Board: Write change request
+    Board-->>Agent: Changes requested
+    Agent->>Board: put revised draft
+  end
+  deactivate Signer
+  loop Every session start
+    Agent->>Board: attention.verify
+    Board-->>Agent: Valid until expiry
+  end
+  Note over Agent,Board: The order binds the agent until it expires

@@ -115,11 +115,20 @@ fn the_stylesheet_styles_the_reading_page_article() {
         ".code-head",
         ".text-btn",
         ".diagram-source",
-        ".mm-light",
-        ".mm-dark",
+        ".diagram-error",
+        ".dg",
+        ".limu-flowchart-cluster",
         "figcaption",
         "--shiki-dark",
     ] {
         assert!(css.contains(class), "{class}");
+    }
+}
+
+#[test]
+fn the_stylesheet_keeps_no_rule_for_mermaids_two_drawings() {
+    let css = stylesheet();
+    for gone in [".mm", "--show-light", "--show-dark"] {
+        assert!(!css.contains(gone), "{gone}");
     }
 }
