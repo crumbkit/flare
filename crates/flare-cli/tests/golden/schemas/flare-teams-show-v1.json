@@ -116,7 +116,7 @@
           "type": "string"
         },
         "role": {
-          "description": "`owner` for the team's owner, else `member`.",
+          "description": "`owner` for the team's owner, else `member`; every member of a directory team is `member`.",
           "type": "string"
         },
         "team": {

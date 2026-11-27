@@ -112,6 +112,12 @@ impl Key {
         Self::new("IDENTITY".to_owned(), "IDENTITY")
     }
 
+    /// The table's one teams marker, which records the teams its team
+    /// grants were made under.
+    pub(crate) fn teams() -> Self {
+        Self::new("TEAMS".to_owned(), "TEAMS")
+    }
+
     /// A token, by its id.
     pub(crate) fn token(id: &TokenId) -> Self {
         Self::new(format!("TOKEN#{}", id.as_str()), "TOKEN")
@@ -303,9 +309,18 @@ pub(crate) fn link_sort_key(position: Position) -> String {
     format!("{LINK_PREFIX}{:020}", position.get())
 }
 
+/// The prefix of a share's partition.
+const SHARE_PARTITION: &str = "SHARE#";
+
 /// The partition of a share's items.
 pub(crate) fn share_partition(id: &ShareId) -> String {
-    format!("SHARE#{}", id.as_str())
+    format!("{SHARE_PARTITION}{}", id.as_str())
+}
+
+/// The share whose partition is `partition`, or `None` when it is not a
+/// share's.
+pub(crate) fn share_from_partition(partition: &str) -> Option<ShareId> {
+    ShareId::try_from(partition.strip_prefix(SHARE_PARTITION)?).ok()
 }
 
 /// The partition of an owner's entries and share count.

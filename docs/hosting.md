@@ -92,7 +92,8 @@ The share API lets people share Markdown files with named people from the
   "names": { "ana": "ana@example.com" },
   "get_flare": "https://example.com/flare",
   "identity": "email",
-  "everyone_signed_in": false
+  "everyone_signed_in": false,
+  "teams": "stored"
 }
 ```
 
@@ -150,6 +151,26 @@ The share API lets people share Markdown files with named people from the
   grant stores the audience `signed-in` and opens to no one while the
   setting is off; the grant stays until its owner revokes it.
   `everyone_signed_in` without `stores` is refused.
+- `teams` says where the share API's teams come from. Left out, or
+  `"stored"`, flare keeps them in the table and people manage them with
+  `flare teams`. `{"file": "<absolute path>"}` reads a teams document from
+  that file, and `{"object": "teams/<name>"}` reads it from that object in
+  the stores bucket, which the template's managed policy lets flare read
+  and nothing else under `teams/`. The deployment's own sync job writes the
+  document, such as an export of its directory, and flare only reads it:
+  every team change then answers 403 `flare::teams::managed_elsewhere`.
+  `flare serve` reads the document before it listens and exits with
+  `flare::teams::document_refused` when it cannot read or use it. A bad
+  value stops `flare serve` with `flare::config::invalid` naming
+  `hosted.teams`, and `teams` without `stores` is refused. The table
+  records whether its team grants are made under stored or directory
+  teams, and `flare serve` exits with `flare::config::teams_changed`,
+  writing nothing, when `teams` names the other ones while a team grant
+  remains, because that grant would open to another group of people.
+  [teams.md](teams.md#switching-between-stored-and-directory-teams) says
+  how to switch.
+  [teams.md](teams.md#teams-from-the-deployments-directory) gives the
+  document's shape and limits.
 - `get_flare` is the address that the reading page's Get Flare link opens,
   in a new tab, for a reader who has never shared a flare
   (`docs/reading.md`). It must be an `https` URL with a host and no user

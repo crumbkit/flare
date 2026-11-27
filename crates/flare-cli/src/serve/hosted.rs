@@ -1,19 +1,23 @@
-//! The hosted site of `flare serve`: it checks the share API's stores and
-//! the identifier kind their table records, connects the sign-in, and only
-//! then binds the listen address.
+//! The hosted site of `flare serve`: it checks the share API's stores, the
+//! identifier kind and the teams their table records, reads the teams
+//! document that `hosted.teams` names, connects the sign-in, and only then
+//! binds the listen address.
 
+use super::teams::{HostedTeams, hosted_teams, teams_kind};
 use super::{Persisted, Signals, Stop, bind_failed, connect, serve};
-use crate::codes::{Failed, HeldPort};
-use crate::config::{Hosted, HostedCreators, Secret, Sharing as SharingConfig, SignIn};
+use crate::codes::{Failed, HeldPort, TeamsFailed};
+use crate::config::{
+    Hosted, HostedCreators, Secret, Sharing as SharingConfig, SignIn, TeamsSource,
+};
 use crate::documents::Served;
 use crate::log;
 use flare_auth_oidc::{Admit, OidcAuthenticator, ProxyAuthenticator, ProxyConfig};
 use flare_aws::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore, DynamoShareStore,
-    DynamoTeamStore, DynamoTokenStore, IdentityError, S3FileStore, Stores,
+    DynamoTokenStore, IdentityError, S3FileStore, Stores, TeamsKindError,
 };
 use flare_board::BoardStore;
-use flare_core::{FlareTeams, Flares, IdentityKind, NamedRecipients};
+use flare_core::{Flares, IdentityKind, NamedRecipients};
 use flare_server::{App, HostedSignIn, Limits, Listeners, Metrics, PublicOrigin, Sharing, Site};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -35,8 +39,15 @@ pub(super) async fn hosted(
     let admit = sign_in.admit().clone();
     let kind = sign_in.identity().kind();
     let stores = match &sharing {
-        Some(config) => Some(checked(Stores::connect(&config.stores).await, kind).await?),
+        Some(config) => {
+            let stores = Stores::connect(&config.stores).await;
+            Some(checked(stores, kind, &config.teams).await?)
+        }
         None => None,
+    };
+    let teams = match (&sharing, &stores) {
+        (Some(config), Some(stores)) => Some(hosted_teams(&config.teams, stores, kind).await?),
+        _ => None,
     };
     let persisted = stores.as_ref().map(|stores| Persisted {
         sessions: stores.sessions.clone(),
@@ -54,8 +65,10 @@ pub(super) async fn hosted(
             "hosted.creators is \"anyone admitted\" under an anyone admit rule, so any account the issuer verifies can sign in and share"
         );
     }
-    let sharing = match (sharing, stores) {
-        (Some(config), Some(stores)) => Some(share_api(*config, stores, admit, kind)),
+    let sharing = match (sharing, stores, teams) {
+        (Some(config), Some(stores), Some(teams)) => {
+            Some(share_api(*config, stores, teams, admit, kind))
+        }
         _ => None,
     };
     let start = Start {
@@ -73,20 +86,42 @@ pub(super) async fn hosted(
 }
 
 /// The stores, once their table and bucket answer and the table records
-/// `kind`, which a first start writes. A table that records another kind
-/// is refused, with nothing written.
-async fn checked(stores: Stores, kind: IdentityKind) -> Result<Stores, Failed> {
+/// `kind` and the teams of `teams`, which a first start writes. A table
+/// that records another kind is refused, with nothing written, and so is
+/// one that holds a team grant made under other teams.
+async fn checked(
+    stores: Stores,
+    kind: IdentityKind,
+    teams: &TeamsSource,
+) -> Result<Stores, Failed> {
     let unavailable = |problem: String| Failed::StoresUnavailable { problem };
     stores
         .check()
         .await
         .map_err(|error| unavailable(error.to_string()))?;
     match stores.identity(kind).await {
+        Ok(()) => {}
+        Err(IdentityError::Changed { recorded }) => {
+            return Err(Failed::IdentityChanged {
+                recorded: recorded.as_str().to_owned(),
+                configured: kind.as_str().to_owned(),
+            });
+        }
+        Err(error) => return Err(unavailable(error.to_string())),
+    }
+    let configured = teams_kind(teams);
+    match stores.teams_kind(configured).await {
         Ok(()) => Ok(stores),
-        Err(IdentityError::Changed { recorded }) => Err(Failed::IdentityChanged {
+        Err(TeamsKindError::Changed {
+            recorded,
+            share,
+            team,
+        }) => Err(Failed::Teams(TeamsFailed::Changed {
             recorded: recorded.as_str().to_owned(),
-            configured: kind.as_str().to_owned(),
-        }),
+            configured: configured.as_str().to_owned(),
+            share: share.as_str().to_owned(),
+            team: team.as_str().to_owned(),
+        })),
         Err(error) => Err(unavailable(error.to_string())),
     }
 }
@@ -159,17 +194,18 @@ type HostedSharing = Sharing<
     DynamoCursorStore,
     DynamoTokenStore,
     NamedRecipients,
-    FlareTeams<DynamoTeamStore>,
+    HostedTeams,
     HostedCreators,
     S3FileStore,
 >;
 
 /// The share API on the checked table and bucket, naming people of
-/// `kind`, keeping images in the bucket and accepting a token only while
-/// `admit` admits its owner.
+/// `kind`, reading its teams from `teams`, keeping images in the bucket and
+/// accepting a token only while `admit` admits its owner.
 fn share_api(
     config: SharingConfig,
     stores: Stores,
+    teams: HostedTeams,
     admit: Admit,
     kind: IdentityKind,
 ) -> HostedSharing {
@@ -181,7 +217,7 @@ fn share_api(
         stores.cursors,
         config.creators,
     )
-    .with_teams(FlareTeams::new(stores.teams))
+    .with_teams(teams)
     .with_identity(kind);
     let api = Sharing::new(flares, stores.tokens, config.recipients, admit)
         .with_everyone_signed_in(config.everyone_signed_in)

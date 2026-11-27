@@ -13,7 +13,8 @@
 //! the children in `SSL_CERT_FILE`. rustls-platform-verifier reads that
 //! variable on Linux only, so the tests that sign in run on Linux and pass
 //! with a message elsewhere. The tests of `flare files sweep`, in
-//! `hosted_stores/files.rs`, sign nobody in and run on every system.
+//! `hosted_stores/files.rs`, and of a start whose `hosted.teams` changed,
+//! in `hosted_stores/teams.rs`, sign nobody in and run on every system.
 //!
 //! The tests need `FLARE_TEST_DYNAMODB` and `FLARE_TEST_S3`, as flare-aws's
 //! tests do, and fail naming the one that is unset.
@@ -68,6 +69,8 @@ pub mod tls_provider;
 
 #[path = "hosted_stores/files.rs"]
 mod files;
+#[path = "hosted_stores/teams.rs"]
+mod teams;
 
 #[cfg(target_os = "linux")]
 mod linux {

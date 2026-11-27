@@ -20,6 +20,7 @@ mod sessions;
 mod settle;
 mod shares;
 mod teams;
+pub(crate) mod teams_kind;
 mod tokens;
 pub(crate) mod transact;
 
@@ -32,6 +33,7 @@ pub use sealing::DynamoSealingKeys;
 pub use sessions::DynamoSessionStore;
 pub use shares::DynamoShareStore;
 pub use teams::DynamoTeamStore;
+pub use teams_kind::{TeamsKind, TeamsKindError};
 pub use tokens::DynamoTokenStore;
 
 use crate::dynamodb::cancel::{Classified, Failure, Reason, classify};

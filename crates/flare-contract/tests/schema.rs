@@ -110,3 +110,45 @@ fn a_share_list_leaves_next_out_when_no_entry_follows_and_names_it_when_one_does
         serde_json::from_value(serde_json::json!({"items": [], "more": false})).unwrap();
     assert_eq!(read.next, None);
 }
+
+#[test]
+fn a_directory_team_summary_has_no_owner_or_created_time_and_says_who_keeps_it() {
+    use flare_contract::{TeamManagedBy, TeamRole, TeamSummary};
+    let directory = TeamSummary {
+        name: "design".to_owned(),
+        owner: None,
+        managed_by: TeamManagedBy::Directory,
+        role: TeamRole::Member,
+        members: 2,
+        created: None,
+    };
+    let written = serde_json::to_value(&directory).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({
+            "name": "design",
+            "managed_by": "directory",
+            "role": "member",
+            "members": 2,
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<TeamSummary>(written).unwrap(),
+        directory
+    );
+}
+
+#[test]
+fn a_team_summary_from_a_server_that_predates_managed_by_reads_as_a_flare_team() {
+    use flare_contract::{TeamManagedBy, TeamSummary};
+    let older = serde_json::json!({
+        "name": "design",
+        "owner": "ana@example.com",
+        "role": "owner",
+        "members": 1,
+        "created": "2026-11-23T10:00:00Z",
+    });
+    let read: TeamSummary = serde_json::from_value(older).unwrap();
+    assert_eq!(read.managed_by, TeamManagedBy::Flare);
+    assert_eq!(read.owner.as_deref(), Some("ana@example.com"));
+}

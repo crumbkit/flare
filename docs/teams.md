@@ -2,7 +2,104 @@
 
 A team is a named group of people that a share can be granted to. A group
 grant gives Reader on a share to a team or to everyone signed in. This page
-gives the life of a team, of a member and of a group grant.
+gives the life of a team, of a member and of a group grant. A deployment
+keeps its teams in flare's own table, which is the default, or takes them
+read-only from its own directory, as
+[Teams from the deployment's directory](#teams-from-the-deployments-directory)
+says.
+
+## Teams from the deployment's directory
+
+- With `hosted.teams` set to `{"file": "<path>"}` or
+  `{"object": "teams/<name>"}` ([hosting.md](hosting.md#the-share-api)),
+  flare reads its teams from a teams document that the deployment's own
+  sync job writes, such as an export of its directory. The document maps
+  each team's name to its members, each a person of the deployment's
+  identifier kind: an address, or a username under a username claim.
+
+```json
+{"teams": {"design": ["ana@example.com", "bo@example.com"]}}
+```
+
+- A document that names one team twice is refused.
+
+- flare reads the document when `flare serve` starts, and again on the
+  first request that finds the copy in memory 60 seconds old. No background
+  task runs. Two processes may disagree for up to 60 seconds after the
+  document changes.
+- A document refused at start stops `flare serve` with
+  `flare::teams::document_refused`. A document refused later leaves the
+  last good copy in use, and the server logs `teams.document.refused` with
+  the reason. No refusal repeats a member: it names the team and the
+  member's position in the team's list, counted from 1.
+- A read of the document that takes longer than 10 seconds, such as a file
+  on a hung network mount, is refused as unreadable, in the same way as a
+  read that fails.
+- The last good copy stays in use for as long as each later read is
+  refused, with no limit on its age. While it does, a change to the
+  directory takes no effect: a person the directory removes from a team
+  keeps reading the shares granted to that team, and a person it adds
+  reads none of them. A process that starts in that time refuses to
+  serve. Watch for the `teams.document.refused` log line, which each
+  refused read writes, about once a minute on each process that serves
+  requests, and fix the document or the sync job when it appears.
+- A directory team is active exactly while the document lists it. The team
+  table under [Team](#team) applies to teams that flare keeps.
+- A team that leaves the document opens nothing, and its grants show as
+  `dormant` in `flare grants`. When the name returns, its grants open again
+  to the members the document then lists. A share's owner revokes
+  `team:<name>` to end such a grant.
+
+| Command | Answer when the teams come from the directory |
+| --- | --- |
+| `flare teams create`, `add`, `remove`, `transfer`, `delete` | 403 `flare::teams::managed_elsewhere`, and nothing is written. A create or a delete answers before any grant is read or removed |
+| `flare teams list` | The caller's directory teams, each with `managed_by: directory`, no owner and no creation time |
+| `flare teams show <name>` | The members, to a member; `flare::teams::not_found` to anyone else |
+| `--with team:<name>` on `flare share` or `flare grant` | As for a stored team: the caller must belong to the team |
+| `flare revoke --with team:<name>` | As for a stored team |
+
+- The CLI gives `managed_elsewhere` no command to run. Its hint says to
+  change the team in the organisation's directory.
+
+### Switching between stored and directory teams
+
+- A team grant names only the team, so under the other teams the grant
+  would open to whichever team of that name they hold: a grant to a stored
+  team `design` of three people would open to a directory team `design` of
+  200, and the reverse. The share API's table therefore records, on its
+  first start, whether its team grants are made under stored teams or under
+  directory teams. A table that holds team grants from before the record
+  existed is recorded as stored teams.
+- `flare serve` exits with `flare::config::teams_changed`, writing
+  nothing, when `hosted.teams` names the other teams and the table still
+  holds a team grant. The failure names one such grant, its share and its
+  team, and its recovery is the `flare revoke <id> --with team:<name> --yes`
+  that the share's owner runs to end it. Its alternative is to set
+  `hosted.teams` back.
+- To switch, keep serving under the current teams, have each share's owner
+  revoke every team grant with `flare revoke --with team:<name>`, then stop
+  every process under the current teams and start under the new ones. Each
+  start names the next team grant that remains, until none does; the first
+  start that finds none records the new teams and serves. Grants to
+  people and to everyone are unaffected. A switch between a file and an
+  object that hold the same directory's teams is not a switch, because both
+  are directory teams.
+- The check scans the whole table for a team grant, which happens only on
+  a table's first start and on a start under the other teams.
+
+| Limit | Counts | When it is hit |
+| --- | --- | --- |
+| 4 MiB | Bytes of the document | The document is refused |
+| 2,000 | Teams in the document | The document is refused |
+| 5,000 | Members of one team | The document is refused |
+| 32 | Teams one person belongs to, as for stored teams | The document is refused, naming the team and the member's position |
+| 60 s | Age of the copy in memory before a request reads the document again | Processes may disagree for up to this long |
+
+- An app that embeds flare-core passes its own source of teams to
+  `Flares::with_teams`: flare-core's `DocumentTeams` over any
+  `TeamsDocument`, or its own `Teams`. The `Teams` suite in
+  `flare_core::contract::teams` checks a source, and runs against
+  `FlareTeams`, `NoTeams` and `DocumentTeams`.
 
 ## Deleting a team
 
@@ -57,9 +154,9 @@ gives the life of a team, of a member and of a group grant.
 | `flare shares --with-me --everyone` | `GET /api/shares?scope=with-me&everyone=true` | Anyone signed in |
 
 - A team name has 1 to 40 characters from `a` to `z`, `0` to `9` and `-`.
-- A server whose teams come from another directory answers each team
-  change with `flare::teams::managed_elsewhere` (403). A create on such a
-  server changes no grant before it answers.
+- A server whose teams come from the deployment's directory answers each
+  team change with `flare::teams::managed_elsewhere` (403). A create or a
+  delete on such a server changes no grant before it answers.
 - `flare shares --with-me` lists shares granted to the caller directly and
   through their active teams. It adds the shares granted to everyone only
   with `--everyone`.

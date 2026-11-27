@@ -8,8 +8,8 @@ use crate::env::Snapshot;
 use crate::sharing::{body, session};
 use crumbkit::{Call, Listing, Step};
 use flare_contract::{
-    ApiCode, MembersChanged, MembersRequest, TeamDeleted, TeamList, TeamRequest, TeamRole,
-    TeamShown, TeamSummary, TransferRequest,
+    ApiCode, MembersChanged, MembersRequest, TeamDeleted, TeamList, TeamManagedBy, TeamRequest,
+    TeamRole, TeamShown, TeamSummary, TransferRequest,
 };
 use flare_core::TeamName;
 use reqwest::Method;
@@ -22,10 +22,18 @@ fn team_path(origin: &str, text: &str) -> Result<String, Failed> {
         .map_err(|_| Refused::new(ApiCode::TeamNotFound, None, origin).into())
 }
 
+/// What `flare teams list` adds when a team has no owner.
+const DIRECTORY_NOTE: &str = "A team with no owner is managed by your directory: your organisation changes its members there, and flare cannot change it.";
+
 fn row(team: TeamSummary) -> TeamRow {
     TeamRow {
         name: team.name,
         owner: team.owner,
+        managed_by: match team.managed_by {
+            TeamManagedBy::Flare => "flare",
+            TeamManagedBy::Directory => "directory",
+        }
+        .to_owned(),
         role: match team.role {
             TeamRole::Owner => "owner",
             TeamRole::Member => "member",
@@ -84,8 +92,14 @@ pub(crate) async fn members(
 pub(crate) async fn list(args: &ListTeamsArgs, env: &Snapshot) -> Result<Listing<TeamRow>, Failed> {
     let api = session(env)?;
     let answer: Option<TeamList> = api.send(Method::GET, "/api/teams", None::<&()>).await?;
-    let rows = body(&api, answer)?.items.into_iter().map(row).collect();
-    Ok(Listing::from_all(rows, args.page.limit()).described("teams"))
+    let rows: Vec<TeamRow> = body(&api, answer)?.items.into_iter().map(row).collect();
+    let directory = rows.iter().any(|row| row.managed_by == "directory");
+    let listing = Listing::from_all(rows, args.page.limit()).described("teams");
+    Ok(if directory {
+        listing.note(DIRECTORY_NOTE)
+    } else {
+        listing
+    })
 }
 
 /// Runs `flare teams show`.
@@ -104,7 +118,7 @@ pub(crate) async fn show(names: &[String], env: &Snapshot) -> Result<Listing<Mem
         rows.extend(shown.members.into_iter().map(|member| {
             MemberRow {
                 team: team.name.clone(),
-                role: if member == team.owner {
+                role: if team.owner.as_ref() == Some(&member) {
                     "owner"
                 } else {
                     "member"

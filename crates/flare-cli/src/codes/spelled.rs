@@ -27,6 +27,9 @@ pub const CONFIG_INVALID: Code<'static> = Code::from_spelling("flare::config::in
 /// The share API's table records another identifier kind than the config.
 pub const CONFIG_IDENTITY_CHANGED: Code<'static> =
     Code::from_spelling("flare::config::identity_changed");
+/// The share API's table holds team grants made under other teams than
+/// the config names.
+pub const CONFIG_TEAMS_CHANGED: Code<'static> = Code::from_spelling("flare::config::teams_changed");
 /// The client secret could not be read from the Keychain or its file.
 pub const OIDC_SECRET_UNAVAILABLE: Code<'static> =
     Code::from_spelling("flare::oidc::secret_unavailable");
@@ -62,6 +65,10 @@ pub const OPENER_FAILED: Code<'static> = Code::from_spelling("flare::opener::fai
 pub const STATE_UNUSABLE: Code<'static> = Code::from_spelling("flare::state::unusable");
 /// The share API's table or bucket is missing or cannot be read.
 pub const STORES_UNAVAILABLE: Code<'static> = Code::from_spelling("flare::stores::unavailable");
+/// The teams document that `hosted.teams` names could not be read or was
+/// refused when `flare serve` started.
+pub const TEAMS_DOCUMENT_REFUSED: Code<'static> =
+    Code::from_spelling("flare::teams::document_refused");
 /// A log that `flare metrics` was given could not be read.
 pub const METRICS_UNREADABLE: Code<'static> = Code::from_spelling("flare::metrics::unreadable");
 /// The operating system refused a socket, a thread or random bytes.

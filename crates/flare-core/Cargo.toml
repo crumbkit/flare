@@ -11,6 +11,10 @@ rust-version.workspace = true
 # Flares::search runs a parsed search over the caller's shares.
 flare-query.workspace = true
 secrecy.workspace = true
+# DocumentTeams reads a deployment's teams document, which is JSON. Both
+# crates are already in the graph through flare-contract and flare-server.
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [features]

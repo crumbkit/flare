@@ -11,9 +11,11 @@
 //! from the configured file, or through the signed token of a single
 //! sign-on proxy, whose key set it fetches before it binds. When the hosted section names its stores, it checks
 //! the DynamoDB table and the S3 bucket before it binds and serves the share
-//! API from them, with the images of shares kept in the bucket.
+//! API from them, with the images of shares kept in the bucket, and reads
+//! the teams document that `hosted.teams` names, when it names one.
 
 mod hosted;
+mod teams;
 
 use crate::board;
 use crate::cli::ServeArgs;

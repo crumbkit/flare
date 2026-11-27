@@ -1,7 +1,10 @@
-//! The S3 file store and the one bucket it uses.
+//! The S3 file store, the teams document reader and the one bucket they
+//! use.
 //!
-//! [`Bucket`] is the only holder of the S3 client. The bucket holds only
-//! `files/<share id>/<file id>`. The store never replaces an object; it
+//! [`Bucket`] is the only holder of the S3 client. flare writes only
+//! `files/<share id>/<file id>` in the bucket, and reads a deployment's
+//! teams document under `teams/` when its config names one. The store
+//! never replaces an object; it
 //! deletes one only when a failed create or publish cleans up, or when the
 //! sweep finds a file that no version lists.
 
@@ -9,8 +12,10 @@ mod fault;
 mod files;
 mod keys;
 mod list;
+mod teams;
 
 pub use files::S3FileStore;
+pub use teams::{S3TeamsDocument, TeamsKeyError, TeamsObjectKey};
 
 use crate::dynamodb::Faults;
 use crate::dynamodb::retry::Policy;

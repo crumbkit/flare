@@ -11,7 +11,8 @@
 //! `infra/flare-stores.template.json` defines, and [`Stores::check`]
 //! confirms them before a server listens. [`Stores::identity`] records the
 //! identifier kind of the table's first start in one marker item and
-//! refuses a later start under the other kind.
+//! refuses a later start under the other kind. [`Stores::teams_document`]
+//! reads a deployment's teams document from the bucket, under `teams/`.
 //!
 //! Each store implements its flare-core trait and passes that trait's
 //! contract suite. A share, its versions, its grants, login codes, tokens
@@ -35,6 +36,6 @@ pub use connect::{EndpointUrl, Endpoints, Fault};
 pub use dynamodb::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
     DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
-    IdentityError,
+    IdentityError, TeamsKind, TeamsKindError,
 };
-pub use s3::S3FileStore;
+pub use s3::{S3FileStore, S3TeamsDocument, TeamsKeyError, TeamsObjectKey};

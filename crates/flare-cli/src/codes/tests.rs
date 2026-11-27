@@ -1,5 +1,5 @@
-use super::Failed;
-use crumbkit::{Failure as _, Field};
+use super::{Failed, TeamsFailed};
+use crumbkit::{Call, Failure as _, Field, Recovery};
 
 /// The message and the fields of `failed`.
 fn shown(failed: &Failed) -> (String, Vec<Field<'_>>) {
@@ -86,6 +86,37 @@ fn opener_failed_prints_the_program_it_names_and_gives_it_as_a_field() {
                 .to_owned(),
             vec![Field::new("program", None::<&str>)]
         )
+    );
+}
+
+#[test]
+fn teams_changed_names_both_sources_and_revokes_the_team_grant_it_found() {
+    let changed = Failed::Teams(TeamsFailed::Changed {
+        recorded: "stored".to_owned(),
+        configured: "directory".to_owned(),
+        share: "0123456789abcdef0123456789abcdef".to_owned(),
+        team: "design".to_owned(),
+    });
+    let (message, fields) = shown(&changed);
+    assert!(
+        message.contains("stored teams") && message.contains("hosted.teams names directory teams"),
+        "{message}"
+    );
+    assert!(
+        message.contains("team:design") && message.contains("0123456789abcdef0123456789abcdef"),
+        "{message}"
+    );
+    assert_eq!(fields[0], Field::new("recorded", "stored"));
+    assert_eq!(changed.code().as_str(), "flare::config::teams_changed");
+    let Recovery::Run(call) = changed.recovery() else {
+        panic!("{:?}", changed.recovery());
+    };
+    assert_eq!(
+        call,
+        Call::new(&["revoke"])
+            .value("id", "0123456789abcdef0123456789abcdef")
+            .value("with", "team:design")
+            .flag("yes")
     );
 }
 

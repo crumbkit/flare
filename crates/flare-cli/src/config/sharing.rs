@@ -2,7 +2,8 @@
 //! DynamoDB table and the S3 bucket, `creators`, which says who may share,
 //! `names`, which maps names to people for `--with`, and
 //! `everyone_signed_in`, which lets an everyone grant under an `anyone`
-//! rule open to every signed-in person. Without `stores` the hosted site
+//! rule open to every signed-in person, and `teams`, which config/teams.rs
+//! reads. Without `stores` the hosted site
 //! serves no share API. Under the username kind, `names` and `creators`
 //! hold usernames where the email kind holds addresses.
 //!
@@ -19,6 +20,7 @@
 //! opens for a reader who has never shared a flare. Left out, the reading
 //! page shows no link to anyone.
 
+use super::teams::{TeamsSource, teams as teams_from};
 use flare_aws::HostedConfig;
 use flare_core::{
     AllAdmitted, CreatorDomain, CreatorList, Creators, CreatorsError, IdentityKind,
@@ -67,6 +69,8 @@ pub(crate) struct Sharing {
     pub(crate) open_to_anyone: bool,
     /// The address the reading page's Get Flare link opens, when set.
     pub(crate) get_flare: Option<GetFlare>,
+    /// Where the teams come from.
+    pub(crate) teams: TeamsSource,
 }
 
 /// The hosted section's share API keys, as the file gave them.
@@ -81,6 +85,8 @@ pub(crate) struct Keys {
     pub(crate) get_flare: Option<String>,
     /// `hosted.everyone_signed_in`.
     pub(crate) everyone_signed_in: Option<bool>,
+    /// `hosted.teams`.
+    pub(crate) teams: Option<Value>,
 }
 
 /// The share API's settings from the hosted section's keys, for an admit
@@ -100,6 +106,7 @@ pub(crate) fn sharing(
         names,
         get_flare,
         everyone_signed_in,
+        teams,
     } = keys;
     let Some(stores) = stores else {
         let orphan = if creators.is_some() {
@@ -110,6 +117,8 @@ pub(crate) fn sharing(
             "hosted.get_flare"
         } else if everyone_signed_in.is_some() {
             "hosted.everyone_signed_in"
+        } else if teams.is_some() {
+            "hosted.teams"
         } else {
             return Ok(None);
         };
@@ -128,6 +137,7 @@ pub(crate) fn sharing(
         None => HostedCreators::All(AllAdmitted),
     };
     let recipients = recipients_from(names.unwrap_or_default(), kind)?;
+    let teams = teams_from(teams.as_ref())?;
     let open_to_anyone = anyone && matches!(creators, HostedCreators::All(_));
     let get_flare = get_flare
         .map(|text| GetFlare::try_from(text.as_str()))
@@ -142,6 +152,7 @@ pub(crate) fn sharing(
         everyone_signed_in: everyone_signed_in.unwrap_or(false),
         open_to_anyone,
         get_flare,
+        teams,
     }))
 }
 

@@ -10,6 +10,7 @@ pub mod server;
 pub mod sharing;
 pub mod sign_in;
 mod spelled;
+pub mod teams;
 
 #[cfg(test)]
 mod tests;
@@ -21,12 +22,14 @@ pub use sign_in::SignInAgain;
 pub use spelled::{
     BINDINGS_INVALID, BINDINGS_MISFIT, BINDINGS_NAME_TAKEN, BINDINGS_RECORD_NOT_FOUND,
     BOARD_NOT_A_BOARD, BOARD_NOT_FOUND, BOARD_PROGRAM_UNAVAILABLE, BOARD_TOO_OLD,
-    BOARD_UNAVAILABLE, CONFIG_IDENTITY_CHANGED, CONFIG_INVALID, CONFIG_UNREADABLE,
-    METRICS_UNREADABLE, OIDC_PROVIDER_UNAVAILABLE, OIDC_SECRET_UNAVAILABLE, OPENER_FAILED,
-    PAGES_INVALID, PAGES_NOT_FOUND, PAGES_TEMPLATE_FLAWS, PAGES_UNKNOWN_FORMAT, PAGES_UNREADABLE,
-    PROXY_KEYS_UNAVAILABLE, SERVER_ALREADY_RUNNING, SERVER_NOT_RUNNING, SERVER_PORT_IN_USE,
-    STATE_UNUSABLE, STORES_UNAVAILABLE, SYSTEM_UNAVAILABLE,
+    BOARD_UNAVAILABLE, CONFIG_IDENTITY_CHANGED, CONFIG_INVALID, CONFIG_TEAMS_CHANGED,
+    CONFIG_UNREADABLE, METRICS_UNREADABLE, OIDC_PROVIDER_UNAVAILABLE, OIDC_SECRET_UNAVAILABLE,
+    OPENER_FAILED, PAGES_INVALID, PAGES_NOT_FOUND, PAGES_TEMPLATE_FLAWS, PAGES_UNKNOWN_FORMAT,
+    PAGES_UNREADABLE, PROXY_KEYS_UNAVAILABLE, SERVER_ALREADY_RUNNING, SERVER_NOT_RUNNING,
+    SERVER_PORT_IN_USE, STATE_UNUSABLE, STORES_UNAVAILABLE, SYSTEM_UNAVAILABLE,
+    TEAMS_DOCUMENT_REFUSED,
 };
+pub use teams::TeamsFailed;
 
 /// Why a `flare` command failed.
 #[derive(Debug, thiserror::Error, Failure)]
@@ -337,6 +340,10 @@ pub enum Failed {
         /// The kind `hosted.identity` names.
         configured: String,
     },
+    /// The teams that `hosted.teams` names stop `flare serve`.
+    #[error(transparent)]
+    #[failure(forward)]
+    Teams(#[from] TeamsFailed),
     /// A log that `flare metrics` was given could not be read.
     #[error("{path} could not be read: {problem}")]
     #[failure(

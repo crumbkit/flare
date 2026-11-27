@@ -8,6 +8,29 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A hosted deployment can take its teams from its own directory, read
+  only. `hosted.teams` set to `{"file": "<path>"}` or
+  `{"object": "teams/<name>"}` makes flare read a teams document that the
+  deployment's sync job writes, from that file or from that object in the
+  stores bucket, and read it again at most once a minute. `flare teams
+  list` and `show` work for its teams, every team change answers
+  `flare::teams::managed_elsewhere`, and `flare serve` exits with
+  `flare::teams::document_refused` when the document cannot be used at
+  start. A read that takes longer than 10 seconds is refused as
+  unreadable, and a document that names one team twice is refused. Left
+  out, or `"stored"`, flare keeps its own teams as before. The stores
+  template lets flare read objects under `teams/`. docs/teams.md
+  describes it.
+- The share API's table records whether its team grants are made under
+  stored or directory teams, and `flare serve` exits with
+  `flare::config::teams_changed`, writing nothing, when `hosted.teams`
+  names the other ones while a team grant remains. Its recovery is the
+  `flare revoke` that ends the grant it names. flare-aws gains
+  `Stores::teams_kind`, `TeamsKind` and `TeamsKindError`.
+- flare-core gains `DocumentTeams`, `TeamsDocument` and a contract suite
+  for `Teams`, and `Teams::list` and `Teams::show` have default bodies
+  built from the three reads.
+
 - A hosted deployment can name people by username. `hosted.identity` set
   to `{"username_claim": "<claim>"}` makes grants, teams, creators, names
   and tokens key on the username in that claim of the sign-in's token, and
@@ -94,6 +117,15 @@ This file records the notable changes to flare. The format follows
 
 ### Changed
 
+- A team in `GET /api/teams`, `GET /api/teams/<name>` and the team
+  replies gains `managed_by`, `flare` or `directory`, and a directory team
+  leaves out `owner` and `created`, so a client that reads `owner` must
+  handle its absence. A summary without `managed_by` reads as a flare
+  team. `flare teams list --json` and the other team documents print
+  `managed_by`, and `owner` and `created` are null for a directory team.
+- `Teams::list` and `Teams::show` in flare-core return `TeamView`, whose
+  `owner` and `created` are `None` for a directory team, in place of
+  `Team`.
 - flare-server's `Site::Hosted` names its sign-in `sign_in`, which was
   `oidc`, and a hosted site's caller is `Side::Hosted`.
 - `flare share` without `--title` titles a new flare with the plain text

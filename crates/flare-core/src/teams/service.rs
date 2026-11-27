@@ -3,6 +3,7 @@
 
 use super::names::TeamName;
 use super::store::{Team, TeamState, TeamStore};
+use super::view::TeamView;
 use super::{MAX_TEAMS_JOINED, MAX_TEAMS_OWNED, Teams, TeamsError};
 use crate::person::Person;
 use crate::time::Timestamp;
@@ -224,19 +225,19 @@ impl<S: TeamStore> Teams for FlareTeams<S> {
         &self,
         actor: &Person,
         team: &TeamName,
-    ) -> Result<(Team, Vec<Person>), TeamsError> {
+    ) -> Result<(TeamView, Vec<Person>), TeamsError> {
         let found = self.visible(actor, team).await?;
         let members = self.store.members(team).await?;
-        Ok((found, members))
+        Ok((found.into(), members))
     }
 
-    async fn list(&self, actor: &Person) -> Result<Vec<Team>, TeamsError> {
+    async fn list(&self, actor: &Person) -> Result<Vec<TeamView>, TeamsError> {
         let mut teams = Vec::new();
         for name in self.store.teams_of(actor).await? {
             if let Some(found) = self.store.get(&name).await?
                 && found.state() == TeamState::Active
             {
-                teams.push(found);
+                teams.push(found.into());
             }
         }
         Ok(teams)

@@ -5,7 +5,8 @@
 //! deployment may supply its own, such as one that reads its directory.
 //! That one may be read-only: every change then answers
 //! [`TeamsError::ManagedElsewhere`], which the default methods of
-//! [`Teams`] do. [`NoTeams`] knows no team at all.
+//! [`Teams`] do. [`DocumentTeams`] is such a source, over a teams document
+//! that the deployment's sync job writes. [`NoTeams`] knows no team at all.
 //!
 //! # Lifecycle of a team
 //!
@@ -26,14 +27,27 @@
 //! frees the name. A delete that stops midway leaves the team deleting,
 //! and the owner's repeat continues it. A new team of a freed name holds
 //! none of the old team's grants.
+//!
+//! The table applies to teams that flare keeps. A team of a read-only
+//! source, such as the deployment's directory, is active exactly while the
+//! source lists it.
 
+mod directory;
+mod document;
 mod names;
 mod service;
 mod store;
+mod view;
 
+pub use directory::{
+    DocumentRefused, DocumentUnreadable, MAX_DIRECTORY_MEMBERS, MAX_DIRECTORY_TEAMS,
+    MAX_DOCUMENT_BYTES,
+};
+pub use document::{DOCUMENT_MAX_AGE, DocumentTeams, TeamsDocument};
 pub use names::{Admission, Audience, Group, MailDomain, TeamName};
 pub use service::FlareTeams;
 pub use store::{Team, TeamState, TeamStore, TeamStoreError};
+pub use view::{ManagedBy, TeamView};
 
 use crate::person::Person;
 use crate::time::Timestamp;
@@ -110,9 +124,12 @@ impl From<TeamStoreError> for TeamsError {
 /// routes make. Each `actor` is the caller's person.
 ///
 /// The three reads are what a share's standing needs. The changes have
-/// default bodies that answer [`TeamsError::ManagedElsewhere`], so a
-/// read-only implementation writes only the reads. An implementation that
-/// writes the changes also answers `true` from [`Teams::manages`].
+/// default bodies that answer [`TeamsError::ManagedElsewhere`], and
+/// [`Teams::list`] and [`Teams::show`] have default bodies built from the
+/// three reads, so a read-only implementation writes only the reads. An
+/// implementation that writes the changes also answers `true` from
+/// [`Teams::manages`]. The `Teams` suite of [`crate::contract`] checks an
+/// implementation.
 pub trait Teams: Send + Sync {
     /// Whether flare creates, changes and deletes these teams. The default
     /// answers `false`, as the default changes answer
@@ -282,28 +299,62 @@ pub trait Teams: Send + Sync {
         async { Err(TeamsError::ManagedElsewhere) }
     }
 
-    /// The team and its members, for a member or the owner.
+    /// The team and its members, in identifier order, for a member or the
+    /// owner. The default answers a member from [`Teams::exists`] and
+    /// [`Teams::members`] with a [`TeamView::directory`], and anyone else
+    /// with [`TeamsError::NotFound`], the same answer as for a missing
+    /// team.
     ///
     /// # Errors
     ///
-    /// Returns [`TeamsError::NotFound`], [`TeamsError::ManagedElsewhere`]
-    /// and [`TeamsError::Unavailable`].
+    /// Returns [`TeamsError::NotFound`] and [`TeamsError::Unavailable`].
     fn show(
         &self,
-        _actor: &Person,
-        _team: &TeamName,
-    ) -> impl Future<Output = Result<(Team, Vec<Person>), TeamsError>> + Send {
-        async { Err(TeamsError::ManagedElsewhere) }
+        actor: &Person,
+        team: &TeamName,
+    ) -> impl Future<Output = Result<(TeamView, Vec<Person>), TeamsError>> + Send {
+        async move {
+            if !self.exists(team).await? {
+                return Err(TeamsError::NotFound);
+            }
+            let mut members = self.members(team).await?;
+            if !members.contains(actor) {
+                return Err(TeamsError::NotFound);
+            }
+            members.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+            Ok((TeamView::directory(team.clone(), members.len()), members))
+        }
     }
 
-    /// The active teams that `actor` belongs to, in name order.
+    /// The active teams that `actor` belongs to, in name order. The default
+    /// builds each from [`Teams::teams_of`], [`Teams::exists`] and
+    /// [`Teams::members`] as a [`TeamView::directory`].
     ///
     /// # Errors
     ///
-    /// Returns [`TeamsError::ManagedElsewhere`] and
-    /// [`TeamsError::Unavailable`].
-    fn list(&self, _actor: &Person) -> impl Future<Output = Result<Vec<Team>, TeamsError>> + Send {
-        async { Err(TeamsError::ManagedElsewhere) }
+    /// Returns [`TeamsError::Unavailable`].
+    fn list(
+        &self,
+        actor: &Person,
+    ) -> impl Future<Output = Result<Vec<TeamView>, TeamsError>> + Send {
+        async move {
+            let mut names = self.teams_of(actor).await?;
+            names.sort();
+            names.dedup();
+            let mut teams = Vec::with_capacity(names.len());
+            for name in names {
+                if !self.exists(&name).await? {
+                    continue;
+                }
+                match self.members(&name).await {
+                    Ok(members) => teams.push(TeamView::directory(name, members.len())),
+                    // The team went between the two reads.
+                    Err(TeamsError::NotFound) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            Ok(teams)
+        }
     }
 }
 
