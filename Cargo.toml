@@ -33,8 +33,8 @@ aws-lc-rs = "1.19.0"
 # /evals/flare-board-dependencies.
 # Replaces flare-auth-loopback's server file atomically: a new file beside
 # it, synced, renamed, with the directory synced (DUR-1).
-crumbkit-durable = "=0.6.0"
-crumbkit-process = { version = "=0.6.0", default-features = false }
+crumbkit-durable = "=0.6.2"
+crumbkit-process = { version = "=0.6.2", default-features = false }
 # base64url for the state, nonce, PKCE verifier and session secrets.
 base64 = "0.23.1"
 # flare-aws keeps shares and grants in DynamoDB and files in S3 through the
@@ -98,14 +98,14 @@ flare-server = { path = "crates/flare-server", version = "0.1.0" }
 
 # The flare binary's command line, failures, documents and usage log
 # (the cli profile). Evaluated in /evals/flare-server-dependencies.
-clap = { version = "=4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
-crumbkit = { version = "=0.6.0", features = ["derive"] }
-crumbkit-usage = "=0.6.0"
+clap = { version = "=4.6.9", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
+crumbkit = { version = "=0.6.2", features = ["derive"] }
+crumbkit-usage = "=0.6.2"
 # Installs, checks and prints flare's agent skill (`flare skills`).
 # Evaluated in /evals/hangar-skills-dependencies.
-crumbkit-skills = "=0.6.0"
+crumbkit-skills = "=0.6.2"
 # Test-only: the cli profile's convention checks.
-crumbkit-test = "=0.6.0"
+crumbkit-test = "=0.6.2"
 # The JSON Schemas of the binary's documents, which crumbkit's Row and
 # Document need; crumbkit already brings it in.
 schemars = "1.2.3"
