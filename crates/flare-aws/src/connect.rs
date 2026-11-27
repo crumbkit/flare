@@ -3,13 +3,13 @@
 //! makes before it listens.
 
 use crate::config::HostedConfig;
-use crate::dynamodb::IdentityError;
 use crate::dynamodb::retry::Policy;
 use crate::dynamodb::{
     DynamoClient, DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
     DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
     Faults, Table,
 };
+use crate::dynamodb::{IdentityError, TeamsKind, TeamsKindError};
 use crate::s3::{Bucket, S3Client, S3FileStore, S3TeamsDocument, TeamsObjectKey};
 use aws_sdk_dynamodb::types::{KeyType, ScalarAttributeType};
 use std::time::Duration;
@@ -143,6 +143,23 @@ impl Stores {
     /// when the table cannot be read or written.
     pub async fn identity(&self, kind: flare_core::IdentityKind) -> Result<(), IdentityError> {
         crate::dynamodb::identity::settle(&self.table, kind).await
+    }
+
+    /// Records `kind` in the table's teams marker unless the table holds a
+    /// team grant made under other teams, and checks that the marker then
+    /// records `kind`, so a server can refuse to start under teams that
+    /// would open a team grant to another group of people. A table with
+    /// team grants and no marker is recorded as stored teams. Call it after
+    /// [`Stores::identity`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TeamsKindError::Changed`], naming the first team grant it
+    /// found and with nothing written, when the marker records other teams
+    /// and a team grant remains, and [`TeamsKindError::Unavailable`] when
+    /// the table cannot be read or written.
+    pub async fn teams_kind(&self, kind: TeamsKind) -> Result<(), TeamsKindError> {
+        crate::dynamodb::teams_kind::settle(&self.table, kind).await
     }
 
     /// Checks that the table exists with the string keys `pk` and `sk`, and

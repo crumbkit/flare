@@ -162,7 +162,13 @@ The share API lets people share Markdown files with named people from the
   `flare serve` reads the document before it listens and exits with
   `flare::teams::document_refused` when it cannot read or use it. A bad
   value stops `flare serve` with `flare::config::invalid` naming
-  `hosted.teams`, and `teams` without `stores` is refused.
+  `hosted.teams`, and `teams` without `stores` is refused. The table
+  records whether its team grants are made under stored or directory
+  teams, and `flare serve` exits with `flare::config::teams_changed`,
+  writing nothing, when `teams` names the other ones while a team grant
+  remains, because that grant would open to another group of people.
+  [teams.md](teams.md#switching-between-stored-and-directory-teams) says
+  how to switch.
   [teams.md](teams.md#teams-from-the-deployments-directory) gives the
   document's shape and limits.
 - `get_flare` is the address that the reading page's Get Flare link opens,

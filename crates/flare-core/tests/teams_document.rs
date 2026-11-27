@@ -11,7 +11,10 @@ use flare_core::{
     Person, TeamName, Teams, TeamsDocument, TeamsError, Timestamp,
 };
 use serde_json::{Value, json};
+use std::future::Future as _;
+use std::pin::pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
 /// What the next read of a [`Sync`] answers: the bytes, or why it fails.
@@ -59,6 +62,51 @@ impl TeamsDocument for Sync {
     }
 }
 
+/// A [`Sync`] whose reads wait until the test opens its gate.
+#[derive(Clone, Default)]
+struct Slow {
+    sync: Sync,
+    gate: Arc<Mutex<Gate>>,
+}
+
+/// Whether a [`Slow`] read may finish, and the read that waits for it.
+#[derive(Default)]
+struct Gate {
+    shut: bool,
+    waiting: Option<Waker>,
+}
+
+impl Slow {
+    fn shut(&self) {
+        self.gate.lock().unwrap().shut = true;
+    }
+
+    fn open(&self) {
+        let mut gate = self.gate.lock().unwrap();
+        gate.shut = false;
+        if let Some(waker) = gate.waiting.take() {
+            waker.wake();
+        }
+    }
+}
+
+impl TeamsDocument for Slow {
+    async fn read(&self) -> Result<Vec<u8>, DocumentUnreadable> {
+        let read = self.sync.read().await;
+        std::future::poll_fn(|context| {
+            let mut gate = self.gate.lock().unwrap();
+            if gate.shut {
+                gate.waiting = Some(context.waker().clone());
+                Poll::Pending
+            } else {
+                Poll::Ready(())
+            }
+        })
+        .await;
+        read
+    }
+}
+
 /// A clock that a test moves forward.
 #[derive(Clone)]
 struct Clock(Arc<Mutex<Instant>>);
@@ -73,7 +121,7 @@ impl Clock {
         *now += by;
     }
 
-    fn reader(&self) -> impl Fn() -> Instant + Send + std::marker::Sync + 'static {
+    fn reader(&self) -> impl Fn() -> Instant + Send + std::marker::Sync + 'static + use<> {
         let held = Arc::clone(&self.0);
         move || *held.lock().unwrap()
     }
@@ -380,4 +428,74 @@ fn the_debug_output_names_no_member() {
     let (teams, _) = loaded(&design());
     let shown = format!("{teams:?}");
     assert!(!shown.contains("example.com"), "{shown}");
+}
+
+#[test]
+fn a_document_that_names_one_team_twice_is_refused_as_malformed() {
+    let twice =
+        refused(br#"{"teams": {"design": ["ana@example.com"], "design": ["bo@example.com"]}}"#);
+    assert!(
+        matches!(twice, DocumentRefused::Malformed { .. }),
+        "{twice:?}"
+    );
+    assert!(!twice.to_string().contains("example.com"), "{twice}");
+}
+
+/// Teams over a [`Slow`] document holding [`design`], aged by a clock that
+/// a test moves.
+fn slow() -> (
+    DocumentTeams<Slow, impl Fn() -> Instant + Send + std::marker::Sync>,
+    Slow,
+    Clock,
+) {
+    let slow = Slow::default();
+    slow.sync.write(&design());
+    let clock = Clock::new();
+    let teams = block_on(DocumentTeams::load(slow.clone(), IdentityKind::Email))
+        .unwrap()
+        .with_clock(clock.reader());
+    (teams, slow, clock)
+}
+
+#[test]
+fn a_second_stale_call_during_a_slow_read_answers_from_the_old_copy_without_reading() {
+    let (teams, slow, clock) = slow();
+    let reads = slow.sync.reads();
+    slow.sync
+        .write(&json!({"teams": {"design": ["ana@example.com"]}}));
+    slow.shut();
+    clock.advance(DOCUMENT_MAX_AGE);
+    let design = team("design");
+    let mut first = pin!(teams.members(&design));
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(first.as_mut().poll(&mut context).is_pending());
+    assert_eq!(slow.sync.reads(), reads + 1);
+    assert_eq!(block_on(teams.members(&design)).unwrap().len(), 2);
+    assert_eq!(block_on(teams.members(&design)).unwrap().len(), 2);
+    assert_eq!(slow.sync.reads(), reads + 1);
+    slow.open();
+    let Poll::Ready(fresh) = first.as_mut().poll(&mut context) else {
+        panic!("the read did not finish once the gate opened");
+    };
+    assert_eq!(fresh.unwrap().len(), 1);
+    assert_eq!(block_on(teams.members(&design)).unwrap().len(), 1);
+    assert_eq!(slow.sync.reads(), reads + 1);
+}
+
+#[test]
+fn a_read_whose_call_is_dropped_clears_the_reading_mark_and_the_next_call_reads() {
+    let (teams, slow, clock) = slow();
+    let reads = slow.sync.reads();
+    slow.sync
+        .write(&json!({"teams": {"design": ["ana@example.com"]}}));
+    slow.shut();
+    clock.advance(DOCUMENT_MAX_AGE);
+    let design = team("design");
+    let mut first = Box::pin(teams.members(&design));
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(first.as_mut().poll(&mut context).is_pending());
+    drop(first);
+    slow.open();
+    assert_eq!(block_on(teams.members(&design)).unwrap().len(), 1);
+    assert_eq!(slow.sync.reads(), reads + 2);
 }

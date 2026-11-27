@@ -119,6 +119,13 @@ impl TeamsDocument for S3TeamsDocument {
                 }
                 Ok(None) => break,
                 Err(_) => {
+                    tracing::warn!(
+                        call = "GetObject",
+                        item = "teams document",
+                        code = "BodyReadFailed",
+                        request_id = "none",
+                        "an S3 call failed"
+                    );
                     return Err(DocumentUnreadable::new(format!(
                         "the read of {key} from the stores bucket stopped before its end"
                     )));

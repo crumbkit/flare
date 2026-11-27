@@ -4,12 +4,14 @@
 //! A document is a JSON object whose one key, `teams`, maps each team's
 //! name to the list of its members, such as
 //! `{"teams": {"design": ["ana@example.com"]}}`. Each member is a person of
-//! the deployment's identifier kind: an address, or a username.
+//! the deployment's identifier kind: an address, or a username. A document
+//! that names one team twice is refused.
 
 use super::MAX_TEAMS_JOINED;
 use super::names::TeamName;
 use crate::person::{IdentityKind, Person};
 use serde::Deserialize;
+use serde::de::{Deserializer, MapAccess, Visitor};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
@@ -62,9 +64,9 @@ pub enum DocumentRefused {
     #[error("the teams document is longer than {MAX_DOCUMENT_BYTES} bytes")]
     TooLarge,
     /// The document is not JSON, or not an object whose one key `teams`
-    /// maps each team's name to a list of members.
+    /// maps each team's name, once, to a list of members.
     #[error(
-        "the teams document is not an object whose one key, teams, maps each team's name to a list of its members (line {line}, column {column})"
+        "the teams document is not an object whose one key, teams, maps each team's name, once, to a list of its members (line {line}, column {column})"
     )]
     Malformed {
         /// The line where reading stopped.
@@ -113,13 +115,40 @@ pub enum DocumentRefused {
     },
 }
 
-/// A teams document as JSON reads it. serde_json keeps the last of two
-/// keys with one name, so a document that names a team twice keeps the
-/// team's last list; a stricter reader would refuse the repeat.
+/// A teams document as JSON reads it.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Raw {
+    #[serde(deserialize_with = "once_each")]
     teams: BTreeMap<String, Vec<String>>,
+}
+
+/// The `teams` map, refusing a team named twice, which serde_json's own map
+/// reading would settle by keeping the last list.
+fn once_each<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, Vec<String>>, D::Error> {
+    struct OnceEach;
+
+    impl<'de> Visitor<'de> for OnceEach {
+        type Value = BTreeMap<String, Vec<String>>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a map from each team's name, once, to its members")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut teams = BTreeMap::new();
+            while let Some((name, members)) = map.next_entry::<String, Vec<String>>()? {
+                if teams.insert(name, members).is_some() {
+                    return Err(serde::de::Error::custom("a team is named twice"));
+                }
+            }
+            Ok(teams)
+        }
+    }
+
+    deserializer.deserialize_map(OnceEach)
 }
 
 /// The teams of one document: each team's members in identifier order,

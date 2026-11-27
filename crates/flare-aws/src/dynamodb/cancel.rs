@@ -80,7 +80,8 @@ fn rank(role: ItemRole) -> u8 {
         | ItemRole::CommentKeySlot
         | ItemRole::CursorItem
         | ItemRole::IndexMarker
-        | ItemRole::IdentityMarker => 1,
+        | ItemRole::IdentityMarker
+        | ItemRole::TeamsMarker => 1,
         ItemRole::GrantCount
         | ItemRole::ShareCount
         | ItemRole::LabelSlot

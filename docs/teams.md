@@ -21,6 +21,8 @@ says.
 {"teams": {"design": ["ana@example.com", "bo@example.com"]}}
 ```
 
+- A document that names one team twice is refused.
+
 - flare reads the document when `flare serve` starts, and again on the
   first request that finds the copy in memory 60 seconds old. No background
   task runs. Two processes may disagree for up to 60 seconds after the
@@ -30,6 +32,17 @@ says.
   last good copy in use, and the server logs `teams.document.refused` with
   the reason. No refusal repeats a member: it names the team and the
   member's position in the team's list, counted from 1.
+- A read of the document that takes longer than 10 seconds, such as a file
+  on a hung network mount, is refused as unreadable, in the same way as a
+  read that fails.
+- The last good copy stays in use for as long as each later read is
+  refused, with no limit on its age. While it does, a change to the
+  directory takes no effect: a person the directory removes from a team
+  keeps reading the shares granted to that team, and a person it adds
+  reads none of them. A process that starts in that time refuses to
+  serve. Watch for the `teams.document.refused` log line, which each
+  refused read writes, about once a minute on each process that serves
+  requests, and fix the document or the sync job when it appears.
 - A directory team is active exactly while the document lists it. The team
   table under [Team](#team) applies to teams that flare keeps.
 - A team that leaves the document opens nothing, and its grants show as
@@ -47,6 +60,32 @@ says.
 
 - The CLI gives `managed_elsewhere` no command to run. Its hint says to
   change the team in the organisation's directory.
+
+### Switching between stored and directory teams
+
+- A team grant names only the team, so under the other teams the grant
+  would open to whichever team of that name they hold: a grant to a stored
+  team `design` of three people would open to a directory team `design` of
+  200, and the reverse. The share API's table therefore records, on its
+  first start, whether its team grants are made under stored teams or under
+  directory teams. A table that holds team grants from before the record
+  existed is recorded as stored teams.
+- `flare serve` exits with `flare::config::teams_changed`, writing
+  nothing, when `hosted.teams` names the other teams and the table still
+  holds a team grant. The failure names one such grant, its share and its
+  team, and its recovery is the `flare revoke <id> --with team:<name> --yes`
+  that the share's owner runs to end it. Its alternative is to set
+  `hosted.teams` back.
+- To switch, keep serving under the current teams, have each share's owner
+  revoke every team grant with `flare revoke --with team:<name>`, then stop
+  every process under the current teams and start under the new ones. Each
+  start names the next team grant that remains, until none does; the first
+  start that finds none records the new teams and serves. Grants to
+  people and to everyone are unaffected. A switch between a file and an
+  object that hold the same directory's teams is not a switch, because both
+  are directory teams.
+- The check scans the whole table for a team grant, which happens only on
+  a table's first start and on a start under the other teams.
 
 | Limit | Counts | When it is hit |
 | --- | --- | --- |

@@ -27,6 +27,9 @@ pub const CONFIG_INVALID: Code<'static> = Code::from_spelling("flare::config::in
 /// The share API's table records another identifier kind than the config.
 pub const CONFIG_IDENTITY_CHANGED: Code<'static> =
     Code::from_spelling("flare::config::identity_changed");
+/// The share API's table holds team grants made under other teams than
+/// the config names.
+pub const CONFIG_TEAMS_CHANGED: Code<'static> = Code::from_spelling("flare::config::teams_changed");
 /// The client secret could not be read from the Keychain or its file.
 pub const OIDC_SECRET_UNAVAILABLE: Code<'static> =
     Code::from_spelling("flare::oidc::secret_unavailable");

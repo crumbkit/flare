@@ -3,11 +3,12 @@
 //! bucket, as `hosted.teams` says. The document is read before the site
 //! binds, and a document refused then stops `flare serve`. A document
 //! refused on a later read keeps the last good copy and logs
-//! `teams.document.refused` with the reason.
+//! `teams.document.refused` with the reason. Each read of the document
+//! that takes longer than [`READ_TIMEOUT`] is refused as unreadable.
 
-use crate::codes::Failed;
+use crate::codes::{Failed, TeamsFailed};
 use crate::config::TeamsSource;
-use flare_aws::{DynamoTeamStore, S3TeamsDocument, Stores};
+use flare_aws::{DynamoTeamStore, S3TeamsDocument, Stores, TeamsKind};
 use flare_core::{
     DocumentRefused, DocumentTeams, DocumentUnreadable, FlareTeams, IdentityKind,
     MAX_DOCUMENT_BYTES, Person, Team, TeamName, TeamView, Teams, TeamsDocument, TeamsError,
@@ -15,6 +16,49 @@ use flare_core::{
 };
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// How long one read of the teams document may take. A read that takes
+/// longer, such as a file on a hung network mount or an S3 body that
+/// stalls, is refused as unreadable: at start `flare serve` stops, and
+/// later the last good copy is kept and the next read is tried once that
+/// copy is [`DOCUMENT_MAX_AGE`](flare_core::DOCUMENT_MAX_AGE) old again.
+pub(crate) const READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The teams that `source` records in the table's teams marker.
+pub(super) fn teams_kind(source: &TeamsSource) -> TeamsKind {
+    match source {
+        TeamsSource::Stored => TeamsKind::Stored,
+        TeamsSource::File(_) | TeamsSource::Object(_) => TeamsKind::Directory,
+    }
+}
+
+/// A teams document whose every read ends within a time limit.
+#[derive(Debug, Clone)]
+pub(crate) struct Timed<D> {
+    document: D,
+    limit: Duration,
+}
+
+impl<D> Timed<D> {
+    /// `document`, with each read refused once it takes longer than
+    /// `limit`.
+    pub(crate) fn new(document: D, limit: Duration) -> Self {
+        Self { document, limit }
+    }
+}
+
+impl<D: TeamsDocument> TeamsDocument for Timed<D> {
+    async fn read(&self) -> Result<Vec<u8>, DocumentUnreadable> {
+        match tokio::time::timeout(self.limit, self.document.read()).await {
+            Ok(read) => read,
+            Err(_) => Err(DocumentUnreadable::new(format!(
+                "the read did not finish within {} seconds",
+                self.limit.as_secs_f64()
+            ))),
+        }
+    }
+}
 
 /// The teams document at an absolute path.
 #[derive(Debug, Clone)]
@@ -52,9 +96,9 @@ pub(super) enum HostedTeams {
     /// flare's own teams, in the stores' table.
     Stored(FlareTeams<DynamoTeamStore>),
     /// The teams document at a path.
-    File(DocumentTeams<FileDocument>),
+    File(DocumentTeams<Timed<FileDocument>>),
     /// The teams document in the stores bucket.
-    Object(DocumentTeams<S3TeamsDocument>),
+    Object(DocumentTeams<Timed<S3TeamsDocument>>),
 }
 
 /// Logs a later read of the document that was refused.
@@ -68,22 +112,23 @@ fn report(refusal: &DocumentRefused) {
 
 /// The failure that stops `flare serve` when the document is refused.
 fn refused(refusal: &DocumentRefused) -> Failed {
-    Failed::TeamsDocumentRefused {
+    Failed::Teams(TeamsFailed::DocumentRefused {
         problem: format!("the teams document that hosted.teams names was refused: {refusal}"),
-    }
+    })
 }
 
 /// The teams of the document at `path`, read once now.
 ///
 /// # Errors
 ///
-/// Returns [`Failed::TeamsDocumentRefused`] when the document cannot be
+/// Returns [`TeamsFailed::DocumentRefused`] when the document cannot be
 /// read or is refused.
 pub(super) async fn file_teams(
     path: &Path,
     kind: IdentityKind,
-) -> Result<DocumentTeams<FileDocument>, Failed> {
-    let teams = DocumentTeams::load(FileDocument(path.to_path_buf()), kind)
+) -> Result<DocumentTeams<Timed<FileDocument>>, Failed> {
+    let document = Timed::new(FileDocument(path.to_path_buf()), READ_TIMEOUT);
+    let teams = DocumentTeams::load(document, kind)
         .await
         .map_err(|refusal| refused(&refusal))?;
     Ok(teams.on_refused(report))
@@ -93,7 +138,7 @@ pub(super) async fn file_teams(
 ///
 /// # Errors
 ///
-/// Returns [`Failed::TeamsDocumentRefused`] when the document cannot be
+/// Returns [`TeamsFailed::DocumentRefused`] when the document cannot be
 /// read or is refused.
 pub(super) async fn hosted_teams(
     source: &TeamsSource,
@@ -104,7 +149,8 @@ pub(super) async fn hosted_teams(
         TeamsSource::Stored => Ok(HostedTeams::Stored(FlareTeams::new(stores.teams.clone()))),
         TeamsSource::File(path) => Ok(HostedTeams::File(file_teams(path, kind).await?)),
         TeamsSource::Object(key) => {
-            let teams = DocumentTeams::load(stores.teams_document(key.clone()), kind)
+            let document = Timed::new(stores.teams_document(key.clone()), READ_TIMEOUT);
+            let teams = DocumentTeams::load(document, kind)
                 .await
                 .map_err(|refusal| refused(&refusal))?;
             Ok(HostedTeams::Object(teams.on_refused(report)))

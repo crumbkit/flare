@@ -1,18 +1,20 @@
-//! The hosted site of `flare serve`: it checks the share API's stores and
-//! the identifier kind their table records, reads the teams document that
-//! `hosted.teams` names, connects the sign-in, and only then binds the
-//! listen address.
+//! The hosted site of `flare serve`: it checks the share API's stores, the
+//! identifier kind and the teams their table records, reads the teams
+//! document that `hosted.teams` names, connects the sign-in, and only then
+//! binds the listen address.
 
-use super::teams::{HostedTeams, hosted_teams};
+use super::teams::{HostedTeams, hosted_teams, teams_kind};
 use super::{Persisted, Signals, Stop, bind_failed, connect, serve};
-use crate::codes::{Failed, HeldPort};
-use crate::config::{Hosted, HostedCreators, Secret, Sharing as SharingConfig, SignIn};
+use crate::codes::{Failed, HeldPort, TeamsFailed};
+use crate::config::{
+    Hosted, HostedCreators, Secret, Sharing as SharingConfig, SignIn, TeamsSource,
+};
 use crate::documents::Served;
 use crate::log;
 use flare_auth_oidc::{Admit, OidcAuthenticator, ProxyAuthenticator, ProxyConfig};
 use flare_aws::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore, DynamoShareStore,
-    DynamoTokenStore, IdentityError, S3FileStore, Stores,
+    DynamoTokenStore, IdentityError, S3FileStore, Stores, TeamsKindError,
 };
 use flare_board::BoardStore;
 use flare_core::{Flares, IdentityKind, NamedRecipients};
@@ -37,7 +39,10 @@ pub(super) async fn hosted(
     let admit = sign_in.admit().clone();
     let kind = sign_in.identity().kind();
     let stores = match &sharing {
-        Some(config) => Some(checked(Stores::connect(&config.stores).await, kind).await?),
+        Some(config) => {
+            let stores = Stores::connect(&config.stores).await;
+            Some(checked(stores, kind, &config.teams).await?)
+        }
         None => None,
     };
     let teams = match (&sharing, &stores) {
@@ -81,20 +86,42 @@ pub(super) async fn hosted(
 }
 
 /// The stores, once their table and bucket answer and the table records
-/// `kind`, which a first start writes. A table that records another kind
-/// is refused, with nothing written.
-async fn checked(stores: Stores, kind: IdentityKind) -> Result<Stores, Failed> {
+/// `kind` and the teams of `teams`, which a first start writes. A table
+/// that records another kind is refused, with nothing written, and so is
+/// one that holds a team grant made under other teams.
+async fn checked(
+    stores: Stores,
+    kind: IdentityKind,
+    teams: &TeamsSource,
+) -> Result<Stores, Failed> {
     let unavailable = |problem: String| Failed::StoresUnavailable { problem };
     stores
         .check()
         .await
         .map_err(|error| unavailable(error.to_string()))?;
     match stores.identity(kind).await {
+        Ok(()) => {}
+        Err(IdentityError::Changed { recorded }) => {
+            return Err(Failed::IdentityChanged {
+                recorded: recorded.as_str().to_owned(),
+                configured: kind.as_str().to_owned(),
+            });
+        }
+        Err(error) => return Err(unavailable(error.to_string())),
+    }
+    let configured = teams_kind(teams);
+    match stores.teams_kind(configured).await {
         Ok(()) => Ok(stores),
-        Err(IdentityError::Changed { recorded }) => Err(Failed::IdentityChanged {
+        Err(TeamsKindError::Changed {
+            recorded,
+            share,
+            team,
+        }) => Err(Failed::Teams(TeamsFailed::Changed {
             recorded: recorded.as_str().to_owned(),
-            configured: kind.as_str().to_owned(),
-        }),
+            configured: configured.as_str().to_owned(),
+            share: share.as_str().to_owned(),
+            team: team.as_str().to_owned(),
+        })),
         Err(error) => Err(unavailable(error.to_string())),
     }
 }

@@ -16,9 +16,17 @@ This file records the notable changes to flare. The format follows
   list` and `show` work for its teams, every team change answers
   `flare::teams::managed_elsewhere`, and `flare serve` exits with
   `flare::teams::document_refused` when the document cannot be used at
-  start. Left out, or `"stored"`, flare keeps its own teams as before. The
-  stores template lets flare read objects under `teams/`. docs/teams.md
+  start. A read that takes longer than 10 seconds is refused as
+  unreadable, and a document that names one team twice is refused. Left
+  out, or `"stored"`, flare keeps its own teams as before. The stores
+  template lets flare read objects under `teams/`. docs/teams.md
   describes it.
+- The share API's table records whether its team grants are made under
+  stored or directory teams, and `flare serve` exits with
+  `flare::config::teams_changed`, writing nothing, when `hosted.teams`
+  names the other ones while a team grant remains. Its recovery is the
+  `flare revoke` that ends the grant it names. flare-aws gains
+  `Stores::teams_kind`, `TeamsKind` and `TeamsKindError`.
 - flare-core gains `DocumentTeams`, `TeamsDocument` and a contract suite
   for `Teams`, and `Teams::list` and `Teams::show` have default bodies
   built from the three reads.

@@ -36,6 +36,6 @@ pub use connect::{EndpointUrl, Endpoints, Fault};
 pub use dynamodb::{
     DynamoCommentStore, DynamoCursorStore, DynamoGrantStore, DynamoResponseStore,
     DynamoSealingKeys, DynamoSessionStore, DynamoShareStore, DynamoTeamStore, DynamoTokenStore,
-    IdentityError,
+    IdentityError, TeamsKind, TeamsKindError,
 };
 pub use s3::{S3FileStore, S3TeamsDocument, TeamsKeyError, TeamsObjectKey};
