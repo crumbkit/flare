@@ -68,6 +68,7 @@ mod shares {
         a_share_is_listed_once_created,
         a_share_always_has_its_first_version,
         each_version_keeps_its_image_table,
+        an_html_share_keeps_its_file,
     );
 
     people_concurrent_suite!(share_store, MemoryShareStore, ShareFixture;

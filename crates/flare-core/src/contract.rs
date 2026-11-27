@@ -129,6 +129,7 @@ clauses! {
     AListShowsItsTruncationAndOrder => "a list shows its truncation flag and its order",
     APersonsGrantsPageInOrderPastTheListingLimit => "a person's grants read in pages after a key come back once each and in order past the listing limit, a grant added during the walk repeats or skips none, and a revoked key starts at the next grant",
     EachVersionKeepsItsImageTable => "each version reads back with the image table it was written with, and a version written with none has none",
+    AnHtmlShareKeepsItsFile => "a share created with an HTML file reads back as the html kind, and each version, whatever its kind, reads back with the content it was written with",
     AStoredFileReadsBack => "a stored file reads back with its media type and bytes",
     AFileIsNotFoundUnderAnotherShare => "a file stored under one share is not found under another share",
     ATakenFileIdChangesNothing => "storing to a taken id answers id taken and leaves the first file unchanged",

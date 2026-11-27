@@ -4,7 +4,9 @@ use super::{MAX_SWEPT_FILES, SWEEP_AGE, SweepReport, sweep_files};
 use crate::contract::block_on;
 use crate::file::{FileBytes, FileId, ImagePath, MediaType, NewFile, VersionImage, VersionImages};
 use crate::memory::{MemoryFileStore, MemoryShareStore};
-use crate::share::{DocumentText, NewShare, NewVersion, ShareContent, ShareId, ShareTitle};
+use crate::share::{
+    DocumentText, HtmlFile, NewShare, NewVersion, ShareContent, ShareId, ShareTitle,
+};
 use crate::store::{FileStore, FileStoreError, ShareStore};
 use crate::{PrincipalId, Timestamp};
 
@@ -405,4 +407,31 @@ fn the_sweep_age_is_thirty_minutes_and_a_store_that_cannot_list_is_an_error() {
         )),
         Err(FileStoreError::Unavailable)
     );
+}
+
+#[test]
+fn the_sweep_keeps_the_html_file_of_a_version_and_deletes_an_unlisted_one() {
+    let (shares, files) = (MemoryShareStore::new(), MemoryFileStore::new());
+    let id = share(1);
+    let new = NewShare::new(
+        id.clone(),
+        owner(),
+        ShareTitle::try_from("Compliance").unwrap(),
+        ShareContent::Html(HtmlFile::new(file(1), 3).unwrap()),
+        Timestamp::from_secs(STORED),
+    );
+    block_on(shares.create(new)).unwrap();
+    put(&files, &id, &file(1));
+    put(&files, &id, &file(2));
+    let report = block_on(sweep_files(
+        &shares,
+        &files,
+        minutes_after(31),
+        100,
+        &first(),
+    ))
+    .unwrap();
+    assert_eq!((report.examined, report.deleted), (2, 1));
+    assert!(stored(&files, &id, &file(1)));
+    assert!(!stored(&files, &id, &file(2)));
 }

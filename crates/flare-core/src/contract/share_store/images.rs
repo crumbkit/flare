@@ -2,7 +2,10 @@
 
 use super::{ShareFixture, number, numbered_id};
 use crate::contract::{Clause, Violation, ensure, fixture, unexpected};
-use crate::{FileId, ImagePath, MediaType, ShareStore, VersionImage, VersionImages};
+use crate::{
+    FileId, HtmlFile, ImagePath, MediaType, NewShare, NewVersion, ShareContent, ShareKind,
+    ShareStore, Timestamp, VersionImage, VersionImages,
+};
 
 /// A table of `count` rows, whose file ids start at `first`.
 fn table(first: u8, count: u8) -> Result<VersionImages, Violation> {
@@ -49,5 +52,55 @@ pub async fn each_version_keeps_its_image_table<S: ShareStore>(
         read == expected,
         Clause::EachVersionKeepsItsImageTable,
         || format!("the versions read back with the tables {read:?}"),
+    )
+}
+
+/// A share created with an HTML file reads back as the `html` kind with
+/// that file and size, and a later Markdown version and a later HTML
+/// version each read back with the content they were written with.
+///
+/// # Errors
+///
+/// Returns [`Clause::AnHtmlShareKeepsItsFile`] otherwise.
+pub async fn an_html_share_keeps_its_file<S: ShareStore>(
+    store: &S,
+    contract_fixture: &ShareFixture,
+) -> Result<(), Violation> {
+    let id = numbered_id(0x32, 0);
+    let page = |byte: u8, size: usize| -> Result<ShareContent, Violation> {
+        fixture(HtmlFile::new(FileId::from_random([byte; 16]), size)).map(ShareContent::Html)
+    };
+    let new = NewShare::new(
+        id.clone(),
+        contract_fixture.owner.clone(),
+        contract_fixture.title.clone(),
+        page(1, 10)?,
+        Timestamp::from_secs(10),
+    );
+    unexpected(store.create(new).await)?;
+    let version = |content: ShareContent, at: u64| {
+        NewVersion::new(
+            content,
+            contract_fixture.owner.clone(),
+            Timestamp::from_secs(at),
+        )
+    };
+    unexpected(
+        store
+            .publish(&id, version(contract_fixture.content(0).clone(), 20))
+            .await,
+    )?;
+    unexpected(store.publish(&id, version(page(3, 4_194_304)?, 30)).await)?;
+    let share = unexpected(store.get(&id).await)?;
+    let mut read = Vec::new();
+    for value in 1..=3 {
+        let stored = unexpected(store.version(&id, number(value)?).await)?;
+        read.push(stored.content().clone());
+    }
+    let expected = [page(1, 10)?, contract_fixture.content(0).clone(), page(3, 4_194_304)?];
+    ensure(
+        share.kind() == ShareKind::Html && read == expected,
+        Clause::AnHtmlShareKeepsItsFile,
+        || format!("the share is {share:?} and its versions read back as {read:?}"),
     )
 }

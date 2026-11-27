@@ -1,6 +1,6 @@
 //! Unit tests of the share types.
 
-use super::{DocumentText, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion};
+use super::{DocumentText, HtmlFile, MAX_HTML, ShareContent, ShareId, ShareKind, ShareTitle, ShareVersion};
 use super::{NewShare, NewVersion, Share, SharedVersion};
 use crate::error::{ParseError, Subject};
 use crate::name::PrincipalId;
@@ -162,4 +162,51 @@ fn the_debug_output_of_a_share_and_its_versions_holds_no_address_and_no_text() {
         assert!(!debug.contains("alice"), "{debug}");
         assert!(debug.contains("<principal>"), "{debug}");
     }
+}
+
+fn html(size: usize) -> Result<ShareContent, ParseError> {
+    HtmlFile::new(crate::FileId::from_random([7; 16]), size).map(ShareContent::Html)
+}
+
+#[test]
+fn an_html_file_refuses_zero_bytes_and_one_byte_over_4_mib_and_admits_4_mib() {
+    assert!(matches!(
+        html(0),
+        Err(ParseError::Empty {
+            subject: Subject::HtmlFile
+        })
+    ));
+    assert_eq!(MAX_HTML, 4 * 1024 * 1024);
+    assert!(html(MAX_HTML).is_ok());
+    assert!(matches!(
+        html(MAX_HTML + 1),
+        Err(ParseError::TooLong {
+            subject: Subject::HtmlFile,
+            max: 4_194_304
+        })
+    ));
+}
+
+#[test]
+fn an_html_content_is_of_the_html_kind_and_names_its_file_and_size() {
+    let file = crate::FileId::from_random([7; 16]);
+    let content = html(1_000).unwrap();
+    assert_eq!(content.kind(), ShareKind::Html);
+    let ShareContent::Html(held) = &content else {
+        panic!("not html");
+    };
+    assert_eq!(held.file(), &file);
+    assert_eq!(held.size(), 1_000);
+}
+
+#[test]
+fn an_html_share_reads_back_as_the_html_kind() {
+    let new = NewShare::new(
+        ShareId::from_random([1; 16]),
+        owner(),
+        ShareTitle::try_from("Compliance").unwrap(),
+        html(10).unwrap(),
+        Timestamp::from_secs(5),
+    );
+    assert_eq!(new.share().kind(), ShareKind::Html);
 }

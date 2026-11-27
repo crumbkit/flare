@@ -8,7 +8,7 @@ mod sharing_stores;
 use flare_core::contract::block_on;
 use flare_core::memory::{MemoryFileStore, MemoryGrantStore, MemoryShareStore};
 use flare_core::{
-    DocumentText, FileBytes, FileId, FileStore, ImagePath, ListKey, MAX_GRANTS,
+    DocumentText, FileBytes, FileId, FileStore, HtmlFile, ImagePath, ListKey, MAX_GRANTS,
     MAX_SHARES_PER_OWNER, MAX_VERSIONS, MediaType, NewFile, Person, Principal, PrincipalId, Role,
     ShareContent, ShareError, ShareId, ShareTitle, ShareVersion, Shares, Standing, Timestamp,
     VersionImage, VersionImages,
@@ -971,4 +971,52 @@ fn a_page_whose_store_fails_answers_unavailable_and_a_working_store_answers_the_
     let page = block_on(shares.shared_with_me_page(&bob, false, None, 50)).unwrap();
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.next, None);
+}
+
+#[test]
+fn a_reader_reads_the_html_file_of_a_version_and_every_other_read_is_not_found() {
+    let shares = memory();
+    let page = FileId::from_random([4; 16]);
+    let html = ShareContent::Html(HtmlFile::new(page.clone(), 5).unwrap());
+    block_on(shares.create(&alice(), id(1), title(), html, at(1))).unwrap();
+    block_on(shares.publish(&alice(), &id(1), doc("# Two\n"), at(2))).unwrap();
+    grant(&shares, &alice(), "bob@example.com", Role::Reader);
+    let files = MemoryFileStore::new();
+    let media = MediaType::try_from("text/html").unwrap();
+    let bytes = FileBytes::try_from(b"<p>x</p>".to_vec()).unwrap();
+    block_on(files.put(NewFile::new(id(1), page, media, bytes))).unwrap();
+    let bob = person("bob@example.com");
+    let one = ShareVersion::first();
+    let two = ShareVersion::try_from(2).unwrap();
+    let read = block_on(shares.html_file(&bob, &files, &id(1), one)).unwrap();
+    assert_eq!(read.bytes().as_bytes(), b"<p>x</p>");
+    let refused = [
+        block_on(shares.html_file(&bob, &files, &id(1), two)),
+        block_on(shares.html_file(&bob, &files, &id(1), ShareVersion::try_from(3).unwrap())),
+        block_on(shares.html_file(&person("eve@example.com"), &files, &id(1), one)),
+        block_on(shares.html_file(&bob, &MemoryFileStore::new(), &id(1), one)),
+    ];
+    for answer in refused {
+        assert_eq!(answer.unwrap_err(), ShareError::NotFound);
+    }
+}
+
+#[test]
+fn a_revoked_reader_no_longer_reads_the_html_file() {
+    let shares = memory();
+    let page = FileId::from_random([4; 16]);
+    let html = ShareContent::Html(HtmlFile::new(page.clone(), 5).unwrap());
+    block_on(shares.create(&alice(), id(1), title(), html, at(1))).unwrap();
+    grant(&shares, &alice(), "bob@example.com", Role::Reader);
+    let files = MemoryFileStore::new();
+    let media = MediaType::try_from("text/html").unwrap();
+    let bytes = FileBytes::try_from(b"<p>x</p>".to_vec()).unwrap();
+    block_on(files.put(NewFile::new(id(1), page, media, bytes))).unwrap();
+    let bob = person("bob@example.com");
+    assert!(block_on(shares.html_file(&bob, &files, &id(1), ShareVersion::first())).is_ok());
+    block_on(shares.revoke(&alice(), &id(1), &email("bob@example.com"))).unwrap();
+    assert_eq!(
+        block_on(shares.html_file(&bob, &files, &id(1), ShareVersion::first())).unwrap_err(),
+        ShareError::NotFound
+    );
 }

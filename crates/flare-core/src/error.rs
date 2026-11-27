@@ -50,6 +50,8 @@ pub enum Subject {
     ShareVersion,
     /// A [`DocumentText`](crate::DocumentText).
     DocumentText,
+    /// An [`HtmlFile`](crate::HtmlFile).
+    HtmlFile,
     /// A [`FileId`](crate::FileId).
     FileId,
     /// A [`MediaType`](crate::MediaType).
@@ -105,6 +107,7 @@ impl fmt::Display for Subject {
             Self::ShareTitle => "share title",
             Self::ShareVersion => "share version",
             Self::DocumentText => "document",
+            Self::HtmlFile => "html file",
             Self::FileId => "file id",
             Self::MediaType => "media type",
             Self::FileBytes => "file",

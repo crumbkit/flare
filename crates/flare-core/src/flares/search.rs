@@ -84,8 +84,10 @@ impl Clause {
         let matched = match &self.test {
             Test::Text(text) => share.title().as_str().to_lowercase().contains(text),
             Test::Types(types) => types.iter().any(|kind| match (kind, share.kind()) {
-                (ShareType::Markdown, ShareKind::Document) => true,
-                (ShareType::Html, ShareKind::Document) => false,
+                (ShareType::Markdown, ShareKind::Document)
+                | (ShareType::Html, ShareKind::Html) => true,
+                (ShareType::Markdown, ShareKind::Html)
+                | (ShareType::Html, ShareKind::Document) => false,
             }),
             Test::People(people) => people.contains(share.owner()),
         };
