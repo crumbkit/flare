@@ -4,8 +4,11 @@
 //! This module holds the validated values. [`records`] holds what a store
 //! keeps and returns.
 
+mod html;
 mod listing;
 mod records;
+
+pub use html::{HtmlFile, MAX_HTML};
 
 pub use listing::Listing;
 pub use records::{NewShare, NewVersion, Share, SharedVersion};
@@ -153,6 +156,8 @@ impl fmt::Debug for ShareTitle {
 pub enum ShareKind {
     /// A Markdown document.
     Document,
+    /// An uploaded HTML file, shown in a sandboxed frame.
+    Html,
 }
 
 /// The number of one version of a share. Versions of a share run from 1 to
@@ -243,6 +248,8 @@ impl fmt::Debug for DocumentText {
 pub enum ShareContent {
     /// A Markdown document.
     Document(DocumentText),
+    /// An uploaded HTML file, held in the file store.
+    Html(HtmlFile),
 }
 
 impl ShareContent {
@@ -251,6 +258,7 @@ impl ShareContent {
     pub fn kind(&self) -> ShareKind {
         match self {
             Self::Document(_) => ShareKind::Document,
+            Self::Html(_) => ShareKind::Html,
         }
     }
 }

@@ -128,7 +128,13 @@ fn a_long_heading_of_multi_byte_characters_is_cut_to_at_most_200_bytes_on_a_char
 
 #[test]
 fn an_html_document_keeps_its_file_name_as_title() {
-    assert_eq!(sent_title("page.html", "<h1>Heading</h1>\n", &[]), "page");
+    let home = Home::new();
+    let file = home.path().join("page.html");
+    write(&file, "<h1>Heading</h1>\n");
+    let ran = home.sharing(&["share", file.to_str().unwrap(), "--dry-run", "--json"]);
+    ran.assert_ok();
+    let printed: Value = serde_json::from_str(&ran.stdout).unwrap();
+    assert_eq!(printed["data"]["title"], "page", "{}", ran.all());
 }
 
 #[test]

@@ -33,7 +33,7 @@ pub(crate) struct LogoutArgs {
 /// The arguments of `flare share`.
 #[derive(Debug, Args)]
 pub(crate) struct ShareArgs {
-    /// The file to share: .md for Markdown
+    /// The file: .md or .html
     #[arg(value_name = "FILE")]
     pub(crate) file: PathBuf,
     /// The title; without it, a Markdown file's first level-one heading, else the file name without its ending

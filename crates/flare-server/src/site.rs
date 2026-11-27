@@ -228,7 +228,7 @@ impl PublicOrigin {
         })
     }
 
-    /// Admits `http://localhost:<port>`, for tests that serve a hosted site
+    /// Admits `http://localhost:<port>` and `http://<name>.localhost:<port>`, for tests that serve a hosted site
     /// without TLS. `flare serve` never enables the `testing` feature, and
     /// no config key reaches this.
     ///
@@ -240,7 +240,11 @@ impl PublicOrigin {
         let origin = Self::parse(text, "http")?;
         let host = Url::parse(text).map_err(|_| OriginError::NotAnOrigin)?;
         match host.host() {
-            Some(url::Host::Domain("localhost")) => Ok(origin),
+            Some(url::Host::Domain(name))
+                if name == "localhost" || name.ends_with(".localhost") =>
+            {
+                Ok(origin)
+            }
             _ => Err(OriginError::NotAnOrigin),
         }
     }
@@ -256,6 +260,34 @@ impl PublicOrigin {
     #[must_use]
     pub fn authority(&self) -> &str {
         &self.authority
+    }
+
+    /// Whether `self` and `other` are on separate domains: their hosts
+    /// differ, on any port, and neither host ends with `.` followed by the
+    /// other. Two sibling names under one registrable domain, such as
+    /// `a.example.com` and `b.example.com`, still pass, because telling
+    /// them apart needs the Public Suffix List.
+    #[must_use]
+    pub fn is_separate_domain_from(&self, other: &Self) -> bool {
+        let under = |inner: &str, outer: &str| {
+            inner
+                .strip_suffix(outer)
+                .is_some_and(|rest| rest.ends_with('.'))
+        };
+        let (mine, theirs) = (self.host(), other.host());
+        mine != theirs && !under(mine, theirs) && !under(theirs, mine)
+    }
+
+    /// The host without its port. A domain or IPv4 host holds no `:`, and
+    /// an IPv6 host ends with `]`, so a port follows the last `:` only when
+    /// the authority does not end with `]`.
+    fn host(&self) -> &str {
+        if self.authority.ends_with(']') {
+            return &self.authority;
+        }
+        self.authority
+            .rsplit_once(':')
+            .map_or(self.authority.as_str(), |(host, _)| host)
     }
 
     /// The redirect URI to register with the provider:

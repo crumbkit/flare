@@ -46,6 +46,10 @@ pub(crate) mod attr {
     pub(crate) const STATE: &str = "state";
     /// A version's image table: a list of maps.
     pub(crate) const IMAGES: &str = "images";
+    /// An HTML version's stored file id.
+    pub(crate) const HTML_FILE: &str = "html_file";
+    /// An HTML version's size in bytes.
+    pub(crate) const HTML_SIZE: &str = "html_size";
 }
 
 /// The kinds of item, which a log line names in place of the item's key.

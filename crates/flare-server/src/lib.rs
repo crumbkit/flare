@@ -242,6 +242,7 @@ mod assets;
 mod auth;
 mod checks;
 mod clock;
+mod content;
 mod cookies;
 mod docs;
 mod forms;
@@ -275,13 +276,15 @@ pub fn routes() -> impl Iterator<Item = (http::Method, &'static str)> {
 pub use app::App;
 pub use auth::{Admitted, Gate, Side};
 pub use clock::{Clock, SystemClock};
+pub use content::ContentHost;
 pub use limits::Limits;
 pub use listen::{BindError, Listeners, ServeError, Stopped};
 pub use metrics::{METRICS_TARGET, Metrics, Totals};
 pub use problem::{SERVER_BUSY, SERVER_DEADLINE, SERVER_FAULT};
 pub use schemas::Schemas;
 pub use sharing::{
-    BodyRefused, GetFlare, NoFiles, NotGetFlare, Sharing, check_share, check_version,
+    BodyRefused, GetFlare, NoFiles, NotGetFlare, Sharing, check_html, check_html_share,
+    check_html_version, check_share, check_version,
 };
 pub use sign_in::{HostedRefusal, HostedSignIn, Unsigned};
 pub use site::{OriginError, PublicOrigin, Site};

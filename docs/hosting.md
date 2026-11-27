@@ -179,6 +179,23 @@ The share API lets people share Markdown files with named people from the
   Without `get_flare`, the reading page shows no link to anyone.
   `get_flare` without `stores` is refused. flare sends nothing to the
   address and counts no clicks.
+- `content_origin` is the https origin of the content host, which serves the
+  HTML file of an uploaded HTML share to a frame of the reading page
+  ([html.md](html.md)). It must be on a separate domain from `origin`:
+  flare refuses a `content_origin` whose host is `origin`'s host on any
+  port, a name under that host (`content.flare.example.com` beside
+  `flare.example.com`) or a name that host is under (`example.com`). The
+  deployment should give it a registrable domain other than the site's,
+  such as `flareusercontent.com`, because the browser then keeps the
+  uploaded page's storage and cookies apart from the site's even if a
+  sandbox is ever misapplied. flare cannot refuse two sibling names under
+  one registrable domain, such as `content.example.com` beside
+  `flare.example.com`, because that needs the Public Suffix List, so the
+  operator must avoid that shape. The deployment supplies a hostname, a TLS
+  certificate and a route that sends both hostnames to the same listener.
+  Without `content_origin`, an HTML upload is refused with 422
+  `flare::html::no_content_host`. `content_origin` without `stores` is
+  refused.
 - A person who is not a creator gets 403 `flare::shares::not_a_creator`.
 - A share granted to everyone signed in opens to the people the `admit`
   rule admitted when the grant was made. Under a `domain` rule the grant
@@ -270,7 +287,7 @@ it:
 
 | Check | Refusal |
 | --- | --- |
-| The body is at most 4 MiB (`Limits::upload_bytes`) | 413 `request::body_too_large` |
+| The body is at most 4 MiB (`Limits::upload_bytes`), or 4 MiB and 64 KiB when it holds an `html` part | 413 `request::body_too_large` |
 | Each image is at most 5 MiB | 413 `flare::images::too_large` |
 | There are at most 10 images | 422 `flare::images::too_many` |
 | Each path is relative, with no empty, `.` or `..` segment, no backslash, colon or control character, and at most 255 bytes | 422 `flare::images::bad_path` |

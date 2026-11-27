@@ -163,12 +163,26 @@ where
         (Kind::Launch, Site::Local { .. }) => launch_host(&ctx, peer, &parts.method, body).await,
         (Kind::Hosted, Site::Hosted { origin, sign_in }) => {
             let session = sign_in.cookie();
-            hosted_site(&ctx, (origin, session), &parts.method, body).await
+            match &shared.content {
+                Some(host) if is_host(&parts.headers, host.origin()) => {
+                    crate::content::serve(&ctx, host, &parts.method).await
+                }
+                _ => hosted_site(&ctx, (origin, session), &parts.method, body).await,
+            }
         }
         _ => (Err(Code::NotFound.into()), "-"),
     };
     let reply = answer.unwrap_or_else(|problem| problem.reply(&parts.headers));
     (reply, pattern)
+}
+
+/// Whether the request's one Host header names `origin`.
+fn is_host(headers: &HeaderMap, origin: &crate::site::PublicOrigin) -> bool {
+    let mut hosts = headers.get_all(http::header::HOST).iter();
+    matches!(
+        (hosts.next(), hosts.next()),
+        (Some(host), None) if host.as_bytes() == origin.authority().as_bytes()
+    )
 }
 
 async fn launch_host<P, R, S, K, H>(

@@ -28,3 +28,16 @@ pub(crate) fn frame(document: &PageDocument, caption: &str) -> Option<String> {
         escape(&framed)
     ))
 }
+
+/// The frame markup for the uploaded page that the content host serves at
+/// `src`, with what the caption says about it. The sandbox grants scripts
+/// and nothing else, so the page runs in an opaque origin that reaches
+/// neither flare's storage nor its session, and it sends no referrer and
+/// asks for no browser feature.
+pub(crate) fn uploaded(src: &str, caption: &str) -> String {
+    format!(
+        "<div class=\"mat\"><div class=\"cap\"><span>Page content, uploaded by its owner</span><span>{}</span></div><iframe sandbox=\"allow-scripts\" src=\"{}\" referrerpolicy=\"no-referrer\" allow=\"\" class=\"frame\" title=\"Uploaded page\"></iframe></div>",
+        escape(caption),
+        escape(src)
+    )
+}

@@ -62,3 +62,31 @@ fn the_loopback_test_origin_admits_http_on_localhost_only() {
         assert!(PublicOrigin::loopback_http(text).is_err(), "{text}");
     }
 }
+
+#[test]
+fn two_origins_are_on_separate_domains_unless_one_host_is_the_other_or_under_it() {
+    let site = origin("https://flare.example.com").unwrap();
+    for same in [
+        "https://flare.example.com:8443",
+        "https://content.flare.example.com",
+        "https://example.com",
+    ] {
+        let content = origin(same).unwrap();
+        assert!(!content.is_separate_domain_from(&site), "{same}");
+        assert!(!site.is_separate_domain_from(&content), "{same}");
+    }
+    for separate in [
+        "https://flareusercontent.com",
+        "https://contentflare.example.com",
+        "https://[::1]:8443",
+    ] {
+        let content = origin(separate).unwrap();
+        assert!(content.is_separate_domain_from(&site), "{separate}");
+    }
+    let v6 = origin("https://[::1]").unwrap();
+    assert!(
+        !origin("https://[::1]:8443")
+            .unwrap()
+            .is_separate_domain_from(&v6)
+    );
+}

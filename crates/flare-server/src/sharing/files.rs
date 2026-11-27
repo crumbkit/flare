@@ -90,4 +90,30 @@ where
                 _ => ReadRefusal::NotFound,
             })
     }
+
+    /// The HTML file of version `version` of share `id`, for a viewer whom
+    /// the admit rule admits. Every refusal is the same `NotFound`.
+    pub(super) async fn html_file(
+        &self,
+        who: &Principal,
+        id: &str,
+        version: u32,
+    ) -> Result<StoredFile, ReadRefusal> {
+        let admitted = who
+            .person()
+            .is_some_and(|person| self.admit.admits(person, who.email()));
+        if !admitted {
+            return Err(ReadRefusal::NotFound);
+        }
+        let id = ShareId::try_from(id).map_err(|_| ReadRefusal::NotFound)?;
+        let number = ShareVersion::try_from(version).map_err(|_| ReadRefusal::NotFound)?;
+        self.flares
+            .shares()
+            .html_file(who, &self.files, &id, number)
+            .await
+            .map_err(|error| match error {
+                ShareError::Unavailable => ReadRefusal::Unavailable,
+                _ => ReadRefusal::NotFound,
+            })
+    }
 }

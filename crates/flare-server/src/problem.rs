@@ -29,6 +29,7 @@ pub(crate) enum Code {
     Origin,
     CrossSite,
     Framed,
+    NotFramed,
     HeadersTooLarge,
     BodyTooLarge,
     UploadTooLarge,
@@ -90,6 +91,7 @@ impl Code {
             Self::Origin => (S::FORBIDDEN, "request::origin"),
             Self::CrossSite => (S::FORBIDDEN, "request::cross_site"),
             Self::Framed => (S::FORBIDDEN, "request::framed"),
+            Self::NotFramed => (S::FORBIDDEN, "content::not_framed"),
             Self::HeadersTooLarge => (
                 S::REQUEST_HEADER_FIELDS_TOO_LARGE,
                 "request::headers_too_large",
@@ -151,6 +153,7 @@ impl Code {
                 "A request that changes something must come from this server's own pages."
             }
             Self::CrossSite => "Another site's page asked for this with your sign-in.",
+            Self::NotFramed => "This address opens only inside the frame of a reading page.",
             Self::Framed => "A frame asked for this with your sign-in. Open it in its own tab.",
             Self::HeadersTooLarge => "The request's headers are larger than 32 KiB.",
             Self::BodyTooLarge => "The request's body is larger than 1 MiB.",

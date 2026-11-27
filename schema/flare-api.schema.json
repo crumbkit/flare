@@ -440,7 +440,7 @@
         },
         {
           "const": "html",
-          "description": "HTML, which the server refuses with `flare::shares::kind_not_served`\nuntil it serves uploaded HTML.",
+          "description": "An uploaded HTML file, which a deployment with a content host serves\nin a sandboxed frame. It travels as a multipart upload, never as the\nJSON `content` field.",
           "type": "string"
         }
       ]
@@ -1195,7 +1195,7 @@
       "description": "`POST /api/shares`: a new share.",
       "properties": {
         "content": {
-          "description": "The content, at most 256 KiB.",
+          "description": "The Markdown, at most 256 KiB. An HTML share sends it empty and puts the\nfile in the form's `html` part.",
           "type": "string"
         },
         "format": {
@@ -1515,7 +1515,7 @@
       "description": "`POST /api/shares/{id}/versions`: the next version of a share, which\nonly its owner may publish. A new version changes the content and\nnothing else.",
       "properties": {
         "content": {
-          "description": "The content, at most 256 KiB.",
+          "description": "The Markdown, at most 256 KiB. An HTML share sends it empty and puts the\nfile in the form's `html` part.",
           "type": "string"
         },
         "format": {

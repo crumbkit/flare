@@ -18,6 +18,7 @@ fn reading() -> Reading {
         version: 3,
         published: 1_795_219_200,
         markdown: String::from("A sailing is held.\n"),
+        html: false,
         images: flare_render::ImageSources::none(),
         badge: None,
     }
@@ -296,4 +297,25 @@ fn the_get_flare_address_is_escaped_in_the_link() {
         ),
         "{html}"
     );
+}
+
+#[test]
+fn an_html_share_page_holds_the_frame_in_place_of_the_article_and_loads_only_the_comments_entry() {
+    let mut html = reading();
+    html.html = true;
+    html.markdown = String::new();
+    let frame = "<iframe sandbox=\"allow-scripts\" src=\"https://content.example/v/t\"></iframe>";
+    let entries = Entries {
+        reading: Some("reading.js"),
+        comments: Some("comments.js"),
+    };
+    let page = framed_document(&html, "bo@example.com", frame, entries);
+    assert!(page.contains(frame), "{page}");
+    assert!(page.contains("/flare/assets/comments.js"), "{page}");
+    assert!(!page.contains("reading.js"), "{page}");
+    assert!(
+        page.contains("<h1>Weather holds for the island ferry</h1>"),
+        "{page}"
+    );
+    assert!(page.contains("id=\"comments\""), "{page}");
 }

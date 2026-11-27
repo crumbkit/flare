@@ -141,7 +141,7 @@
     {
       "declaration": "children",
       "applies_to": "flare show",
-      "declares": "The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file."
+      "declares": "The text prints lines under each row for its content, and help describes them as: The version's Markdown follows the share, one line of text for each line of the file. An HTML share prints a line that says so instead."
     },
     {
       "declaration": "example-precondition",

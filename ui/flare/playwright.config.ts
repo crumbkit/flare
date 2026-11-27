@@ -10,24 +10,39 @@ import { defineConfig, devices } from "@playwright/test";
 // flare-server's comments journey test starts the server and then this
 // journey with FLARE_JOURNEY_ORIGIN set, so without it the journey is left
 // out of the run.
+// The HTML journey needs the same server, and runs in Chromium and WebKit,
+// because a frame's sandbox and policy are the browser's to enforce.
+const journeyOnly = process.env.FLARE_JOURNEY_ORIGIN ? [] : ["comments.spec.ts", "html.spec.ts"];
+const readingProject = { testIgnore: [...journeyOnly, "html.spec.ts"] };
 export default defineConfig({
   testDir: "tests/acceptance",
-  testIgnore: process.env.FLARE_JOURNEY_ORIGIN ? [] : ["comments.spec.ts"],
+  testIgnore: journeyOnly,
   forbidOnly: true,
   // A failed test is never retried (BASE-12).
   retries: 0,
   reporter: process.env.CI ? "github" : "list",
   use: { trace: "retain-on-failure" },
   projects: [
-    { name: "light", use: { ...devices["Desktop Chrome"], colorScheme: "light" } },
-    { name: "dark", use: { ...devices["Desktop Chrome"], colorScheme: "dark" } },
+    {
+      name: "light",
+      ...readingProject,
+      use: { ...devices["Desktop Chrome"], colorScheme: "light" },
+    },
+    {
+      name: "dark",
+      ...readingProject,
+      use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
+    },
     {
       name: "phone",
+      ...readingProject,
       use: {
         ...devices["Desktop Chrome"],
         colorScheme: "light",
         viewport: { width: 390, height: 844 },
       },
     },
+    { name: "html-chromium", testMatch: "html.spec.ts", use: { ...devices["Desktop Chrome"] } },
+    { name: "html-webkit", testMatch: "html.spec.ts", use: { ...devices["Desktop Safari"] } },
   ],
 });

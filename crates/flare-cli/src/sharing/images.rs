@@ -16,9 +16,38 @@ use flare_core::{ImageKind, ImagePath, MAX_IMAGES, SNIFF_BYTES};
 use std::io::Read as _;
 use std::path::Path;
 
-/// One image a document shows: its path as the Markdown wrote it, and its
-/// bytes.
-pub(crate) struct LocalImage {
+/// The form part a [`LocalPart`] travels as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Part {
+    /// An image a Markdown document shows.
+    Image,
+    /// The file of an HTML share.
+    Html,
+}
+
+impl Part {
+    /// The part's `name` in the form.
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Html => "html",
+        }
+    }
+
+    /// The part's `Content-Type`.
+    pub(crate) const fn content_type(self) -> &'static str {
+        match self {
+            Self::Image => "application/octet-stream",
+            Self::Html => "text/html",
+        }
+    }
+}
+
+/// One file that travels in a form with its share: an image a document
+/// shows, named by its path as the Markdown wrote it, or the HTML file of an
+/// HTML share, named by its file name.
+pub(crate) struct LocalPart {
+    pub(crate) part: Part,
     pub(crate) path: String,
     pub(crate) bytes: Vec<u8>,
 }
@@ -34,11 +63,7 @@ fn refused(code: ApiCode, image: &str, problem: &str) -> Failed {
 
 /// The images that the Markdown `content` of `file` shows, read from the
 /// file's folder and checked. HTML carries none.
-pub(super) fn images(
-    file: &Path,
-    format: Format,
-    content: &str,
-) -> Result<Vec<LocalImage>, Failed> {
+pub(super) fn images(file: &Path, format: Format, content: &str) -> Result<Vec<LocalPart>, Failed> {
     if format != Format::Markdown {
         return Ok(Vec::new());
     }
@@ -114,7 +139,11 @@ pub(super) fn images(
                 "does not start as a PNG, JPEG, GIF or WebP file",
             ));
         }
-        images.push(LocalImage { path, bytes });
+        images.push(LocalPart {
+            part: Part::Image,
+            path,
+            bytes,
+        });
     }
     Ok(images)
 }

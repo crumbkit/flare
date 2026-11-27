@@ -7,8 +7,8 @@
 use crate::dynamodb::keys::{Key, entry_of, grantee_of};
 use aws_sdk_dynamodb::types::AttributeValue;
 use flare_core::{
-    DocumentText, Grant, PrincipalId, Role, Share, ShareContent, ShareId, ShareKind, ShareTitle,
-    ShareVersion, SharedVersion, Timestamp,
+    DocumentText, FileId, Grant, HtmlFile, PrincipalId, Role, Share, ShareContent, ShareId,
+    ShareKind, ShareTitle, ShareVersion, SharedVersion, Timestamp,
 };
 use std::collections::HashMap;
 
@@ -92,6 +92,7 @@ pub(crate) fn keyed(
 fn kind_name(kind: ShareKind) -> Option<&'static str> {
     match kind {
         ShareKind::Document => Some("document"),
+        ShareKind::Html => Some("html"),
         _ => None,
     }
 }
@@ -134,6 +135,7 @@ fn read_time(item: &Item, kind: ItemKind) -> Result<Timestamp, Malformed> {
 fn read_kind(item: &Item, kind: ItemKind) -> Result<ShareKind, Malformed> {
     match read_text(item, attr::KIND, kind)? {
         "document" => Ok(ShareKind::Document),
+        "html" => Ok(ShareKind::Html),
         _ => Err(Malformed(kind)),
     }
 }
@@ -193,18 +195,29 @@ pub(crate) fn share_from(item: &Item, id: &ShareId) -> Result<Share, Malformed> 
 /// A version's item, or `None` for a kind of content this crate does not
 /// store.
 pub(crate) fn version_item(version: &SharedVersion) -> Option<Item> {
-    let (kind, body) = match version.content() {
-        ShareContent::Document(text) => (ShareKind::Document, text.as_str()),
+    let (kind, body): (ShareKind, Vec<(&'static str, AttributeValue)>) = match version.content() {
+        ShareContent::Document(document) => (
+            ShareKind::Document,
+            vec![(attr::TEXT, text(document.as_str()))],
+        ),
+        ShareContent::Html(html) => (
+            ShareKind::Html,
+            vec![
+                (attr::HTML_FILE, text(html.file().as_str())),
+                (attr::HTML_SIZE, number(u64::try_from(html.size()).ok()?)),
+            ],
+        ),
         _ => return None,
     };
     let item = keyed(
         &Key::version(version.share(), version.number()),
         [
             (attr::KIND, text(kind_name(kind)?)),
-            (attr::TEXT, text(body)),
             (attr::PUBLISHED_BY, text(version.published_by().as_str())),
             (attr::CREATED, number(version.created().as_secs())),
-        ],
+        ]
+        .into_iter()
+        .chain(body),
     );
     Some(with_images(item, version.images()))
 }
@@ -220,6 +233,15 @@ pub(crate) fn version_from(
         ShareKind::Document => DocumentText::try_from(read_text(item, attr::TEXT, kind)?)
             .map(ShareContent::Document)
             .map_err(|_| Malformed(kind))?,
+        ShareKind::Html => {
+            let file = FileId::try_from(read_text(item, attr::HTML_FILE, kind)?)
+                .map_err(|_| Malformed(kind))?;
+            let size = usize::try_from(read_number(item, attr::HTML_SIZE, kind)?)
+                .map_err(|_| Malformed(kind))?;
+            HtmlFile::new(file, size)
+                .map(ShareContent::Html)
+                .map_err(|_| Malformed(kind))?
+        }
         _ => return Err(Malformed(kind)),
     };
     Ok(SharedVersion::new(
@@ -324,3 +346,6 @@ pub(crate) fn rev_of(item: &Item) -> Option<&str> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

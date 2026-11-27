@@ -9,7 +9,7 @@
 //! and neither is a file any version lists.
 
 use crate::file::FileId;
-use crate::share::{ShareId, ShareVersion};
+use crate::share::{ShareContent, ShareId, ShareVersion};
 use crate::store::{
     FileCursor, FileStore, FileStoreError, ListedFile, MAX_FILE_PAGE, ShareStore, ShareStoreError,
 };
@@ -194,6 +194,9 @@ async fn listed_files<S: ShareStore>(shares: &S, share: &ShareId) -> Listed {
         match shares.version(share, number).await {
             Ok(version) => {
                 ids.extend(version.images().rows().iter().map(|row| row.file().clone()));
+                if let ShareContent::Html(html) = version.content() {
+                    ids.insert(html.file().clone());
+                }
             }
             Err(_) => return Listed::Unknown,
         }

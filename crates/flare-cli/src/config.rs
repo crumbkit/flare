@@ -9,7 +9,9 @@
 //! front of the site. A `client` section names the server that the share
 //! commands call and the token command that gives them its token. A `stores` key in the hosted section
 //! adds the share API, which `creators` limits, `names` serves and
-//! `get_flare` links the reading page's Get Flare link to.
+//! `get_flare` links the reading page's Get Flare link to, and
+//! `content_origin` names the second origin that serves uploaded HTML
+//! shares.
 //! `identity` says whether people are named by email or by username, and
 //! `everyone_signed_in` lets an everyone grant under an `anyone` rule open
 //! to every signed-in person, and `teams` says where the teams come from. A
@@ -145,6 +147,7 @@ struct HostedSection {
     creators: Option<Value>,
     names: Option<std::collections::BTreeMap<String, String>>,
     get_flare: Option<String>,
+    content_origin: Option<String>,
     identity: Option<Value>,
     everyone_signed_in: Option<bool>,
     teams: Option<Value>,
@@ -319,6 +322,8 @@ fn hosted(section: HostedSection, sign_in: HostedSignIn) -> Result<Hosted, Strin
             creators: section.creators,
             names: section.names,
             get_flare: section.get_flare,
+            content_origin: section.content_origin,
+            origin: &origin,
             everyone_signed_in: section.everyone_signed_in,
             teams: section.teams,
         },

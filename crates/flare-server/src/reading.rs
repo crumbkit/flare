@@ -174,8 +174,30 @@ pub(crate) fn document(
     article: &Article,
     entries: Entries<'_>,
 ) -> String {
-    let script: String = scripts(article, entries)
-        .into_iter()
+    page(
+        reading,
+        reader,
+        article.html().as_str(),
+        &scripts(article, entries),
+    )
+}
+
+/// The whole reading page of an uploaded HTML share: `frame` takes the
+/// article's place, and only the comments entry loads.
+pub(crate) fn framed_document(
+    reading: &Reading,
+    reader: &str,
+    frame: &str,
+    entries: Entries<'_>,
+) -> String {
+    let scripts: Vec<&str> = entries.comments.into_iter().collect();
+    page(reading, reader, frame, &scripts)
+}
+
+/// The page around `body`, loading the entry scripts in `files`.
+fn page(reading: &Reading, reader: &str, body: &str, files: &[&str]) -> String {
+    let script: String = files
+        .iter()
         .map(|file| {
             format!(
                 "<script type=\"module\" src=\"/flare/assets/{}\"></script>\n",
@@ -189,7 +211,6 @@ pub(crate) fn document(
         reader = escape(reader),
         reader_initials = escape(&initials(reader)),
         meta = meta_line(reading),
-        body = article.html().as_str(),
         comments = comments(reading),
         foot = foot(reading),
     )

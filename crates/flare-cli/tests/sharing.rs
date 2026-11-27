@@ -1094,17 +1094,14 @@ fn a_dry_run_of_a_file_the_server_would_refuse_prints_the_refusal_and_writes_no_
     write(&empty, "");
     let large = home.path().join("large.md");
     write(&large, &"x".repeat(262_145));
-    let html = home.path().join("page.html");
-    write(&html, "<p>x</p>\n");
     let text = home.path().join("notes.txt");
     write(&text, "x\n");
     let good = home.path().join("good.md");
     write(&good, "# Good\n");
     let long_title = "t".repeat(201);
-    let cases: [(&std::path::Path, &[&str], &str); 5] = [
+    let cases: [(&std::path::Path, &[&str], &str); 4] = [
         (&empty, &[], "flare::shares::invalid"),
         (&large, &[], "flare::shares::too_large"),
-        (&html, &[], "flare::shares::kind_not_served"),
         (&text, &[], "flare::files::unknown_format"),
         (&good, &["--title", &long_title], "flare::shares::invalid"),
     ];
@@ -1210,7 +1207,7 @@ fn a_dry_run_of_update_checks_the_id_before_the_body_as_the_server_does() {
         FLARE,
         "--dry-run",
     ])
-    .assert_failed("flare::shares::kind_not_served");
+    .assert_ok();
 }
 
 /// The failure document that a `--json` run printed, after asserting that

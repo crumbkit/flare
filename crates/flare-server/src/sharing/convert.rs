@@ -9,16 +9,24 @@ use flare_contract::{
 };
 use flare_core::{
     ActivityItem, FlareError, Group, IdentityKind, ListKey, ListedGrant, ManagedBy, ParseError,
-    Person, RecipientError, ResponseActivity, Role, Share, ShareError, ShareId, Standing, TeamView,
-    TeamsError, Timestamp,
+    Person, RecipientError, ResponseActivity, Role, Share, ShareError, ShareId, ShareKind,
+    Standing, TeamView, TeamsError, Timestamp,
 };
+
+/// The contract's format of the content that `share` holds.
+fn format_of(share: &Share) -> Format {
+    match share.kind() {
+        ShareKind::Html => Format::Html,
+        _ => Format::Markdown,
+    }
+}
 
 /// The summary of `share` for a caller with `role`.
 pub(super) fn summary(share: &Share, role: WireRole) -> ShareSummary {
     ShareSummary {
         id: share.id().as_str().to_owned(),
         title: share.title().as_str().to_owned(),
-        format: Format::Markdown,
+        format: format_of(share),
         owner: share.owner().as_str().to_owned(),
         role,
         version: share.latest().get(),
@@ -58,7 +66,7 @@ fn response_item(item: &ResponseActivity) -> WireItem {
         flare: item.flare.as_str().to_owned(),
         share: item.response.id().as_str().to_owned(),
         title: item.response.title().as_str().to_owned(),
-        format: Format::Markdown,
+        format: format_of(&item.response),
         by: item.response.owner().as_str().to_owned(),
         version: item.version.get(),
         at: utc(item.at.as_secs()),
@@ -85,6 +93,7 @@ pub(super) fn share_error(error: ShareError) -> ApiCode {
         ShareError::TooManyGrants => ApiCode::TooManyGrants,
         ShareError::TooManyShares => ApiCode::TooManyShares,
         ShareError::TooManyVersions => ApiCode::TooManyVersions,
+        ShareError::KindChanged => ApiCode::VersionKindChanged,
         ShareError::NoPerson(IdentityKind::Username) => ApiCode::NoUsername,
         ShareError::NoPerson(_) => ApiCode::NoVerifiedEmail,
         ShareError::TeamNotFound => ApiCode::TeamNotFound,

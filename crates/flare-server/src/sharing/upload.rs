@@ -20,6 +20,7 @@
 //! and the upload still answers its first refusal; the sweep deletes what
 //! is left.
 
+mod html;
 mod prepare;
 #[cfg(test)]
 mod tests;
@@ -43,7 +44,7 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 /// How many times a create draws a new share id after `IdTaken`.
-const DRAWS: usize = 3;
+pub(super) const DRAWS: usize = 3;
 
 /// How long after its start an upload may still commit.
 pub(crate) const COMMIT_WINDOW: Duration = Duration::from_secs(5 * 60);
@@ -74,6 +75,10 @@ pub(crate) enum Upload {
     Create(ShareRequest, Vec<ImagePart>),
     /// `POST /api/shares/{id}/versions` with images.
     Publish(String, VersionRequest, Vec<ImagePart>),
+    /// `POST /api/shares` with the file of an HTML share.
+    CreateHtml(ShareRequest, Bytes),
+    /// `POST /api/shares/{id}/versions` with the file of an HTML share.
+    PublishHtml(String, VersionRequest, Bytes),
 }
 
 /// The answer of an upload, and whether a delete of a file it sent
@@ -85,7 +90,7 @@ pub(crate) struct Uploaded {
 }
 
 /// What a commit did with the files an upload sent.
-enum Settle {
+pub(super) enum Settle {
     /// Keep them: the commit wrote them into a version, or may have.
     Keep,
     /// Delete them: nothing lists them.
@@ -94,7 +99,7 @@ enum Settle {
 
 /// The [`Settle`] of a create that failed with `error`. A taken id is
 /// handled before this.
-fn settle_create(error: &FlareError) -> Settle {
+pub(super) fn settle_create(error: &FlareError) -> Settle {
     match error {
         FlareError::PartlyShared { .. } | FlareError::Share(ShareError::Unavailable) => {
             Settle::Keep
@@ -105,12 +110,12 @@ fn settle_create(error: &FlareError) -> Settle {
 
 /// The refusal when an upload's 5 minutes have passed, or a file store
 /// refused a put.
-fn unavailable() -> Refusal {
+pub(super) fn unavailable() -> Refusal {
     ApiCode::SharesUnavailable.into()
 }
 
 /// Whether the upload that started at `started` may no longer commit.
-fn late(clock: &dyn Clock, started: Instant) -> bool {
+pub(super) fn late(clock: &dyn Clock, started: Instant) -> bool {
     clock.now().saturating_duration_since(started) >= COMMIT_WINDOW
 }
 
@@ -147,6 +152,16 @@ where
                     &mut cleanup_failed,
                 )
                 .await
+            }
+            Upload::CreateHtml(request, file) => {
+                let timing = (now, clock, started);
+                self.create_html(who, request, file, timing, &mut cleanup_failed)
+                    .await
+            }
+            Upload::PublishHtml(id, request, file) => {
+                let timing = (now, clock, started);
+                self.publish_html(who, &id, request, file, timing, &mut cleanup_failed)
+                    .await
             }
             Upload::Publish(id, request, parts) => {
                 self.publish_upload(
@@ -326,7 +341,7 @@ where
 }
 
 /// A new random share id.
-fn new_share_id() -> Result<ShareId, Refusal> {
+pub(super) fn new_share_id() -> Result<ShareId, Refusal> {
     random_id()
         .map(ShareId::from_random)
         .ok_or_else(unavailable)

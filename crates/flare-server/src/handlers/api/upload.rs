@@ -31,6 +31,10 @@ pub(super) fn boundary_of<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
     multipart::boundary(value)
 }
 
+/// The bytes a form may hold beyond `Limits::upload_bytes` for an HTML
+/// file: the boundary lines, the share part and the part headers.
+const HTML_FRAMING: usize = 64 * 1024;
+
 /// A refusal of a form that this server does not read.
 fn bad_form(detail: &str) -> Refusal {
     Refusal {
@@ -55,11 +59,22 @@ fn json_of<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, Refusal> {
     })
 }
 
+/// Whether `part` is the form's `html` part, which holds the file of an
+/// HTML share under any filename.
+fn is_html(part: &Part) -> bool {
+    part.name == "html"
+}
+
 /// The upload that the form `parts` of `route` holds.
 pub(super) fn upload_of(route: ApiRoute, name: &str, parts: Vec<Part>) -> Result<Upload, Refusal> {
     let mut share = None;
     let mut images = Vec::new();
+    let mut html = None;
     for part in parts {
+        if is_html(&part) && html.is_none() {
+            html = Some(part.data);
+            continue;
+        }
         match (part.name.as_str(), part.filename) {
             ("share", None) if share.is_none() => share = Some(part.data),
             ("image", Some(path)) => images.push(ImagePart {
@@ -74,6 +89,19 @@ pub(super) fn upload_of(route: ApiRoute, name: &str, parts: Vec<Part>) -> Result
         }
     }
     let share = share.ok_or_else(|| bad_form("the form has no share part"))?;
+    if let Some(file) = html {
+        if !images.is_empty() {
+            return Err(bad_form(
+                "a form holds an html part or image parts, not both",
+            ));
+        }
+        return match route {
+            ApiRoute::PublishVersion => {
+                Ok(Upload::PublishHtml(name.to_owned(), json_of(&share)?, file))
+            }
+            _ => Ok(Upload::CreateHtml(json_of(&share)?, file)),
+        };
+    }
     match route {
         ApiRoute::PublishVersion => Ok(Upload::Publish(name.to_owned(), json_of(&share)?, images)),
         _ => Ok(Upload::Create(json_of(&share)?, images)),
@@ -91,7 +119,11 @@ pub(super) async fn run<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
     body: Incoming,
     now: Timestamp,
 ) -> Result<Answer, Problem> {
-    let limit = (ctx.shared.limits.upload_bytes, Code::UploadTooLarge);
+    // An HTML file may be as large as `MAX_HTML`, and its form adds framing
+    // beyond `upload_bytes`, so the read allows `HTML_FRAMING` more and a
+    // form with no HTML file is held to `upload_bytes` after it is read.
+    let most = ctx.shared.limits.upload_bytes;
+    let limit = (most.saturating_add(HTML_FRAMING), Code::UploadTooLarge);
     let bytes = read_limited(ctx, body, limit).await?;
     let Some(parts) = multipart::parse(&bytes, boundary) else {
         return Ok(Err(bad_form("the body is not a form this server reads")));
@@ -100,6 +132,13 @@ pub(super) async fn run<P, R, S, K: OidcClock, H: HostedSignIn<K>>(
         Ok(upload) => upload,
         Err(refusal) => return Ok(Err(refusal)),
     };
+    let html = matches!(upload, Upload::CreateHtml(..) | Upload::PublishHtml(..));
+    if html && ctx.shared.content.is_none() {
+        return Ok(Err(ApiCode::HtmlNoContentHost.into()));
+    }
+    if !html && bytes.len() > most {
+        return Err(Code::UploadTooLarge.into());
+    }
     let uploaded = api
         .upload(who, upload, now, ctx.shared.clock.as_ref())
         .await;

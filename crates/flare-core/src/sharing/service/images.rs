@@ -49,7 +49,10 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
         at: Timestamp,
     ) -> Result<ShareVersion, ShareError> {
         let actor = self.actor(who)?;
-        self.admit(&actor, id, ShareAction::Publish).await?;
+        let (share, _) = self.admit(&actor, id, ShareAction::Publish).await?;
+        if share.kind() != content.kind() {
+            return Err(ShareError::KindChanged);
+        }
         let version = NewVersion::new(content, actor.id, at).with_images(images);
         Ok(self.shares.publish(id, version).await?)
     }
@@ -85,5 +88,34 @@ impl<S: ShareStore, G: GrantStore, T: Teams> Shares<S, G, T> {
             return Err(ShareError::NotFound);
         }
         Ok(files.get(id, file).await?)
+    }
+    /// Reads the HTML file of version `number` of a share, for a caller who
+    /// may read the share, together with the share. A version that holds
+    /// Markdown has no file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ShareError::NotFound`] for a missing share, a caller with
+    /// no standing in it, a missing version, a version that holds no HTML
+    /// and a listed file the store does not hold, so the answers cannot be
+    /// told apart; [`ShareError::NoPerson`] and [`ShareError::Unavailable`].
+    pub async fn html_file<F: FileStore>(
+        &self,
+        who: &Principal,
+        files: &F,
+        id: &ShareId,
+        number: ShareVersion,
+    ) -> Result<StoredFile, ShareError> {
+        let opened = self
+            .open(who, id, Some(number))
+            .await
+            .map_err(|error| match error {
+                ShareError::VersionNotFound => ShareError::NotFound,
+                other => other,
+            })?;
+        let ShareContent::Html(html) = opened.version.content() else {
+            return Err(ShareError::NotFound);
+        };
+        Ok(files.get(id, html.file()).await?)
     }
 }

@@ -234,7 +234,7 @@ Each image that the Markdown shows by a relative path, such as img/chart.png, is
 
 ### Arguments
 
-- `<FILE>`: The file to share: .md for Markdown. Required.
+- `<FILE>`: The file: .md or .html. Required.
 - `--title <TITLE>`: The title; without it, a Markdown file's first level-one heading, else the file name without its ending
 - `--with <WHO>`: Readers, comma-separated: addresses, team:\<name\>, everyone. Takes more than one value.
 - `--re <ID>`: The flares it responds to, whose owners become Readers; repeated or comma-separated. Takes more than one value.
@@ -314,10 +314,11 @@ flare show 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6 --version 1
 - `role`: The caller's role: `owner`, `admin` or `reader`.
 - `version`: The version whose content this holds.
 - `latest`: The share's latest version.
+- `format`: The share's markup: `markdown`, or `html` for an uploaded HTML file.
 
 Effects: read-only, closed-world.
 
-Children: The version's Markdown follows the share, one line of text for each line of the file.
+Children: The version's Markdown follows the share, one line of text for each line of the file. An HTML share prints a line that says so instead.
 
 ## `flare grant`
 

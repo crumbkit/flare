@@ -74,6 +74,10 @@ pub(crate) struct Reply {
     scripts: bool,
     immutable: bool,
     file: bool,
+    /// The whole policy of a reply from the content host.
+    view: Option<String>,
+    /// The origin that a reading page may frame, which adds `frame-src`.
+    frame_src: Option<String>,
 }
 
 impl Reply {
@@ -88,6 +92,8 @@ impl Reply {
             scripts: false,
             immutable: false,
             file: false,
+            view: None,
+            frame_src: None,
         }
     }
 
@@ -116,6 +122,28 @@ impl Reply {
             file: true,
             ..Self::with_body(status, content_type, body)
         }
+    }
+
+    /// A reply of the content host: `body` of `content_type` under the whole
+    /// policy `policy`. It carries no cookie and no `X-Frame-Options`, which
+    /// would stop the reading page's frame from showing it, and it
+    /// sends no referrer.
+    pub(crate) fn view(
+        status: StatusCode,
+        content_type: &'static str,
+        body: impl Into<Bytes>,
+        policy: String,
+    ) -> Self {
+        Self {
+            view: Some(policy),
+            ..Self::with_body(status, content_type, body)
+        }
+    }
+
+    /// Lets the page frame `origin`: its policy gains `frame-src <origin>`.
+    pub(crate) fn with_frame_src(mut self, origin: String) -> Self {
+        self.frame_src = Some(origin);
+        self
     }
 
     /// A 303 to `location`, a path on this host or an absolute URL that the
@@ -157,6 +185,9 @@ impl Reply {
     /// is not a valid header value, which the server never composes, turns
     /// the reply into an empty 500.
     pub(crate) fn into_response(self, site: SiteKind) -> Response<Body> {
+        if self.view.is_some() {
+            return self.into_view_response();
+        }
         let mut extra = Vec::new();
         if let Some(content_type) = self.content_type {
             extra.push((CONTENT_TYPE, HeaderValue::from_static(content_type)));
@@ -193,7 +224,13 @@ impl Reply {
         } else {
             "no-store"
         };
-        headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(policy));
+        match self
+            .frame_src
+            .and_then(|origin| HeaderValue::try_from(format!("{policy}; frame-src {origin}")).ok())
+        {
+            Some(framing) => headers.insert(CONTENT_SECURITY_POLICY, framing),
+            None => headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(policy)),
+        };
         headers.insert(CACHE_CONTROL, HeaderValue::from_static(cache));
         for (name, value) in FIXED {
             headers.insert(name, HeaderValue::from_static(value));
@@ -207,6 +244,44 @@ impl Reply {
         for (name, value) in extra {
             headers.append(name, value);
         }
+        response
+    }
+}
+
+const PERMISSIONS_POLICY: HeaderName = HeaderName::from_static("permissions-policy");
+
+/// The content host's `Permissions-Policy`: an empty allowlist for each
+/// feature a page could use, so neither the uploaded page nor a frame
+/// inside it gets the feature. It names only features that Chromium
+/// recognises, since Chromium logs an error for any other name.
+const DENY_FEATURES: &str = "accelerometer=(), autoplay=(), camera=(), clipboard-read=(), clipboard-write=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=()";
+
+impl Reply {
+    /// The response of the content host, with its policy, no cache, no
+    /// referrer, no permission for any browser feature, a separate browsing
+    /// context group and `Strict-Transport-Security`. An invalid policy
+    /// turns the reply into an empty 500.
+    fn into_view_response(self) -> Response<Body> {
+        let policy = self
+            .view
+            .as_deref()
+            .and_then(|policy| HeaderValue::try_from(policy).ok());
+        let Some(policy) = policy else {
+            return Self::empty(StatusCode::INTERNAL_SERVER_ERROR).into_response(SiteKind::Hosted);
+        };
+        let mut response = Response::new(Body::new(self.body));
+        *response.status_mut() = self.status;
+        let headers = response.headers_mut();
+        if let Some(content_type) = self.content_type {
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+        }
+        headers.insert(CONTENT_SECURITY_POLICY, policy);
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static(PRIVATE));
+        headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+        headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+        headers.insert(PERMISSIONS_POLICY, HeaderValue::from_static(DENY_FEATURES));
+        headers.insert(COOP, HeaderValue::from_static("same-origin"));
+        headers.insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS));
         response
     }
 }

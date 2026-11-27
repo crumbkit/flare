@@ -9,8 +9,8 @@ use super::{
 };
 use crate::clock::Clock;
 use flare_contract::{
-    ApiCode, ExchangeRequest, OpenedShare, Role as WireRole, ShareRequest, Shared, TokenIssued,
-    VersionRequest, utc,
+    ApiCode, ExchangeRequest, Role as WireRole, ShareRequest, Shared, TokenIssued, VersionRequest,
+    utc,
 };
 use flare_core::{
     CommentStore, Creators, CursorStore, FileStore, FlareError, Flared, GrantStore, LoginCode,
@@ -144,34 +144,6 @@ where
         let mut share = summary(&opened.share, standing(opened.standing));
         share.version = number.get();
         json(201, &share)
-    }
-
-    /// Opens version `number` of a share, or its latest. A number above
-    /// the latest answers `flare::shares::not_found`, as a share the caller
-    /// cannot open does, after the caller's standing is checked.
-    async fn open(&self, who: &Principal, id: &str, number: Option<ShareVersion>) -> Answer {
-        let id = share_id(id)?;
-        let opened = self
-            .flares
-            .shares()
-            .open(who, &id, number)
-            .await
-            .map_err(share_error)?;
-        let content = match opened.version.content() {
-            ShareContent::Document(text) => text.as_str().to_owned(),
-            _ => return Err(ApiCode::KindNotServed.into()),
-        };
-        let version = opened.version.number().get();
-        let mut share = summary(&opened.share, standing(opened.standing));
-        share.comments = self.live_comments(who, &id).await.ok();
-        json(
-            200,
-            &OpenedShare {
-                share,
-                version,
-                content,
-            },
-        )
     }
 
     async fn revoke(&self, who: &Principal, id: &str, now: Timestamp) -> Answer {
@@ -393,5 +365,14 @@ where
         file: &'a str,
     ) -> Boxed<'a, Result<StoredFile, ReadRefusal>> {
         Box::pin(self.image_file(who, id, version, file))
+    }
+
+    fn html<'a>(
+        &'a self,
+        who: &'a Principal,
+        id: &'a str,
+        version: u32,
+    ) -> Boxed<'a, Result<StoredFile, ReadRefusal>> {
+        Box::pin(self.html_file(who, id, version))
     }
 }

@@ -39,6 +39,7 @@ Columns:
   role     The caller's role: `owner`, `admin` or `reader`.
   version  The version whose content this holds.
   latest   The share's latest version.
+  format   The share's markup: `markdown`, or `html` for an uploaded HTML file.
 
 Effects: read-only, closed-world.
-Children: The version's Markdown follows the share, one line of text for each line of the file.
+Children: The version's Markdown follows the share, one line of text for each line of the file. An HTML share prints a line that says so instead.

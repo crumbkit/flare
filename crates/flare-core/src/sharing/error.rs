@@ -36,6 +36,10 @@ pub enum ShareError {
     /// The share has as many versions as one share may have.
     #[error("the share has as many versions as one share may have")]
     TooManyVersions,
+    /// A new version holds another kind of content than its share holds: a
+    /// share keeps the kind that its first version had.
+    #[error("a version holds the kind of content that its share holds")]
+    KindChanged,
     /// The caller owns as many shares as one owner may have.
     #[error("the caller owns as many shares as one owner may have")]
     TooManyShares,

@@ -11,13 +11,13 @@ use crate::hosted::{Admits, Hosted, HostedApp, SESSION};
 use flare_auth_oidc::{Admit, DomainRule, Reach, WorkspaceDomain};
 use flare_core::memory::{
     MemoryCommentStore, MemoryCursorStore, MemoryFileStore, MemoryGrantStore, MemoryResponseStore,
-    MemorySequence, MemoryTeamStore,
+    MemorySealingKeys, MemorySequence, MemoryTeamStore,
 };
 use flare_core::{
     CreatorList, DocumentText, Email, FlareTeams, Flares, Principal, ShareContent, ShareId, Shares,
     Teams, Timestamp,
 };
-use flare_server::{GetFlare, Sharing};
+use flare_server::{ContentHost, GetFlare, PublicOrigin, Sharing};
 use serde_json::{Value, json};
 use url::Url;
 
@@ -53,7 +53,27 @@ impl Api {
     /// The server of [`Api::start`], whose app `extra` finishes after the
     /// share API is added, such as by turning metrics on.
     pub async fn start_with(extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
-        Self::launch(Admit::Anyone(Reach::Everything), None, false, extra).await
+        Self::launch(Admit::Anyone(Reach::Everything), None, false, |app, _| {
+            extra(app)
+        })
+        .await
+    }
+
+    /// The server of [`Api::start`] with a content host named
+    /// `content.localhost` on its port, and an HTML-capable share API.
+    pub async fn start_with_content_host() -> Self {
+        Self::launch(
+            Admit::Anyone(Reach::Everything),
+            None,
+            false,
+            |app, port| {
+                let origin =
+                    PublicOrigin::loopback_http(&format!("http://content.localhost:{port}"))
+                        .unwrap();
+                app.with_content_host(ContentHost::new(origin, MemorySealingKeys::new()))
+            },
+        )
+        .await
     }
 
     /// The server of [`Api::start_with_domain`], whose teams come from
@@ -61,13 +81,13 @@ impl Api {
     pub async fn start_with_teams(teams: impl Teams + 'static) -> Self {
         let domain = WorkspaceDomain::try_from("example.com").unwrap();
         let admit = Admit::Domain(DomainRule::new(domain, Reach::Everything));
-        Self::launch_with(admit, None, false, teams, |app| app).await
+        Self::launch_with(admit, None, false, teams, |app, _| app).await
     }
 
     /// The server of [`Api::start`] with `hosted.everyone_signed_in` on, so
     /// an everyone grant opens to every signed-in person.
     pub async fn start_everyone_signed_in() -> Self {
-        Self::launch(Admit::Anyone(Reach::Everything), None, true, |app| app).await
+        Self::launch(Admit::Anyone(Reach::Everything), None, true, |app, _| app).await
     }
 
     /// The same server under an admit rule of the domain example.com.
@@ -79,7 +99,7 @@ impl Api {
     /// The server of [`Api::start`] with the share API's admit rule `admit`,
     /// whose app `extra` finishes after the share API is added.
     pub async fn start_full(admit: Admit, extra: impl FnOnce(HostedApp) -> HostedApp) -> Self {
-        Self::launch(admit, None, false, extra).await
+        Self::launch(admit, None, false, |app, _| extra(app)).await
     }
 
     /// The server of [`Api::start`], whose reading pages link readers who
@@ -90,7 +110,7 @@ impl Api {
             Admit::Anyone(Reach::Everything),
             Some(address),
             false,
-            |app| app,
+            |app, _| app,
         )
         .await
     }
@@ -99,7 +119,7 @@ impl Api {
         admit: Admit,
         get_flare: Option<GetFlare>,
         everyone_signed_in: bool,
-        extra: impl FnOnce(HostedApp) -> HostedApp,
+        extra: impl FnOnce(HostedApp, u16) -> HostedApp,
     ) -> Self {
         let teams = FlareTeams::new(MemoryTeamStore::new());
         Self::launch_with(admit, get_flare, everyone_signed_in, teams, extra).await
@@ -110,7 +130,7 @@ impl Api {
         get_flare: Option<GetFlare>,
         everyone_signed_in: bool,
         teams: impl Teams + 'static,
-        extra: impl FnOnce(HostedApp) -> HostedApp,
+        extra: impl FnOnce(HostedApp, u16) -> HostedApp,
     ) -> Self {
         let faults = Faults::default();
         let switches = faults.clone();
@@ -119,7 +139,7 @@ impl Api {
             ..FaultyShares::default()
         };
         let store = shares.clone();
-        let hosted = Hosted::start_attached(Admits::Domain, None, move |app| {
+        let hosted = Hosted::start_attached_at(Admits::Domain, None, move |app, port| {
             let admit = admit.clone();
             let creators = FaultyCreators {
                 fail: switches.creators.clone(),
@@ -162,7 +182,7 @@ impl Api {
                 Some(address) => sharing.with_get_flare(address),
                 None => sharing,
             };
-            extra(app.with_sharing(sharing))
+            extra(app.with_sharing(sharing), port)
         })
         .await;
         Self {
