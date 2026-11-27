@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 flare-core.workspace = true
+limu.workspace = true
 mustache2.workspace = true
 pulldown-cmark.workspace = true
 secrecy.workspace = true

@@ -1,7 +1,7 @@
 //! The top-level blocks of a Markdown document, the captions that may
 //! follow them, and the diagrams a fenced block may draw.
 
-use super::DIAGRAM_TYPES;
+use crate::diagram::Kind;
 use pulldown_cmark::{Event, Tag};
 
 /// The ranges of the top-level blocks in `events`.
@@ -63,11 +63,14 @@ pub(super) fn is_caption(block: &[Event<'_>]) -> bool {
 }
 
 /// The diagram type of a fenced block with `language` and `source`, when
-/// it is a Mermaid diagram a page may draw.
-pub(super) fn diagram_type(language: &str, source: &str) -> Option<&'static str> {
+/// it is a Mermaid diagram a page may draw. A Mermaid fence whose source
+/// starts with any other word, such as a `%%{init}%%` directive or front
+/// matter, renders as code. A directive on a later line still reaches limu,
+/// which draws no link, image or script whatever it asks, because the
+/// server turns links and images off.
+pub(super) fn diagram_type(language: &str, source: &str) -> Option<Kind> {
     if language != "mermaid" {
         return None;
     }
-    let first = source.split_whitespace().next()?;
-    DIAGRAM_TYPES.iter().copied().find(|kind| *kind == first)
+    Kind::of(source)
 }

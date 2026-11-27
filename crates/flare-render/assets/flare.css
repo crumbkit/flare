@@ -28,8 +28,16 @@
   --amber-ink: oklch(36% .1 75);
   --red-tint: oklch(94% .035 25);
   --red-ink: oklch(40% .13 25);
-  --show-light: block;
-  --show-dark: none;
+  /* The series colours of charts. limu writes a pie slice's label in the
+     background colour, so each meets 4.5:1 against --app. */
+  --series-1: oklch(46% .15 230);
+  --series-2: oklch(42% .11 150);
+  --series-3: oklch(45% .1 60);
+  --series-4: oklch(46% .15 25);
+  --series-5: oklch(44% .13 300);
+  --series-6: oklch(44% .07 190);
+  --series-7: oklch(42% .015 240);
+  --series-8: oklch(36% .1 260);
   --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --radius: 3px;
@@ -91,8 +99,14 @@
     --amber-ink: oklch(88% .09 85);
     --red-tint: oklch(29% .05 25);
     --red-ink: oklch(85% .09 25);
-    --show-light: none;
-    --show-dark: block;
+    --series-1: oklch(78% .11 230);
+    --series-2: oklch(80% .13 150);
+    --series-3: oklch(84% .12 85);
+    --series-4: oklch(78% .11 25);
+    --series-5: oklch(78% .1 300);
+    --series-6: oklch(80% .09 190);
+    --series-7: oklch(76% .015 240);
+    --series-8: oklch(74% .08 260);
   }
 }
 
@@ -143,13 +157,15 @@ body {
 figcaption { font-size: 13px; color: var(--muted); }
 .diagram-source { font: 13px/1.65 var(--font-mono); white-space: pre-wrap; overflow-x: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); color: var(--fg); }
 .diagram-error { font-size: 13px; color: var(--red-ink); }
-/* Mermaid's own SVG. Its labels were measured at 14px with normal line
-   height, so those values are restored here. */
-.mm { font: 14px/normal var(--font-body); min-width: 620px; }
-.mm *, .mm *::before, .mm *::after { box-sizing: content-box; }
-.mm svg { display: block; height: auto; max-width: 100%; }
-.mm-light { display: var(--show-light); }
-.mm-dark { display: var(--show-dark); }
+/* A diagram is limu-rs's own SVG, drawn on the server with text measured
+   as IBM Plex Sans at 14px. limu writes its colours as --limu-* variables,
+   which take Flare's tokens here, so one drawing serves light and dark. A
+   subgraph's border takes the line colour, which limu has no token for.
+   The server sets the box's min-width, so a drawing scaled to fit the
+   column keeps its smallest text at 10.5px; past that the box scrolls. */
+.dg { --limu-bg: var(--app); --limu-fg: var(--fg); --limu-muted: var(--muted); --limu-line: var(--line-strong); --limu-surface: var(--card); --limu-surface-alt: var(--surface-2); --limu-border: var(--line-strong); --limu-accent: var(--accent); --limu-critical: var(--red-ink); --limu-font: var(--font-body); --limu-series-1: var(--series-1); --limu-series-2: var(--series-2); --limu-series-3: var(--series-3); --limu-series-4: var(--series-4); --limu-series-5: var(--series-5); --limu-series-6: var(--series-6); --limu-series-7: var(--series-7); --limu-series-8: var(--series-8); }
+.dg svg { display: block; height: auto; max-width: 100%; }
+.dg .limu-flowchart-cluster > rect { stroke: var(--line); fill-opacity: 1; }
 
 /* A code block: its language, a Copy button and the code. */
 .code { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); min-width: 0; }

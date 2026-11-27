@@ -1,6 +1,6 @@
 //! The reading page's script files, which the build script embeds from
 //! `ui/flare/dist/assets`, served at `/flare/assets/<file>`: the reading
-//! entry, which colours code and draws diagrams, the comments entry, and
+//! entry, which colours code, the comments entry, and
 //! the chunks they import. Each name
 //! holds a hash of the file's content, so a reply is cached for a year.
 //! A build with no bundle embeds no file, and the reading page then loads

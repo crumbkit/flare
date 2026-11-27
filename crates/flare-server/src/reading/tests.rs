@@ -109,20 +109,24 @@ fn the_title_owner_and_grantees_are_escaped() {
 }
 
 #[test]
-fn every_page_loads_the_comments_entry_and_only_a_page_with_code_or_a_diagram_loads_the_reading_entry()
- {
+fn every_page_loads_the_comments_entry_and_only_a_page_with_code_loads_the_reading_entry() {
     let reading_tag = "<script type=\"module\" src=\"/flare/assets/reading-AbCd1234.js\"></script>";
     let comments_tag =
         "<script type=\"module\" src=\"/flare/assets/comments-EfGh5678.js\"></script>";
-    for markdown in ["```rust\nfn x() {}\n```\n", "```mermaid\npie\n```\n"] {
-        let html = built(&reading(), markdown);
-        assert!(html.contains(reading_tag), "{html}");
-        assert!(html.contains(comments_tag), "{html}");
+    let html = built(&reading(), "```rust\nfn x() {}\n```\n");
+    assert!(html.contains(reading_tag), "{html}");
+    assert!(html.contains(comments_tag), "{html}");
+    // The server draws a diagram, so a page whose only blocks are diagrams
+    // loads the comments entry alone.
+    for markdown in [
+        "Text and a table.\n\n| a |\n|---|\n| 1 |\n",
+        "```mermaid\npie\n  \"a\" : 1\n```\n\n```mermaid\nflowchart LR\n  a --> b\n```\n",
+    ] {
+        let plain = built(&reading(), markdown);
+        assert!(plain.contains(comments_tag), "{plain}");
+        assert!(!plain.contains("reading-AbCd1234.js"), "{plain}");
+        assert_eq!(plain.matches("<script").count(), 1, "{plain}");
     }
-    let plain = built(&reading(), "Text and a table.\n\n| a |\n|---|\n| 1 |\n");
-    assert!(plain.contains(comments_tag), "{plain}");
-    assert!(!plain.contains("reading-AbCd1234.js"), "{plain}");
-    assert_eq!(plain.matches("<script").count(), 1, "{plain}");
     let unbuilt = page(&reading(), "```rust\nfn x() {}\n```\n", None);
     assert!(!unbuilt.contains("<script"), "{unbuilt}");
 }

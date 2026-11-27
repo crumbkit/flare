@@ -1,0 +1,24 @@
+flowchart LR
+  subgraph cli["CLI layer"]
+    board_cli[board-cli]
+    crumbkit[crumbkit]
+  end
+  subgraph core["Core crates"]
+    board_core[board-core]
+    board_store[board-store]
+    board_types[board-types]
+  end
+  subgraph plugins["Plugins"]
+    evals[evals]
+    runs[runs]
+    controls[controls]
+  end
+  board_cli --> crumbkit
+  board_cli --> board_core
+  board_core --> board_store
+  board_core --> board_types
+  board_store --> board_types
+  evals --> board_core
+  runs --> board_core
+  controls --> board_core
+  evals -.-> runs

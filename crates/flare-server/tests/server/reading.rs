@@ -287,6 +287,36 @@ async fn a_page_without_code_loads_only_the_comments_entry() {
 }
 
 #[tokio::test]
+async fn a_page_whose_only_blocks_are_diagrams_shows_them_drawn_and_loads_only_the_comments_entry()
+{
+    let (api, bob, id) = shared(
+        "```mermaid\nflowchart LR\n  a[Forecast] --> b{Held?}\n```\n\nFigure 1. A forecast.\n",
+    )
+    .await;
+    let page = read(&api, &bob, &format!("/s/{id}")).await;
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert!(
+        page.body
+            .contains("<figure class=\"diagram\" data-diagram=\"drawn\">"),
+        "{}",
+        page.body
+    );
+    assert!(page.body.contains("<svg "), "{}", page.body);
+    assert!(!page.body.contains("diagram-source"), "{}", page.body);
+    let scripts: Vec<&str> = page
+        .body
+        .split("<script type=\"module\" src=\"/flare/assets/")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .collect();
+    // A build with no bundle loads no script.
+    if !scripts.is_empty() {
+        assert_eq!(scripts.len(), 1, "{scripts:?}");
+        assert!(scripts[0].starts_with("comments-"), "{scripts:?}");
+    }
+}
+
+#[tokio::test]
 async fn the_entry_script_is_served_with_an_immutable_cache_and_an_unknown_file_is_not_found() {
     let (api, bob, id) = shared("```rust\nfn x() {}\n```\n").await;
     let page = read(&api, &bob, &format!("/s/{id}")).await;

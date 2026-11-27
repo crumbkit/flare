@@ -1,0 +1,30 @@
+flowchart TD
+  subgraph limu["crate: renderer"]
+    direction TB
+    lib[lib.rs]
+    subgraph parse["parse"]
+      lexer[lexer.rs]
+      parser[parser.rs]
+      ast[ast.rs]
+    end
+    subgraph layout["layout"]
+      rank[rank.rs]
+      order[order.rs]
+      position[position.rs]
+      route[route.rs]
+    end
+    subgraph draw["draw"]
+      scene[scene.rs]
+      svg[svg.rs]
+      text[text.rs]
+    end
+  end
+  lib --> parser
+  parser --> lexer
+  parser --> ast
+  lib --> rank
+  rank --> order --> position --> route
+  route --> scene
+  ast --> rank
+  scene --> svg
+  scene --> text

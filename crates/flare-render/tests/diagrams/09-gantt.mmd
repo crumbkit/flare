@@ -1,0 +1,12 @@
+gantt
+  title Reading view build
+  dateFormat YYYY-MM-DD
+  axisFormat %d %b
+  section Reading
+  Markdown and tables   :done,    md, 2026-11-23, 2d
+  Mermaid figures       :done,    mm, after md, 2d
+  Shiki code blocks     :active,  sh, after mm, 2d
+  section Comments
+  JSON API              :         api, 2026-11-26, 3d
+  Headless UI package   :         ui, after api, 2d
+  Comment parts         :crit,    cp, after ui, 3d

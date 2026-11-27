@@ -15,9 +15,12 @@ fn an_article_with_code_needs_the_script() {
 }
 
 #[test]
-fn an_article_with_a_diagram_needs_the_script() {
+fn an_article_whose_only_block_is_a_diagram_draws_it_and_needs_no_script() {
     let article = article("```mermaid\npie\n  \"a\" : 1\n```\n").unwrap();
-    assert!(article.has_diagrams() && !article.has_code() && article.needs_script());
+    assert!(article.has_diagrams() && !article.has_code() && !article.needs_script());
+    let html = article.html().as_str();
+    assert!(html.contains("data-diagram=\"drawn\""), "{html}");
+    assert!(html.contains("<svg "), "{html}");
 }
 
 #[test]

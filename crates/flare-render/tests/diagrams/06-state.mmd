@@ -1,0 +1,15 @@
+stateDiagram-v2
+  [*] --> planned
+  planned --> running: first run recorded
+  running --> running: another run
+  running --> concluded: verdict written
+  running --> abandoned: stopped early
+  planned --> abandoned: never started
+  state concluded {
+    [*] --> supported
+    [*] --> refuted
+    [*] --> inconclusive
+    inconclusive --> followup: narrower eval
+  }
+  concluded --> [*]
+  abandoned --> [*]

@@ -1,0 +1,31 @@
+erDiagram
+  EVAL ||--o{ SUITE : "tested by"
+  EVAL ||--o{ RUN : "rests on"
+  SUITE ||--|{ CASE : defines
+  SUITE ||--o{ RUN : has
+  RUN ||--|{ RESULT : lists
+  RESULT }o--|| CASE : "outcome of"
+  EVAL }o--o{ MOUNT : concerns
+  EVAL {
+    string question
+    string status
+    string verdict
+    string conclusion
+  }
+  RUN {
+    datetime started
+    string by
+    string scope
+    bool dirty
+  }
+  RESULT {
+    string case
+    string outcome
+    string note
+    int trial
+  }
+  MOUNT {
+    string repo
+    string follow
+    string commit
+  }

@@ -1,0 +1,35 @@
+classDiagram
+  class Scene {
+    +f64 width
+    +f64 height
+    +String diagram
+    +Vec~Item~ items
+  }
+  class Item {
+    <<enumeration>>
+    Shape
+    Path
+    Label
+    Group
+  }
+  class Backend {
+    <<interface>>
+    +draw(scene: Scene, opts: Options) Result
+    +measure(text: str, size: f64) f64
+  }
+  class SvgBackend {
+    +render(scene: Scene) String
+  }
+  class AsciiBackend {
+    +Charset charset
+    +render(scene: Scene) String
+  }
+  class CoreGraphicsBackend {
+    +Fonts fonts
+    +draw(cx: CGContext)
+  }
+  Scene "1" *-- "many" Item
+  Backend <|.. SvgBackend
+  Backend <|.. AsciiBackend
+  Backend <|.. CoreGraphicsBackend
+  Backend ..> Scene : reads

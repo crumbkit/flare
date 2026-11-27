@@ -215,6 +215,8 @@ fn each_allowed_mermaid_type_becomes_a_figure_that_holds_its_source() {
         assert!(!found.iter().any(|(name, _)| name == "code"), "{kind}");
         assert!(rendered.diagrams && !rendered.code, "{kind}");
         assert!(text_of(&rendered.html).contains("a --> b"), "{kind}");
+        // Only the reading page draws a diagram.
+        assert!(!rendered.html.contains("<svg"), "{kind}");
     }
 }
 

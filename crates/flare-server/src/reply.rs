@@ -27,7 +27,7 @@ pub(crate) const HOSTED_POLICY: &str = "default-src 'none'; style-src 'self' 'un
 
 /// The policy of a reading page that loads a script: the hosted policy with
 /// the page's own scripts allowed. /evals/flare-reading-scripts-under-csp
-/// found that Shiki and Mermaid run under it with no violation, and need no
+/// found that Shiki runs under it with no violation, and needs no
 /// `'unsafe-eval'`, worker or `blob:` source. Its `connect-src 'self'` lets
 /// the comments section read and write comments on the page's own origin.
 pub(crate) const SCRIPT_POLICY: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; script-src 'self'";

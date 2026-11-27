@@ -1,5 +1,5 @@
-//! [`article`]: a Markdown share rendered for the reading page, with what
-//! the page's scripts have to do.
+//! [`article`]: a Markdown share rendered for the reading page, with its
+//! diagrams drawn as SVG, and what the page's script has to do.
 
 use crate::html::Html;
 use crate::markdown::{self, ImageSources};
@@ -26,16 +26,18 @@ impl Article {
         self.code
     }
 
-    /// Whether the article holds a Mermaid diagram, which a script draws.
+    /// Whether the article holds a Mermaid diagram, which the server drew
+    /// or showed as its source.
     #[must_use]
     pub fn has_diagrams(&self) -> bool {
         self.diagrams
     }
 
-    /// Whether the page needs its script: it holds code or a diagram.
+    /// Whether the page needs its script: it holds code, which the script
+    /// colours. A diagram needs no script, because the server drew it.
     #[must_use]
     pub fn needs_script(&self) -> bool {
-        self.code || self.diagrams
+        self.code
     }
 }
 
@@ -44,7 +46,8 @@ impl Article {
 /// as its alternative text.
 ///
 /// A fenced `mermaid` block whose first word is an allowed diagram type
-/// becomes a figure holding its escaped source, every other code block
+/// becomes a figure holding its drawing as SVG, or its escaped source and a
+/// note saying why it is not drawn. Every other code block
 /// gets its language label and a Copy button, and a "Figure N." paragraph
 /// directly after a diagram, table or code block becomes its caption.
 ///
@@ -52,7 +55,7 @@ impl Article {
 ///
 /// Returns [`RenderError::TooLarge`] when the HTML is over 4 MiB.
 pub fn article(markdown: &str, images: &ImageSources) -> Result<Article, RenderError> {
-    let rendered = markdown::render_with(markdown, Some(images));
+    let rendered = markdown::render_article(markdown, images);
     if rendered.html.len() > MAX_OUTPUT_BYTES {
         return Err(RenderError::TooLarge {
             max: MAX_OUTPUT_BYTES,
