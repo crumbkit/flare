@@ -4,5 +4,5 @@ Review  0
   the file is at most 4194304 bytes, the most flare share reads
   the title "Review" is 1 to 200 bytes with no control character
   the content is 100 bytes of text with no NUL, within the 262144 a share holds
-  rendered to 11600 bytes of HTML with flare-render
+  rendered to 12973 bytes of HTML with flare-render
   wrote the HTML to review.html
