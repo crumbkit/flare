@@ -40,11 +40,23 @@ async function watch(page: Page): Promise<{ violations: string[]; errors: string
 test("an uploaded Compliance page draws in the sandboxed frame with no policy violation", async ({
   page,
   context,
+  browserName,
 }) => {
-  // Chromium refuses a `__Host-` cookie set through the DevTools protocol
-  // for an http origin, so every request carries the session cookie as a
-  // header. The content host reads no cookie, so it ignores this one.
-  await context.setExtraHTTPHeaders({ Cookie: cookie });
+  // A `__Host-` cookie cannot be set for an http origin, so the test sends
+  // the session cookie itself. Chromium applies extra headers to every
+  // request. WebKit on Linux does not apply them to a navigation, so the
+  // test adds the cookie to requests for the site origin there. The content
+  // host is another origin and reads no cookie.
+  if (browserName === "webkit") {
+    await context.route(`${origin}/**`, async (route) => {
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), cookie },
+      });
+      await route.fulfill({ response });
+    });
+  } else {
+    await context.setExtraHTTPHeaders({ Cookie: cookie });
+  }
   const { violations, errors } = await watch(page);
 
   await page.goto(`${origin}/s/${share}`);
