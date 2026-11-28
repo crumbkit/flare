@@ -178,8 +178,12 @@ test("a reader comments on selected text, sees the card beside it or under its p
 
   // Artboards 08 and 09: the card opens with the quote and a labelled field,
   // and leaves focus in the page.
-  const opened = page.getByRole("complementary", { name: "Comment on this passage" });
-  const field = opened.getByRole("textbox", { name: "Your comment on this text" });
+  // The other projects run at once on the same share, so the margin may
+  // already hold their cards on this text; the composing card is the form.
+  const margin = page.getByRole("complementary", { name: "Comment on this passage" });
+  const named = { name: "Your comment on this text" };
+  const field = margin.getByRole("textbox", named);
+  const opened = margin.locator("form").filter({ has: page.getByRole("textbox", named) });
   await expect(field).toBeVisible();
   await expect(opened.getByText(`"${quote}"`)).toBeVisible();
   await expect(field).not.toBeFocused();
