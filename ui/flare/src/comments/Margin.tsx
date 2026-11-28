@@ -6,9 +6,8 @@
 // under the paragraph that holds its text, and a comment whose text is gone
 // shows in Comments at the end of the page.
 //
-// The cards sit in page order and do not line up with the height of their
-// text, as the artboards draw them; a long page shows a card above or below
-// its text by as much as the cards before it take.
+// On a wide page each card sits level with its text (level.ts), and the
+// composing card takes its place among the others in the order of the text.
 import { type Anchor, type Located, locate, selectAnchor } from "@flare/headless/comments/anchor";
 import { type Arranged, arrange } from "@flare/headless/comments/margin";
 import { closesPassage, marginLabel } from "@flare/headless/comments/passage";
@@ -27,6 +26,7 @@ import { createPortal } from "react-dom";
 import { versionTextQuery } from "../api/versions.ts";
 import { type Clock, CommentCard } from "./cards.tsx";
 import type { ReadingHost } from "./host.ts";
+import { PLACE, useLevelCards } from "./level.ts";
 import { useNarrow } from "./narrow.ts";
 import { blockAt, clearMarks, markRange, pointAt, readPage } from "./pageDom.ts";
 import { PassageCard } from "./passage.tsx";
@@ -80,7 +80,7 @@ export function usePlacement(
       enabled: page !== undefined,
     })),
   });
-  const own = new Map(versions.map((version, at) => [version, texts[at]?.data]));
+  const own = new Map(versions.map((version, at) => [version, texts[at]]));
   // The page text does not change when marks wrap it, so it is read again
   // only when the reading script finishes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the epoch says when the article's text nodes changed.
@@ -90,7 +90,11 @@ export function usePlacement(
   }
   const place = (anchor: Anchor): Located | undefined => {
     if (anchor.version === page.version) return locate(anchor, text, page.version);
-    const before = own.get(anchor.version);
+    const loaded = own.get(anchor.version);
+    // When the comment's own version does not load, the search alone
+    // places it, so a quote found once shows as moved.
+    if (loaded?.isError) return locate(anchor, text, page.version);
+    const before = loaded?.data;
     const located = locate(anchor, text, page.version, before);
     return before === undefined && located.state !== "outdated" ? undefined : located;
   };
@@ -220,6 +224,15 @@ export function Margin({ page, placement, flare, owner, clock, onAdd }: MarginPr
     return () => clearMarks(page.article);
   }, [page, markKey]);
 
+  // While the card is empty the selection stays the reader's, so copying
+  // still works, and the stylesheet draws it in mark.sel's accent tint.
+  const live = open?.live === true;
+  useLayoutEffect(() => {
+    page.article.classList.toggle("composing", live);
+    return () => page.article.classList.remove("composing");
+  }, [page, live]);
+  useLevelCards(page, !placement.narrow);
+
   const sent = (posted: Comment) => {
     onAdd(posted);
     passage.close();
@@ -258,11 +271,28 @@ export function Margin({ page, placement, flare, owner, clock, onAdd }: MarginPr
     );
   }, [page, open]);
   if (!placement.narrow) {
+    const places: { key: string; start: number | undefined; node: ReactNode }[] =
+      placement.margin.map((each) => ({
+        key: each.comment.id,
+        start: "start" in each ? each.start : undefined,
+        node: card(each),
+      }));
+    if (open) {
+      const after = places.findIndex(
+        (each) => each.start === undefined || each.start >= open.start,
+      );
+      places.splice(after < 0 ? places.length : after, 0, {
+        key: "composing",
+        start: open.start,
+        node: composing,
+      });
+    }
     return createPortal(
-      <>
-        {composing}
-        {placement.margin.map(card)}
-      </>,
+      places.map(({ key, start, node }) => (
+        <div className={PLACE} key={key} data-start={start}>
+          {node}
+        </div>
+      )),
       page.margin,
     );
   }

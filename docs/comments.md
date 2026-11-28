@@ -90,12 +90,16 @@ again.
 | outdated | The quote is gone, or several copies match equally; nothing is marked and the card says "The quoted text changed on version N." |
 
 - On a wide page the cards show in a margin beside the article, anchored
-  and re-anchored ones in page order and then the outdated ones. On a
+  and re-anchored ones in page order and then the outdated ones. Each card
+  sits level with the line where its text starts, and a card that would
+  overlap the one above it is pushed down. While a new card on selected
+  text is empty, the selection is drawn in the same tint as the mark. On a
   phone each card shows under the paragraph that holds its text, and an
   outdated card shows in Comments at the end of the page.
 - To tell anchored from re-anchored on a later version, the page reads the
   comment's own version with `GET /s/<id>?version=<n>`. Until that answers,
-  or when it fails, the card shows its quote with no mark and no note.
+  the card shows its quote with no mark and no note. When it fails, the
+  search alone places the card, so a quote found once shows as moved.
 
 ## Activity
 

@@ -118,3 +118,18 @@ export function clearMarks(root: Element, kind?: string): void {
     parent.normalize();
   }
 }
+
+/**
+ * The top of the line that holds the page text's offset `at`, in the
+ * viewport, or undefined when the browser does not lay the page out.
+ */
+export function textTop(page: Page, at: number): number | undefined {
+  const place = page.text.places[at];
+  const node = place === undefined ? undefined : page.nodes[place.piece];
+  if (place === undefined || node === undefined) return undefined;
+  const range = node.ownerDocument.createRange();
+  range.setStart(node, Math.min(place.offset, node.data.length));
+  range.setEnd(node, Math.min(place.offset + 1, node.data.length));
+  if (typeof range.getBoundingClientRect !== "function") return undefined;
+  return range.getBoundingClientRect().top;
+}

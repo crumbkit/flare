@@ -217,6 +217,9 @@ where
         let parent = request.parent.as_deref().map(comment_id).transpose()?;
         let body = CommentBody::try_from(request.body.as_str()).map_err(invalid)?;
         let key = CommentKey::try_from(request.key.as_str()).map_err(invalid)?;
+        if parent.is_some() && request.anchor.is_some() {
+            return Err(ApiCode::AnchorOnReply.into());
+        }
         let anchor = request.anchor.as_ref().map(anchor).transpose()?;
         let id = CommentId::from_random(random_id().ok_or(ApiCode::CommentsUnavailable)?);
         let draft = CommentDraft::new(id, flare, parent, body, key).with_anchor(anchor);

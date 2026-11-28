@@ -274,6 +274,7 @@ describe("a property of selecting and finding", () => {
       const located = locate(made.anchor, text.text, 4);
       expect(located.state, JSON.stringify({ blocks, start, end })).toBe("anchored");
       if (located.state === "outdated") continue;
+      expect(located.start).toBe(made.start);
       expect(text.text.slice(located.start, located.end)).toBe(made.anchor.quote);
       expect(text.text.slice(0, located.start).endsWith(made.anchor.prefix)).toBe(true);
       expect(text.text.slice(located.end).startsWith(made.anchor.suffix)).toBe(true);

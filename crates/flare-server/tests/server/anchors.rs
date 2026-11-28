@@ -76,6 +76,14 @@ async fn an_anchor_on_a_reply_is_refused_and_the_same_reply_without_one_is_admit
         (status, code(&refused)),
         (400, "flare::comments::anchor_on_reply")
     );
+    // A reply is refused for carrying an anchor at all, before the anchor
+    // itself is read.
+    reply["anchor"]["quote"] = json!("x");
+    let (status, refused) = post(&api, &alice, reply.clone()).await;
+    assert_eq!(
+        (status, code(&refused)),
+        (400, "flare::comments::anchor_on_reply")
+    );
     reply.as_object_mut().unwrap().remove("anchor");
     let (status, admitted) = post(&api, &alice, reply).await;
     assert_eq!(status, 201, "{admitted}");

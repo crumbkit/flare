@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Anchor, Located } from "./anchor.ts";
-import { arrange } from "./margin.ts";
+import { arrange, stack } from "./margin.ts";
 import { comment, commentId, jonas, priya, tomas } from "./testThread.ts";
 import type { Comment, LiveComment } from "./thread.ts";
 
@@ -61,5 +61,51 @@ describe("where each comment shows", () => {
     const { margin, bottom } = arrange([deleted], place, false);
     expect(margin).toEqual([]);
     expect(bottom).toEqual([deleted]);
+  });
+});
+
+describe("how far each margin card sits below the one before it", () => {
+  // Artboards 08, 10 and 11: a card sits level with its text, a card that
+  // would overlap the one above is pushed down, and a card with no text
+  // follows the one above it.
+  it("puts each card at its text's top when the cards do not touch", () => {
+    expect(
+      stack(
+        [
+          { want: 100, height: 80 },
+          { want: 300, height: 50 },
+        ],
+        12,
+      ),
+    ).toEqual([100, 108]);
+  });
+
+  it("pushes a card down below the one above it when they would overlap, keeping page order", () => {
+    expect(
+      stack(
+        [
+          { want: 100, height: 80 },
+          { want: 120, height: 50 },
+          { want: 150, height: 40 },
+        ],
+        12,
+      ),
+    ).toEqual([100, 0, 0]);
+  });
+
+  it("starts a card whose text is above the margin's top at the top", () => {
+    expect(stack([{ want: -40, height: 30 }], 12)).toEqual([0]);
+  });
+
+  it("lets a card with no text on the page follow the card above it", () => {
+    expect(
+      stack(
+        [
+          { want: 200, height: 60 },
+          { want: undefined, height: 90 },
+        ],
+        12,
+      ),
+    ).toEqual([200, 0]);
   });
 });

@@ -161,6 +161,36 @@ async function selectInArticle(page: Page, text: string): Promise<void> {
   }, text);
 }
 
+/** The top of the reader's selection in the viewport. */
+async function selectionTop(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const selection = document.getSelection();
+    if (selection === null || selection.rangeCount === 0) throw new Error("nothing is selected");
+    return selection.getRangeAt(0).getBoundingClientRect().top;
+  });
+}
+
+/** The background the page draws the selection in, inside the article. */
+async function selectionColour(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const paragraph = document.querySelector("main article.doc p");
+    if (paragraph === null) throw new Error("the article has no paragraph");
+    return getComputedStyle(paragraph, "::selection").backgroundColor;
+  });
+}
+
+/** The accent tint, as the page computes it. */
+async function accentTint(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.background = "var(--accent-tint)";
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return colour;
+  });
+}
+
 test("a reader comments on selected text, sees the card beside it or under its paragraph, and it stays after a reload", async ({
   page,
   context,
@@ -190,7 +220,14 @@ test("a reader comments on selected text, sees the card beside it or under its p
   const [cardBox, articleBox] = [await opened.boundingBox(), await article.boundingBox()];
   if (cardBox === null || articleBox === null) throw new Error("the card or article is not drawn");
   if (phone) expect(cardBox.y).toBeGreaterThan(articleBox.y);
-  else expect(cardBox.x).toBeGreaterThanOrEqual(articleBox.x + articleBox.width);
+  else {
+    expect(cardBox.x).toBeGreaterThanOrEqual(articleBox.x + articleBox.width);
+    // Artboard 08: the card sits level with the selected line.
+    expect(Math.abs(cardBox.y - (await selectionTop(page)))).toBeLessThanOrEqual(2);
+  }
+  // Artboard 08: while the card is empty the selection is drawn in the
+  // accent tint that mark.sel uses.
+  expect(await selectionColour(page)).toBe(await accentTint(page));
   expect(await axe(page)).toEqual([]);
 
   await field.fill(comment);
@@ -218,6 +255,21 @@ test("a reader comments on selected text, sees the card beside it or under its p
     const [keptBox, nowBox] = [await kept.boundingBox(), await article.boundingBox()];
     if (keptBox === null || nowBox === null) throw new Error("the card or article is not drawn");
     expect(keptBox.x).toBeGreaterThanOrEqual(nowBox.x + nowBox.width);
+    // Artboard 10: the first card on the text sits level with its mark, and
+    // the cards of the other projects on the same text follow it down.
+    const markBox = await article
+      .locator("mark.anchor")
+      .filter({ hasText: quote })
+      .first()
+      .boundingBox();
+    const firstBox = await page
+      .locator("aside.margin article.card")
+      .filter({ hasText: quote })
+      .first()
+      .boundingBox();
+    if (markBox === null || firstBox === null) throw new Error("the mark or card is not drawn");
+    expect(Math.abs(firstBox.y - markBox.y)).toBeLessThanOrEqual(4);
+    expect(keptBox.y).toBeGreaterThanOrEqual(markBox.y - 4);
   }
 
   expect(await axe(page)).toEqual([]);

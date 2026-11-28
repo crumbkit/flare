@@ -107,6 +107,8 @@ body.reading a.chip:focus-visible { outline: 2px solid var(--accent); outline-of
 mark { color: inherit; border-radius: 2px; padding: 1px 0; }
 mark.anchor { background: var(--anchor); }
 mark.sel { background: var(--accent-tint); }
+/* The reader's selection while the card on it is empty, drawn as mark.sel. */
+.doc.composing ::selection { background: var(--accent-tint); color: inherit; }
 @media (max-width: 824px) {
   .with-margin { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .with-margin > .margin { display: none; }

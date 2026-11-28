@@ -62,3 +62,30 @@ export function arrange(
   marked.sort((a, b) => ("start" in a && "start" in b ? a.start - b.start : 0));
   return { margin: narrow ? marked : [...marked, ...unmarked], bottom };
 }
+
+/** One margin card as the page measures it. */
+export interface Measured {
+  /**
+   * The top of the card's text, measured from the margin's top, or
+   * undefined for a card with no text on the page.
+   */
+  readonly want: number | undefined;
+  /** The card's height. */
+  readonly height: number;
+}
+
+/**
+ * The space above each card in a margin whose cards stand `gap` apart, so
+ * that each card sits level with its text. A card that would overlap the
+ * card above it is pushed down, so the cards keep their order, and a card
+ * with no text follows the card above it.
+ */
+export function stack(cards: readonly Measured[], gap: number): number[] {
+  let next = 0;
+  return cards.map(({ want, height }, at) => {
+    const natural = at === 0 ? 0 : next + gap;
+    const space = Math.max(0, (want ?? natural) - natural);
+    next = natural + space + height;
+    return space;
+  });
+}

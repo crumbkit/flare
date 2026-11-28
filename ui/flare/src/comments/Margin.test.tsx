@@ -174,6 +174,32 @@ describe("artboard 08: selecting, then composing on highlighted text", () => {
     expect(document.activeElement).not.toBe(form);
   });
 
+  it("draws the selected text in the accent tint while the card is empty, and marks it once the field has focus", async () => {
+    show({ thread: [] });
+    await screen.findByText("None yet");
+    const article = document.querySelector("article.doc");
+    expect(article).not.toHaveClass("composing");
+    select("forecast arrives every hour");
+    // The selection stays the reader's, so copying still works; the page
+    // draws it in the accent tint that mark.sel uses.
+    expect(article).toHaveClass("composing");
+    expect(marks("sel")).toBe("");
+    await userEvent.click(screen.getByRole("textbox", { name: "Your comment on this text" }));
+    await waitFor(() => expect(marks("sel")).toBe("forecast arrives every hour"));
+    expect(article).not.toHaveClass("composing");
+  });
+
+  it("puts the composing card among the other cards in the order of their text", async () => {
+    show();
+    const aside = await waitFor(() => margin("Comments on this page's text"));
+    await within(aside).findByText("priya.nair@example.com");
+    select("passengers see a notice");
+    const cards = [...margin("Comment on this passage").querySelectorAll(".card")];
+    expect(cards.map((card) => card.tagName)).toEqual(["ARTICLE", "FORM", "ARTICLE"]);
+    expect(cards[0]).toHaveTextContent("mei.tanaka@example.com");
+    expect(cards[2]).toHaveTextContent("priya.nair@example.com");
+  });
+
   it("closes the empty card when the selection clears, and keeps one that holds text", async () => {
     show({ thread: [] });
     await screen.findByText("None yet");
@@ -278,14 +304,11 @@ describe("artboard 10: moved, on a later version", () => {
     await waitFor(() => expect(marks("anchor")).toBe(held));
   });
 
-  it("shows the comment with no mark and no note when its own version's text does not load", async () => {
+  it("places the comment by the search alone when its own version's text does not load", async () => {
     show({ version: 3, pages: {} });
     const aside = await waitFor(() => margin("Comments on this page's text"));
-    await within(aside).findByText(
-      "Which forecast point do we read for the crossing, the harbour mouth or mid-channel?",
-    );
-    expect(within(aside).queryByText(/The text has moved/)).toBeNull();
-    expect(marks("anchor")).toBe("");
+    await within(aside).findByText("Made on version 2. The text has moved since then.");
+    await waitFor(() => expect(marks("anchor")).toBe(held));
   });
 });
 

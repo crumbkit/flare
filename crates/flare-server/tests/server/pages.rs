@@ -269,6 +269,7 @@ async fn the_stylesheet_lays_the_margin_beside_the_article_and_marks_commented_t
         ".a-note.outdated { color: var(--amber-ink); background: var(--amber-tint);",
         "mark.anchor { background: var(--anchor); }",
         "mark.sel { background: var(--accent-tint); }",
+        ".doc.composing ::selection { background: var(--accent-tint); color: inherit; }",
         "--anchor: oklch(95% .05 90);",
         "--anchor: oklch(29% .04 85);",
         "@media (max-width: 824px) {",
