@@ -201,16 +201,30 @@ test("a reader comments on selected text, sees the card beside it or under its p
   const comment = `Does the 5 knot margin apply to the Curlew too? (${info.project.name})`;
   const phone = info.project.name === "phone";
 
+  // A card on an earlier sentence, as artboard 08 draws Mei's, made the way
+  // a reader makes one.
+  const earlier = "If its peak gust for the crossing is above the limit, the sailing is held";
+  const mei = `Which forecast point do we read? (${info.project.name})`;
   await page.goto(`${origin}/s/${share}`);
   const article = page.locator("main article.doc");
   await expect(page.getByRole("region", { name: "Comments" })).toBeVisible();
+  await selectInArticle(page, earlier);
+  const first = page.getByRole("textbox", { name: "Your comment on this text" });
+  await first.fill(mei);
+  await first.press("Control+Enter");
+  const meiCard = page.locator("aside.margin article.card").filter({ hasText: mei });
+  await expect(meiCard).toBeVisible();
+  await expect(first).toHaveCount(0);
+  await expect(meiCard.getByText(/The text has moved/)).toHaveCount(0);
   await selectInArticle(page, quote);
 
   // Artboards 08 and 09: the card opens with the quote and a labelled field,
   // and leaves focus in the page.
   // The other projects run at once on the same share, so the margin may
   // already hold their cards on this text; the composing card is the form.
-  const margin = page.getByRole("complementary", { name: "Comment on this passage" });
+  const margin = page.getByRole(phone ? "note" : "complementary", {
+    name: "Comment on this passage",
+  });
   const named = { name: "Your comment on this text" };
   const field = margin.getByRole("textbox", named);
   const opened = margin.locator("form").filter({ has: page.getByRole("textbox", named) });
@@ -222,8 +236,21 @@ test("a reader comments on selected text, sees the card beside it or under its p
   if (phone) expect(cardBox.y).toBeGreaterThan(articleBox.y);
   else {
     expect(cardBox.x).toBeGreaterThanOrEqual(articleBox.x + articleBox.width);
-    // Artboard 08: the card sits level with the selected line.
-    expect(Math.abs(cardBox.y - (await selectionTop(page)))).toBeLessThanOrEqual(2);
+    // Artboard 08: the composing card comes first, level with the selected
+    // line, and the card on the earlier sentence moves below it.
+    const line = await selectionTop(page);
+    info.annotations.push({
+      type: "position",
+      description: `selected line ${line}, composing card ${cardBox.y}`,
+    });
+    expect(Math.abs(cardBox.y - line)).toBeLessThanOrEqual(2);
+    const meiBox = await meiCard.boundingBox();
+    if (meiBox === null) throw new Error("the earlier card is not drawn");
+    info.annotations.push({
+      type: "position",
+      description: `earlier card ${meiBox.y}, composing card's bottom ${cardBox.y + cardBox.height}`,
+    });
+    expect(meiBox.y).toBeGreaterThanOrEqual(cardBox.y + cardBox.height);
   }
   // Artboard 08: while the card is empty the selection is drawn in the
   // accent tint that mark.sel uses.
@@ -255,21 +282,35 @@ test("a reader comments on selected text, sees the card beside it or under its p
     const [keptBox, nowBox] = [await kept.boundingBox(), await article.boundingBox()];
     if (keptBox === null || nowBox === null) throw new Error("the card or article is not drawn");
     expect(keptBox.x).toBeGreaterThanOrEqual(nowBox.x + nowBox.width);
-    // Artboard 10: the first card on the text sits level with its mark, and
-    // the cards of the other projects on the same text follow it down.
+    // Artboard 10: the card on the earliest text sits level with its mark,
+    // no card sits above its own text, and no two cards overlap.
+    const earlierMark = await article
+      .locator("mark.anchor")
+      .filter({ hasText: earlier })
+      .first()
+      .boundingBox();
     const markBox = await article
       .locator("mark.anchor")
       .filter({ hasText: quote })
       .first()
       .boundingBox();
-    const firstBox = await page
-      .locator("aside.margin article.card")
-      .filter({ hasText: quote })
-      .first()
-      .boundingBox();
-    if (markBox === null || firstBox === null) throw new Error("the mark or card is not drawn");
-    expect(Math.abs(firstBox.y - markBox.y)).toBeLessThanOrEqual(4);
+    const cards = await page.locator("aside.margin article.card").all();
+    const boxes = await Promise.all(cards.map((each) => each.boundingBox()));
+    const [firstBox] = boxes;
+    if (earlierMark === null || markBox === null || firstBox == null) {
+      throw new Error("a mark or a card is not drawn");
+    }
+    info.annotations.push({
+      type: "position",
+      description: `first card ${firstBox.y}, its mark ${earlierMark.y}; this card ${keptBox.y}, its mark ${markBox.y}`,
+    });
+    expect(Math.abs(firstBox.y - earlierMark.y)).toBeLessThanOrEqual(4);
     expect(keptBox.y).toBeGreaterThanOrEqual(markBox.y - 4);
+    boxes.reduce((above, box) => {
+      if (above == null || box == null) throw new Error("a card is not drawn");
+      expect(box.y).toBeGreaterThanOrEqual(above.y + above.height);
+      return box;
+    });
   }
 
   expect(await axe(page)).toEqual([]);

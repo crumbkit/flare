@@ -189,14 +189,14 @@ describe("artboard 08: selecting, then composing on highlighted text", () => {
     expect(article).not.toHaveClass("composing");
   });
 
-  it("puts the composing card among the other cards in the order of their text", async () => {
+  it("puts the composing card first in the margin and the other cards after it in the order of their text", async () => {
     show();
     const aside = await waitFor(() => margin("Comments on this page's text"));
     await within(aside).findByText("priya.nair@example.com");
     select("passengers see a notice");
     const cards = [...margin("Comment on this passage").querySelectorAll(".card")];
-    expect(cards.map((card) => card.tagName)).toEqual(["ARTICLE", "FORM", "ARTICLE"]);
-    expect(cards[0]).toHaveTextContent("mei.tanaka@example.com");
+    expect(cards.map((card) => card.tagName)).toEqual(["FORM", "ARTICLE", "ARTICLE"]);
+    expect(cards[1]).toHaveTextContent("mei.tanaka@example.com");
     expect(cards[2]).toHaveTextContent("priya.nair@example.com");
   });
 
@@ -325,6 +325,17 @@ describe("artboard 11: outdated, on a later version", () => {
     expect(cards[0]).toContain("mei.tanaka@example.com");
     expect(cards[1]).toContain("priya.nair@example.com");
     await waitFor(() => expect(marks("anchor")).toBe(held));
+  });
+});
+
+describe("phone, cards under two paragraphs", () => {
+  it("labels each paragraph's cards as a note, so the page holds no two landmarks of one name", async () => {
+    show({ narrow: true });
+    await screen.findByText("priya.nair@example.com");
+    const notes = screen.getAllByRole("note", { name: "Comments on this passage" });
+    expect(notes).toHaveLength(2);
+    expect(notes[0]).toHaveTextContent("mei.tanaka@example.com");
+    expect(notes[1]).toHaveTextContent("priya.nair@example.com");
   });
 });
 

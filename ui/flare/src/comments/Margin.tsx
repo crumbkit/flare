@@ -6,8 +6,9 @@
 // under the paragraph that holds its text, and a comment whose text is gone
 // shows in Comments at the end of the page.
 //
-// On a wide page each card sits level with its text (level.ts), and the
-// composing card takes its place among the others in the order of the text.
+// On a wide page the composing card comes first, level with the selected
+// line, and each other card sits level with its text below it (level.ts),
+// pushed down where it would overlap the card above.
 import { type Anchor, type Located, locate, selectAnchor } from "@flare/headless/comments/anchor";
 import { type Arranged, arrange } from "@flare/headless/comments/margin";
 import { closesPassage, marginLabel } from "@flare/headless/comments/passage";
@@ -181,6 +182,9 @@ function Slot({
   const [aside] = useState(() => {
     const made = document.createElement("aside");
     made.className = "margin";
+    // A phone page may hold one of these under each of several paragraphs,
+    // with the same label, so each is a note and not a landmark.
+    made.setAttribute("role", "note");
     return made;
   });
   useLayoutEffect(() => {
@@ -277,16 +281,7 @@ export function Margin({ page, placement, flare, owner, clock, onAdd }: MarginPr
         start: "start" in each ? each.start : undefined,
         node: card(each),
       }));
-    if (open) {
-      const after = places.findIndex(
-        (each) => each.start === undefined || each.start >= open.start,
-      );
-      places.splice(after < 0 ? places.length : after, 0, {
-        key: "composing",
-        start: open.start,
-        node: composing,
-      });
-    }
+    if (open) places.unshift({ key: "composing", start: open.start, node: composing });
     return createPortal(
       places.map(({ key, start, node }) => (
         <div className={PLACE} key={key} data-start={start}>

@@ -97,6 +97,21 @@ describe("how far each margin card sits below the one before it", () => {
     expect(stack([{ want: -40, height: 30 }], 12)).toEqual([0]);
   });
 
+  it("puts the first card, the composing one, at its text's top and pushes a card on earlier text below it", () => {
+    // Artboard 08 at 1280 px: the selected line is at 431 and the card on
+    // the earlier sentence at 364 moves below the composing card.
+    expect(
+      stack(
+        [
+          { want: 431, height: 240 },
+          { want: 364, height: 230 },
+          { want: 431, height: 200 },
+        ],
+        12,
+      ),
+    ).toEqual([431, 0, 0]);
+  });
+
   it("lets a card with no text on the page follow the card above it", () => {
     expect(
       stack(
