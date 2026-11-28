@@ -18,9 +18,10 @@ use crate::dynamodb::transact::{
 };
 use aws_sdk_dynamodb::types::{AttributeValue, TransactWriteItem, Update};
 use flare_core::{
-    Comment, CommentAction, CommentBody, CommentEvent, CommentId, NewComment, Position,
-    PrincipalId, ShareId, Timestamp,
+    Anchor, Comment, CommentAction, CommentBody, CommentEvent, CommentId, NewComment, Position,
+    PrincipalId, Quote, QuoteContext, ShareId, ShareVersion, Timestamp,
 };
+use std::collections::HashMap;
 
 fn optional<'a>(item: &'a Item, name: &str, kind: ItemKind) -> Result<Option<&'a str>, Malformed> {
     match item.get(name) {
@@ -48,6 +49,41 @@ fn read_parent(item: &Item, kind: ItemKind) -> Result<Option<CommentId>, Malform
         .transpose()
 }
 
+/// The map attribute that holds `anchor`.
+fn anchor_value(anchor: &Anchor) -> AttributeValue {
+    AttributeValue::M(HashMap::from([
+        (attr::QUOTE.to_owned(), text(anchor.quote().as_str())),
+        (attr::PREFIX.to_owned(), text(anchor.prefix().as_str())),
+        (attr::SUFFIX.to_owned(), text(anchor.suffix().as_str())),
+        (
+            attr::VERSION.to_owned(),
+            number(u64::from(anchor.version().get())),
+        ),
+    ]))
+}
+
+/// The anchor that a comment item's map attribute holds, or `None` when
+/// the item has none.
+fn read_anchor(item: &Item, kind: ItemKind) -> Result<Option<Anchor>, Malformed> {
+    let map = match item.get(attr::ANCHOR) {
+        None => return Ok(None),
+        Some(AttributeValue::M(map)) => map,
+        Some(_) => return Err(Malformed(kind)),
+    };
+    let version = u32::try_from(read_number(map, attr::VERSION, kind)?)
+        .ok()
+        .and_then(|number| ShareVersion::try_from(number).ok())
+        .ok_or(Malformed(kind))?;
+    let context =
+        |name| QuoteContext::try_from(read_text(map, name, kind)?).map_err(|_| Malformed(kind));
+    Ok(Some(Anchor::new(
+        Quote::try_from(read_text(map, attr::QUOTE, kind)?).map_err(|_| Malformed(kind))?,
+        context(attr::PREFIX)?,
+        context(attr::SUFFIX)?,
+        version,
+    )))
+}
+
 /// The attributes of a comment item.
 fn comment_attributes(comment: &Comment, rev: &Rev) -> Vec<(&'static str, AttributeValue)> {
     let mut attributes = vec![
@@ -66,6 +102,9 @@ fn comment_attributes(comment: &Comment, rev: &Rev) -> Vec<(&'static str, Attrib
     }
     if let Some(edited) = comment.edited {
         attributes.push((attr::EDITED, number(edited.as_secs())));
+    }
+    if let Some(anchor) = &comment.anchor {
+        attributes.push((attr::ANCHOR, anchor_value(anchor)));
     }
     attributes
 }
@@ -89,7 +128,8 @@ pub(crate) fn comment_from(item: &Item) -> Result<(Comment, Rev), Malformed> {
         Timestamp::from_secs(read_number(item, attr::CREATED, kind)?),
         Position::new(read_number(item, attr::POSITION, kind)?),
     )
-    .with_edited(edited);
+    .with_edited(edited)
+    .with_anchor(read_anchor(item, kind)?);
     let rev = Rev::from_text(read_text(item, attr::REV, kind)?);
     Ok((comment, rev))
 }
@@ -237,8 +277,12 @@ pub(crate) fn change(
             ],
         ),
         _ => (
-            "SET #rev = :next REMOVE #body",
-            vec![("#rev", attr::REV), ("#body", attr::BODY)],
+            "SET #rev = :next REMOVE #body, #anchor",
+            vec![
+                ("#rev", attr::REV),
+                ("#body", attr::BODY),
+                ("#anchor", attr::ANCHOR),
+            ],
             vec![
                 (":next", text(next.as_str())),
                 (":read", text(read.as_str())),

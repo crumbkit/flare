@@ -78,3 +78,22 @@ export async function request<T>(
   }
   return parsed.data;
 }
+
+/**
+ * Reads the text at `path` on this origin, such as a reading page's HTML,
+ * and throws an ApiError for every failure, as `request` does.
+ */
+export async function requestText(path: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(path, { credentials: "same-origin" });
+  } catch (cause) {
+    throw new ApiError("no-answer", undefined, { cause });
+  }
+  if (!response.ok) throw new ApiError(failureOf(response.status), response.status);
+  try {
+    return await response.text();
+  } catch (cause) {
+    throw new ApiError("malformed", response.status, { cause });
+  }
+}

@@ -5,14 +5,15 @@ use super::convert::flare_error;
 use super::tokens::random_id;
 use super::{Answer, Count, Refusal, Sharing};
 use flare_contract::{
-    ActivityItem as WireItem, ApiCode, Comment as WireComment, CommentEdit, CommentOrReply,
-    CommentThread as WireThread, Cursor, NamedCursor, NewComment, Reply as WireReply, utc,
+    ActivityItem as WireItem, Anchor as WireAnchor, ApiCode, Comment as WireComment, CommentEdit,
+    CommentOrReply, CommentThread as WireThread, Cursor, NamedCursor, NewComment,
+    Reply as WireReply, utc,
 };
 use flare_core::{
-    Comment, CommentAction, CommentActivity, CommentBody, CommentDraft, CommentId, CommentKey,
-    CommentStore, CommentThread, Creators, CursorName, CursorStore, FlareError, GrantStore,
-    Position, Principal, Recipients, ResponseStore, ShareId, ShareStore, Teams, Timestamp,
-    TokenStore,
+    Anchor, Comment, CommentAction, CommentActivity, CommentBody, CommentDraft, CommentId,
+    CommentKey, CommentStore, CommentThread, Creators, CursorName, CursorStore, FlareError,
+    GrantStore, Position, Principal, Quote, QuoteContext, Recipients, ResponseStore, ShareId,
+    ShareStore, ShareVersion, Teams, Timestamp, TokenStore,
 };
 use serde::Serialize;
 
@@ -28,6 +29,34 @@ fn invalid(detail: impl ToString) -> Refusal {
         detail: Some(detail.to_string()),
         share: None,
         errors: Vec::new(),
+    }
+}
+
+fn anchor_invalid(detail: impl ToString) -> Refusal {
+    Refusal {
+        code: ApiCode::AnchorInvalid,
+        detail: Some(detail.to_string()),
+        share: None,
+        errors: Vec::new(),
+    }
+}
+
+/// The anchor that the contract's form names, checked before any write.
+fn anchor(wire: &WireAnchor) -> Result<Anchor, Refusal> {
+    Ok(Anchor::new(
+        Quote::try_from(wire.quote.as_str()).map_err(anchor_invalid)?,
+        QuoteContext::try_from(wire.prefix.as_str()).map_err(anchor_invalid)?,
+        QuoteContext::try_from(wire.suffix.as_str()).map_err(anchor_invalid)?,
+        ShareVersion::try_from(wire.version).map_err(anchor_invalid)?,
+    ))
+}
+
+fn wire_anchor(anchor: &Anchor) -> WireAnchor {
+    WireAnchor {
+        quote: anchor.quote().as_str().to_owned(),
+        prefix: anchor.prefix().as_str().to_owned(),
+        suffix: anchor.suffix().as_str().to_owned(),
+        version: anchor.version().get(),
     }
 }
 
@@ -65,6 +94,7 @@ fn top(comment: &Comment, replies: Vec<WireReply>) -> WireComment {
         edited: comment.edited.map(|at| utc(at.as_secs())),
         deleted: comment.is_deleted(),
         body: body_text(comment),
+        anchor: comment.anchor.as_ref().map(wire_anchor),
         replies,
     }
 }
@@ -187,10 +217,15 @@ where
         let parent = request.parent.as_deref().map(comment_id).transpose()?;
         let body = CommentBody::try_from(request.body.as_str()).map_err(invalid)?;
         let key = CommentKey::try_from(request.key.as_str()).map_err(invalid)?;
+        if parent.is_some() && request.anchor.is_some() {
+            return Err(ApiCode::AnchorOnReply.into());
+        }
+        let anchor = request.anchor.as_ref().map(anchor).transpose()?;
         let id = CommentId::from_random(random_id().ok_or(ApiCode::CommentsUnavailable)?);
+        let draft = CommentDraft::new(id, flare, parent, body, key).with_anchor(anchor);
         let posted = self
             .flares
-            .post_comment(who, CommentDraft::new(id, flare, parent, body, key), now)
+            .post_comment(who, draft, now)
             .await
             .map_err(flare_error)?;
         json(

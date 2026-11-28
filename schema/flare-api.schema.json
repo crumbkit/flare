@@ -255,9 +255,51 @@
       ],
       "type": "object"
     },
+    "Anchor": {
+      "additionalProperties": false,
+      "description": "The text on a Markdown flare that a comment is about.",
+      "properties": {
+        "prefix": {
+          "description": "Up to 64 characters of page text just before the quote.",
+          "type": "string"
+        },
+        "quote": {
+          "description": "The selected page text, 3 to 500 characters, with each run of\nwhitespace as one space.",
+          "type": "string"
+        },
+        "suffix": {
+          "description": "Up to 64 characters of page text just after the quote.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The version of the flare the text was selected on.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "quote",
+        "prefix",
+        "suffix",
+        "version"
+      ],
+      "type": "object"
+    },
     "Comment": {
       "description": "A top-level comment with its replies.",
       "properties": {
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Anchor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The page text it is about; absent for a comment on the whole flare\nand once deleted."
+        },
         "at": {
           "description": "When it was written, in RFC 3339 UTC.",
           "type": "string"
@@ -629,6 +671,17 @@
       "additionalProperties": false,
       "description": "`POST /api/comments`: a comment on a flare, or a reply to one of its\ncomments.",
       "properties": {
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Anchor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The page text a comment is about; absent for a comment on the whole\nflare. A reply and a comment on a flare that is not Markdown are\nrefused with one."
+        },
         "body": {
           "description": "The text, 1 to 8,000 characters.",
           "type": "string"

@@ -2,6 +2,8 @@
 // replies: a comment holds replies, and a reply holds none and names its
 // parent by a comment id, so the types cannot express a reply to a reply.
 
+import type { Anchor } from "./anchor.ts";
+
 declare const commentIdBrand: unique symbol;
 declare const replyIdBrand: unique symbol;
 
@@ -46,6 +48,8 @@ export interface LiveComment extends CommentPlace {
   readonly body: string;
   /** The instant the server stored the comment, as an RFC 3339 string. */
   readonly at: string;
+  /** The page text the comment is about; absent for a comment on the whole page. */
+  readonly anchor?: Anchor;
 }
 
 /**
@@ -60,15 +64,17 @@ export type Comment = LiveComment | DeletedComment;
 
 export type Thread = readonly Comment[];
 
-/** What a composer posts: a comment on the whole page, or a reply to one. */
+/** What a composer posts: a comment on the whole page or on its text, or a reply to one. */
 export type Posted = Comment | Reply;
 
 /**
- * What a composer writes, and for a reply, whom it answers. A reply to a
- * deleted comment answers no one, so its field names no author.
+ * What a composer writes: a comment on the whole page, a comment on the
+ * text a reader selected (a passage), or a reply, with whom it answers. A
+ * reply to a deleted comment answers no one, so its field names no author.
  */
 export type Target =
   | { readonly kind: "comment" }
+  | { readonly kind: "passage" }
   | { readonly kind: "reply"; readonly to: Author | undefined };
 
 /** The target of the reply field under `parent`. */

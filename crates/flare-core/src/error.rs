@@ -80,6 +80,10 @@ pub enum Subject {
     CommentKey,
     /// A [`CursorName`](crate::CursorName).
     CursorName,
+    /// A [`Quote`](crate::Quote).
+    AnchorQuote,
+    /// A [`QuoteContext`](crate::QuoteContext).
+    AnchorContext,
 }
 
 impl fmt::Display for Subject {
@@ -122,6 +126,8 @@ impl fmt::Display for Subject {
             Self::CommentBody => "comment",
             Self::CommentKey => "comment key",
             Self::CursorName => "cursor name",
+            Self::AnchorQuote => "quoted text",
+            Self::AnchorContext => "text around the quote",
         };
         formatter.write_str(text)
     }

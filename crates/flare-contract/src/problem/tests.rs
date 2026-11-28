@@ -103,6 +103,17 @@ fn the_comment_and_cursor_codes_carry_the_statuses_the_routes_answer() {
         ),
         (ApiCode::ReplyDepth, "flare::comments::reply_depth", 400),
         (ApiCode::CommentInvalid, "flare::comments::invalid", 400),
+        (
+            ApiCode::AnchorOnReply,
+            "flare::comments::anchor_on_reply",
+            400,
+        ),
+        (ApiCode::AnchorKind, "flare::comments::anchor_kind", 400),
+        (
+            ApiCode::AnchorInvalid,
+            "flare::comments::anchor_invalid",
+            400,
+        ),
         (ApiCode::TooManyComments, "flare::comments::too_many", 409),
         (
             ApiCode::CommentsUnavailable,

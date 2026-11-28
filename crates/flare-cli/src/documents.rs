@@ -346,6 +346,11 @@ pub(crate) struct CommentRow {
     /// Whether its author deleted it.
     #[row(column)]
     pub(crate) deleted: bool,
+    /// The page text a comment is about, in the column before its body;
+    /// absent for a comment on the whole flare, a reply and a deleted
+    /// comment.
+    #[row(column)]
+    pub(crate) quote: Option<String>,
     /// Its text; absent once deleted.
     #[row(column)]
     pub(crate) body: Option<String>,

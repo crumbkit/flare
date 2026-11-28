@@ -251,3 +251,29 @@ async fn the_stylesheet_holds_flare_renders_rules_and_the_bands() {
     assert!(reply.body.starts_with(flare_render::stylesheet()));
     assert!(reply.body.contains(".band"));
 }
+
+/// The rules the cards on page text need: the margin beside the article,
+/// the quote and notes on a card, and the marks on the article's text in
+/// both colour schemes.
+#[tokio::test]
+async fn the_stylesheet_lays_the_margin_beside_the_article_and_marks_commented_text() {
+    let server = Server::start().await;
+    let css = server.get("/flare/style.css").send().await.body;
+    for rule in [
+        ".with-margin { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px;",
+        ".margin { display: flex; flex-direction: column; gap: 12px;",
+        ":is(.comments, .margin) .card {",
+        ".quote { background: var(--surface-2);",
+        ".lab { font-size: 11px;",
+        ".a-note { font-size: 12px; color: var(--muted); }",
+        ".a-note.outdated { color: var(--amber-ink); background: var(--amber-tint);",
+        "mark.anchor { background: var(--anchor); }",
+        "mark.sel { background: var(--accent-tint); }",
+        ".doc.composing ::selection { background: var(--accent-tint); color: inherit; }",
+        "--anchor: oklch(95% .05 90);",
+        "--anchor: oklch(29% .04 85);",
+        "@media (max-width: 824px) {",
+    ] {
+        assert!(css.contains(rule), "the stylesheet has no {rule:?}");
+    }
+}

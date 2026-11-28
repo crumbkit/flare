@@ -37,9 +37,9 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
 
 | State | Entered when | Leaves to | Stored |
 | --- | --- | --- | --- |
-| live | `POST /api/comments` succeeds for a person who can open the flare | live (edit), deleted | Id, flare, parent for a reply, author address, created time, body, the author's key slot, one `comment` or `reply` event at a position, and the flare's comment count raised by one |
+| live | `POST /api/comments` succeeds for a person who can open the flare | live (edit), deleted | Id, flare, parent for a reply, author address, created time, body, the anchor of a comment on page text, the author's key slot, one `comment` or `reply` event at a position, and the flare's comment count raised by one |
 | live, edited | Its author sends `PATCH /api/comments/<id>` | live (edit), deleted | The new body replaces the old one and the edited time is set; one `edited` event at a new position; no earlier body is kept |
-| deleted | Its author sends `DELETE /api/comments/<id>` | none | The body is erased; id, author, times, parent and the key slot stay; one `deleted` event at a new position |
+| deleted | Its author sends `DELETE /api/comments/<id>` | none | The body and the anchor are erased; id, author, times, parent and the key slot stay; one `deleted` event at a new position |
 
 - A reply to a deleted comment stays live and keeps its parent.
 - A reply has no replies. A reply to a reply fails with
@@ -57,7 +57,49 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
   gets `flare::comments::not_found`.
 - An edit adds a new `edited` event each time, also when the body is the
   same, so `flare activity` lists it again.
-- A comment and its events carry no flare version.
+- A comment's events carry no flare version. A comment on page text
+  carries the version in its anchor.
+
+## Comment on page text
+
+A reader of a Markdown flare selects text in its article and comments on
+it. The comment's `anchor` holds what the page needs to find that text
+again.
+
+| Field | Holds |
+| --- | --- |
+| `quote` | The selected text, 3 to 500 characters, with each run of whitespace as one space |
+| `prefix` | Up to 64 characters of page text just before the quote |
+| `suffix` | Up to 64 characters of page text just after the quote |
+| `version` | The flare version the text was selected on |
+
+- Only a comment on a Markdown flare takes an anchor. A reply with one
+  fails with `flare::comments::anchor_on_reply`, a comment on an HTML
+  flare with one fails with `flare::comments::anchor_kind`, and an anchor
+  whose fields are out of range or whose version the flare does not have
+  fails with `flare::comments::anchor_invalid`. Each answers 400 and
+  writes nothing.
+- An edit keeps the anchor. A delete erases it with the body.
+- `flare comments` prints the quote in the column before the body.
+- The page finds the quote in the version it shows, as one of these:
+
+| Shown as | When |
+| --- | --- |
+| anchored | The quote is where it was on its own version; the text is marked and the card shows its quote |
+| re-anchored | The quote is found once elsewhere, or by its prefix and suffix among several copies; the card adds "Made on version N. The text has moved since then." |
+| outdated | The quote is gone, or several copies match equally; nothing is marked and the card says "The quoted text changed on version N." |
+
+- On a wide page the cards show in a margin beside the article, anchored
+  and re-anchored ones in page order and then the outdated ones. Each card
+  sits level with the line where its text starts, and a card that would
+  overlap the one above it is pushed down. While a new card on selected
+  text is empty, the selection is drawn in the same tint as the mark. On a
+  phone each card shows under the paragraph that holds its text, and an
+  outdated card shows in Comments at the end of the page.
+- To tell anchored from re-anchored on a later version, the page reads the
+  comment's own version with `GET /s/<id>?version=<n>`. Until that answers,
+  the card shows its quote with no mark and no note. When it fails, the
+  search alone places the card, so a quote found once shows as moved.
 
 ## Activity
 
@@ -141,6 +183,6 @@ comment, of its key slot and of a named cursor, and what each crash leaves.
 - A reply's parent is a top-level comment.
 - Only the author changes a comment, and the server checks the author
   before any write.
-- A deleted comment holds no body, and no event holds a deleted comment's
-  body.
+- A deleted comment holds no body and no anchor, and no event holds a
+  deleted comment's body.
 - Each read checks that the caller can open the flare.

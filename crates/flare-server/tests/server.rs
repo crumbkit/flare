@@ -65,6 +65,8 @@ pub mod proxied;
 )]
 pub mod api;
 
+#[path = "server/anchors.rs"]
+mod anchors;
 #[path = "server/api.rs"]
 mod api_routes;
 #[path = "server/authenticators.rs"]

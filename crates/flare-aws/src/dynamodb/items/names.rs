@@ -39,6 +39,11 @@ pub(crate) mod attr {
     pub(crate) const AUTHOR: &str = "author";
     pub(crate) const BODY: &str = "body";
     pub(crate) const EDITED: &str = "edited";
+    /// A comment's anchor: a map of its quote, prefix, suffix and version.
+    pub(crate) const ANCHOR: &str = "anchor";
+    pub(crate) const QUOTE: &str = "quote";
+    pub(crate) const PREFIX: &str = "prefix";
+    pub(crate) const SUFFIX: &str = "suffix";
     pub(crate) const ACTION: &str = "action";
     /// The audience of an everyone grant, on its grant item and its entry.
     pub(crate) const AUDIENCE: &str = "audience";

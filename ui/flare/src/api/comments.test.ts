@@ -6,6 +6,7 @@ import { ApiError } from "./client.ts";
 import {
   commentsQuery,
   postComment,
+  wireAnchor,
   wireComment,
   wirePosted,
   wireReply,
@@ -77,6 +78,7 @@ describe("the comment schemas", () => {
   it("have the properties and the required fields of the contract's comment types", () => {
     const defs = contract.$defs;
     for (const [name, schema] of [
+      ["Anchor", wireAnchor],
       ["Comment", wireComment],
       ["Reply", wireReply],
       ["CommentThread", wireThread],
@@ -214,5 +216,40 @@ describe("posting a comment", () => {
       (error: unknown) => error,
     );
     expect(failure instanceof ApiError && failure.kind).toBe("full");
+  });
+});
+
+describe("a comment on highlighted text", () => {
+  const anchor = {
+    quote: "the sailing is held",
+    prefix: "above the limit, ",
+    suffix: " and passengers",
+    version: 2,
+  };
+
+  it("reads back with the anchor the server stored, and a comment on the whole page has none", async () => {
+    const anchored = { ...thread.comments[1], id: "c3", anchor, replies: [] };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json(200, { flare: "f1", comments: [thread.comments[1], anchored] })),
+    );
+    const loaded = await new QueryClient().fetchQuery(commentsQuery("f1"));
+    expect(loaded.map((c) => !c.deleted && c.anchor)).toEqual([undefined, anchor]);
+  });
+
+  it("sends its anchor with the text and the key", async () => {
+    const fetch = vi.fn(async (_url: string, _init: RequestInit) =>
+      json(201, { kind: "comment", ...thread.comments[1], anchor, replies: [] }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const posted = await postComment({ flare: "f1", body: "Which point?", key: "k1", anchor });
+    expect(posted.kind === "comment" && !posted.deleted && posted.anchor).toEqual(anchor);
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      flare: "f1",
+      body: "Which point?",
+      key: "k1",
+      anchor,
+    });
   });
 });

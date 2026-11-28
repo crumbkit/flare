@@ -12,12 +12,12 @@ import { type ComposerProps, useComposer } from "@flare/react/useComposer";
 import { useSend } from "./send.ts";
 
 /** The most characters a post may hold, as flare-server's comment store allows. */
-const MAX_LENGTH = 8000;
+export const MAX_LENGTH = 8000;
 
 const isComment = (posted: Posted): posted is Comment => posted.kind === "comment";
 const isReply = (posted: Posted): posted is Reply => posted.kind === "reply";
 
-function FailureAlert<P>({ failure }: { readonly failure: ComposerProps<P>["failure"] }) {
+export function FailureAlert<P>({ failure }: { readonly failure: ComposerProps<P>["failure"] }) {
   if (failure === undefined) return null;
   const tone = failure.actionProps.children === "Retry" ? "amber" : "red";
   return (

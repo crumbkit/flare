@@ -48,6 +48,17 @@ pub enum FlareError {
     /// A reply names a reply as its parent, and a reply has no replies.
     #[error("a reply has no replies")]
     ReplyToReply,
+    /// A reply carries an anchor, and only a comment is about the text
+    /// of the page.
+    #[error("a reply quotes no text of the page")]
+    AnchorOnReply,
+    /// A comment on a flare that is not Markdown carries an anchor, and
+    /// only a Markdown flare has page text to quote.
+    #[error("only a Markdown flare's text can be quoted")]
+    AnchorKind,
+    /// An anchor names a version that the flare does not have.
+    #[error("the quoted version is not a version of the flare")]
+    AnchorInvalid,
     /// The flare holds the most comments and replies it may.
     #[error("the flare holds the most comments it may")]
     TooManyComments,

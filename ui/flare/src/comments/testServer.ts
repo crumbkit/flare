@@ -13,7 +13,15 @@ export interface WireReply {
   body?: string;
 }
 
+export interface WireAnchor {
+  quote: string;
+  prefix: string;
+  suffix: string;
+  version: number;
+}
+
 export interface WireComment extends Omit<WireReply, "parent"> {
+  anchor?: WireAnchor;
   replies: WireReply[];
 }
 
@@ -66,12 +74,30 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-/** The stand-in, its fetch, and the bodies of the writes it was sent. */
-export function testServer(comments: WireComment[], now: string) {
-  const posts: { flare: string; parent?: string; body: string; key: string }[] = [];
+/**
+ * The stand-in, its fetch, and the bodies of the writes it was sent.
+ * `versions` holds the reading page's HTML of each version that
+ * `/s/f1?version=<n>` answers; any other version answers 404.
+ */
+export function testServer(
+  comments: WireComment[],
+  now: string,
+  versions: Record<number, string> = {},
+) {
+  const posts: {
+    flare: string;
+    parent?: string;
+    body: string;
+    key: string;
+    anchor?: WireAnchor;
+  }[] = [];
   const stored = new Map<string, WireComment | (WireReply & { kind: "reply" })>();
   const held: (() => void)[] = [];
-  const next: { read: Answer[]; write: Answer[] } = { read: [], write: [] };
+  const next: { read: Answer[]; write: Answer[]; page: Answer[] } = {
+    read: [],
+    write: [],
+    page: [],
+  };
 
   function answerWrite(body: (typeof posts)[number]): Response {
     const known = stored.get(body.key);
@@ -79,7 +105,8 @@ export function testServer(comments: WireComment[], now: string) {
     const base = { flare: body.flare, author: reader, at: now, deleted: false, body: body.body };
     const id = `p${stored.size + 1}`;
     if (body.parent === undefined) {
-      const comment: WireComment = { ...base, id, replies: [] };
+      const anchor = body.anchor === undefined ? {} : { anchor: body.anchor };
+      const comment: WireComment = { ...base, id, ...anchor, replies: [] };
       comments.push(comment);
       stored.set(body.key, comment);
       return json(201, { kind: "comment", ...comment });
@@ -110,6 +137,15 @@ export function testServer(comments: WireComment[], now: string) {
       const body = JSON.parse(String(init.body));
       posts.push(body);
       return answer(next.write.shift(), () => answerWrite(body));
+    }
+    const version = /^\/s\/f1\?version=(\d+)$/.exec(url)?.[1];
+    if (version !== undefined) {
+      const page = versions[Number(version)];
+      return answer(next.page.shift(), () =>
+        page === undefined
+          ? new Response("not found", { status: 404 })
+          : new Response(page, { status: 200, headers: { "Content-Type": "text/html" } }),
+      );
     }
     expect(url).toBe("/api/comments?flare=f1");
     return answer(next.read.shift(), () => json(200, { flare: "f1", comments }));

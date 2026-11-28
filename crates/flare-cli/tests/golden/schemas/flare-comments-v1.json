@@ -147,6 +147,13 @@
             "string",
             "null"
           ]
+        },
+        "quote": {
+          "description": "The page text a comment is about, in the column before its body;\nabsent for a comment on the whole flare, a reply and a deleted\ncomment.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -156,6 +163,7 @@
         "at",
         "edited",
         "deleted",
+        "quote",
         "body"
       ]
     }

@@ -1,17 +1,19 @@
 // The comments section at the bottom of a shared page, as artboards 01 to 07
 // of the comment parts mockup (LRJsZhYqKPHcug6pQKw8dA, version
 // 1795398322-8ae4) draw it: the heading with the thread's count, every
-// comment with its replies and a reply field, then the page field. A
-// deleted comment that still has replies keeps its place as a line saying
-// so, with no author or time.
-import { deletedText } from "@flare/headless/comments/a11y";
-import type { Comment, LiveComment, Reply, ThreadLoad } from "@flare/headless/comments/thread";
+// comment with its replies and a reply field, then the page field. On a
+// reading page with an article, a comment on page text shows beside its text
+// in the margin instead (Margin.tsx), and the section holds only the
+// comments on the whole page, and on a phone those whose text is gone.
+import type { ThreadLoad } from "@flare/headless/comments/thread";
 import { useThread } from "@flare/react/useThread";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "../api/client.ts";
 import { commentsQuery } from "../api/comments.ts";
-import { PageField, ReplyField } from "./fields.tsx";
-import { initials, shownTime } from "./format.ts";
+import { CommentCard } from "./cards.tsx";
+import { PageField } from "./fields.tsx";
+import type { ReadingHost } from "./host.ts";
+import { Margin, usePlacement } from "./Margin.tsx";
 
 /**
  * The line a reader sees when the server would give the same answer again,
@@ -29,55 +31,6 @@ function finalMessage(error: unknown, owner: string): string | undefined {
   }
 }
 
-interface Clock {
-  /** The time now, in milliseconds since 1970. */
-  readonly now: () => number;
-  /** The zone times show in; the reader's own when undefined. */
-  readonly timeZone: string | undefined;
-}
-
-function Byline({ post, clock }: { readonly post: LiveComment | Reply; readonly clock: Clock }) {
-  return (
-    <div className="c-head">
-      <span className="who" aria-hidden="true">
-        {initials(post.author.name)}
-      </span>
-      <b>{post.author.name}</b>
-      <time dateTime={post.at}>{shownTime(post.at, clock.now(), clock.timeZone)}</time>
-    </div>
-  );
-}
-
-interface CardProps {
-  readonly comment: Comment;
-  readonly flare: string;
-  readonly owner: string;
-  readonly clock: Clock;
-  readonly onReply: (posted: Reply) => void;
-}
-
-function CommentCard({ comment, flare, owner, clock, onReply }: CardProps) {
-  return (
-    <article className="card">
-      {comment.deleted ? (
-        <div className="c-body deleted">{deletedText}</div>
-      ) : (
-        <>
-          <Byline post={comment} clock={clock} />
-          <div className="c-body">{comment.body}</div>
-        </>
-      )}
-      {comment.replies.map((reply) => (
-        <div className="reply" key={reply.id}>
-          <Byline post={reply} clock={clock} />
-          <div className="c-body">{reply.body}</div>
-        </div>
-      ))}
-      <ReplyField flare={flare} owner={owner} parent={comment} onSent={onReply} />
-    </article>
-  );
-}
-
 export interface SectionProps {
   /** The share whose comments the section shows. */
   readonly flare: string;
@@ -85,9 +38,11 @@ export interface SectionProps {
   readonly owner: string;
   readonly now?: () => number;
   readonly timeZone?: string;
+  /** The reading page's article and margin, where comments on its text show. */
+  readonly page?: ReadingHost;
 }
 
-export function CommentsSection({ flare, owner, now = Date.now, timeZone }: SectionProps) {
+export function CommentsSection({ flare, owner, now = Date.now, timeZone, page }: SectionProps) {
   const query = useQuery(commentsQuery(flare));
   // A failed refetch keeps the data it had, so the thread and every draft
   // in its fields stay; only a first load that fails shows the failure.
@@ -101,6 +56,7 @@ export function CommentsSection({ flare, owner, now = Date.now, timeZone }: Sect
   const final = load.state === "failed" ? finalMessage(query.error, owner) : undefined;
   const clock = { now, timeZone };
   const { view } = thread;
+  const placement = usePlacement(flare, page, view.state === "ready" ? view.thread : undefined);
   return (
     <div className="thread" {...thread.sectionProps}>
       <div className="section-head">
@@ -126,9 +82,19 @@ export function CommentsSection({ flare, owner, now = Date.now, timeZone }: Sect
           <button className="ghost" {...view.retryProps} />
         </div>
       )}
+      {view.state === "ready" && page !== undefined && (
+        <Margin
+          page={page}
+          placement={placement}
+          flare={flare}
+          owner={owner}
+          clock={clock}
+          onAdd={thread.add}
+        />
+      )}
       {view.state === "ready" && (
         <>
-          {view.thread.map((comment) => (
+          {placement.bottom.map((comment) => (
             <CommentCard
               key={comment.id}
               comment={comment}
@@ -136,6 +102,8 @@ export function CommentsSection({ flare, owner, now = Date.now, timeZone }: Sect
               owner={owner}
               clock={clock}
               onReply={thread.add}
+              card={placement.cards.get(comment.id)}
+              viewed={page?.version}
             />
           ))}
           <PageField

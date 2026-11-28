@@ -2,8 +2,10 @@
 //! it needs, so the caller passes a new, empty store. The clauses about
 //! edits and deletes live in a submodule, which this module re-exports.
 
+mod anchors;
 mod changes;
 
+pub use anchors::an_anchor_reads_back_and_a_delete_erases_it;
 pub use changes::{
     a_delete_erases_the_text_and_keeps_the_rest, an_edit_replaces_the_text_and_keeps_the_rest,
     an_unknown_comment_is_not_found, concurrent_edit_and_delete_leave_one_consistent_state,

@@ -14,6 +14,14 @@ use crate::share::{ShareId, check_hex_id, hex_id};
 use crate::time::Timestamp;
 use std::fmt;
 
+mod anchor;
+mod event;
+
+pub use anchor::{
+    Anchor, MAX_CONTEXT_CHARS, MAX_QUOTE_CHARS, MIN_QUOTE_CHARS, Quote, QuoteContext,
+};
+pub use event::{CommentAction, CommentEvent};
+
 /// The most characters one comment body has.
 pub const MAX_COMMENT_CHARS: usize = 8_000;
 
@@ -202,6 +210,9 @@ pub struct NewComment {
     pub key: CommentKey,
     /// When it was written.
     pub at: Timestamp,
+    /// The text on the page it is about, or `None` for a comment on the
+    /// whole flare and for a reply.
+    pub anchor: Option<Anchor>,
 }
 
 impl NewComment {
@@ -224,7 +235,15 @@ impl NewComment {
             body,
             key,
             at,
+            anchor: None,
         }
+    }
+
+    /// The same comment about the text that `anchor` quotes.
+    #[must_use]
+    pub fn with_anchor(mut self, anchor: Option<Anchor>) -> Self {
+        self.anchor = anchor;
+        self
     }
 }
 
@@ -249,6 +268,9 @@ pub struct Comment {
     /// The position of its creation in the sequence, which also orders the
     /// comments of a flare.
     pub position: Position,
+    /// The text on the page it is about, or `None` for a comment on the
+    /// whole flare, for a reply and once the author deleted it.
+    pub anchor: Option<Anchor>,
 }
 
 impl Comment {
@@ -272,7 +294,15 @@ impl Comment {
             created,
             edited: None,
             position,
+            anchor: None,
         }
+    }
+
+    /// The same comment with `anchor` as the text it is about.
+    #[must_use]
+    pub fn with_anchor(mut self, anchor: Option<Anchor>) -> Self {
+        self.anchor = anchor;
+        self
     }
 
     /// The same comment with `edited` as its edit time.
@@ -294,6 +324,7 @@ impl Comment {
             created: new.at,
             edited: None,
             position,
+            anchor: new.anchor,
         }
     }
 
@@ -301,76 +332,5 @@ impl Comment {
     #[must_use]
     pub fn is_deleted(&self) -> bool {
         self.body.is_none()
-    }
-}
-
-/// What an event of a comment did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum CommentAction {
-    /// The comment or reply was written.
-    Created,
-    /// Its text changed.
-    Edited,
-    /// Its author deleted it.
-    Deleted,
-}
-
-/// One create, edit or delete of a comment, at its own position.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct CommentEvent {
-    /// The event's place in the sequence.
-    pub position: Position,
-    /// What happened.
-    pub action: CommentAction,
-    /// The comment it happened to.
-    pub comment: CommentId,
-    /// The flare the comment is on.
-    pub flare: ShareId,
-    /// The comment's parent, or `None` for a comment on the flare.
-    pub parent: Option<CommentId>,
-    /// The comment's author, who made every event of it.
-    pub author: PrincipalId,
-    /// When it happened.
-    pub at: Timestamp,
-}
-
-impl CommentEvent {
-    /// An event that a store read back.
-    #[must_use]
-    pub fn new(
-        position: Position,
-        action: CommentAction,
-        comment: CommentId,
-        flare: ShareId,
-        parent: Option<CommentId>,
-        author: PrincipalId,
-        at: Timestamp,
-    ) -> Self {
-        Self {
-            position,
-            action,
-            comment,
-            flare,
-            parent,
-            author,
-            at,
-        }
-    }
-
-    /// The event of `action` on `comment`, at `position`, at the moment
-    /// `at`.
-    #[must_use]
-    pub fn of(comment: &Comment, action: CommentAction, position: Position, at: Timestamp) -> Self {
-        Self::new(
-            position,
-            action,
-            comment.id.clone(),
-            comment.flare.clone(),
-            comment.parent.clone(),
-            comment.author.clone(),
-            at,
-        )
     }
 }

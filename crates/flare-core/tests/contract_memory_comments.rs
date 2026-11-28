@@ -28,6 +28,7 @@ mod comments {
         a_repeated_key_answers_the_first_comment,
         an_edit_replaces_the_text_and_keeps_the_rest,
         a_delete_erases_the_text_and_keeps_the_rest,
+        an_anchor_reads_back_and_a_delete_erases_it,
         an_unknown_comment_is_not_found,
     );
 
