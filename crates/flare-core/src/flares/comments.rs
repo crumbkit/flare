@@ -9,9 +9,9 @@
 use super::{FlareError, Flares, flare_refused};
 use crate::PrincipalId;
 use crate::auth::Principal;
-use crate::comment::{Comment, CommentBody, CommentId, CommentKey, CursorName, NewComment};
+use crate::comment::{Anchor, Comment, CommentBody, CommentId, CommentKey, CursorName, NewComment};
 use crate::response::Position;
-use crate::share::ShareId;
+use crate::share::{ShareId, ShareKind};
 use crate::store::{
     Added, CommentStore, CommentStoreError, CursorStore, GrantStore, ResponseStore, ShareStore,
 };
@@ -27,6 +27,7 @@ pub struct CommentDraft {
     parent: Option<CommentId>,
     body: CommentBody,
     key: CommentKey,
+    anchor: Option<Anchor>,
 }
 
 impl CommentDraft {
@@ -46,7 +47,16 @@ impl CommentDraft {
             parent,
             body,
             key,
+            anchor: None,
         }
+    }
+
+    /// The same comment about the text that `anchor` quotes. A reply and
+    /// a comment on a flare that is not Markdown are refused with one.
+    #[must_use]
+    pub fn with_anchor(mut self, anchor: Option<Anchor>) -> Self {
+        self.anchor = anchor;
+        self
     }
 }
 
@@ -145,15 +155,35 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
     /// Returns [`FlareError::NotFound`] when the caller cannot open the
     /// flare, [`FlareError::CommentNotFound`] when the parent is not a
     /// comment of the flare, [`FlareError::ReplyToReply`] when it is a
-    /// reply, [`FlareError::TooManyComments`] and
-    /// [`FlareError::CommentsUnavailable`].
+    /// reply, [`FlareError::AnchorOnReply`] for a reply with an anchor,
+    /// [`FlareError::AnchorKind`] for an anchor on a flare that is not
+    /// Markdown, [`FlareError::AnchorInvalid`] for an anchor on a version
+    /// the flare does not have, [`FlareError::TooManyComments`] and
+    /// [`FlareError::CommentsUnavailable`]. Each refusal comes before any
+    /// write.
     pub async fn post_comment(
         &self,
         who: &Principal,
         draft: CommentDraft,
         at: Timestamp,
     ) -> Result<Posted, FlareError> {
-        let author = self.readable(who, &draft.flare).await?;
+        if draft.anchor.is_some() && draft.parent.is_some() {
+            return Err(FlareError::AnchorOnReply);
+        }
+        let author = self.person_id(who)?;
+        let opened = self
+            .shares
+            .open(who, &draft.flare, None)
+            .await
+            .map_err(flare_refused)?;
+        if let Some(anchor) = &draft.anchor {
+            if opened.share.kind() != ShareKind::Document {
+                return Err(FlareError::AnchorKind);
+            }
+            if anchor.version() > opened.share.latest() {
+                return Err(FlareError::AnchorInvalid);
+            }
+        }
         if let Some(parent) = &draft.parent {
             let held = self.comments.get(parent).await.map_err(comment_refused)?;
             if held.flare != draft.flare {
@@ -171,7 +201,8 @@ impl<S: ShareStore, G: GrantStore, R: ResponseStore, C: CommentStore, U: CursorS
             draft.body,
             draft.key,
             at,
-        );
+        )
+        .with_anchor(draft.anchor);
         match self.comments.add(new).await.map_err(comment_refused)? {
             Added::Created(comment) => Ok(Posted {
                 comment,

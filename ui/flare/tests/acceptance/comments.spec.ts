@@ -139,3 +139,88 @@ test("a signed-in reader comments on a shared page and replies, and both stay af
     fullPage: true,
   });
 });
+
+/** Selects the first run of `text` in the article, as a reader's drag would. */
+async function selectInArticle(page: Page, text: string): Promise<void> {
+  await page.evaluate((wanted) => {
+    const article = document.querySelector("main article.doc");
+    if (article === null) throw new Error("the page has no article");
+    const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const at = node.textContent?.indexOf(wanted) ?? -1;
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + wanted.length);
+      const selection = document.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return;
+    }
+    throw new Error(`the article has no "${wanted}"`);
+  }, text);
+}
+
+test("a reader comments on selected text, sees the card beside it or under its paragraph, and it stays after a reload", async ({
+  page,
+  context,
+}, info) => {
+  await context.setExtraHTTPHeaders({ Cookie: cookie });
+  const { violations, errors } = await watch(page);
+  const quote = "more than 5 knots above the limit cancels the sailing at once";
+  const comment = `Does the 5 knot margin apply to the Curlew too? (${info.project.name})`;
+  const phone = info.project.name === "phone";
+
+  await page.goto(`${origin}/s/${share}`);
+  const article = page.locator("main article.doc");
+  await expect(page.getByRole("region", { name: "Comments" })).toBeVisible();
+  await selectInArticle(page, quote);
+
+  // Artboards 08 and 09: the card opens with the quote and a labelled field,
+  // and leaves focus in the page.
+  const opened = page.getByRole("complementary", { name: "Comment on this passage" });
+  const field = opened.getByRole("textbox", { name: "Your comment on this text" });
+  await expect(field).toBeVisible();
+  await expect(opened.getByText(`"${quote}"`)).toBeVisible();
+  await expect(field).not.toBeFocused();
+  const [cardBox, articleBox] = [await opened.boundingBox(), await article.boundingBox()];
+  if (cardBox === null || articleBox === null) throw new Error("the card or article is not drawn");
+  if (phone) expect(cardBox.y).toBeGreaterThan(articleBox.y);
+  else expect(cardBox.x).toBeGreaterThanOrEqual(articleBox.x + articleBox.width);
+  expect(await axe(page)).toEqual([]);
+
+  await field.fill(comment);
+  await expect(article.locator("mark.sel")).toHaveText(quote);
+  await opened.getByRole("button", { name: "Comment" }).click();
+
+  const card = page.locator("aside.margin article.card").filter({ hasText: comment });
+  await expect(card).toBeVisible();
+  await expect(card.getByText(`"${quote}"`)).toBeVisible();
+  await expect(article.locator("mark.anchor").filter({ hasText: quote }).first()).toBeVisible();
+  await expect(article.locator("mark.sel")).toHaveCount(0);
+
+  await page.reload();
+  const kept = page.locator("aside.margin article.card").filter({ hasText: comment });
+  await expect(kept).toBeVisible();
+  await expect(article.locator("mark.anchor").filter({ hasText: quote }).first()).toBeVisible();
+  if (phone) {
+    // Artboard 09: on a phone the card sits under the paragraph that holds
+    // its text, inside the article.
+    const before = await kept.evaluate(
+      (element) => element.closest("aside.margin")?.previousElementSibling?.textContent ?? "",
+    );
+    expect(before).toContain(quote);
+  } else {
+    const [keptBox, nowBox] = [await kept.boundingBox(), await article.boundingBox()];
+    if (keptBox === null || nowBox === null) throw new Error("the card or article is not drawn");
+    expect(keptBox.x).toBeGreaterThanOrEqual(nowBox.x + nowBox.width);
+  }
+
+  expect(await axe(page)).toEqual([]);
+  expect(violations).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({
+    path: info.outputPath(`passage-${info.project.name}.png`),
+    fullPage: true,
+  });
+});

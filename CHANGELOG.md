@@ -8,6 +8,17 @@ This file records the notable changes to flare. The format follows
 
 ### Added
 
+- A reader of a Markdown flare comments on text they select in its
+  article. A card opens with the quote, and once sent the comment shows
+  in a margin beside the article, or under the paragraph on a phone,
+  with its text marked. On a later version the card says when the text
+  has moved, or that it changed and the comment is outdated.
+  `POST /api/comments` takes an optional `anchor` with the quote, up to
+  64 characters before and after it, and the version, and a comment's
+  answer carries it back. A delete erases it. The new failure codes are
+  `flare::comments::anchor_on_reply`, `flare::comments::anchor_kind` and
+  `flare::comments::anchor_invalid`. `flare comments` prints a `quote`
+  column before the body. docs/comments.md describes it.
 - A hosted deployment can take its teams from its own directory, read
   only. `hosted.teams` set to `{"file": "<path>"}` or
   `{"object": "teams/<name>"}` makes flare read a teams document that the

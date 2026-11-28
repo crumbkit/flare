@@ -6,7 +6,10 @@
   "exports": {
     "./comments/thread": "./src/comments/thread.ts",
     "./comments/composer": "./src/comments/composer.ts",
-    "./comments/a11y": "./src/comments/a11y.ts"
+    "./comments/a11y": "./src/comments/a11y.ts",
+    "./comments/anchor": "./src/comments/anchor.ts",
+    "./comments/margin": "./src/comments/margin.ts",
+    "./comments/passage": "./src/comments/passage.ts"
   },
   "scripts": {
     "typecheck": "tsc",

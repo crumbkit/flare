@@ -193,6 +193,7 @@ clauses! {
     ConcurrentCommentsGetDistinctPositions => "two comments that run together get two different positions, and two with one key give one created and one repeated",
     AnEditReplacesTheTextAndKeepsTheRest => "an edit replaces the text and sets the edit time and keeps the author, parent, creation time and position",
     ADeleteErasesTheTextAndKeepsTheRest => "a delete erases the text and keeps the rest, a second delete changes nothing and writes no event, and an edit of a deleted comment is refused",
+    AnAnchorReadsBackAndADeleteErasesIt => "a comment's anchor reads back by id and in its flare's list with its quote, context and version, an edit keeps it, and a delete erases it with the text and keeps the replies",
     AnUnknownCommentIsNotFound => "an unknown comment is not found by a read, an edit or a delete, and nothing is written",
     ConcurrentEditAndDeleteLeaveOneConsistentState => "an edit and a delete that run together leave the comment deleted, and an edit that succeeded left its event",
     TheFlareLimitHolds => "a flare at the comment limit refuses the next comment and writes nothing, still answers a repeat with the first comment, and does not affect another flare",

@@ -123,6 +123,7 @@ fn comment_row(comment: Comment) -> CommentRow {
         at: comment.at,
         edited: comment.edited,
         deleted: comment.deleted,
+        quote: comment.anchor.map(|anchor| anchor.quote),
         body: comment.body,
     }
 }
@@ -135,6 +136,7 @@ fn reply_row(reply: Reply) -> CommentRow {
         at: reply.at,
         edited: reply.edited,
         deleted: reply.deleted,
+        quote: None,
         body: reply.body,
     }
 }
@@ -198,6 +200,7 @@ pub(crate) async fn comment(args: &CommentArgs, env: &Snapshot) -> Result<Commen
         parent: None,
         body: text(&args.text)?,
         key: key.text,
+        anchor: None,
     };
     let again = || {
         let call = Call::new(&["comment"]).value("flare", flare.as_str());
@@ -221,6 +224,7 @@ pub(crate) async fn reply(args: &ReplyArgs, env: &Snapshot) -> Result<CommentOut
         parent: Some(parent.clone()),
         body: text(&args.text)?,
         key: key.text,
+        anchor: None,
     };
     let again = || {
         let call = Call::new(&["reply"])

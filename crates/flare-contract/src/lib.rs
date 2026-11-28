@@ -27,7 +27,7 @@ pub use search::{
 };
 pub use time::utc;
 pub use wire::{
-    ActivityItem, ActivityPage, Comment, CommentEdit, CommentOrReply, CommentThread,
+    ActivityItem, ActivityPage, Anchor, Comment, CommentEdit, CommentOrReply, CommentThread,
     ExchangeRequest, FlareRef, Format, GrantRequest, NamedCursor, NewComment, OpenedShare, Reply,
     Role, ShareList, ShareRequest, ShareSummary, Shared, TokenIssued, VersionRequest,
 };

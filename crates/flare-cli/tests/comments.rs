@@ -86,6 +86,38 @@ fn comments_prints_each_comment_then_its_replies_and_asks_for_the_flares_thread(
 }
 
 #[test]
+fn comments_prints_the_quote_before_the_body_of_an_anchored_comment_and_none_for_a_whole_page_comment()
+ {
+    let api = FakeApi::start();
+    let home = logged_in(&api);
+    let mut anchored = comment(COMMENT, "Which forecast point?");
+    anchored["anchor"] = json!({
+        "quote": "the sailing is held", "prefix": "above the limit, ",
+        "suffix": " and passengers", "version": 2,
+    });
+    let whole = comment(REPLY, "Looks good");
+    let thread = json!({"flare": FLARE, "comments": [anchored, whole]});
+    api.route("GET", "/api/comments", 200, &thread);
+    api.route("GET", "/api/comments", 200, &thread);
+    let ran = home.sharing(&["comments", FLARE]);
+    ran.assert_ok();
+    let quote_at = ran.stdout.find("the sailing is held").unwrap();
+    let body_at = ran.stdout.find("Which forecast point?").unwrap();
+    assert!(quote_at < body_at, "{}", ran.all());
+    assert_eq!(
+        ran.stdout.matches("the sailing is held").count(),
+        1,
+        "{}",
+        ran.all()
+    );
+    let json = home.sharing(&["comments", FLARE, "--json"]);
+    json.assert_ok();
+    let document: Value = serde_json::from_str(&json.stdout).unwrap();
+    assert_eq!(document["data"][0]["quote"], "the sailing is held");
+    assert_eq!(document["data"][1]["quote"], Value::Null);
+}
+
+#[test]
 fn comment_sends_the_text_and_a_key_and_repeats_a_key_to_get_the_first_comment() {
     let api = FakeApi::start();
     let home = logged_in(&api);

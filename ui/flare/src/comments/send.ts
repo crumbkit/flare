@@ -4,6 +4,7 @@
 // session, invalid text) back into the composer's result union, and lets
 // every other failure reject, which the composer shows as no answer with
 // Retry. A retried draft keeps its key, so the server stores it once.
+import type { Anchor } from "@flare/headless/comments/anchor";
 import type { Draft, Refusal, Send } from "@flare/headless/comments/composer";
 import type { CommentId, Posted } from "@flare/headless/comments/thread";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,13 +21,15 @@ const refusals: Partial<Record<ApiFailure, Refusal>> = {
 
 /**
  * The send of one field on `flare`: a reply to `parent`, or a comment on the
- * page when `parent` is undefined. `accepts` checks that the server stored
- * the kind of post the field writes.
+ * page when `parent` is undefined, about the text `anchor` quotes when it is
+ * given. `accepts` checks that the server stored the kind of post the field
+ * writes.
  */
 export function useSend<P extends Posted>(
   flare: string,
   parent: CommentId | undefined,
   accepts: (posted: Posted) => posted is P,
+  anchor?: Anchor,
 ): Send<P> {
   const client = useQueryClient();
   const { mutateAsync } = useMutation({
@@ -36,6 +39,7 @@ export function useSend<P extends Posted>(
         ...(parent === undefined ? {} : { parent }),
         body: draft.text,
         key: draft.key,
+        ...(anchor === undefined ? {} : { anchor }),
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: commentsQuery(flare).queryKey });

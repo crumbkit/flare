@@ -750,6 +750,7 @@ flare comments 3f9c0a17e2b44d6f8a1c5b7e9d20f4a6
 - `at`: When it was written, in RFC 3339 UTC.
 - `edited`: When its text last changed, in RFC 3339 UTC.
 - `deleted`: Whether its author deleted it.
+- `quote`: The page text a comment is about, in the column before its body; absent for a comment on the whole flare, a reply and a deleted comment.
 - `body`: Its text; absent once deleted.
 
 Effects: read-only, closed-world.

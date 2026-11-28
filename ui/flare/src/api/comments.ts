@@ -2,6 +2,7 @@
 // (schema/flare-api.schema.json), the query of one flare's thread and the
 // write of a comment or a reply. Both turn the contract's form into the
 // headless core's thread, with each author named by their identifier.
+import type { Anchor } from "@flare/headless/comments/anchor";
 import {
   type Comment,
   isCommentId,
@@ -28,6 +29,13 @@ export const wireReply = z.object({
   body: z.string().nullish(),
 });
 
+export const wireAnchor = z.strictObject({
+  quote: z.string(),
+  prefix: z.string(),
+  suffix: z.string(),
+  version: z.number().int().positive(),
+});
+
 export const wireComment = z.object({
   id: commentId,
   flare: z.string(),
@@ -36,6 +44,7 @@ export const wireComment = z.object({
   edited: z.string().nullish(),
   deleted: z.boolean(),
   body: z.string().nullish(),
+  anchor: wireAnchor.nullish(),
   replies: z.array(wireReply),
 });
 
@@ -81,6 +90,7 @@ function comment(wire: WireComment): Comment | undefined {
     author: { name: wire.author },
     body: wire.body ?? "",
     at: wire.at,
+    ...(wire.anchor ? { anchor: wire.anchor } : {}),
     replies,
   };
 }
@@ -98,12 +108,13 @@ export function commentsQuery(flare: string) {
   });
 }
 
-/** What `POST /api/comments` takes: a comment, or a reply to `parent`. */
+/** What `POST /api/comments` takes: a comment, a comment on page text, or a reply to `parent`. */
 export interface NewComment {
   readonly flare: string;
   readonly parent?: string;
   readonly body: string;
   readonly key: string;
+  readonly anchor?: Anchor;
 }
 
 /** Writes a comment or a reply and returns it as the server stored it. */

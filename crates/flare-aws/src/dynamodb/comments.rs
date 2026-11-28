@@ -225,6 +225,7 @@ impl Attempt for ChangeOp<'_> {
                     return Err(Sent::Done(held));
                 }
                 after.body = None;
+                after.anchor = None;
                 CommentAction::Deleted
             }
         };

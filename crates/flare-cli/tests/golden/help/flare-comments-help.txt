@@ -33,6 +33,7 @@ Columns:
   at       When it was written, in RFC 3339 UTC.
   edited   When its text last changed, in RFC 3339 UTC.
   deleted  Whether its author deleted it.
+  quote    The page text a comment is about, in the column before its body; absent for a comment on the whole flare, a reply and a deleted comment.
   body     Its text; absent once deleted.
 
 Effects: read-only, closed-world.

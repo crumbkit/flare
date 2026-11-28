@@ -47,8 +47,9 @@ mod token;
 pub use auth::{Access, AuthError, Authenticator, Credential, Decision, Principal, Resource};
 pub use binding::Binding;
 pub use comment::{
-    Comment, CommentAction, CommentBody, CommentEvent, CommentId, CommentKey, CursorName,
-    MAX_COMMENT_CHARS, MAX_COMMENTS_PER_FLARE, MAX_CURSORS_PER_PERSON, NewComment,
+    Anchor, Comment, CommentAction, CommentBody, CommentEvent, CommentId, CommentKey, CursorName,
+    MAX_COMMENT_CHARS, MAX_COMMENTS_PER_FLARE, MAX_CONTEXT_CHARS, MAX_CURSORS_PER_PERSON,
+    MAX_QUOTE_CHARS, MIN_QUOTE_CHARS, NewComment, Quote, QuoteContext,
 };
 pub use email::Email;
 pub use error::{ParseError, Subject};

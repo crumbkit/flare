@@ -163,6 +163,7 @@ impl CommentStore for MemoryCommentStore {
         }
         let position = self.position()?;
         held.body = None;
+        held.anchor = None;
         state
             .events
             .push(CommentEvent::of(held, CommentAction::Deleted, position, at));

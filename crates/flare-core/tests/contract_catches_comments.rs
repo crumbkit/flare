@@ -6,7 +6,7 @@ use flare_core::contract::comment_store::{self, CommentFixture};
 use flare_core::contract::{Clause, block_on};
 use flare_core::memory::MemoryCommentStore;
 use flare_core::{
-    Added, Comment, CommentBody, CommentEvent, CommentId, CommentKey, CommentStore,
+    Added, Anchor, Comment, CommentBody, CommentEvent, CommentId, CommentKey, CommentStore,
     CommentStoreError, NewComment, Position, ShareId, Timestamp,
 };
 
@@ -114,6 +114,80 @@ impl CommentStore for KeepsTheText {
     ) -> Result<Vec<CommentEvent>, CommentStoreError> {
         self.0.events(flare, after, upto, limit).await
     }
+}
+
+/// Keeps each comment's anchor beside a correct store and gives it back
+/// on every read, also after a delete.
+struct KeepsTheAnchor(Wrapped, std::sync::Mutex<Vec<(CommentId, Anchor)>>);
+
+impl KeepsTheAnchor {
+    fn kept(&self, comment: Comment) -> Comment {
+        let kept = self.1.lock().unwrap();
+        let anchor = kept
+            .iter()
+            .find(|(id, _)| id == &comment.id)
+            .map(|(_, anchor)| anchor.clone());
+        comment.with_anchor(anchor)
+    }
+}
+
+impl CommentStore for KeepsTheAnchor {
+    async fn add(&self, comment: NewComment) -> Result<Added, CommentStoreError> {
+        if let Some(anchor) = &comment.anchor {
+            self.1
+                .lock()
+                .unwrap()
+                .push((comment.id.clone(), anchor.clone()));
+        }
+        self.0.add(comment).await
+    }
+    async fn get(&self, id: &CommentId) -> Result<Comment, CommentStoreError> {
+        self.0.get(id).await.map(|comment| self.kept(comment))
+    }
+    async fn of_flare(&self, flare: &ShareId) -> Result<Vec<Comment>, CommentStoreError> {
+        let all = self.0.of_flare(flare).await?;
+        Ok(all.into_iter().map(|comment| self.kept(comment)).collect())
+    }
+    async fn edit(
+        &self,
+        id: &CommentId,
+        body: CommentBody,
+        at: Timestamp,
+    ) -> Result<Comment, CommentStoreError> {
+        self.0
+            .edit(id, body, at)
+            .await
+            .map(|comment| self.kept(comment))
+    }
+    async fn delete(&self, id: &CommentId, at: Timestamp) -> Result<Comment, CommentStoreError> {
+        self.0
+            .delete(id, at)
+            .await
+            .map(|comment| self.kept(comment))
+    }
+    async fn events(
+        &self,
+        flare: &ShareId,
+        after: Position,
+        upto: Position,
+        limit: usize,
+    ) -> Result<Vec<CommentEvent>, CommentStoreError> {
+        self.0.events(flare, after, upto, limit).await
+    }
+}
+
+#[test]
+fn a_store_that_keeps_the_anchor_after_a_delete_fails_the_anchor_clause() {
+    let fixture = CommentFixture::standard().unwrap();
+    let store = KeepsTheAnchor(
+        Wrapped(MemoryCommentStore::new()),
+        std::sync::Mutex::default(),
+    );
+    let broken = block_on(comment_store::an_anchor_reads_back_and_a_delete_erases_it(
+        &store, &fixture,
+    ))
+    .unwrap_err();
+    assert_eq!(broken.clause(), Clause::AnAnchorReadsBackAndADeleteErasesIt);
 }
 
 #[test]
